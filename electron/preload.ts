@@ -11,24 +11,21 @@ const api = {
     stop: () => ipcRenderer.invoke('timer:stop'),
     reset: () => ipcRenderer.invoke('timer:reset'),
     /** 带任务原子启动：开始专注时同时写入 Session 默认任务 + 第一个 Segment 任务 */
-    startWithTask: (
-      taskId: string,
-      taskSource: 'local' | 'ticktick',
-      taskTitle?: string
-    ) =>
+    startWithTask: (taskId: string, taskSource: 'local' | 'ticktick', taskTitle?: string) =>
       ipcRenderer.invoke('timer:start-with-task', { taskId, taskSource, taskTitle }),
     linkTask: (
       segmentId: string,
       taskId: string,
       taskSource: 'local' | 'ticktick',
-      taskTitle?: string
+      taskTitle?: string,
     ) => ipcRenderer.invoke('timer:link-task', { segmentId, taskId, taskSource, taskTitle }),
     linkSessionTask: (
       sessionId: string,
       taskId: string,
       taskSource: 'local' | 'ticktick',
-      taskTitle?: string
-    ) => ipcRenderer.invoke('timer:link-session-task', { sessionId, taskId, taskSource, taskTitle }),
+      taskTitle?: string,
+    ) =>
+      ipcRenderer.invoke('timer:link-session-task', { sessionId, taskId, taskSource, taskTitle }),
     clearSegmentTask: (segmentId: string) =>
       ipcRenderer.invoke('timer:clear-segment-task', { segmentId }),
     clearSessionDefaultTask: (sessionId: string) =>
@@ -38,7 +35,7 @@ const api = {
       taskId: string,
       taskSource: 'local' | 'ticktick',
       taskTitle: string | null,
-      onlyUnlinked: boolean
+      onlyUnlinked: boolean,
     ) =>
       ipcRenderer.invoke('timer:link-segments-batch', {
         sessionId,

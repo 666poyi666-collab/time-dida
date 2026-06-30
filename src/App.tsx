@@ -6,7 +6,15 @@ import { SegmentTimeline } from './components/SegmentTimeline';
 import { HistoryPanel } from './components/HistoryPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Toast } from './components/Toast';
-import { Timer as TimerIcon, History as HistoryIcon, Settings as SettingsIcon, Minus, X, GripVertical, Activity } from 'lucide-react';
+import {
+  Timer as TimerIcon,
+  History as HistoryIcon,
+  Settings as SettingsIcon,
+  Minus,
+  X,
+  GripVertical,
+  Activity,
+} from 'lucide-react';
 import type { AppSettings } from '@shared/types';
 import {
   DEFAULT_LEFT_PANE_RATIO,
@@ -19,8 +27,17 @@ import {
 } from './lib/paneLayout';
 
 export default function App() {
-  const { snapshot, settings, view, setView, setSnapshot, setSettings, setLocalTasks, setTicktickStatus, addToast } =
-    useStore();
+  const {
+    snapshot,
+    settings,
+    view,
+    setView,
+    setSnapshot,
+    setSettings,
+    setLocalTasks,
+    setTicktickStatus,
+    addToast,
+  } = useStore();
 
   // 左右分栏宽度（px）
   const [leftWidth, setLeftWidth] = useState<number | null>(null);
@@ -53,9 +70,7 @@ export default function App() {
 
       // 订阅 timer 事件
       unsubs.push(window.focuslink.on('tick', (snap) => setSnapshot(snap as any)));
-      unsubs.push(
-        window.focuslink.on('timer:state-changed', (snap) => setSnapshot(snap as any))
-      );
+      unsubs.push(window.focuslink.on('timer:state-changed', (snap) => setSnapshot(snap as any)));
       unsubs.push(
         window.focuslink.on('navigate', (target) => {
           if (target === 'settings' || target === 'history' || target === 'timer') {
@@ -63,13 +78,13 @@ export default function App() {
           } else if (target === 'tasks') {
             setView('timer');
           }
-        })
+        }),
       );
       unsubs.push(
         window.focuslink.on('toast:show', (t) => {
           const toast = t as { message: string; type: 'success' | 'error' | 'info'; id: string };
           addToast(toast.message, toast.type);
-        })
+        }),
       );
       unsubs.push(
         window.focuslink.on('hotkey:registered', (info) => {
@@ -77,7 +92,7 @@ export default function App() {
           if (!i.success) {
             addToast(`快捷键 ${i.key} 注册失败：${i.error ?? '可能冲突'}`, 'error');
           }
-        })
+        }),
       );
     })();
 
@@ -194,9 +209,24 @@ export default function App() {
 
         {/* 导航 */}
         <nav className="flex items-center gap-1 rounded-xl border border-border bg-bg-subtle/70 p-1">
-          <NavBtn active={view === 'timer'} onClick={() => setView('timer')} icon={<TimerIcon size={14} />} label="计时" />
-          <NavBtn active={view === 'history'} onClick={() => setView('history')} icon={<HistoryIcon size={14} />} label="历史" />
-          <NavBtn active={view === 'settings'} onClick={() => setView('settings')} icon={<SettingsIcon size={14} />} label="设置" />
+          <NavBtn
+            active={view === 'timer'}
+            onClick={() => setView('timer')}
+            icon={<TimerIcon size={14} />}
+            label="计时"
+          />
+          <NavBtn
+            active={view === 'history'}
+            onClick={() => setView('history')}
+            icon={<HistoryIcon size={14} />}
+            label="历史"
+          />
+          <NavBtn
+            active={view === 'settings'}
+            onClick={() => setView('settings')}
+            icon={<SettingsIcon size={14} />}
+            label="设置"
+          />
         </nav>
 
         {/* 窗口控制按钮 */}
@@ -226,11 +256,14 @@ export default function App() {
             <div
               className="flex flex-col overflow-y-auto p-5"
               style={{
-                width: effectiveLeft ?? `min(${Math.round(DEFAULT_LEFT_PANE_RATIO * 100)}%, ${LEFT_PANE_MAX}px)`,
+                width:
+                  effectiveLeft ??
+                  `min(${Math.round(DEFAULT_LEFT_PANE_RATIO * 100)}%, ${LEFT_PANE_MAX}px)`,
                 maxWidth: `min(${LEFT_PANE_MAX}px, calc(100% - ${RIGHT_PANE_MIN + PANE_DIVIDER_WIDTH}px))`,
                 minWidth: LEFT_PANE_MIN,
                 flexShrink: 0,
-                background: 'linear-gradient(180deg, rgb(var(--app-bg) / 1), rgb(var(--app-surface-2) / 0.54))',
+                background:
+                  'linear-gradient(180deg, rgb(var(--app-bg) / 1), rgb(var(--app-surface-2) / 0.54))',
               }}
             >
               <TimerPanel />
@@ -251,7 +284,9 @@ export default function App() {
               <div
                 className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 rounded-full transition-all duration-150"
                 style={{
-                  background: isDividerDragging ? 'rgb(var(--app-accent))' : 'rgb(var(--app-border))',
+                  background: isDividerDragging
+                    ? 'rgb(var(--app-accent))'
+                    : 'rgb(var(--app-border))',
                   opacity: isDividerDragging ? 0.75 : 0.72,
                 }}
               />
@@ -263,7 +298,9 @@ export default function App() {
                   boxShadow: '0 0 0 1px rgb(var(--app-accent) / 0.16)',
                 }}
               />
-              <div className={`absolute left-1/2 top-1/2 flex h-8 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-bg-card shadow-soft transition-all duration-150 group-hover:border-accent/40 group-hover:text-accent group-hover:opacity-100 ${isDividerDragging ? 'border-accent/55 text-accent opacity-100' : 'border-border text-fg-subtle opacity-70'}`}>
+              <div
+                className={`absolute left-1/2 top-1/2 flex h-8 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-bg-card shadow-soft transition-all duration-150 group-hover:border-accent/40 group-hover:text-accent group-hover:opacity-100 ${isDividerDragging ? 'border-accent/55 text-accent opacity-100' : 'border-border text-fg-subtle opacity-70'}`}
+              >
                 <GripVertical size={13} />
               </div>
             </div>
@@ -273,7 +310,8 @@ export default function App() {
               className="flex-1 overflow-y-auto border-l border-border/70 p-5"
               style={{
                 minWidth: RIGHT_PANE_MIN,
-                background: 'linear-gradient(180deg, rgb(var(--app-surface) / 0.72), rgb(var(--app-bg) / 1))',
+                background:
+                  'linear-gradient(180deg, rgb(var(--app-surface) / 0.72), rgb(var(--app-bg) / 1))',
               }}
             >
               <TaskPanel />
@@ -299,7 +337,9 @@ function BrandMark({ state }: { state: string }) {
     >
       <div className="absolute inset-x-1.5 top-1.5 h-px bg-white/45" />
       <Activity size={16} className="relative z-10" />
-      <span className={`absolute bottom-1.5 h-1 w-3 rounded-full bg-accent ${running ? 'animate-pulse' : 'opacity-60'}`} />
+      <span
+        className={`absolute bottom-1.5 h-1 w-3 rounded-full bg-accent ${running ? 'animate-pulse' : 'opacity-60'}`}
+      />
     </div>
   );
 }
@@ -335,9 +375,7 @@ function NavBtn({
     <button
       onClick={onClick}
       className={`flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-semibold transition-all duration-200 ${
-        active
-          ? 'nav-active'
-          : 'text-fg-muted hover:bg-bg-card/75 hover:text-fg'
+        active ? 'nav-active' : 'text-fg-muted hover:bg-bg-card/75 hover:text-fg'
       }`}
     >
       {icon}

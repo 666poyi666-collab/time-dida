@@ -23,7 +23,7 @@ export function createDefaultCollapsedState(tasks: Task[]): Record<string, boole
  *  - 返回新对象（如有变更）或原对象（无变更时避免不必要渲染） */
 export function initNewParentsCollapsed(
   prev: Record<string, boolean>,
-  tasks: Task[]
+  tasks: Task[],
 ): Record<string, boolean> {
   const next = { ...prev };
   let changed = false;
@@ -47,7 +47,7 @@ export function initNewParentsCollapsed(
 export function expandMatchingParents(
   prev: Record<string, boolean>,
   tasks: Task[],
-  query: string
+  query: string,
 ): Record<string, boolean> {
   const q = query.trim().toLowerCase();
   if (!q) return prev;
@@ -55,9 +55,7 @@ export function expandMatchingParents(
   const walk = (list: Task[]) => {
     for (const t of list) {
       if (t.children && t.children.length > 0) {
-        const childMatch = t.children.some((c) =>
-          c.title.toLowerCase().includes(q)
-        );
+        const childMatch = t.children.some((c) => c.title.toLowerCase().includes(q));
         const selfMatch = t.title.toLowerCase().includes(q);
         if (childMatch || selfMatch) {
           next[t.id] = false; // 展开

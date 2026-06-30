@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
  * wallElapsed 始终 = now - startedAt
  */
 function simulateTimeline(
-  events: Array<{ t: number; type: 'start' | 'pause' | 'resume' | 'stop' }>
+  events: Array<{ t: number; type: 'start' | 'pause' | 'resume' | 'stop' }>,
 ) {
   let activeElapsedMs = 0;
   let pauseElapsedMs = 0;

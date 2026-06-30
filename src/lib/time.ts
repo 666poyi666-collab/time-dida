@@ -1,6 +1,6 @@
 // 时间格式化工具
 
-/** ms -> "H:MM:SS" 或 "MM:SS" */
+/** ms -> "H:MM:SS" 或 "M:SS"（分钟不补零，用于累计统计等紧凑场景） */
 export function formatDuration(ms: number): string {
   if (ms < 0) ms = 0;
   const totalSec = Math.floor(ms / 1000);
@@ -11,6 +11,19 @@ export function formatDuration(ms: number): string {
   const ss = String(s).padStart(2, '0');
   if (h > 0) return `${h}:${mm}:${ss}`;
   return `${m}:${ss}`;
+}
+
+/** ms -> "MM:SS" 或 "H:MM:SS"（分钟始终补零，用于大看板当前片段时间） */
+export function formatDurationPadded(ms: number): string {
+  if (ms < 0) ms = 0;
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  if (h > 0) return `${h}:${mm}:${ss}`;
+  return `${mm}:${ss}`;
 }
 
 /** ms -> "X 分钟" / "X 小时 Y 分钟" */
@@ -31,9 +44,10 @@ export function formatClock(ms: number): string {
 /** epoch ms -> "MM-DD HH:MM" */
 export function formatDateTime(ms: number): string {
   const d = new Date(ms);
-  const date = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate()
-  ).padStart(2, '0')}`;
+  const date = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(
+    2,
+    '0',
+  )}`;
   return `${date} ${formatClock(ms)}`;
 }
 

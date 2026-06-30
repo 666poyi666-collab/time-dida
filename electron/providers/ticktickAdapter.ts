@@ -199,9 +199,7 @@ export class TickTickAdapter implements TaskProvider {
     const path = projectId ? `/project/${projectId}/data` : '/project/all/completed';
     const res = await this.apiFetch(path);
     if (!res.ok) throw new Error(`listTasks: ${res.status}`);
-    const json = (await res.json()) as
-      | { tasks: TickTickTask[] }
-      | TickTickTaskProjectData[];
+    const json = (await res.json()) as { tasks: TickTickTask[] } | TickTickTaskProjectData[];
     let tasks: TickTickTask[] = [];
     if (Array.isArray(json)) {
       // /project/all/completed 返回数组项目结构
@@ -237,7 +235,7 @@ export class TickTickAdapter implements TaskProvider {
   async getTask(taskId: string): Promise<Task | null> {
     // TickTick 需要 projectId 才能查单任务，这里先从缓存找
     const cached = listTaskCache('ticktick').find(
-      (t) => t.externalId === taskId || t.id === `ticktick:${taskId}`
+      (t) => t.externalId === taskId || t.id === `ticktick:${taskId}`,
     );
     return cached
       ? {
@@ -326,7 +324,7 @@ function formatFocusRecord(r: FocusRecord): string {
   const end = r.endedAt ? new Date(r.endedAt) : new Date();
   const fmt = (d: Date) =>
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(
-      d.getMinutes()
+      d.getMinutes(),
     )}`;
   const min = (ms: number) => Math.round(ms / 60000);
   return `[FocusLink]
@@ -374,13 +372,16 @@ function waitForCallback(redirectUri: string, expectedState: string): Promise<st
     });
     // 自动打开浏览器
     shell.openExternal(
-      `${redirectUri.replace('/callback', '')}`.replace('localhost:18321', 'localhost:18321')
+      `${redirectUri.replace('/callback', '')}`.replace('localhost:18321', 'localhost:18321'),
     );
     // 超时
-    setTimeout(() => {
-      server.close();
-      reject(new Error('OAuth 超时'));
-    }, 5 * 60 * 1000);
+    setTimeout(
+      () => {
+        server.close();
+        reject(new Error('OAuth 超时'));
+      },
+      5 * 60 * 1000,
+    );
   });
 }
 

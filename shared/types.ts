@@ -223,12 +223,7 @@ export interface AppSettings {
 
 /** 设置变更域 - 用于按域分流处理副作用，避免主题保存触发快捷键重注册 */
 export type SettingsDomain =
-  | 'theme'
-  | 'hotkeys'
-  | 'miniWindow'
-  | 'taskProvider'
-  | 'layout'
-  | 'general';
+  'theme' | 'hotkeys' | 'miniWindow' | 'taskProvider' | 'layout' | 'general';
 
 /** 主界面左右分栏布局配置 */
 export interface LayoutConfig {
@@ -353,12 +348,32 @@ export interface TimerIPC {
   'timer:stop': () => Promise<TimerSnapshot>;
   'timer:reset': () => Promise<TimerSnapshot>;
   /** 带任务原子启动：开始专注时同时写入 Session 默认任务 + 第一个 Segment 任务 */
-  'timer:start-with-task': (args: { taskId: string; taskSource: TaskSource; taskTitle?: string }) => Promise<TimerSnapshot>;
-  'timer:link-task': (args: { segmentId: string; taskId: string; taskSource: TaskSource; taskTitle?: string }) => Promise<void>;
-  'timer:link-session-task': (args: { sessionId: string; taskId: string; taskSource: TaskSource; taskTitle?: string }) => Promise<void>;
+  'timer:start-with-task': (args: {
+    taskId: string;
+    taskSource: TaskSource;
+    taskTitle?: string;
+  }) => Promise<TimerSnapshot>;
+  'timer:link-task': (args: {
+    segmentId: string;
+    taskId: string;
+    taskSource: TaskSource;
+    taskTitle?: string;
+  }) => Promise<void>;
+  'timer:link-session-task': (args: {
+    sessionId: string;
+    taskId: string;
+    taskSource: TaskSource;
+    taskTitle?: string;
+  }) => Promise<void>;
   'timer:clear-segment-task': (args: { segmentId: string }) => Promise<void>;
   'timer:clear-session-default-task': (args: { sessionId: string }) => Promise<void>;
-  'timer:link-segments-batch': (args: { sessionId: string; taskId: string; taskSource: TaskSource; taskTitle?: string; onlyUnlinked: boolean }) => Promise<number>;
+  'timer:link-segments-batch': (args: {
+    sessionId: string;
+    taskId: string;
+    taskSource: TaskSource;
+    taskTitle?: string;
+    onlyUnlinked: boolean;
+  }) => Promise<number>;
   'timer:set-segment-title': (args: { segmentId: string; title: string }) => Promise<void>;
   'timer:merge-segments': (args: { segmentIds: string[] }) => Promise<void>;
   'timer:split-segment': (args: { segmentId: string; atMs: number }) => Promise<void>;
@@ -369,7 +384,11 @@ export interface TaskIPC {
   'tasks:create-local': (input: { title: string; projectId?: string }) => Promise<Task>;
   'tasks:search': (query: string) => Promise<Task[]>;
   'tasks:complete': (task: Task) => Promise<Task>;
-  'ticktick:login': (clientId: string, clientSecret: string, region: 'ticktick' | 'dida365') => Promise<void>;
+  'ticktick:login': (
+    clientId: string,
+    clientSecret: string,
+    region: 'ticktick' | 'dida365',
+  ) => Promise<void>;
   'ticktick:logout': () => Promise<void>;
   'ticktick:list-projects': () => Promise<Project[]>;
   'ticktick:list-tasks': (projectId?: string) => Promise<Task[]>;
@@ -378,7 +397,9 @@ export interface TaskIPC {
 
 export interface SessionIPC {
   'sessions:list': (limit?: number) => Promise<FocusSession[]>;
-  'sessions:get': (id: string) => Promise<{ session: FocusSession; segments: FocusSegment[]; pauses: PauseEvent[] } | null>;
+  'sessions:get': (
+    id: string,
+  ) => Promise<{ session: FocusSession; segments: FocusSegment[]; pauses: PauseEvent[] } | null>;
   'sessions:delete': (id: string) => Promise<void>;
   'sessions:export': (id: string, format: 'json' | 'csv' | 'markdown') => Promise<string>;
 }
@@ -388,7 +409,7 @@ export interface SettingsIPC {
   'settings:set': (settings: Partial<AppSettings>) => Promise<AppSettings>;
   'settings:set-hotkey': (
     key: keyof AppSettings['hotkeys'],
-    accelerator: string
+    accelerator: string,
   ) => Promise<{
     settings: AppSettings;
     registration: {
@@ -417,7 +438,11 @@ export interface WindowIPC {
 /** 事件：主进程 -> 渲染进程 */
 export interface MainEvents {
   'timer:state-changed': (snapshot: TimerSnapshot) => void;
-  'tick': (snapshot: TimerSnapshot) => void;
-  'toast:show': (toast: { message: string; type: 'success' | 'error' | 'info'; id: string }) => void;
+  tick: (snapshot: TimerSnapshot) => void;
+  'toast:show': (toast: {
+    message: string;
+    type: 'success' | 'error' | 'info';
+    id: string;
+  }) => void;
   'hotkey:registered': (info: { key: string; success: boolean; error?: string }) => void;
 }

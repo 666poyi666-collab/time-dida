@@ -2,7 +2,23 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import type { AppSettings } from '@shared/types';
-import { LogOut, Loader2, Beaker, Search, Stethoscope, Copy, ChevronDown, ChevronRight, Palette, Keyboard, ListChecks, Monitor, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  LogOut,
+  Loader2,
+  Beaker,
+  Search,
+  Stethoscope,
+  Copy,
+  ChevronDown,
+  ChevronRight,
+  Palette,
+  Keyboard,
+  ListChecks,
+  Monitor,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle,
+} from 'lucide-react';
 
 const HOTKEY_LABELS: Record<keyof AppSettings['hotkeys'], string> = {
   toggleTimer: '开始 / 暂停 / 继续',
@@ -50,7 +66,11 @@ export function SettingsPanel() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [connected, setConnected] = useState(false);
   const [cliDetecting, setCliDetecting] = useState(false);
-  const [cliDetected, setCliDetected] = useState<{ found: boolean; executable: string; helpOutput?: string } | null>(null);
+  const [cliDetected, setCliDetected] = useState<{
+    found: boolean;
+    executable: string;
+    helpOutput?: string;
+  } | null>(null);
   const [providerInfo, setProviderInfo] = useState<{
     providerType: 'dida' | 'ticktick' | 'unknown';
     executable: string;
@@ -193,10 +213,7 @@ export function SettingsPanel() {
     window.addEventListener('keydown', handler, true);
   };
 
-  const applyHotkey = async (
-    key: keyof AppSettings['hotkeys'],
-    accelerator: string
-  ) => {
+  const applyHotkey = async (key: keyof AppSettings['hotkeys'], accelerator: string) => {
     try {
       // setHotkey 现在返回 { settings, registration }，注册失败会保留旧快捷键
       const res = await window.focuslink.settings.setHotkey(key, accelerator);
@@ -205,10 +222,7 @@ export function SettingsPanel() {
       if (res.registration.success) {
         addToast(`已设置：${accelerator}`, 'success');
       } else {
-        addToast(
-          `快捷键注册失败：${accelerator}（可能被其他软件占用，已保留旧快捷键）`,
-          'error'
-        );
+        addToast(`快捷键注册失败：${accelerator}（可能被其他软件占用，已保留旧快捷键）`, 'error');
       }
     } catch (e) {
       addToast('设置失败：' + (e as Error).message, 'error');
@@ -297,10 +311,16 @@ export function SettingsPanel() {
               <Section title="外观">
                 <Row label="主题">
                   <div className="flex gap-2">
-                    <ChoiceBtn active={settings.theme === 'dark'} onClick={() => update({ theme: 'dark' })}>
+                    <ChoiceBtn
+                      active={settings.theme === 'dark'}
+                      onClick={() => update({ theme: 'dark' })}
+                    >
                       深色
                     </ChoiceBtn>
-                    <ChoiceBtn active={settings.theme === 'light'} onClick={() => update({ theme: 'light' })}>
+                    <ChoiceBtn
+                      active={settings.theme === 'light'}
+                      onClick={() => update({ theme: 'light' })}
+                    >
                       浅色
                     </ChoiceBtn>
                   </div>
@@ -312,7 +332,9 @@ export function SettingsPanel() {
                         key={a.id}
                         onClick={() => update({ accentColor: a.id })}
                         className={`h-7 w-7 rounded-full border-2 transition-transform ${
-                          settings.accentColor === a.id ? 'scale-110 border-fg shadow-soft' : 'border-transparent'
+                          settings.accentColor === a.id
+                            ? 'scale-110 border-fg shadow-soft'
+                            : 'border-transparent'
                         }`}
                         style={{ backgroundColor: a.color }}
                         title={a.label}
@@ -321,7 +343,6 @@ export function SettingsPanel() {
                   </div>
                 </Row>
               </Section>
-
             </>
           )}
 
@@ -330,7 +351,9 @@ export function SettingsPanel() {
               <Row label="跟随主界面主题">
                 <Toggle
                   checked={settings.miniWindow.followMainTheme}
-                  onChange={(v) => update({ miniWindow: { ...settings.miniWindow, followMainTheme: v } })}
+                  onChange={(v) =>
+                    update({ miniWindow: { ...settings.miniWindow, followMainTheme: v } })
+                  }
                 />
               </Row>
               {!settings.miniWindow.followMainTheme && (
@@ -338,19 +361,25 @@ export function SettingsPanel() {
                   <div className="flex gap-2">
                     <ChoiceBtn
                       active={settings.miniWindow.themeMode === 'system'}
-                      onClick={() => update({ miniWindow: { ...settings.miniWindow, themeMode: 'system' } })}
+                      onClick={() =>
+                        update({ miniWindow: { ...settings.miniWindow, themeMode: 'system' } })
+                      }
                     >
                       跟随系统
                     </ChoiceBtn>
                     <ChoiceBtn
                       active={settings.miniWindow.themeMode === 'dark'}
-                      onClick={() => update({ miniWindow: { ...settings.miniWindow, themeMode: 'dark' } })}
+                      onClick={() =>
+                        update({ miniWindow: { ...settings.miniWindow, themeMode: 'dark' } })
+                      }
                     >
                       深色
                     </ChoiceBtn>
                     <ChoiceBtn
                       active={settings.miniWindow.themeMode === 'light'}
-                      onClick={() => update({ miniWindow: { ...settings.miniWindow, themeMode: 'light' } })}
+                      onClick={() =>
+                        update({ miniWindow: { ...settings.miniWindow, themeMode: 'light' } })
+                      }
                     >
                       浅色
                     </ChoiceBtn>
@@ -378,22 +407,31 @@ export function SettingsPanel() {
                   onChange={() => addToast('贴边自动收纳当前保持关闭，可使用手动收起模式', 'info')}
                 />
               </Row>
-              <Row label="主窗口隐藏时自动显示小窗" desc="主窗口最小化或隐藏到托盘时，自动弹出专注小窗">
+              <Row
+                label="主窗口隐藏时自动显示小窗"
+                desc="主窗口最小化或隐藏到托盘时，自动弹出专注小窗"
+              >
                 <Toggle
                   checked={settings.miniWindow.autoShowOnMainHide}
-                  onChange={(v) => update({ miniWindow: { ...settings.miniWindow, autoShowOnMainHide: v } })}
+                  onChange={(v) =>
+                    update({ miniWindow: { ...settings.miniWindow, autoShowOnMainHide: v } })
+                  }
                 />
               </Row>
               <Row label="专注开始时自动显示小窗" desc="开始专注时若主窗口不在前台，自动显示小窗">
                 <Toggle
                   checked={settings.miniWindow.autoShowOnFocusStart}
-                  onChange={(v) => update({ miniWindow: { ...settings.miniWindow, autoShowOnFocusStart: v } })}
+                  onChange={(v) =>
+                    update({ miniWindow: { ...settings.miniWindow, autoShowOnFocusStart: v } })
+                  }
                 />
               </Row>
               <Row label="专注结束后自动隐藏小窗" desc="专注结束时自动隐藏小窗（默认关）">
                 <Toggle
                   checked={settings.miniWindow.autoHideOnFocusEnd}
-                  onChange={(v) => update({ miniWindow: { ...settings.miniWindow, autoHideOnFocusEnd: v } })}
+                  onChange={(v) =>
+                    update({ miniWindow: { ...settings.miniWindow, autoHideOnFocusEnd: v } })
+                  }
                 />
               </Row>
               <Row label="当前尺寸">
@@ -439,7 +477,8 @@ export function SettingsPanel() {
                 {(Object.keys(HOTKEY_LABELS) as HotkeyKey[]).map((key) => {
                   const status = getHotkeyBadgeState(key, settings.hotkeys[key], hotkeyStatus);
                   const activeAccelerator = hotkeyStatus?.registered[key]?.accelerator ?? null;
-                  const activeDiffers = !!activeAccelerator && activeAccelerator !== settings.hotkeys[key];
+                  const activeDiffers =
+                    !!activeAccelerator && activeAccelerator !== settings.hotkeys[key];
                   return (
                     <Row key={key} label={HOTKEY_LABELS[key]}>
                       <div className="flex min-w-[260px] flex-col items-end gap-1.5">
@@ -478,17 +517,14 @@ export function SettingsPanel() {
                             ? `当前生效：${activeAccelerator ?? settings.hotkeys[key]}`
                             : activeDiffers
                               ? `当前实际生效：${activeAccelerator}，设置值尚未接管`
-                              : status.title ?? '当前快捷键尚未注册成功'}
+                              : (status.title ?? '当前快捷键尚未注册成功')}
                         </p>
                       </div>
                     </Row>
                   );
                 })}
                 <div className="pt-1">
-                  <button
-                    className="btn-ghost text-xs"
-                    onClick={resetHotkeys}
-                  >
+                  <button className="btn-ghost text-xs" onClick={resetHotkeys}>
                     恢复默认快捷键
                   </button>
                 </div>
@@ -499,7 +535,10 @@ export function SettingsPanel() {
           {activeTab === 'tasks' && (
             <>
               {/* 任务来源 + 滴答清单 CLI */}
-              <Section title="任务来源" desc="选择右侧任务列表的数据来源；CLI 优先自动探测，可手动配置">
+              <Section
+                title="任务来源"
+                desc="选择右侧任务列表的数据来源；CLI 优先自动探测，可手动配置"
+              >
                 <Row label="当前任务来源">
                   <div className="flex flex-col gap-1.5">
                     <ChoiceBtn
@@ -531,7 +570,11 @@ export function SettingsPanel() {
                       onClick={detectCli}
                       disabled={cliDetecting}
                     >
-                      {cliDetecting ? <Loader2 size={11} className="animate-spin" /> : <Search size={11} />}
+                      {cliDetecting ? (
+                        <Loader2 size={11} className="animate-spin" />
+                      ) : (
+                        <Search size={11} />
+                      )}
                       重新探测
                     </button>
                   </div>
@@ -549,20 +592,32 @@ export function SettingsPanel() {
                     <div className="mb-2 rounded bg-bg-subtle/60 px-2 py-1.5 text-[11px]">
                       <div className="flex items-center gap-1.5">
                         <span className="text-fg-subtle">当前 CLI 类型：</span>
-                        <span className={`font-medium ${providerInfo.providerType === 'dida' ? 'text-emerald-400' : providerInfo.providerType === 'ticktick' ? 'text-sky-400' : 'text-amber-400'}`}>
-                          {providerInfo.providerType === 'dida' ? 'dida' : providerInfo.providerType === 'ticktick' ? 'ticktick' : '未知'}
+                        <span
+                          className={`font-medium ${providerInfo.providerType === 'dida' ? 'text-emerald-400' : providerInfo.providerType === 'ticktick' ? 'text-sky-400' : 'text-amber-400'}`}
+                        >
+                          {providerInfo.providerType === 'dida'
+                            ? 'dida'
+                            : providerInfo.providerType === 'ticktick'
+                              ? 'ticktick'
+                              : '未知'}
                         </span>
                         <span className="text-fg-subtle">· 可执行文件：</span>
-                        <code className="font-mono text-fg">{providerInfo.executable || '(未配置)'}</code>
+                        <code className="font-mono text-fg">
+                          {providerInfo.executable || '(未配置)'}
+                        </code>
                       </div>
                       {providerInfo.executablePath && (
                         <div className="mt-0.5 truncate text-fg-subtle">
-                          路径：<code className="font-mono text-fg-muted">{providerInfo.executablePath}</code>
+                          路径：
+                          <code className="font-mono text-fg-muted">
+                            {providerInfo.executablePath}
+                          </code>
                         </div>
                       )}
                       {providerInfo.hasStaleTicktickTemplates && (
                         <div className="mt-1.5 rounded bg-rose-500/10 px-2 py-1 text-[10px] text-rose-400">
-                          ⚠ 当前命令模板仍包含 ticktick 字面量，但探测到的是 dida。请点击下方「应用 dida 默认模板」按钮修复。
+                          ⚠ 当前命令模板仍包含 ticktick 字面量，但探测到的是 dida。请点击下方「应用
+                          dida 默认模板」按钮修复。
                         </div>
                       )}
                     </div>
@@ -571,10 +626,16 @@ export function SettingsPanel() {
                   {settings.ticktickCli && (
                     <div className="mb-2 space-y-0.5 rounded bg-bg-subtle/40 px-2 py-1.5 text-[10px]">
                       <div className="truncate text-fg-subtle">
-                        任务列表：<code className="font-mono text-fg-muted">{settings.ticktickCli.listTasksCommand}</code>
+                        任务列表：
+                        <code className="font-mono text-fg-muted">
+                          {settings.ticktickCli.listTasksCommand}
+                        </code>
                       </div>
                       <div className="truncate text-fg-subtle">
-                        项目列表：<code className="font-mono text-fg-muted">{settings.ticktickCli.listProjectsCommand}</code>
+                        项目列表：
+                        <code className="font-mono text-fg-muted">
+                          {settings.ticktickCli.listProjectsCommand}
+                        </code>
                       </div>
                     </div>
                   )}
@@ -596,7 +657,9 @@ export function SettingsPanel() {
                       className="input min-w-[220px] font-mono text-xs"
                       value={settings.ticktickCli.executable}
                       onChange={(e) =>
-                        update({ ticktickCli: { ...settings.ticktickCli, executable: e.target.value } })
+                        update({
+                          ticktickCli: { ...settings.ticktickCli, executable: e.target.value },
+                        })
                       }
                       placeholder="留空则用自动探测结果"
                     />
@@ -607,7 +670,12 @@ export function SettingsPanel() {
                         className="input min-w-[220px] font-mono text-xs"
                         value={settings.ticktickCli.listTasksCommand}
                         onChange={(e) =>
-                          update({ ticktickCli: { ...settings.ticktickCli, listTasksCommand: e.target.value } })
+                          update({
+                            ticktickCli: {
+                              ...settings.ticktickCli,
+                              listTasksCommand: e.target.value,
+                            },
+                          })
                         }
                       />
                     </Row>
@@ -616,7 +684,12 @@ export function SettingsPanel() {
                         className="input min-w-[220px] font-mono text-xs"
                         value={settings.ticktickCli.searchTasksCommand}
                         onChange={(e) =>
-                          update({ ticktickCli: { ...settings.ticktickCli, searchTasksCommand: e.target.value } })
+                          update({
+                            ticktickCli: {
+                              ...settings.ticktickCli,
+                              searchTasksCommand: e.target.value,
+                            },
+                          })
                         }
                       />
                     </Row>
@@ -625,7 +698,12 @@ export function SettingsPanel() {
                         className="input min-w-[220px] font-mono text-xs"
                         value={settings.ticktickCli.appendNoteCommand}
                         onChange={(e) =>
-                          update({ ticktickCli: { ...settings.ticktickCli, appendNoteCommand: e.target.value } })
+                          update({
+                            ticktickCli: {
+                              ...settings.ticktickCli,
+                              appendNoteCommand: e.target.value,
+                            },
+                          })
                         }
                       />
                     </Row>
@@ -635,7 +713,12 @@ export function SettingsPanel() {
                         className="input w-24 text-xs"
                         value={settings.ticktickCli.timeoutMs}
                         onChange={(e) =>
-                          update({ ticktickCli: { ...settings.ticktickCli, timeoutMs: Number(e.target.value) } })
+                          update({
+                            ticktickCli: {
+                              ...settings.ticktickCli,
+                              timeoutMs: Number(e.target.value),
+                            },
+                          })
                         }
                       />
                     </Row>
@@ -644,7 +727,9 @@ export function SettingsPanel() {
                     <button className="btn-outline text-xs" onClick={testCliList}>
                       测试读取任务
                     </button>
-                    <span className="text-[10px] text-fg-subtle">支持占位符：{'{{projectId}} {{query}} {{taskId}} {{content}}'}</span>
+                    <span className="text-[10px] text-fg-subtle">
+                      支持占位符：{'{{projectId}} {{query}} {{taskId}} {{content}}'}
+                    </span>
                   </div>
                 </div>
               </Section>
@@ -721,13 +806,16 @@ export function SettingsPanel() {
               <Section title="FocusLink" desc="全局快捷键驱动的专注计时器 + 滴答清单任务关联工具">
                 <Row label="当前版本">
                   <span className="rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs font-mono text-fg-muted">
-                    v0.1.5
+                    v0.1.8
                   </span>
                 </Row>
               </Section>
 
               {/* 滴答清单账号 */}
-              <Section title="滴答清单 / TickTick" desc="需在开发者平台创建应用获取 Client ID 和 Secret">
+              <Section
+                title="滴答清单 / TickTick"
+                desc="需在开发者平台创建应用获取 Client ID 和 Secret"
+              >
                 <Row label="区域">
                   <div className="flex gap-2">
                     <ChoiceBtn active={region === 'dida365'} onClick={() => setRegion('dida365')}>
@@ -741,7 +829,12 @@ export function SettingsPanel() {
                 {!connected ? (
                   <>
                     <Row label="Client ID">
-                      <input className="input" value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="应用的 Client ID" />
+                      <input
+                        className="input"
+                        value={clientId}
+                        onChange={(e) => setClientId(e.target.value)}
+                        placeholder="应用的 Client ID"
+                      />
                     </Row>
                     <Row label="Client Secret">
                       <input
@@ -767,23 +860,38 @@ export function SettingsPanel() {
                   </div>
                 )}
                 <p className="text-xs text-fg-subtle">
-                  回调地址需配置为：<code className="rounded bg-bg-subtle px-1 py-0.5">http://localhost:18321/callback</code>
+                  回调地址需配置为：
+                  <code className="rounded bg-bg-subtle px-1 py-0.5">
+                    http://localhost:18321/callback
+                  </code>
                 </p>
               </Section>
 
               {/* 系统 */}
               <Section title="系统与后台运行">
                 <Row label="最小化到托盘">
-                  <Toggle checked={settings.minimizeToTray} onChange={(v) => update({ minimizeToTray: v })} />
+                  <Toggle
+                    checked={settings.minimizeToTray}
+                    onChange={(v) => update({ minimizeToTray: v })}
+                  />
                 </Row>
                 <Row label="关闭窗口时最小化到托盘">
-                  <Toggle checked={settings.closeToTray} onChange={(v) => update({ closeToTray: v })} />
+                  <Toggle
+                    checked={settings.closeToTray}
+                    onChange={(v) => update({ closeToTray: v })}
+                  />
                 </Row>
                 <Row label="启动后最小化到托盘">
-                  <Toggle checked={settings.startMinimizedToTray} onChange={(v) => update({ startMinimizedToTray: v })} />
+                  <Toggle
+                    checked={settings.startMinimizedToTray}
+                    onChange={(v) => update({ startMinimizedToTray: v })}
+                  />
                 </Row>
                 <Row label="启动时显示专注小窗">
-                  <Toggle checked={settings.showMiniOnStart} onChange={(v) => update({ showMiniOnStart: v })} />
+                  <Toggle
+                    checked={settings.showMiniOnStart}
+                    onChange={(v) => update({ showMiniOnStart: v })}
+                  />
                 </Row>
                 <Row label="开机自启动">
                   <Toggle checked={settings.autoStart} onChange={(v) => update({ autoStart: v })} />
@@ -800,7 +908,7 @@ export function SettingsPanel() {
 function getHotkeyBadgeState(
   key: HotkeyKey,
   accelerator: string,
-  status: HotkeyRegistrationStatus | null
+  status: HotkeyRegistrationStatus | null,
 ): HotkeyBadgeState {
   if (!status) return { label: '检测中', tone: 'unknown' };
   const failed = status.failed.find((item) => item.key === key);
@@ -1063,9 +1171,10 @@ function CliDiagnosticPanel() {
       `LastError: ${diagnose.lastError ?? '(无)'}`,
       '',
       '=== Steps ===',
-      ...diagnose.steps.map((s: CliDiagnoseStep, i: number) => (
-        `[${i + 1}] ${s.name}: ${s.ok ? 'OK' : 'FAIL'} - ${s.summary}`
-      )),
+      ...diagnose.steps.map(
+        (s: CliDiagnoseStep, i: number) =>
+          `[${i + 1}] ${s.name}: ${s.ok ? 'OK' : 'FAIL'} - ${s.summary}`,
+      ),
       '',
       '=== Templates ===',
       `listProjectsCommand: ${diagnose.templates.listProjectsCommand}`,
@@ -1104,11 +1213,7 @@ function CliDiagnosticPanel() {
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
-        <button
-          className="btn-primary text-xs"
-          onClick={runDiagnose}
-          disabled={running}
-        >
+        <button className="btn-primary text-xs" onClick={runDiagnose} disabled={running}>
           {running ? <Loader2 size={12} className="animate-spin" /> : <Stethoscope size={12} />}
           完整诊断
         </button>
@@ -1133,7 +1238,9 @@ function CliDiagnosticPanel() {
           <div className="grid grid-cols-2 gap-2 rounded-lg bg-bg-subtle/40 p-3 text-xs">
             <div>
               <span className="text-fg-subtle">CLI 路径：</span>
-              <code className="font-mono text-fg">{diagnose.executablePath || diagnose.executable || '(未检测)'}</code>
+              <code className="font-mono text-fg">
+                {diagnose.executablePath || diagnose.executable || '(未检测)'}
+              </code>
             </div>
             <div>
               <span className="text-fg-subtle">版本：</span>
@@ -1170,7 +1277,9 @@ function CliDiagnosticPanel() {
                       />
                       <span className="font-medium">{step.name}</span>
                     </div>
-                    <span className={`truncate text-[11px] ${step.ok ? 'text-fg-muted' : 'text-rose-400'}`}>
+                    <span
+                      className={`truncate text-[11px] ${step.ok ? 'text-fg-muted' : 'text-rose-400'}`}
+                    >
                       {step.summary}
                     </span>
                   </button>

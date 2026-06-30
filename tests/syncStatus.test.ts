@@ -12,7 +12,7 @@ function queueItem(
   payload: unknown,
   status: SyncStatus,
   updatedAt: number,
-  lastError: string | null = null
+  lastError: string | null = null,
 ): SyncQueueItem {
   return {
     id,
@@ -40,7 +40,13 @@ describe('sync queue status aggregation', () => {
 
   it('uses the latest queue item for a session', () => {
     const map = buildSessionSyncStateMap([
-      queueItem('old', { type: 'session-note', sessionId: 'session-1' }, 'failed', 100, 'old error'),
+      queueItem(
+        'old',
+        { type: 'session-note', sessionId: 'session-1' },
+        'failed',
+        100,
+        'old error',
+      ),
       queueItem('new', { type: 'session-note', sessionId: 'session-1' }, 'synced', 200),
     ]);
 
@@ -51,16 +57,26 @@ describe('sync queue status aggregation', () => {
   });
 
   it('shows pending and failed states with the right tone', () => {
-    expect(queueItemToSessionSyncState(
-      queueItem('pending', { type: 'session-note', sessionId: 'session-1' }, 'pending', 100)
-    )).toMatchObject({
+    expect(
+      queueItemToSessionSyncState(
+        queueItem('pending', { type: 'session-note', sessionId: 'session-1' }, 'pending', 100),
+      ),
+    ).toMatchObject({
       label: '待同步',
       tone: 'warn',
     });
 
-    expect(queueItemToSessionSyncState(
-      queueItem('failed', { type: 'session-note', sessionId: 'session-1' }, 'failed', 100, 'network down')
-    )).toMatchObject({
+    expect(
+      queueItemToSessionSyncState(
+        queueItem(
+          'failed',
+          { type: 'session-note', sessionId: 'session-1' },
+          'failed',
+          100,
+          'network down',
+        ),
+      ),
+    ).toMatchObject({
       label: '同步失败',
       tone: 'error',
       title: 'network down',
@@ -79,7 +95,12 @@ describe('sync queue status aggregation', () => {
 
   it('supports segment queue items that carry session id', () => {
     const map = buildSessionSyncStateMap([
-      queueItem('segment', { type: 'segment-note', segmentId: 'seg-1', sessionId: 'session-1' }, 'pending', 100),
+      queueItem(
+        'segment',
+        { type: 'segment-note', segmentId: 'seg-1', sessionId: 'session-1' },
+        'pending',
+        100,
+      ),
     ]);
 
     expect(map['session-1']).toMatchObject({

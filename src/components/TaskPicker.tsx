@@ -114,9 +114,7 @@ export function TaskPicker({
     const expandMatching = (tasks: Task[]) => {
       for (const t of tasks) {
         if (t.children && t.children.length > 0) {
-          const childMatch = t.children.some((c) =>
-            c.title.toLowerCase().includes(ql)
-          );
+          const childMatch = t.children.some((c) => c.title.toLowerCase().includes(ql));
           const selfMatch = t.title.toLowerCase().includes(ql);
           if (childMatch || selfMatch) {
             next[t.id] = false; // 展开
@@ -164,8 +162,7 @@ export function TaskPicker({
     return filterTree(sourceTasks, query, selectedProject, allowCompleted);
   }, [sourceTasks, query, selectedProject, allowCompleted]);
 
-  const toggleCollapse = (id: string) =>
-    setCollapsed((p) => ({ ...p, [id]: !p[id] }));
+  const toggleCollapse = (id: string) => setCollapsed((p) => ({ ...p, [id]: !p[id] }));
 
   const handleConfirm = () => {
     if (!pickedTask) {
@@ -197,7 +194,9 @@ export function TaskPicker({
                 <span className="text-sm font-bold text-fg">{title}</span>
                 <SourceBadge isLocal={isLocal} isCli={isCli} />
               </div>
-              <p className="mt-0.5 text-[10px] font-medium text-fg-subtle">{filteredTree.length} 个可选任务</p>
+              <p className="mt-0.5 text-[10px] font-medium text-fg-subtle">
+                {filteredTree.length} 个可选任务
+              </p>
             </div>
           </div>
           <button
@@ -385,8 +384,16 @@ function PickerItem({
             <span className="block h-1 w-1 rounded-full bg-fg-subtle/30" />
           )}
         </button>
-        <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/70 text-fg-subtle'}`}>
-          {hasChildren ? <ListTree size={13} /> : isCompleted ? <CheckCircle size={14} className="text-success/80" /> : <Circle size={14} className="text-fg-subtle/50" />}
+        <span
+          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/70 text-fg-subtle'}`}
+        >
+          {hasChildren ? (
+            <ListTree size={13} />
+          ) : isCompleted ? (
+            <CheckCircle size={14} className="text-success/80" />
+          ) : (
+            <Circle size={14} className="text-fg-subtle/50" />
+          )}
         </span>
         <div className="min-w-0 flex-1">
           <p
@@ -448,13 +455,11 @@ function filterTree(
   tasks: Task[],
   query: string,
   projectId: string,
-  allowCompleted: boolean
+  allowCompleted: boolean,
 ): Task[] {
   const q = query.trim().toLowerCase();
   // 先按 projectId 过滤（本地过滤，子任务继承父 projectId）
-  const byProject = projectId
-    ? filterTreeByProject(tasks, projectId)
-    : tasks;
+  const byProject = projectId ? filterTreeByProject(tasks, projectId) : tasks;
   // 再按已完成 + 搜索过滤
   return filterAndBuildTree(byProject, q, allowCompleted);
 }
@@ -471,11 +476,7 @@ function filterTreeByProject(tasks: Task[], projectId: string): Task[] {
   return out;
 }
 
-function filterAndBuildTree(
-  tasks: Task[],
-  q: string,
-  allowCompleted: boolean
-): Task[] {
+function filterAndBuildTree(tasks: Task[], q: string, allowCompleted: boolean): Task[] {
   const out: Task[] = [];
   for (const t of tasks) {
     if (t.isCompleted && !allowCompleted) continue;

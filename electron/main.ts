@@ -143,14 +143,25 @@ function createMiniWindow(): BrowserWindow {
 
   // 启动时校验保存的尺寸是否合理，不合理则恢复默认
   let initWidth = cfg.width && cfg.width >= MIN_W && cfg.width <= MAX_W ? cfg.width : DEFAULT_W;
-  let initHeight = cfg.height && cfg.height >= MIN_H && cfg.height <= MAX_H ? cfg.height : DEFAULT_H;
+  let initHeight =
+    cfg.height && cfg.height >= MIN_H && cfg.height <= MAX_H ? cfg.height : DEFAULT_H;
   let initX = cfg.x;
   let initY = cfg.y;
   // 校验位置是否在屏幕内（避免上次保存位置已不在任何屏幕）
   if (initX !== null && initY !== null) {
-    const testDisplay = screen.getDisplayMatching({ x: initX, y: initY, width: initWidth, height: initHeight });
+    const testDisplay = screen.getDisplayMatching({
+      x: initX,
+      y: initY,
+      width: initWidth,
+      height: initHeight,
+    });
     const wa = testDisplay.workArea;
-    if (initX < wa.x - 100 || initX > wa.x + wa.width - 100 || initY < wa.y - 100 || initY > wa.y + wa.height - 100) {
+    if (
+      initX < wa.x - 100 ||
+      initX > wa.x + wa.width - 100 ||
+      initY < wa.y - 100 ||
+      initY > wa.y + wa.height - 100
+    ) {
       // 位置离屏 → 重置到默认
       initX = null;
       initY = null;
@@ -256,7 +267,10 @@ function collapseMiniWindow(): void {
   if (cur.miniWindow.collapsed) return;
   const bounds = miniWindow.getBounds();
   const collapsedHeight = 40;
-  miniWindow.setBounds({ x: bounds.x, y: bounds.y, width: bounds.width, height: collapsedHeight }, false);
+  miniWindow.setBounds(
+    { x: bounds.x, y: bounds.y, width: bounds.width, height: collapsedHeight },
+    false,
+  );
   updateSettings({ miniWindow: { ...cur.miniWindow, collapsed: true } });
   logger.info('main', 'mini window collapsed (no animation)');
 }
@@ -267,7 +281,8 @@ function expandMiniWindow(): void {
   const cur = getSettings();
   if (!cur.miniWindow.collapsed) return;
   const bounds = miniWindow.getBounds();
-  const restoreH = cur.miniWindow.height >= 88 && cur.miniWindow.height <= 240 ? cur.miniWindow.height : 132;
+  const restoreH =
+    cur.miniWindow.height >= 88 && cur.miniWindow.height <= 240 ? cur.miniWindow.height : 132;
   miniWindow.setBounds({ x: bounds.x, y: bounds.y, width: bounds.width, height: restoreH }, false);
   updateSettings({ miniWindow: { ...cur.miniWindow, collapsed: false } });
   logger.info('main', 'mini window expanded (no animation)');
@@ -290,7 +305,10 @@ function resetMiniWindow(): void {
   miniWindow.setSize(300, 132);
   // 重置到屏幕右上角
   const primary = screen.getPrimaryDisplay();
-  miniWindow.setPosition(primary.workArea.x + primary.workArea.width - 300 - 24, primary.workArea.y + 24);
+  miniWindow.setPosition(
+    primary.workArea.x + primary.workArea.width - 300 - 24,
+    primary.workArea.y + 24,
+  );
   logger.info('main', 'mini window reset to default');
 }
 
@@ -349,7 +367,8 @@ function handleTimerStateTransition(snap: TimerSnapshot): void {
   const justStarted = snap.state === 'running' && prev !== 'running';
   if (justStarted && cur.miniWindow.autoShowOnFocusStart) {
     // 仅当主窗口不在前台时才自动显示小窗
-    const mainVisible = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && mainWindow.isFocused();
+    const mainVisible =
+      mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && mainWindow.isFocused();
     if (!mainVisible) {
       logger.info('main', 'focus started and main window not focused, auto-show mini window');
       showMiniWindow();

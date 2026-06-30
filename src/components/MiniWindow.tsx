@@ -4,14 +4,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TimerSnapshot, AppSettings } from '@shared/types';
 import { formatDuration } from '../lib/time';
-import {
-  Play,
-  Pause,
-  Square,
-  ChevronDown,
-  ChevronUp,
-  Maximize2,
-} from 'lucide-react';
+import { getMainDisplayMs } from '../lib/timerSelectors';
+import { Play, Pause, Square, ChevronDown, ChevronUp, Maximize2 } from 'lucide-react';
 
 // ─── 常量 ───────────────────────────────────────────────────────
 
@@ -63,9 +57,7 @@ function applyThemeClass(s: AppSettings): void {
     effectiveTheme = 'light';
   }
   if (!s.miniWindow.followMainTheme && s.miniWindow.themeMode === 'system') {
-    effectiveTheme = window.matchMedia('(prefers-color-scheme: light)').matches
-      ? 'light'
-      : 'dark';
+    effectiveTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   }
 
   if (effectiveTheme === 'light') {
@@ -181,21 +173,18 @@ export function MiniWindow() {
     return () => ro.disconnect();
   }, []);
 
-  // ─── running 时本地每秒刷新显示 ─────────────────────────────
+  // ─── running / paused 时本地每秒刷新显示 ─────────────────────
+  // 小窗大时间统一显示"当前片段时间"（专注片段或暂停片段），不再显示累计 activeElapsedMs
   useEffect(() => {
-    if (snapshot?.state !== 'running') return;
+    if (snapshot?.state !== 'running' && snapshot?.state !== 'paused') return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [snapshot?.state, snapshot?.lastTick]);
+  }, [snapshot?.state, snapshot?.lastTick, snapshot?.currentPauseStartedAt]);
 
   // ─── 派生状态 ────────────────────────────────────────────────
   const state = snapshot?.state ?? 'idle';
-  const lastTick = snapshot?.lastTick ?? 0;
-  const baseActive = snapshot?.activeElapsedMs ?? 0;
-  const displayActive =
-    state === 'running' && lastTick > 0
-      ? baseActive + Math.max(0, Date.now() - lastTick)
-      : baseActive;
+  // 统一走 selector：running 显示当前专注片段，paused 显示当前暂停片段
+  const displayActive = getMainDisplayMs(snapshot, Date.now());
 
   const isCompact = !collapsed && containerWidth < 260;
   const isExpanded = !collapsed && containerWidth >= 260;
@@ -242,7 +231,11 @@ export function MiniWindow() {
         {/* 左侧：状态点 + 时间 + 状态文字 */}
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <StateDot state={state} size="xs" />
-          <span className="timer-digit text-sm font-bold tracking-tight">
+          <span
+            className={`timer-digit text-sm font-bold tracking-tight ${
+              state === 'paused' ? 'text-warning' : ''
+            }`}
+          >
             {formatDuration(displayActive)}
           </span>
           <span className={`text-[10px] font-semibold ${STATE_TEXT[state]}`}>
@@ -275,7 +268,11 @@ export function MiniWindow() {
         <div className="flex min-w-0 flex-none items-center gap-1.5">
           <StateDot state={state} />
           <div className="min-w-0">
-            <span className="timer-digit block text-base font-bold leading-none">
+            <span
+              className={`timer-digit block text-base font-bold leading-none ${
+                state === 'paused' ? 'text-warning' : ''
+              }`}
+            >
               {formatDuration(displayActive)}
             </span>
             <span className="block max-w-[54px] truncate text-[10px] leading-tight text-fg-subtle">
@@ -337,7 +334,11 @@ export function MiniWindow() {
 
       {/* 大号计时数字 */}
       <div className="absolute inset-x-3 top-9 bottom-14 flex flex-col items-center justify-center gap-0.5">
-        <span className="timer-digit text-[30px] font-bold leading-none">
+        <span
+          className={`timer-digit text-[30px] font-bold leading-none ${
+            state === 'paused' ? 'text-warning' : ''
+          }`}
+        >
           {formatDuration(displayActive)}
         </span>
         <span className="mt-1 max-w-[260px] truncate text-xs font-medium text-fg-muted">

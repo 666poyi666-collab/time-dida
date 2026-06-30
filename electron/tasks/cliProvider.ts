@@ -221,7 +221,7 @@ function renderTemplate(template: string, vars: Record<string, string>): string 
 async function execWithDiagnose(
   command: string,
   timeoutMs: number,
-  parseResult: 'success' | 'failed' | 'na' = 'na'
+  parseResult: 'success' | 'failed' | 'na' = 'na',
 ): Promise<{ stdout: string; stderr: string; record: CliExecRecord }> {
   const cwd = process.cwd();
   const masked = maskSecret(command);
@@ -310,7 +310,7 @@ async function runCommand(command: string, timeoutMs: number): Promise<string> {
 /** 尝试解析 JSON，失败时返回原始输出片段供 UI 展示 */
 function parseJson<T>(
   raw: string,
-  record?: CliExecRecord
+  record?: CliExecRecord,
 ): { ok: true; data: T } | { ok: false; raw: string } {
   const trimmed = raw.trim();
   if (!trimmed) return { ok: false, raw: '(空输出)' };
@@ -351,8 +351,8 @@ export async function diagnoseCli(): Promise<CliDiagnoseResult> {
     summary: detect.found
       ? `探测到：${detect.executable} (${detect.executablePath || '路径未知'})`
       : cfg.executable
-      ? `使用手动配置：${cfg.executable}`
-      : '未探测到任何 CLI',
+        ? `使用手动配置：${cfg.executable}`
+        : '未探测到任何 CLI',
   });
 
   // 2. 版本
@@ -404,9 +404,7 @@ export async function diagnoseCli(): Promise<CliDiagnoseResult> {
     steps.push({
       name: '项目列表',
       ok: parsed.ok,
-      summary: parsed.ok
-        ? `成功，共 ${count} 个项目`
-        : `解析失败：${parsed.raw.slice(0, 100)}`,
+      summary: parsed.ok ? `成功，共 ${count} 个项目` : `解析失败：${parsed.raw.slice(0, 100)}`,
       record: r.record,
     });
     lastStdout = r.stdout;
@@ -508,15 +506,13 @@ export class TickTickCliProvider implements TaskProvider {
     }
     if (record.status === 'failed') {
       throw new Error(
-        `CLI 执行失败（exitCode=${record.exitCode}）：${record.stderr.slice(0, 200) || record.error}`
+        `CLI 执行失败（exitCode=${record.exitCode}）：${record.stderr.slice(0, 200) || record.error}`,
       );
     }
     const parsed = parseJson<Project[]>(stdout, record);
     if (!parsed.ok) {
       logger.warn('cli', 'listProjects JSON parse failed', { raw: parsed.raw });
-      throw new Error(
-        `CLI 输出不是 JSON。原始输出片段：${parsed.raw.slice(0, 200)}`
-      );
+      throw new Error(`CLI 输出不是 JSON。原始输出片段：${parsed.raw.slice(0, 200)}`);
     }
     return parsed.data.map((p) => ({
       id: String(p.id ?? p.externalId ?? ''),
@@ -541,15 +537,13 @@ export class TickTickCliProvider implements TaskProvider {
     }
     if (record.status === 'failed') {
       throw new Error(
-        `CLI 执行失败（exitCode=${record.exitCode}）：${record.stderr.slice(0, 200) || record.error}`
+        `CLI 执行失败（exitCode=${record.exitCode}）：${record.stderr.slice(0, 200) || record.error}`,
       );
     }
     const parsed = parseJson<unknown[]>(stdout, record);
     if (!parsed.ok) {
       logger.warn('cli', 'listTasks JSON parse failed', { raw: parsed.raw });
-      throw new Error(
-        `CLI 输出不是 JSON。原始输出片段：${parsed.raw.slice(0, 200)}`
-      );
+      throw new Error(`CLI 输出不是 JSON。原始输出片段：${parsed.raw.slice(0, 200)}`);
     }
     const tasks = normalizeTasks(parsed.data);
     cacheTasks(tasks);
@@ -568,15 +562,13 @@ export class TickTickCliProvider implements TaskProvider {
     }
     if (record.status === 'failed') {
       throw new Error(
-        `CLI 执行失败（exitCode=${record.exitCode}）：${record.stderr.slice(0, 200) || record.error}`
+        `CLI 执行失败（exitCode=${record.exitCode}）：${record.stderr.slice(0, 200) || record.error}`,
       );
     }
     const parsed = parseJson<unknown[]>(stdout, record);
     if (!parsed.ok) {
       logger.warn('cli', 'searchTasks JSON parse failed', { raw: parsed.raw });
-      throw new Error(
-        `CLI 搜索输出不是 JSON。原始输出片段：${parsed.raw.slice(0, 200)}`
-      );
+      throw new Error(`CLI 搜索输出不是 JSON。原始输出片段：${parsed.raw.slice(0, 200)}`);
     }
     const tasks = normalizeTasks(parsed.data);
     cacheTasks(tasks);
@@ -586,7 +578,7 @@ export class TickTickCliProvider implements TaskProvider {
   async getTask(taskId: string): Promise<Task | null> {
     const cfg = getConfig();
     const cached = listTaskCache('ticktick').find(
-      (t) => t.id === taskId || t.externalId === taskId || t.id === `ticktick:${taskId}`
+      (t) => t.id === taskId || t.externalId === taskId || t.id === `ticktick:${taskId}`,
     );
     const projectId = cached?.projectId ?? '';
     if (!projectId && cfg.getTaskCommand.includes('{{projectId}}')) {
@@ -635,7 +627,7 @@ export class TickTickCliProvider implements TaskProvider {
     const cfg = getConfig();
     const taskId = (task.externalId || task.id).replace(/^ticktick:/, '');
     const cachedForTask = listTaskCache('ticktick').find(
-      (t) => t.id === task.id || t.externalId === task.externalId || t.externalId === taskId
+      (t) => t.id === task.id || t.externalId === task.externalId || t.externalId === taskId,
     );
     const projectId = task.projectId ?? cachedForTask?.projectId;
     if (!projectId) {
@@ -669,14 +661,21 @@ function normalizeTasks(raw: unknown[], parentId?: string): Task[] {
     const projectId = obj.projectId
       ? String(obj.projectId)
       : obj.project
-      ? String(obj.project)
-      : null;
+        ? String(obj.project)
+        : null;
     // dida status 数字：0=未完成，1=进行中，2=已完成
     const statusNum = obj.status;
     let statusStr: string | null = null;
     let isCompleted = false;
     if (typeof statusNum === 'number') {
-      statusStr = statusNum === 0 ? 'pending' : statusNum === 1 ? 'in-progress' : statusNum === 2 ? 'completed' : String(statusNum);
+      statusStr =
+        statusNum === 0
+          ? 'pending'
+          : statusNum === 1
+            ? 'in-progress'
+            : statusNum === 2
+              ? 'completed'
+              : String(statusNum);
       isCompleted = statusNum === 2;
     } else if (typeof statusNum === 'string') {
       statusStr = statusNum;
@@ -724,7 +723,13 @@ function normalizeTasks(raw: unknown[], parentId?: string): Task[] {
       dueDate,
       sortOrder,
       tags: Array.isArray(obj.tags) ? obj.tags.map(String) : [],
-      content: obj.content ? String(obj.content) : obj.note ? String(obj.note) : obj.desc ? String(obj.desc) : null,
+      content: obj.content
+        ? String(obj.content)
+        : obj.note
+          ? String(obj.note)
+          : obj.desc
+            ? String(obj.desc)
+            : null,
       parentId: parentId ?? null,
       children,
     });

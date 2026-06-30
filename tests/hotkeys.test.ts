@@ -57,7 +57,7 @@ describe('hotkey registration regression guards', () => {
 
     expect(result.success).toBe(true);
     expect(hotkeys.getRegistrationStatus().registered.toggleTimer?.accelerator).toBe(
-      'CommandOrControl+A'
+      'CommandOrControl+A',
     );
     expect(registeredCallbacks.has('CommandOrControl+A')).toBe(true);
     expect(registeredCallbacks.has('CommandOrControl+Alt+Space')).toBe(false);
@@ -75,7 +75,7 @@ describe('hotkey registration regression guards', () => {
 
     expect(result.success).toBe(false);
     expect(hotkeys.getRegistrationStatus().registered.toggleTimer?.accelerator).toBe(
-      'CommandOrControl+Alt+Space'
+      'CommandOrControl+Alt+Space',
     );
     expect(registeredCallbacks.has('CommandOrControl+Alt+Space')).toBe(true);
     expect(registeredCallbacks.has('CommandOrControl+A')).toBe(false);
@@ -95,7 +95,7 @@ describe('hotkey registration regression guards', () => {
     expect(unregisterCalls).not.toContain('CommandOrControl+A');
     expect(registeredCallbacks.has('CommandOrControl+A')).toBe(true);
     expect(hotkeys.getRegistrationStatus().registered.toggleTimer?.accelerator).toBe(
-      'CommandOrControl+A'
+      'CommandOrControl+A',
     );
   });
 
@@ -111,10 +111,10 @@ describe('hotkey registration regression guards', () => {
 
     expect(result.success).toBe(false);
     expect(hotkeys.getRegistrationStatus().registered.toggleTimer?.accelerator).toBe(
-      'CommandOrControl+A'
+      'CommandOrControl+A',
     );
     expect(hotkeys.getRegistrationStatus().registered.stopTimer?.accelerator).toBe(
-      'CommandOrControl+Alt+Enter'
+      'CommandOrControl+Alt+Enter',
     );
   });
 });

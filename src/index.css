@@ -54,7 +54,8 @@
     --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.04);
     --shadow-md: 0 10px 26px -22px rgb(16 24 40 / 0.35);
     --shadow-lg: 0 22px 56px -40px rgb(16 24 40 / 0.38);
-    --shadow-glow: 0 0 0 1px rgb(var(--app-accent) / 0.14), 0 18px 44px -30px rgb(var(--app-accent) / 0.45);
+    --shadow-glow:
+      0 0 0 1px rgb(var(--app-accent) / 0.14), 0 18px 44px -30px rgb(var(--app-accent) / 0.45);
 
     /* Backward-compatible aliases used by the current Tailwind config. */
     --bg-base: var(--app-bg);
@@ -144,16 +145,47 @@
     --shadow-sm: 0 1px 0 rgb(255 255 255 / 0.03);
     --shadow-md: 0 12px 30px -24px rgb(0 0 0 / 0.75);
     --shadow-lg: 0 22px 60px -34px rgb(0 0 0 / 0.85);
-    --shadow-glow: 0 0 0 1px rgb(var(--app-accent) / 0.12), 0 20px 54px -34px rgb(var(--app-accent) / 0.5);
+    --shadow-glow:
+      0 0 0 1px rgb(var(--app-accent) / 0.12), 0 20px 54px -34px rgb(var(--app-accent) / 0.5);
   }
 
   /* 主题色变体 */
-  .accent-indigo { --app-accent: 16 185 129; --app-accent-hover: 5 150 105; --accent: var(--app-accent); --accent-muted: 207 245 227; }
-  .accent-violet { --app-accent: 139 92 246; --app-accent-hover: 167 139 250; --accent: var(--app-accent); --accent-muted: 76 29 149; }
-  .accent-emerald { --app-accent: 16 185 129; --app-accent-hover: 52 211 153; --accent: var(--app-accent); --accent-muted: 6 95 70; }
-  .accent-rose { --app-accent: 244 63 94; --app-accent-hover: 251 113 133; --accent: var(--app-accent); --accent-muted: 159 18 57; }
-  .accent-amber { --app-accent: 245 158 11; --app-accent-hover: 251 191 36; --accent: var(--app-accent); --accent-muted: 120 53 15; }
-  .accent-sky { --app-accent: 14 165 233; --app-accent-hover: 56 189 248; --accent: var(--app-accent); --accent-muted: 12 74 110; }
+  .accent-indigo {
+    --app-accent: 16 185 129;
+    --app-accent-hover: 5 150 105;
+    --accent: var(--app-accent);
+    --accent-muted: 207 245 227;
+  }
+  .accent-violet {
+    --app-accent: 139 92 246;
+    --app-accent-hover: 167 139 250;
+    --accent: var(--app-accent);
+    --accent-muted: 76 29 149;
+  }
+  .accent-emerald {
+    --app-accent: 16 185 129;
+    --app-accent-hover: 52 211 153;
+    --accent: var(--app-accent);
+    --accent-muted: 6 95 70;
+  }
+  .accent-rose {
+    --app-accent: 244 63 94;
+    --app-accent-hover: 251 113 133;
+    --accent: var(--app-accent);
+    --accent-muted: 159 18 57;
+  }
+  .accent-amber {
+    --app-accent: 245 158 11;
+    --app-accent-hover: 251 191 36;
+    --accent: var(--app-accent);
+    --accent-muted: 120 53 15;
+  }
+  .accent-sky {
+    --app-accent: 14 165 233;
+    --app-accent-hover: 56 189 248;
+    --accent: var(--app-accent);
+    --accent-muted: 12 74 110;
+  }
 
   .nav-active {
     background: rgb(var(--accent) / 0.12);
@@ -183,9 +215,15 @@
   }
 
   @keyframes state-pulse {
-    0% { box-shadow: 0 0 0 0 rgb(var(--accent) / 0.5); }
-    70% { box-shadow: 0 0 0 6px rgb(var(--accent) / 0); }
-    100% { box-shadow: 0 0 0 0 rgb(var(--accent) / 0); }
+    0% {
+      box-shadow: 0 0 0 0 rgb(var(--accent) / 0.5);
+    }
+    70% {
+      box-shadow: 0 0 0 6px rgb(var(--accent) / 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgb(var(--accent) / 0);
+    }
   }
 
   * {
@@ -200,7 +238,15 @@
   }
 
   body {
-    font-family: 'Microsoft YaHei UI', 'Inter', 'Segoe UI', 'HarmonyOS Sans SC', 'PingFang SC', system-ui, -apple-system, sans-serif;
+    font-family:
+      'Microsoft YaHei UI',
+      'Inter',
+      'Segoe UI',
+      'HarmonyOS Sans SC',
+      'PingFang SC',
+      system-ui,
+      -apple-system,
+      sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     user-select: none;
@@ -237,11 +283,14 @@
     background: rgb(var(--bg-card) / 0.9);
     backdrop-filter: blur(18px) saturate(1.15);
     -webkit-backdrop-filter: blur(18px) saturate(1.15);
-    box-shadow: var(--shadow-lg), inset 0 1px 0 rgb(255 255 255 / 0.42);
+    box-shadow:
+      var(--shadow-lg),
+      inset 0 1px 0 rgb(255 255 255 / 0.42);
   }
 
   .timer-digit {
-    font-family: 'Inter Tight', 'Microsoft YaHei UI', 'Inter', ui-monospace, 'SFMono-Regular', monospace;
+    font-family:
+      'Inter Tight', 'Microsoft YaHei UI', 'Inter', ui-monospace, 'SFMono-Regular', monospace;
     font-variant-numeric: tabular-nums;
     font-feature-settings: 'tnum';
     letter-spacing: 0;
@@ -251,6 +300,12 @@
     box-shadow:
       0 0 0 1px rgb(var(--accent) / 0.18),
       0 20px 54px -38px rgb(var(--accent) / 0.42);
+  }
+
+  .pause-glow {
+    box-shadow:
+      0 0 0 1px rgb(var(--warning) / 0.2),
+      0 20px 54px -38px rgb(var(--warning) / 0.4);
   }
 
   .surface-grid {
@@ -268,7 +323,9 @@
     @apply btn rounded-xl px-5 py-2.5 text-sm bg-accent text-accent-fg;
     @apply hover:brightness-110 active:scale-[0.98];
     min-height: 40px;
-    box-shadow: 0 12px 24px -18px rgb(var(--accent) / 0.9), inset 0 1px 0 rgb(255 255 255 / 0.18);
+    box-shadow:
+      0 12px 24px -18px rgb(var(--accent) / 0.9),
+      inset 0 1px 0 rgb(255 255 255 / 0.18);
   }
   .btn-ghost {
     @apply btn rounded-xl px-3.5 py-2 text-sm text-fg-muted;

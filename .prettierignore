@@ -1,0 +1,40 @@
+# 构建产物
+dist/
+dist-electron/
+dist-selftest/
+
+# 打包输出
+release/
+release-v*/
+
+# 依赖
+node_modules/
+
+# 锁文件
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# 配置（非 src/electron/shared/tests）
+electron-builder.yml
+vitest.config.ts
+vite.config.ts
+postcss.config.js
+tailwind.config.js
+tsconfig.json
+
+# 文档与归档（markdown 不纳入格式化）
+*.md
+docs/
+docs/archive/
+
+# 脚本（独立工具，不在格式化范围）
+scripts/
+
+# 日志与临时文件
+*.log
+.env
+.env.local
+focuslink-data/
+test-data/
+.DS_Store

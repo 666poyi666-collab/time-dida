@@ -1,10 +1,6 @@
 // 本地任务 Provider - 在 tasks_cache 中管理本地任务（source='local'）
 import crypto from 'node:crypto';
-import {
-  upsertTaskCache,
-  listTaskCache,
-  searchTaskCache,
-} from '../db/index.js';
+import { upsertTaskCache, listTaskCache, searchTaskCache } from '../db/index.js';
 import { logger } from '../logger.js';
 import type { Task, TaskCache, TaskSource } from '@shared/types';
 

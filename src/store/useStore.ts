@@ -1,12 +1,6 @@
 // Zustand 全局状态 - 计时器快照 + 任务 + 导航
 import { create } from 'zustand';
-import type {
-  TimerSnapshot,
-  Task,
-  Project,
-  AppSettings,
-  SyncQueueItem,
-} from '@shared/types';
+import type { TimerSnapshot, Task, Project, AppSettings, SyncQueueItem } from '@shared/types';
 
 interface ToastItem {
   id: string;
@@ -76,6 +70,5 @@ export const useStore = create<AppState>((set) => ({
       set((st) => ({ toasts: st.toasts.filter((t) => t.id !== id) }));
     }, 3200);
   },
-  removeToast: (id) =>
-    set((st) => ({ toasts: st.toasts.filter((t) => t.id !== id) })),
+  removeToast: (id) => set((st) => ({ toasts: st.toasts.filter((t) => t.id !== id) })),
 }));

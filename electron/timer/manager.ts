@@ -398,7 +398,7 @@ export class TimerManager {
     segmentId: string,
     taskId: string,
     taskSource: TaskSource,
-    taskTitle?: string
+    taskTitle?: string,
   ): void {
     const seg = getSegment(segmentId);
     if (!seg) throw new Error(`segment 不存在: ${segmentId}`);
@@ -434,7 +434,7 @@ export class TimerManager {
     sessionId: string,
     taskId: string,
     taskSource: TaskSource,
-    taskTitle?: string
+    taskTitle?: string,
   ): void {
     if (!this.session || this.session.id !== sessionId) {
       const s = getSession(sessionId);
@@ -484,7 +484,7 @@ export class TimerManager {
     taskId: string,
     taskSource: TaskSource,
     taskTitle: string | null,
-    onlyUnlinked: boolean
+    onlyUnlinked: boolean,
   ): number {
     const segs = listSegments(sessionId);
     let count = 0;
@@ -675,10 +675,8 @@ export class TimerManager {
       currentSegmentId: this.currentSegment?.id ?? null,
       currentTaskId: this.currentSegment?.taskId ?? this.session?.defaultTaskId ?? null,
       // 当前片段标题优先；否则用 session 默认任务标题；均为空则 null（渲染层显示"未关联任务"）
-      currentTaskTitle:
-        this.currentSegment?.title ?? this.session?.defaultTaskTitle ?? null,
-      currentTaskSource:
-        this.currentSegment?.taskSource ?? this.session?.defaultTaskSource ?? null,
+      currentTaskTitle: this.currentSegment?.title ?? this.session?.defaultTaskTitle ?? null,
+      currentTaskSource: this.currentSegment?.taskSource ?? this.session?.defaultTaskSource ?? null,
       // Session 默认任务（用于任务区高亮"本次默认"标识 + TimerPanel 显示）
       sessionDefaultTaskId: this.session?.defaultTaskId ?? null,
       sessionDefaultTaskTitle: this.session?.defaultTaskTitle ?? null,
@@ -697,8 +695,7 @@ export class TimerManager {
     const segs = listSegments(this.session.id);
     return segs.map((s) => {
       // 当前运行中的 segment 显示已结算值，渲染层用 lastTick 动态算增量
-      const activeMs =
-        this.currentSegment?.id === s.id ? this.activeElapsedMs : s.activeElapsedMs;
+      const activeMs = this.currentSegment?.id === s.id ? this.activeElapsedMs : s.activeElapsedMs;
       return {
         id: s.id,
         taskId: s.taskId,

@@ -3,14 +3,17 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import type { TimerManager } from './timer/manager.js';
 import { LocalTaskProvider } from './tasks/localProvider.js';
-import { detectCli, diagnoseCli, testCommand, ticktickCliProvider, applyDidaDefaults, templatesContainTicktick, DIDA_DEFAULT_TEMPLATES } from './tasks/cliProvider.js';
-import { ticktickAdapter } from './providers/ticktickAdapter.js';
 import {
-  getSettings,
-  saveSettings,
-  updateSettings,
-  setHotkey,
-} from './settingsStore.js';
+  detectCli,
+  diagnoseCli,
+  testCommand,
+  ticktickCliProvider,
+  applyDidaDefaults,
+  templatesContainTicktick,
+  DIDA_DEFAULT_TEMPLATES,
+} from './tasks/cliProvider.js';
+import { ticktickAdapter } from './providers/ticktickAdapter.js';
+import { getSettings, saveSettings, updateSettings, setHotkey } from './settingsStore.js';
 import {
   registerAllHotkeys,
   setHotkeyHandlers,
@@ -43,10 +46,7 @@ import { DEFAULT_SETTINGS } from '@shared/types';
 /** 计算设置变更涉及的域 - 用于按域分流副作用，避免主题保存触发快捷键重注册 */
 function detectChangedDomains(prev: AppSettings, next: AppSettings): SettingsDomain[] {
   const domains: SettingsDomain[] = [];
-  if (
-    prev.theme !== next.theme ||
-    prev.accentColor !== next.accentColor
-  ) {
+  if (prev.theme !== next.theme || prev.accentColor !== next.accentColor) {
     domains.push('theme');
   }
   if (JSON.stringify(prev.hotkeys) !== JSON.stringify(next.hotkeys)) {
@@ -85,7 +85,7 @@ function detectChangedDomains(prev: AppSettings, next: AppSettings): SettingsDom
 export function registerIpc(
   timer: TimerManager,
   window: BrowserWindow,
-  onSettingsChanged: (domains: SettingsDomain[], next: AppSettings) => void
+  onSettingsChanged: (domains: SettingsDomain[], next: AppSettings) => void,
 ): void {
   // ============ Timer ============
   ipcMain.handle('timer:get-snapshot', () => timer.getSnapshot());
@@ -101,24 +101,21 @@ export function registerIpc(
   // 带任务原子启动：开始专注时同时写入 Session 默认任务 + 第一个 Segment 任务
   ipcMain.handle(
     'timer:start-with-task',
-    (
-      _e,
-      args: { taskId: string; taskSource: TaskSource; taskTitle?: string }
-    ) => {
+    (_e, args: { taskId: string; taskSource: TaskSource; taskTitle?: string }) => {
       let title = args.taskTitle;
       if (title == null && args.taskSource === 'local') {
         const task = LocalTaskProvider.getById(args.taskId);
         title = task?.title;
       }
       return timer.startWithTask(args.taskId, args.taskSource, title);
-    }
+    },
   );
 
   ipcMain.handle(
     'timer:link-task',
     (
       _e,
-      args: { segmentId: string; taskId: string; taskSource: TaskSource; taskTitle?: string }
+      args: { segmentId: string; taskId: string; taskSource: TaskSource; taskTitle?: string },
     ) => {
       // 渲染层优先传 taskTitle；未传时 local 任务可从 provider 反查，dida 任务无反查则留空
       let title = args.taskTitle;
@@ -127,14 +124,14 @@ export function registerIpc(
         title = task?.title;
       }
       timer.linkSegmentTask(args.segmentId, args.taskId, args.taskSource, title);
-    }
+    },
   );
 
   ipcMain.handle(
     'timer:link-session-task',
     (
       _e,
-      args: { sessionId: string; taskId: string; taskSource: TaskSource; taskTitle?: string }
+      args: { sessionId: string; taskId: string; taskSource: TaskSource; taskTitle?: string },
     ) => {
       let title = args.taskTitle;
       if (title == null && args.taskSource === 'local') {
@@ -142,22 +139,16 @@ export function registerIpc(
         title = task?.title;
       }
       timer.linkSessionTask(args.sessionId, args.taskId, args.taskSource, title);
-    }
+    },
   );
 
-  ipcMain.handle(
-    'timer:clear-segment-task',
-    (_e, args: { segmentId: string }) => {
-      timer.clearSegmentTask(args.segmentId);
-    }
-  );
+  ipcMain.handle('timer:clear-segment-task', (_e, args: { segmentId: string }) => {
+    timer.clearSegmentTask(args.segmentId);
+  });
 
-  ipcMain.handle(
-    'timer:clear-session-default-task',
-    (_e, args: { sessionId: string }) => {
-      timer.clearSessionDefaultTask(args.sessionId);
-    }
-  );
+  ipcMain.handle('timer:clear-session-default-task', (_e, args: { sessionId: string }) => {
+    timer.clearSessionDefaultTask(args.sessionId);
+  });
 
   ipcMain.handle(
     'timer:link-segments-batch',
@@ -169,7 +160,7 @@ export function registerIpc(
         taskSource: TaskSource;
         taskTitle?: string;
         onlyUnlinked: boolean;
-      }
+      },
     ) => {
       let title = args.taskTitle;
       if (title == null && args.taskSource === 'local') {
@@ -181,31 +172,23 @@ export function registerIpc(
         args.taskId,
         args.taskSource,
         title ?? null,
-        args.onlyUnlinked
+        args.onlyUnlinked,
       );
-    }
+    },
   );
 
-  ipcMain.handle(
-    'timer:set-segment-title',
-    (_e, args: { segmentId: string; title: string }) => {
-      timer.setSegmentTitle(args.segmentId, args.title);
-    }
-  );
+  ipcMain.handle('timer:set-segment-title', (_e, args: { segmentId: string; title: string }) => {
+    timer.setSegmentTitle(args.segmentId, args.title);
+  });
 
-  ipcMain.handle(
-    'timer:merge-segments',
-    (_e, args: { segmentIds: string[] }) => {
-      timer.mergeSegments(args.segmentIds);
-    }
-  );
+  ipcMain.handle('timer:merge-segments', (_e, args: { segmentIds: string[] }) => {
+    timer.mergeSegments(args.segmentIds);
+  });
 
   // ============ Tasks ============
   ipcMain.handle('tasks:list-local', () => LocalTaskProvider.list());
-  ipcMain.handle(
-    'tasks:create-local',
-    (_e, input: { title: string; projectId?: string }) =>
-      LocalTaskProvider.create(input.title, input.projectId)
+  ipcMain.handle('tasks:create-local', (_e, input: { title: string; projectId?: string }) =>
+    LocalTaskProvider.create(input.title, input.projectId),
   );
   ipcMain.handle('tasks:search', (_e, query: string) => {
     const local = LocalTaskProvider.search(query);
@@ -256,12 +239,12 @@ export function registerIpc(
       detect.executable === 'dida'
         ? 'dida'
         : detect.executable === 'ticktick' || detect.executable === 'ticktick-cli'
-        ? 'ticktick'
-        : cfg.executable === 'dida' || cfg.listTasksCommand.startsWith('dida')
-        ? 'dida'
-        : cfg.listTasksCommand.startsWith('ticktick')
-        ? 'ticktick'
-        : 'unknown';
+          ? 'ticktick'
+          : cfg.executable === 'dida' || cfg.listTasksCommand.startsWith('dida')
+            ? 'dida'
+            : cfg.listTasksCommand.startsWith('ticktick')
+              ? 'ticktick'
+              : 'unknown';
     return {
       providerType,
       executable: detect.executable || cfg.executable,
@@ -301,16 +284,13 @@ export function registerIpc(
     }
   });
   // 测试任意命令并返回完整执行记录
-  ipcMain.handle(
-    'cli:test-command',
-    async (_e, command: string, timeoutMs: number) => {
-      try {
-        return { ok: true as const, data: await testCommand(command, timeoutMs) };
-      } catch (e) {
-        return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
-      }
+  ipcMain.handle('cli:test-command', async (_e, command: string, timeoutMs: number) => {
+    try {
+      return { ok: true as const, data: await testCommand(command, timeoutMs) };
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
     }
-  );
+  });
 
   // ============ TickTick ============
   ipcMain.handle(
@@ -324,7 +304,7 @@ export function registerIpc(
       onSettingsChanged(['general'], settings);
       logger.info('ipc', 'ticktick login success');
       return settings;
-    }
+    },
   );
 
   ipcMain.handle('ticktick:logout', async () => {
@@ -360,7 +340,7 @@ export function registerIpc(
   });
   ipcMain.handle('sessions:delete', (_e, id: string) => deleteSession(id));
   ipcMain.handle('sessions:export', (_e, id: string, format: 'json' | 'csv' | 'markdown') =>
-    exportSessionById(id, format)
+    exportSessionById(id, format),
   );
 
   // ============ Settings ============
@@ -413,7 +393,7 @@ export function registerIpc(
 
     return { settings: next, registration: result };
   });
-    // 恢复默认快捷键
+  // 恢复默认快捷键
   ipcMain.handle('hotkey:reset-defaults', () => {
     const current = getSettings();
     const next: AppSettings = {

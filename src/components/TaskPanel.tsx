@@ -75,9 +75,7 @@ export function TaskPanel() {
         if (t.children && t.children.length > 0) {
           if (!initializedRef.current.has(t.id)) {
             initializedRef.current.add(t.id);
-            setCollapsed((prev) =>
-              prev[t.id] === undefined ? { ...prev, [t.id]: true } : prev
-            );
+            setCollapsed((prev) => (prev[t.id] === undefined ? { ...prev, [t.id]: true } : prev));
           }
           initNewParents(t.children);
         }
@@ -108,9 +106,7 @@ export function TaskPanel() {
     const expandMatching = (tasks: Task[]) => {
       for (const t of tasks) {
         if (t.children && t.children.length > 0) {
-          const childMatch = t.children.some((c) =>
-            c.title.toLowerCase().includes(ql)
-          );
+          const childMatch = t.children.some((c) => c.title.toLowerCase().includes(ql));
           const selfMatch = t.title.toLowerCase().includes(ql);
           if (childMatch || selfMatch) {
             next[t.id] = false; // 展开
@@ -170,7 +166,7 @@ export function TaskPanel() {
         if (!silent) {
           addToast(
             `CLI 已同步 ${taskRes.data.length} 个任务${completedCount > 0 ? `（已隐藏 ${completedCount} 个已完成）` : ''}`,
-            'success'
+            'success',
           );
         }
       } else if (taskSource === 'ticktick-oauth') {
@@ -226,7 +222,7 @@ export function TaskPanel() {
         snapshot.currentSegmentId,
         task.id,
         task.source,
-        task.title
+        task.title,
       );
       addToast(`已关联到当前片段：${task.title}`, 'success');
     } catch (e) {
@@ -244,7 +240,7 @@ export function TaskPanel() {
         snapshot.sessionId,
         task.id,
         task.source,
-        task.title
+        task.title,
       );
       addToast(`已设为会话默认任务：${task.title}`, 'success');
     } catch (e) {
@@ -317,7 +313,7 @@ export function TaskPanel() {
   const visibleTaskCount = useMemo(() => countTasks(filteredTree), [filteredTree]);
   const activeTaskTitle = useMemo(
     () => findTaskTitle(sourceTasks, currentSegmentTaskId ?? sessionDefaultTaskId),
-    [sourceTasks, currentSegmentTaskId, sessionDefaultTaskId]
+    [sourceTasks, currentSegmentTaskId, sessionDefaultTaskId],
   );
 
   return (
@@ -401,8 +397,18 @@ export function TaskPanel() {
 
       <div className="grid grid-cols-3 gap-2">
         <TaskMetric icon={<Layers3 size={13} />} label="总任务" value={String(totalTaskCount)} />
-        <TaskMetric icon={<ListTree size={13} />} label="当前可见" value={String(visibleTaskCount)} />
-        <TaskMetric icon={<Link2 size={13} />} label="专注关联" value={activeTaskTitle ? '已定位' : '未关联'} tone={activeTaskTitle ? 'accent' : 'muted'} title={activeTaskTitle ?? undefined} />
+        <TaskMetric
+          icon={<ListTree size={13} />}
+          label="当前可见"
+          value={String(visibleTaskCount)}
+        />
+        <TaskMetric
+          icon={<Link2 size={13} />}
+          label="专注关联"
+          value={activeTaskTitle ? '已定位' : '未关联'}
+          tone={activeTaskTitle ? 'accent' : 'muted'}
+          title={activeTaskTitle ?? undefined}
+        />
       </div>
 
       {/* 搜索 + 显示已完成开关 */}
@@ -539,7 +545,7 @@ function filterAndBuildTree(
   tasks: Task[],
   query: string,
   projectId: string,
-  showCompleted: boolean
+  showCompleted: boolean,
 ): { filteredTree: Task[]; completedHidden: number } {
   const q = query.trim().toLowerCase();
   let completedHidden = 0;
@@ -772,8 +778,14 @@ function TaskTreeItem({
           )}
         </button>
 
-        <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/70 text-fg-subtle'}`}>
-          {hasChildren ? <ListTree size={13} /> : <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />}
+        <div
+          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/70 text-fg-subtle'}`}
+        >
+          {hasChildren ? (
+            <ListTree size={13} />
+          ) : (
+            <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
+          )}
         </div>
 
         {/* 完成状态标记 */}
@@ -796,14 +808,12 @@ function TaskTreeItem({
         {/* 标题 + 元信息 */}
         <div className="min-w-0 flex-1">
           <p
-            className={`truncate transition-colors ${
-              isParent ? 'text-[13px]' : 'text-[13px]'
-            } ${
+            className={`truncate transition-colors ${isParent ? 'text-[13px]' : 'text-[13px]'} ${
               isCompleted
                 ? 'font-normal text-fg-subtle line-through decoration-fg-subtle/40'
                 : isParent
-                ? 'font-semibold text-fg'
-                : 'font-normal text-fg'
+                  ? 'font-semibold text-fg'
+                  : 'font-normal text-fg'
             }`}
           >
             {task.title}
@@ -811,7 +821,10 @@ function TaskTreeItem({
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-fg-subtle">
             {task.dueDate && (
               <span className="rounded-md bg-bg-subtle px-1.5 py-px">
-                {new Date(task.dueDate).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}
+                {new Date(task.dueDate).toLocaleDateString('zh-CN', {
+                  month: '2-digit',
+                  day: '2-digit',
+                })}
               </span>
             )}
             {hasChildren && (
@@ -820,9 +833,7 @@ function TaskTreeItem({
               </span>
             )}
             {isCompleted && (
-              <span className="rounded-md bg-success/10 px-1.5 py-px text-success">
-                已完成
-              </span>
+              <span className="rounded-md bg-success/10 px-1.5 py-px text-success">已完成</span>
             )}
             {task.priority != null && task.priority > 0 && (
               <span className="rounded-md bg-amber-500/10 px-1.5 py-px font-medium text-amber-400">
@@ -898,7 +909,11 @@ function TaskTreeItem({
 function SyncStatus() {
   const { addToast } = useStore();
   const [queue, setQueue] = useState<SyncQueueItem[]>([]);
-  const [stats, setStats] = useState<{ processed: number; succeeded: number; failed: number } | null>(null);
+  const [stats, setStats] = useState<{
+    processed: number;
+    succeeded: number;
+    failed: number;
+  } | null>(null);
   const [syncing, setSyncing] = useState(false);
 
   const refreshQueue = async () => {
@@ -916,7 +931,7 @@ function SyncStatus() {
       failed: queue.filter((item) => item.status === 'failed').length,
       synced: queue.filter((item) => item.status === 'synced').length,
     }),
-    [queue]
+    [queue],
   );
 
   const handleSync = async () => {
@@ -946,7 +961,11 @@ function SyncStatus() {
 
   const hasProblem = counts.failed > 0;
   const hasPending = counts.pending > 0;
-  const statusTitle = hasProblem ? '同步队列有失败记录' : hasPending ? '有记录等待同步' : '同步队列空';
+  const statusTitle = hasProblem
+    ? '同步队列有失败记录'
+    : hasPending
+      ? '有记录等待同步'
+      : '同步队列空';
   const statusSub = stats
     ? `本次处理 ${stats.processed} 项，成功 ${stats.succeeded} 项`
     : hasProblem
@@ -960,14 +979,22 @@ function SyncStatus() {
   return (
     <div className="card flex items-center justify-between p-3.5">
       <div className="flex min-w-0 items-center gap-2.5">
-        <div className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
-          hasProblem
-            ? 'border-danger/20 bg-danger/10 text-danger'
-            : hasPending
-              ? 'border-warning/25 bg-warning/10 text-warning'
-              : 'border-success/20 bg-success/10 text-success'
-        }`}>
-          {hasProblem ? <AlertCircle size={15} /> : hasPending ? <RefreshCw size={15} /> : <CheckCircle2 size={15} />}
+        <div
+          className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
+            hasProblem
+              ? 'border-danger/20 bg-danger/10 text-danger'
+              : hasPending
+                ? 'border-warning/25 bg-warning/10 text-warning'
+                : 'border-success/20 bg-success/10 text-success'
+          }`}
+        >
+          {hasProblem ? (
+            <AlertCircle size={15} />
+          ) : hasPending ? (
+            <RefreshCw size={15} />
+          ) : (
+            <CheckCircle2 size={15} />
+          )}
         </div>
         <div className="min-w-0">
           <p className="truncate text-xs font-bold text-fg">{statusTitle}</p>

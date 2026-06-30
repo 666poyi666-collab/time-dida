@@ -1,20 +1,36 @@
-// 左侧计时区 - Linear/Raycast 风格，大号计时器 + 进度条 + 状态 + 统计 + 控制按钮
+// 左侧计时区 - 大看板：当前片段时间 + 分钟节奏条 + 三项累计统计
 import { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, Square, Link2, X, Star, Search, RefreshCw, Activity, Clock3, Coffee, Route } from 'lucide-react';
+import {
+  Play,
+  Pause,
+  Square,
+  Link2,
+  X,
+  Star,
+  Search,
+  RefreshCw,
+  Activity,
+  Clock3,
+  Coffee,
+  Route,
+} from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { formatDuration } from '../lib/time';
+import { formatDuration, formatDurationPadded } from '../lib/time';
+import {
+  getMainDisplayMs,
+  getCumulativeActiveMs,
+  getCumulativePauseMs,
+  getWallElapsedMs,
+  getMinuteRhythmSec,
+} from '../lib/timerSelectors';
 import type { TimerSnapshot, Task } from '@shared/types';
 import { TaskPicker } from './TaskPicker';
 
-// ─── 常量 ─────────────────────────────────────────────────────
-
-// 默认专注是无限正计时；倒计时目标以后由用户手动设置时再显示。
-
-// ─── useDisplayValues hook（保持原有逻辑不变）────────────────
+// ─── useDisplayValues hook ────────────────────────────────────
 
 /** 基于主进程推送的 snapshot，在渲染层本地动态计算实时显示值。
- *  这样即使主进程推送延迟，running 状态下计时数字也能每秒自动刷新。 */
+ *  所有口径统一走 src/lib/timerSelectors.ts，避免各组件各写一套。 */
 function useDisplayValues(snapshot: TimerSnapshot | null) {
   const [now, setNow] = useState(Date.now());
 
@@ -26,39 +42,26 @@ function useDisplayValues(snapshot: TimerSnapshot | null) {
     return () => clearInterval(id);
   }, [snapshot?.state, snapshot?.lastTick, snapshot?.currentPauseStartedAt]);
 
-  return useMemo(() => {
-    if (!snapshot) {
-      return { activeMs: 0, pauseMs: 0, wallMs: 0 };
-    }
-    const baseActive = snapshot.activeElapsedMs;
-    const basePause = snapshot.pauseElapsedMs;
-    const baseWall = snapshot.wallElapsedMs;
-
-    // running：active 增量 = now - lastTick（上次活跃结算时间）
-    const activeMs =
-      snapshot.state === 'running' && snapshot.lastTick > 0
-        ? baseActive + Math.max(0, now - snapshot.lastTick)
-        : baseActive;
-
-    // paused：pause 增量 = now - currentPauseStartedAt
-    const pauseMs =
-      snapshot.state === 'paused' && snapshot.currentPauseStartedAt
-        ? basePause + Math.max(0, now - snapshot.currentPauseStartedAt)
-        : basePause;
-
-    // wall：直接用主进程每秒推送的实时值（now - session.startedAt）
-    // 主进程 tick 间隔 1s，wall 每秒更新一次，足够准确，避免本地重复增量计算
-    const wallMs = baseWall;
-
-    return { activeMs, pauseMs, wallMs };
-  }, [snapshot, now]);
+  return useMemo(
+    () => ({
+      currentSegmentMs: getMainDisplayMs(snapshot, now),
+      cumulativeActiveMs: getCumulativeActiveMs(snapshot, now),
+      cumulativePauseMs: getCumulativePauseMs(snapshot, now),
+      wallMs: getWallElapsedMs(snapshot),
+      minuteRhythmSec: getMinuteRhythmSec(snapshot, now),
+    }),
+    [snapshot, now],
+  );
 }
 
 // ─── Helper Components ─────────────────────────────────────────
 
 /** 状态徽章 - 带彩色圆点的 pill */
 function StateBadge({ state }: { state: string }) {
-  const config: Record<string, { label: string; dotCls: string; pillCls: string; pulse?: boolean }> = {
+  const config: Record<
+    string,
+    { label: string; dotCls: string; pillCls: string; pulse?: boolean }
+  > = {
     idle: {
       label: '未开始',
       dotCls: 'bg-fg-subtle',
@@ -101,8 +104,35 @@ function StateBadge({ state }: { state: string }) {
   );
 }
 
-/** 小统计卡片 - 标签 + 数值 */
-function TimeStat({
+/** 分钟节奏条 - 60 秒循环，表达"当前这分钟走到哪里"，不是总进度 */
+function MinuteRhythmBar({ state, minuteRhythmSec }: { state: string; minuteRhythmSec: number }) {
+  const isPaused = state === 'paused';
+  const isRunning = state === 'running';
+  const pct = (minuteRhythmSec / 60) * 100;
+  const barCls = isPaused ? 'bg-warning' : 'bg-accent';
+
+  return (
+    <div className="w-full">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-bg-subtle">
+        <div
+          className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${barCls} ${
+            isRunning ? 'shadow-[0_0_8px_rgb(var(--app-accent)/0.35)]' : ''
+          }`}
+          style={{ width: `${isRunning || isPaused ? pct : 0}%` }}
+        />
+      </div>
+      <div className="mt-1.5 flex items-center justify-between">
+        <span className="text-[11px] font-medium text-fg-subtle">分钟节奏（60 秒循环）</span>
+        <span className="timer-digit text-[11px] font-semibold text-fg-muted tabular-nums">
+          {String(minuteRhythmSec).padStart(2, '0')}s / 60s
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** 累计统计项 - 紧凑内联样式（无卡片边框，避免拆碎感） */
+function CumStat({
   label,
   value,
   icon,
@@ -114,43 +144,18 @@ function TimeStat({
   tone?: 'accent' | 'warning' | 'info' | 'neutral';
 }) {
   const toneCls = {
-    accent: 'border-accent/25 bg-accent/10 text-accent',
-    warning: 'border-warning/30 bg-warning/10 text-warning',
-    info: 'border-info/30 bg-info/10 text-info',
-    neutral: 'border-border bg-bg-card text-fg-subtle',
+    accent: 'text-accent',
+    warning: 'text-warning',
+    info: 'text-info',
+    neutral: 'text-fg-subtle',
   }[tone];
   return (
-    <div className={`rounded-xl border px-3.5 py-3 text-left transition-colors ${toneCls}`}>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-bg-card/80 shadow-soft">{icon}</span>
-        <span className="text-[10px] font-semibold text-fg-subtle">{label}</span>
+    <div className="flex flex-col items-center gap-1 text-center">
+      <div className={`flex items-center gap-1 ${toneCls}`}>
+        {icon}
+        <span className="text-[10px] font-semibold uppercase tracking-wide">{label}</span>
       </div>
-      <div className="timer-digit text-lg font-bold text-fg">{value}</div>
-    </div>
-  );
-}
-
-// ─── FocusFlowLine ───────────────────────────────────────────
-
-/** 无限正计时状态线：不展示默认倒计时目标，避免误导成番茄钟。 */
-function FocusFlowLine({ state }: { state: string }) {
-  const isRunning = state === 'running';
-  const isPaused = state === 'paused';
-
-  return (
-    <div className="w-full">
-      <div className="h-2 w-full overflow-hidden rounded-full bg-bg-subtle">
-        <motion.div
-          className={`h-full rounded-full ${isPaused ? 'bg-warning' : 'bg-accent'}`}
-          initial={false}
-          animate={{ width: isRunning ? ['18%', '68%', '92%'] : isPaused ? '48%' : '100%' }}
-          transition={isRunning ? { duration: 5, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
-        />
-      </div>
-      <div className="mt-1.5 flex items-center justify-between">
-        <span className="text-[11px] font-medium text-fg-subtle">无限正计时</span>
-        <span className="text-[11px] font-semibold text-fg-muted">手动结束后保存</span>
-      </div>
+      <div className="timer-digit text-base font-bold text-fg tabular-nums">{value}</div>
     </div>
   );
 }
@@ -158,13 +163,7 @@ function FocusFlowLine({ state }: { state: string }) {
 function formatAccelerator(accelerator: string): string {
   return accelerator
     .split('+')
-    .map((part) =>
-      part === 'CommandOrControl'
-        ? 'Ctrl'
-        : part === 'Return'
-          ? 'Enter'
-          : part
-    )
+    .map((part) => (part === 'CommandOrControl' ? 'Ctrl' : part === 'Return' ? 'Enter' : part))
     .join(' + ');
 }
 
@@ -186,7 +185,9 @@ function TaskCard({
         <Link2 size={14} />
       </span>
       <div className="min-w-0 flex-1">
-        <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">{label}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">
+          {label}
+        </span>
         <p className="mt-0.5 truncate text-sm font-medium text-fg">{title}</p>
       </div>
       {onClear && (
@@ -221,7 +222,9 @@ function UnlinkedTaskCard({
         <Link2 size={14} />
       </span>
       <div className="min-w-0 flex-1">
-        <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">{label}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">
+          {label}
+        </span>
         <p className="mt-0.5 text-sm text-fg-subtle">{emptyText}</p>
       </div>
       <Search size={12} className="flex-shrink-0 text-fg-subtle" />
@@ -233,7 +236,8 @@ function UnlinkedTaskCard({
 
 export function TimerPanel() {
   const { snapshot, addToast, settings } = useStore();
-  const { activeMs, pauseMs, wallMs } = useDisplayValues(snapshot);
+  const { currentSegmentMs, cumulativeActiveMs, cumulativePauseMs, wallMs, minuteRhythmSec } =
+    useDisplayValues(snapshot);
   const [pickerMode, setPickerMode] = useState<'segment' | 'session' | 'preselect' | null>(null);
   /** idle 状态预选任务：用于"先选任务再开始专注"流程。
    *  开始专注后自动清空（已写入 Session.defaultTask + Segment.task）。 */
@@ -265,7 +269,7 @@ export function TimerPanel() {
         const snap = await window.focuslink.timer.startWithTask(
           preSelectedTask.id,
           preSelectedTask.source,
-          preSelectedTask.title
+          preSelectedTask.title,
         );
         useStore.getState().setSnapshot(snap);
         setPreSelectedTask(null);
@@ -301,7 +305,7 @@ export function TimerPanel() {
         snapshot.currentSegmentId,
         task.id,
         task.source,
-        task.title
+        task.title,
       );
       addToast(`已关联到当前片段：${task.title}`, 'success');
     } catch (e) {
@@ -321,7 +325,7 @@ export function TimerPanel() {
         snapshot.sessionId,
         task.id,
         task.source,
-        task.title
+        task.title,
       );
       addToast(`已设为本次专注默认任务：${task.title}`, 'success');
     } catch (e) {
@@ -361,50 +365,65 @@ export function TimerPanel() {
     }
   };
 
-  const toggleLabel =
-    state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始专注';
+  const toggleLabel = state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始专注';
 
   const isIdle = state === 'idle';
   const isFinished = state === 'finished';
 
   // TaskPicker 回调与标题：根据 pickerMode 分流
-  const pickerConfig = pickerMode === 'segment'
-    ? { onPick: handlePickSegment, title: '关联到当前片段', confirmLabel: '关联到片段' }
-    : pickerMode === 'session'
-    ? { onPick: handlePickSession, title: '设为本次专注默认任务', confirmLabel: '设为默认' }
-    : pickerMode === 'preselect'
-    ? { onPick: handlePickPreselect, title: '选择即将专注的任务', confirmLabel: '选择任务' }
-    : null;
+  const pickerConfig =
+    pickerMode === 'segment'
+      ? { onPick: handlePickSegment, title: '关联到当前片段', confirmLabel: '关联到片段' }
+      : pickerMode === 'session'
+        ? { onPick: handlePickSession, title: '设为本次专注默认任务', confirmLabel: '设为默认' }
+        : pickerMode === 'preselect'
+          ? { onPick: handlePickPreselect, title: '选择即将专注的任务', confirmLabel: '选择任务' }
+          : null;
 
   const hotkeyHint = settings
     ? `${formatAccelerator(settings.hotkeys.toggleTimer)} 开始 / 暂停 · ${formatAccelerator(settings.hotkeys.stopTimer)} 结束`
     : '快捷键加载中';
 
+  // 大看板副标题：当前片段语义
+  const segmentSubtitle =
+    state === 'running'
+      ? '当前专注片段'
+      : state === 'paused'
+        ? '当前暂停片段'
+        : state === 'finished'
+          ? '本次专注已结束'
+          : '尚未开始';
+
+  // 看板右上辅助提示
+  const headerHint = isIdle
+    ? preSelectedTask
+      ? '已选择即将专注任务'
+      : '可先选任务，也可直接开始'
+    : state === 'running'
+      ? '正在记录每个专注片段'
+      : state === 'paused'
+        ? '恢复后进入新专注片段'
+        : '已结束';
+
   return (
     <div className="mx-auto flex w-full max-w-[560px] flex-col">
-      {/* 状态与当前模式 */}
+      {/* 顶部状态行 */}
       <div className="mb-4 flex items-center justify-between gap-3">
         <StateBadge state={state} />
-        <span className="text-xs font-medium text-fg-subtle">
-          {isIdle
-            ? preSelectedTask
-              ? '已选择即将专注任务'
-              : '可先选任务，也可直接开始'
-            : '正在记录每个专注片段'}
-        </span>
+        <span className="text-xs font-medium text-fg-subtle">{headerHint}</span>
       </div>
 
-      {/* 大号计时器 */}
+      {/* 大看板：当前片段时间 + 分钟节奏条 + 三项累计统计 */}
       <div
         className={`card relative overflow-hidden p-5 transition-all duration-500 ${
-          state === 'running' ? 'focus-glow' : ''
+          state === 'running' ? 'focus-glow' : state === 'paused' ? 'pause-glow' : ''
         }`}
       >
         <div className="surface-grid pointer-events-none absolute inset-0 opacity-45" />
         <AnimatePresence>
           {state === 'running' && (
             <motion.div
-              key="pulse"
+              key="pulse-running"
               className="pointer-events-none absolute inset-0 bg-accent/[0.035]"
               initial={{ opacity: 0 }}
               animate={{ opacity: [0.18, 0.36, 0.18] }}
@@ -412,36 +431,80 @@ export function TimerPanel() {
               transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
             />
           )}
+          {state === 'paused' && (
+            <motion.div
+              key="pulse-paused"
+              className="pointer-events-none absolute inset-0 bg-warning/[0.04]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0.14, 0.26, 0.14] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          )}
         </AnimatePresence>
+
+        {/* 大时间 + 副标题 */}
         <div className="relative flex items-start justify-between gap-3">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-fg-subtle">Focus Ledger</span>
-            <div className="mt-2 flex items-end gap-2">
-              <span className="timer-digit text-[64px] font-bold leading-none text-fg tabular-nums">
-                {formatDuration(activeMs)}
-              </span>
+          <div className="min-w-0 flex-1">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-fg-subtle">
+              Focus Segment
+            </span>
+            <div
+              className={`mt-2 timer-digit text-[68px] font-bold leading-none tabular-nums ${
+                state === 'paused' ? 'text-warning' : 'text-fg'
+              }`}
+            >
+              {formatDurationPadded(currentSegmentMs)}
             </div>
             <span className="mt-2 block text-xs font-medium leading-relaxed text-fg-subtle">
-              {isIdle ? '无限正计时，开始后手动结束保存' : state === 'paused' ? '专注已暂停，恢复后继续记录' : '当前有效专注时间'}
+              {segmentSubtitle}
             </span>
           </div>
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-accent/20 bg-accent/10 text-accent shadow-soft">
-            {state === 'paused' ? <Coffee size={22} /> : state === 'running' ? <Activity size={22} /> : <Clock3 size={22} />}
+          <div
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-soft ${
+              state === 'paused'
+                ? 'border-warning/20 bg-warning/10 text-warning'
+                : 'border-accent/20 bg-accent/10 text-accent'
+            }`}
+          >
+            {state === 'paused' ? (
+              <Coffee size={22} />
+            ) : state === 'running' ? (
+              <Activity size={22} />
+            ) : (
+              <Clock3 size={22} />
+            )}
           </div>
         </div>
 
-        {!isIdle && (
+        {/* 分钟节奏条（仅运行 / 暂停时显示） */}
+        {(state === 'running' || state === 'paused') && (
           <div className="relative mt-5 w-full">
-            <FocusFlowLine state={state} />
+            <MinuteRhythmBar state={state} minuteRhythmSec={minuteRhythmSec} />
           </div>
         )}
-      </div>
 
-      {/* 三时间统计 */}
-      <div className="mt-4 grid w-full grid-cols-3 gap-2">
-        <TimeStat label="专注" value={formatDuration(activeMs)} icon={<Activity size={13} />} tone="accent" />
-        <TimeStat label="暂停" value={formatDuration(pauseMs)} icon={<Coffee size={13} />} tone={state === 'paused' ? 'warning' : 'neutral'} />
-        <TimeStat label="跨度" value={formatDuration(wallMs)} icon={<Route size={13} />} tone="info" />
+        {/* 底部三项累计统计 */}
+        <div className="relative mt-5 grid w-full grid-cols-3 gap-2 border-t border-border/60 pt-4">
+          <CumStat
+            label="累计专注"
+            value={formatDuration(cumulativeActiveMs)}
+            icon={<Activity size={11} />}
+            tone="accent"
+          />
+          <CumStat
+            label="累计暂停"
+            value={formatDuration(cumulativePauseMs)}
+            icon={<Coffee size={11} />}
+            tone={state === 'paused' ? 'warning' : 'neutral'}
+          />
+          <CumStat
+            label="总历时"
+            value={formatDuration(wallMs)}
+            icon={<Route size={11} />}
+            tone="info"
+          />
+        </div>
       </div>
 
       {/* 任务关联区 - 仅在专注进行中显示 */}
@@ -463,21 +526,17 @@ export function TimerPanel() {
           )}
 
           {/* Session 默认任务（仅在设置了默认任务时显示，且与当前片段任务不同时） */}
-          {sessionDefaultTitle &&
-            sessionDefaultTitle !== currentSegmentTaskId?.title && (
-              <TaskCard
-                label="本次专注默认"
-                title={sessionDefaultTitle}
-                onClear={handleClearSessionDefault}
-              />
-            )}
+          {sessionDefaultTitle && sessionDefaultTitle !== currentSegmentTaskId?.title && (
+            <TaskCard
+              label="本次专注默认"
+              title={sessionDefaultTitle}
+              onClear={handleClearSessionDefault}
+            />
+          )}
 
           {/* 如果当前片段已关联但未设默认任务，提供"设为默认"快捷入口 */}
           {currentSegmentTaskId?.title && !sessionDefaultTitle && (
-            <button
-              className="btn-ghost w-full text-xs"
-              onClick={() => setPickerMode('session')}
-            >
+            <button className="btn-ghost w-full text-xs" onClick={() => setPickerMode('session')}>
               <Star size={11} />
               设为本次专注默认任务
             </button>
@@ -495,8 +554,12 @@ export function TimerPanel() {
                   <Link2 size={14} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">即将专注任务</span>
-                  <p className="mt-0.5 truncate text-sm font-medium text-fg">{preSelectedTask.title}</p>
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">
+                    即将专注任务
+                  </span>
+                  <p className="mt-0.5 truncate text-sm font-medium text-fg">
+                    {preSelectedTask.title}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -530,7 +593,10 @@ export function TimerPanel() {
 
       {/* 控制按钮 */}
       <div className="mt-6 flex items-center gap-3">
-        <button className="btn-primary flex min-w-[172px] items-center justify-center gap-2" onClick={handleToggle}>
+        <button
+          className="btn-primary flex min-w-[172px] items-center justify-center gap-2"
+          onClick={handleToggle}
+        >
           {state === 'running' ? <Pause size={16} /> : <Play size={16} />}
           {toggleLabel}
         </button>

@@ -72,10 +72,7 @@ export function updateSettings(partial: Partial<AppSettings>): AppSettings {
   return saveSettings(next);
 }
 
-export function setHotkey(
-  key: keyof AppSettings['hotkeys'],
-  accelerator: string
-): AppSettings {
+export function setHotkey(key: keyof AppSettings['hotkeys'], accelerator: string): AppSettings {
   const current = getSettings();
   current.hotkeys[key] = accelerator;
   return saveSettings(current);

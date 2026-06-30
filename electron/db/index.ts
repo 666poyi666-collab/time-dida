@@ -76,7 +76,7 @@ export function insertSession(session: FocusSession): void {
       (id, title, status, started_at, ended_at, active_elapsed_ms, pause_elapsed_ms,
        wall_elapsed_ms, default_task_id, default_task_source, default_task_title, note, created_at, updated_at)
      VALUES (@id, @title, @status, @startedAt, @endedAt, @activeElapsedMs, @pauseElapsedMs,
-       @wallElapsedMs, @defaultTaskId, @defaultTaskSource, @defaultTaskTitle, @note, @createdAt, @updatedAt)`
+       @wallElapsedMs, @defaultTaskId, @defaultTaskSource, @defaultTaskTitle, @note, @createdAt, @updatedAt)`,
   ).run(session);
 }
 
@@ -89,22 +89,23 @@ export function updateSession(session: FocusSession): void {
       wall_elapsed_ms = @wallElapsedMs, default_task_id = @defaultTaskId,
       default_task_source = @defaultTaskSource, default_task_title = @defaultTaskTitle,
       note = @note, updated_at = @updatedAt
-     WHERE id = @id`
+     WHERE id = @id`,
   ).run(session);
 }
 
 export function getSession(id: string): FocusSession | null {
   const db = getDb();
   const row = db.prepare('SELECT * FROM focus_sessions WHERE id = ?').get(id) as
-    | SessionRow
-    | undefined;
+    SessionRow | undefined;
   return row ? rowToSession(row) : null;
 }
 
 export function getActiveSession(): FocusSession | null {
   const db = getDb();
   const row = db
-    .prepare("SELECT * FROM focus_sessions WHERE status = 'active' ORDER BY started_at DESC LIMIT 1")
+    .prepare(
+      "SELECT * FROM focus_sessions WHERE status = 'active' ORDER BY started_at DESC LIMIT 1",
+    )
     .get() as SessionRow | undefined;
   return row ? rowToSession(row) : null;
 }
@@ -131,7 +132,7 @@ export function insertSegment(segment: FocusSegment): void {
       (id, session_id, task_id, task_source, title, started_at, ended_at,
        active_elapsed_ms, note, created_at, updated_at)
      VALUES (@id, @sessionId, @taskId, @taskSource, @title, @startedAt, @endedAt,
-       @activeElapsedMs, @note, @createdAt, @updatedAt)`
+       @activeElapsedMs, @note, @createdAt, @updatedAt)`,
   ).run(segment);
 }
 
@@ -141,13 +142,14 @@ export function updateSegment(segment: FocusSegment): void {
     `UPDATE focus_segments SET
       task_id = @taskId, task_source = @taskSource, title = @title, ended_at = @endedAt,
       active_elapsed_ms = @activeElapsedMs, note = @note, updated_at = @updatedAt
-     WHERE id = @id`
+     WHERE id = @id`,
   ).run(segment);
 }
 
 export function getSegment(id: string): FocusSegment | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM focus_segments WHERE id = ?').get(id) as SegmentRow | undefined;
+  const row = db.prepare('SELECT * FROM focus_segments WHERE id = ?').get(id) as
+    SegmentRow | undefined;
   return row ? rowToSegment(row) : null;
 }
 
@@ -173,7 +175,7 @@ export function insertPause(pause: PauseEvent): void {
       (id, session_id, segment_id, pause_started_at, pause_ended_at, duration_ms,
        reason, created_at, updated_at)
      VALUES (@id, @sessionId, @segmentId, @pauseStartedAt, @pauseEndedAt, @durationMs,
-       @reason, @createdAt, @updatedAt)`
+       @reason, @createdAt, @updatedAt)`,
   ).run(pause);
 }
 
@@ -183,7 +185,7 @@ export function updatePause(pause: PauseEvent): void {
     `UPDATE pause_events SET
       pause_ended_at = @pauseEndedAt, duration_ms = @durationMs, reason = @reason,
       updated_at = @updatedAt
-     WHERE id = @id`
+     WHERE id = @id`,
   ).run(pause);
 }
 
@@ -191,7 +193,7 @@ export function getOpenPause(sessionId: string): PauseEvent | null {
   const db = getDb();
   const row = db
     .prepare(
-      `SELECT * FROM pause_events WHERE session_id = ? AND pause_ended_at IS NULL ORDER BY pause_started_at DESC LIMIT 1`
+      `SELECT * FROM pause_events WHERE session_id = ? AND pause_ended_at IS NULL ORDER BY pause_started_at DESC LIMIT 1`,
     )
     .get(sessionId) as PauseRow | undefined;
   return row ? rowToPause(row) : null;
@@ -220,14 +222,16 @@ export function upsertTaskCache(task: TaskCache): void {
        project_id = excluded.project_id, title = excluded.title, status = excluded.status,
        priority = excluded.priority, due_date = excluded.due_date, tags = excluded.tags,
        content = excluded.content, raw_json = excluded.raw_json,
-       last_synced_at = excluded.last_synced_at, updated_at = excluded.updated_at`
+       last_synced_at = excluded.last_synced_at, updated_at = excluded.updated_at`,
   ).run(task);
 }
 
 export function listTaskCache(source?: TaskSource): TaskCache[] {
   const db = getDb();
   const rows = source
-    ? (db.prepare('SELECT * FROM tasks_cache WHERE source = ? ORDER BY updated_at DESC').all(source) as TaskCacheRow[])
+    ? (db
+        .prepare('SELECT * FROM tasks_cache WHERE source = ? ORDER BY updated_at DESC')
+        .all(source) as TaskCacheRow[])
     : (db.prepare('SELECT * FROM tasks_cache ORDER BY updated_at DESC').all() as TaskCacheRow[]);
   return rows.map(rowToTaskCache);
 }
@@ -238,12 +242,12 @@ export function searchTaskCache(query: string, source?: TaskSource): TaskCache[]
   const rows = source
     ? (db
         .prepare(
-          `SELECT * FROM tasks_cache WHERE source = ? AND (title LIKE ? OR content LIKE ?) ORDER BY updated_at DESC LIMIT 50`
+          `SELECT * FROM tasks_cache WHERE source = ? AND (title LIKE ? OR content LIKE ?) ORDER BY updated_at DESC LIMIT 50`,
         )
         .all(source, pattern, pattern) as TaskCacheRow[])
     : (db
         .prepare(
-          `SELECT * FROM tasks_cache WHERE title LIKE ? OR content LIKE ? ORDER BY updated_at DESC LIMIT 50`
+          `SELECT * FROM tasks_cache WHERE title LIKE ? OR content LIKE ? ORDER BY updated_at DESC LIMIT 50`,
         )
         .all(pattern, pattern) as TaskCacheRow[]);
   return rows.map(rowToTaskCache);
@@ -255,7 +259,7 @@ export function insertSyncQueue(item: SyncQueueItem): void {
   const db = getDb();
   db.prepare(
     `INSERT INTO sync_queue (id, type, payload, status, retry_count, last_error, created_at, updated_at)
-     VALUES (@id, @type, @payload, @status, @retryCount, @lastError, @createdAt, @updatedAt)`
+     VALUES (@id, @type, @payload, @status, @retryCount, @lastError, @createdAt, @updatedAt)`,
   ).run(item);
 }
 
@@ -263,7 +267,7 @@ export function updateSyncQueue(item: SyncQueueItem): void {
   const db = getDb();
   db.prepare(
     `UPDATE sync_queue SET status = @status, retry_count = @retryCount, last_error = @lastError, updated_at = @updatedAt
-     WHERE id = @id`
+     WHERE id = @id`,
   ).run(item);
 }
 
@@ -285,7 +289,8 @@ export function listPendingSync(): SyncQueueItem[] {
 
 export function getSyncQueueItem(id: string): SyncQueueItem | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM sync_queue WHERE id = ?').get(id) as SyncQueueRow | undefined;
+  const row = db.prepare('SELECT * FROM sync_queue WHERE id = ?').get(id) as
+    SyncQueueRow | undefined;
   return row ? rowToSyncQueue(row) : null;
 }
 
@@ -294,8 +299,7 @@ export function getSyncQueueItem(id: string): SyncQueueItem | null {
 export function getSetting(key: string): string | null {
   const db = getDb();
   const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as
-    | { value: string }
-    | undefined;
+    { value: string } | undefined;
   return row?.value ?? null;
 }
 
@@ -304,15 +308,14 @@ export function setSetting(key: string, value: string): void {
   const now = Date.now();
   db.prepare(
     `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
   ).run(key, value, now);
 }
 
 export function getMeta(key: string): string | null {
   const db = getDb();
   const row = db.prepare('SELECT value FROM app_meta WHERE key = ?').get(key) as
-    | { value: string }
-    | undefined;
+    { value: string } | undefined;
   return row?.value ?? null;
 }
 
@@ -320,7 +323,7 @@ export function setMeta(key: string, value: string): void {
   const db = getDb();
   db.prepare(
     `INSERT INTO app_meta (key, value) VALUES (?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
   ).run(key, value);
 }
 

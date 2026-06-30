@@ -6,11 +6,7 @@ import type { AppSettings } from '@shared/types';
 import { logger } from './logger.js';
 
 export type HotkeyAction =
-  | 'toggleTimer'
-  | 'stopTimer'
-  | 'toggleWindow'
-  | 'linkTask'
-  | 'toggleMiniWindow';
+  'toggleTimer' | 'stopTimer' | 'toggleWindow' | 'linkTask' | 'toggleMiniWindow';
 
 export interface HotkeyHandlers {
   toggleTimer: () => void;
@@ -132,10 +128,7 @@ export function registerAllHotkeys(settings: AppSettings): RegistrationResult[] 
 }
 
 /** 注册单个快捷键并返回结果（用于测试/修改单个快捷键） */
-export function registerSingle(
-  action: HotkeyAction,
-  accelerator: string
-): RegistrationResult {
+export function registerSingle(action: HotkeyAction, accelerator: string): RegistrationResult {
   if (!isValidAccelerator(accelerator)) {
     const result: RegistrationResult = {
       key: action,
@@ -215,7 +208,10 @@ export function isValidAccelerator(accel: string): boolean {
 export function testAccelerator(accelerator: string): boolean {
   if (!accelerator || !isValidAccelerator(accelerator)) return false;
   if (registered.has(accelerator)) {
-    logger.info('hotkey', 'test accelerator ' + accelerator + ': OK (already registered by FocusLink)');
+    logger.info(
+      'hotkey',
+      'test accelerator ' + accelerator + ': OK (already registered by FocusLink)',
+    );
     return true;
   }
   const ok = globalShortcut.register(accelerator, () => {});
@@ -226,10 +222,7 @@ export function testAccelerator(accelerator: string): boolean {
   return ok;
 }
 /** 广播注册结果给所有窗口 */
-export function broadcastResults(
-  windows: BrowserWindow[],
-  results: RegistrationResult[]
-): void {
+export function broadcastResults(windows: BrowserWindow[], results: RegistrationResult[]): void {
   for (const win of windows) {
     if (!win.isDestroyed()) {
       for (const r of results) {

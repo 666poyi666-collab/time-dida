@@ -30,7 +30,7 @@ export function summarizeSessions(sessions: FocusSession[]): SessionSummary {
       pause: acc.pause + session.pauseElapsedMs,
       wall: acc.wall + session.wallElapsedMs,
     }),
-    { count: 0, active: 0, pause: 0, wall: 0 }
+    { count: 0, active: 0, pause: 0, wall: 0 },
   );
 }
 
@@ -38,7 +38,7 @@ export function getRange(
   preset: RangePreset,
   customStart: string,
   customEnd: string,
-  now = Date.now()
+  now = Date.now(),
 ): TimeRange {
   if (preset === 'today') return { start: startOfDay(now), end: endOfDay(now) };
   if (preset === 'yesterday') {
@@ -58,7 +58,9 @@ export function getRange(
 }
 
 export function filterSessionsByRange(sessions: FocusSession[], range: TimeRange): FocusSession[] {
-  return sessions.filter((session) => session.startedAt >= range.start && session.startedAt <= range.end);
+  return sessions.filter(
+    (session) => session.startedAt >= range.start && session.startedAt <= range.end,
+  );
 }
 
 export function groupByDay(sessions: FocusSession[], range?: TimeRange): PeriodSummary[] {
@@ -83,7 +85,7 @@ export function groupByWeek(sessions: FocusSession[], range?: TimeRange): Period
 
 function groupSessions(
   sessions: FocusSession[],
-  getLabel: (session: FocusSession) => string
+  getLabel: (session: FocusSession) => string,
 ): Map<string, PeriodSummary> {
   const map = new Map<string, PeriodSummary>();
   for (const session of sessions) {

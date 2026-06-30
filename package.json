@@ -1,6 +1,6 @@
 {
   "name": "focuslink",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "FocusLink - 全局快捷键驱动的专注时间记录器 + 滴答清单任务关联器",
   "author": "FocusLink",
   "main": "dist-electron/main.js",
@@ -12,18 +12,16 @@
     "dist:win": "npm run build && electron-builder --win",
     "test": "vitest run",
     "test:watch": "vitest",
-    "rebuild": "electron-rebuild -f -w better-sqlite3"
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"tests/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"tests/**/*.ts\""
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
     "@fontsource/inter-tight": "^5.2.7",
     "better-sqlite3": "^11.3.0",
-    "clsx": "^2.1.1",
-    "date-fns": "^3.6.0",
     "framer-motion": "^11.3.0",
     "lucide-react": "^0.412.0",
-    "tailwind-merge": "^2.4.0",
-    "zod": "^3.23.8",
     "zustand": "^4.5.4"
   },
   "devDependencies": {
@@ -37,6 +35,7 @@
     "electron": "^31.2.1",
     "electron-builder": "^24.13.3",
     "postcss": "^8.4.39",
+    "prettier": "^3.3.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwindcss": "^3.4.6",

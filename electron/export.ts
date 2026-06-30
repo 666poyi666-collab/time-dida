@@ -9,7 +9,7 @@ function pad(n: number): string {
 function fmtDateTime(ms: number): string {
   const d = new Date(ms);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(
-    d.getMinutes()
+    d.getMinutes(),
   )}`;
 }
 
@@ -21,7 +21,7 @@ export function exportSession(
   session: FocusSession,
   segments: FocusSegment[],
   pauses: PauseEvent[],
-  format: 'json' | 'csv' | 'markdown'
+  format: 'json' | 'csv' | 'markdown',
 ): string {
   if (format === 'json') {
     return JSON.stringify({ session, segments, pauses }, null, 2);
@@ -39,14 +39,14 @@ export function exportSession(
       rows.push(
         `segment,${s.id},${fmtDateTime(s.startedAt)},${
           s.endedAt ? fmtDateTime(s.endedAt) : ''
-        },${s.activeElapsedMs},,${s.taskId ?? ''},${s.title ?? ''}`
+        },${s.activeElapsedMs},,${s.taskId ?? ''},${s.title ?? ''}`,
       );
     }
     for (const p of pauses) {
       rows.push(
         `pause,${p.id},${fmtDateTime(p.pauseStartedAt)},${
           p.pauseEndedAt ? fmtDateTime(p.pauseEndedAt) : ''
-        },,${p.durationMs},,`
+        },,${p.durationMs},,`,
       );
     }
     return rows.join('\n');
@@ -56,9 +56,7 @@ export function exportSession(
   lines.push('# Focus Session');
   lines.push('');
   lines.push(`开始时间：${fmtDateTime(session.startedAt)}`);
-  lines.push(
-    `结束时间：${session.endedAt ? fmtDateTime(session.endedAt) : '进行中'}`
-  );
+  lines.push(`结束时间：${session.endedAt ? fmtDateTime(session.endedAt) : '进行中'}`);
   lines.push('');
   lines.push(`专注时长：${minStr(session.activeElapsedMs)}`);
   lines.push(`暂停时长：${minStr(session.pauseElapsedMs)}`);
@@ -69,9 +67,9 @@ export function exportSession(
     lines.push('');
     lines.push(`### Segment ${i + 1}`);
     lines.push('');
-    lines.push(`- 时间：${fmtDateTime(s.startedAt)} - ${
-      s.endedAt ? fmtDateTime(s.endedAt) : '进行中'
-    }`);
+    lines.push(
+      `- 时间：${fmtDateTime(s.startedAt)} - ${s.endedAt ? fmtDateTime(s.endedAt) : '进行中'}`,
+    );
     lines.push(`- 专注：${minStr(s.activeElapsedMs)}`);
     lines.push(`- 任务：${s.title ?? s.taskId ?? '未关联'}`);
     if (s.note) lines.push(`- 备注：${s.note}`);
@@ -83,19 +81,18 @@ export function exportSession(
       lines.push('');
       lines.push(`### Pause ${i + 1}`);
       lines.push('');
-      lines.push(`- 时间：${fmtDateTime(p.pauseStartedAt)} - ${
-        p.pauseEndedAt ? fmtDateTime(p.pauseEndedAt) : '进行中'
-      }`);
+      lines.push(
+        `- 时间：${fmtDateTime(p.pauseStartedAt)} - ${
+          p.pauseEndedAt ? fmtDateTime(p.pauseEndedAt) : '进行中'
+        }`,
+      );
       lines.push(`- 时长：${minStr(p.durationMs)}`);
     });
   }
   return lines.join('\n');
 }
 
-export function exportSessionById(
-  sessionId: string,
-  format: 'json' | 'csv' | 'markdown'
-): string {
+export function exportSessionById(sessionId: string, format: 'json' | 'csv' | 'markdown'): string {
   const session = getSession(sessionId);
   if (!session) throw new Error(`session 不存在: ${sessionId}`);
   const segments = listSegments(sessionId);

@@ -37,7 +37,7 @@ function makeIcon(state: TimerState): Electron.NativeImage {
 export function createTray(
   window: BrowserWindow,
   timer: TimerManager,
-  callbacks: TrayCallbacks = {}
+  callbacks: TrayCallbacks = {},
 ): Tray {
   tray = new Tray(makeIcon('idle'));
   tray.setToolTip('FocusLink');
@@ -52,12 +52,12 @@ export function createTray(
       state === 'idle'
         ? '未开始'
         : state === 'running'
-        ? `专注中 · ${formatMs(snap.activeElapsedMs)}`
-        : state === 'paused'
-        ? '已暂停'
-        : state === 'finished'
-        ? '已结束'
-        : '未知';
+          ? `专注中 · ${formatMs(snap.activeElapsedMs)}`
+          : state === 'paused'
+            ? '已暂停'
+            : state === 'finished'
+              ? '已结束'
+              : '未知';
 
     tray!.setImage(makeIcon(state));
     tray!.setToolTip(`FocusLink · ${stateLabel}`);

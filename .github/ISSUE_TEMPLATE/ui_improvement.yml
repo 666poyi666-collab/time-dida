@@ -1,0 +1,76 @@
+name: UI / 体验改进
+description: 视觉、交互、字体、动效、布局等前端体验问题
+title: "[UI] "
+labels: ["ui", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        FocusLink 的 UI 规范见 docs/UI_SPEC.md，请先对照确认问题归属。
+        UI AI 接手时应只修改「可修改文件清单」内的文件，不触碰底层逻辑。
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: 出现位置
+      options:
+        - 主窗口 - 计时器区（TimerPanel）
+        - 主窗口 - 任务面板（TaskPanel / TaskPicker）
+        - 主窗口 - 历史记录（HistoryPanel / SegmentTimeline）
+        - 主窗口 - 设置（SettingsPanel）
+        - 小窗 - 展开态（MiniWindow expanded）
+        - 小窗 - 紧凑态（MiniWindow compact）
+        - 小窗 - 收起态（MiniWindow collapsed）
+        - 托盘菜单
+        - 全局 / 主题 / 字体
+        - 其它
+    validations:
+      required: true
+
+  - type: dropdown
+    id: theme
+    attributes:
+      label: 主题
+      options:
+        - 浅色
+        - 深色
+        - 跟随系统
+        - 两者都复现
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: 当前表现
+      description: 截图最佳。请描述看到了什么。
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望表现
+      description: 应该长什么样 / 怎么交互？
+    validations:
+      required: true
+
+  - type: textarea
+    id: design-tokens
+    attributes:
+      label: 涉及的设计 Token（可选）
+      description: |
+        如颜色、字号、间距、圆角等，尽量引用 docs/UI_SPEC.md 中的 token 名。
+      placeholder: "color.surface, font.timer, radius.md"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 范围确认
+      options:
+        - label: 我已确认此改动落在 UI_SPEC.md 的「可修改文件清单」内
+          required: true
+        - label: 我不会要求修改 electron/ 下的底层逻辑文件
+          required: true

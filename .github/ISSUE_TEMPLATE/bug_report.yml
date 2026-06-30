@@ -1,0 +1,90 @@
+name: Bug 报告
+description: 报告 FocusLink 的缺陷或异常行为
+title: "[BUG] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你抽时间反馈问题！请尽量完整填写以下信息，便于快速定位。
+
+  - type: input
+    id: version
+    attributes:
+      label: FocusLink 版本
+      description: 在「设置 → 关于」中可查看，或查看 package.json。
+      placeholder: "0.1.7"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-type
+    attributes:
+      label: 安装方式
+      options:
+        - 安装包（FocusLink-x.x.x-x64.exe）
+        - 免安装版（win-unpacked/FocusLink.exe）
+        - 开发模式（npm run dev）
+        - 源码自行构建
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      placeholder: "Windows 11 23H2 / Windows 10 22H2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 发生了什么？预期应该发生什么？
+      placeholder: "点击暂停后计时器仍在走……预期：暂停后 activeElapsedMs 不再增加。"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 可稳定复现的最小步骤。
+      placeholder: |
+        1. 打开主窗口
+        2. 选择任务 A
+        3. 按 Ctrl+Alt+S 开始专注
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 诊断信息
+      description: |
+        日志位置：%APPDATA%/FocusLink/logs/app.log
+        可拖入相关片段或粘贴最近 50 行。
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: dida-cli
+    attributes:
+      label: 滴答 CLI 诊断（如涉及任务面板）
+      description: 在「设置 → 任务来源 → 诊断」点击运行后粘贴结果。
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: 确认
+      options:
+        - label: 我已搜索现有 issue，未发现重复
+          required: true
+        - label: 我未修改核心业务逻辑（状态机 / SQLite schema / dida Provider / 快捷键 / IPC）
+          required: true

@@ -16,11 +16,7 @@ import { experimentalFocusAdapter } from '../providers/experimentalFocus.js';
 import { ticktickCliProvider } from '../tasks/cliProvider.js';
 import { getSettings } from '../settingsStore.js';
 import { logger } from '../logger.js';
-import type {
-  SyncQueueItem,
-  FocusRecord,
-  SyncStatus,
-} from '@shared/types';
+import type { SyncQueueItem, FocusRecord, SyncStatus } from '@shared/types';
 
 type Payload = {
   type: 'segment-note' | 'session-note' | 'focus-record';
@@ -57,7 +53,7 @@ function makeItem(type: string, payload: Payload): SyncQueueItem {
 
 function findPendingPayload(
   type: Payload['type'],
-  matches: (payload: Payload) => boolean
+  matches: (payload: Payload) => boolean,
 ): SyncQueueItem | null {
   for (const item of listPendingSync()) {
     try {
@@ -71,23 +67,21 @@ function findPendingPayload(
 }
 
 export function enqueueSegmentSync(segmentId: string): SyncQueueItem {
-  const existing = findPendingPayload(
-    'segment-note',
-    (payload) => payload.segmentId === segmentId
-  );
+  const existing = findPendingPayload('segment-note', (payload) => payload.segmentId === segmentId);
   if (existing) return existing;
   const seg = getSegment(segmentId);
-  const item = makeItem('segment-note', { type: 'segment-note', segmentId, sessionId: seg?.sessionId });
+  const item = makeItem('segment-note', {
+    type: 'segment-note',
+    segmentId,
+    sessionId: seg?.sessionId,
+  });
   insertSyncQueue(item);
   logger.info('sync', `enqueued segment ${segmentId}`);
   return item;
 }
 
 export function enqueueSessionSync(sessionId: string): SyncQueueItem {
-  const existing = findPendingPayload(
-    'session-note',
-    (payload) => payload.sessionId === sessionId
-  );
+  const existing = findPendingPayload('session-note', (payload) => payload.sessionId === sessionId);
   if (existing) return existing;
   const item = makeItem('session-note', { type: 'session-note', sessionId });
   insertSyncQueue(item);
@@ -152,7 +146,7 @@ async function processItem(item: SyncQueueItem): Promise<{ ok: boolean; error?: 
       const session = getSession(payload.sessionId);
       if (!session) return { ok: false, error: 'session 不存在' };
       const segs = listSegments(payload.sessionId).filter(
-        (s) => s.taskId && s.taskSource === 'ticktick'
+        (s) => s.taskId && s.taskSource === 'ticktick',
       );
       for (const seg of segs) {
         const record: FocusRecord = {

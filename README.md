@@ -2,7 +2,10 @@
 
 全局快捷键驱动的专注时间记录器 + 滴答清单任务关联器。
 
-> 它不是普通秒表，也不是普通番茄钟，而是一个 **Focus Session + Focus Segment 时间账本系统**。
+> 当前版本：**v0.1.8**
+> 仓库：https://github.com/666poyi666-collab/time-dida
+
+它不是普通秒表，也不是普通番茄钟，而是一个 **Focus Session + Focus Segment 时间账本系统**。
 
 ## 核心理念
 
@@ -17,6 +20,7 @@
 | `wallElapsedMs` | 从开始到结束的自然总跨度 |
 
 **核心场景验证**：专注 45 分钟 → 暂停 5 分钟 → 专注 45 分钟 → 结束
+
 - 专注时长 = 90 分钟
 - 暂停时长 = 5 分钟
 - 总跨度 = 95 分钟
@@ -31,15 +35,16 @@
 
 ## 技术栈
 
-Electron · React · TypeScript · Vite · SQLite (better-sqlite3) · Zustand · Tailwind CSS · Framer Motion · electron-store
+- **Electron 31** + **React 18** + **TypeScript 5**
+- **Vite 5** 构建（含 `vite-plugin-electron`）
+- **better-sqlite3** 本地数据库（SQLite）
+- **Zustand** 状态管理
+- **Tailwind CSS** + **Framer Motion** 样式与动画
+- **lucide-react** 图标
+- **@fontsource/inter** / **@fontsource/inter-tight** 本地字体
+- 持久化使用自研轻量 `JsonStore`（XOR 混淆 + base64），**不使用 electron-store**
 
 ## 快速开始
-
-### 本机从哪里启动
-
-- 开发调试：在 `C:\Users\poyi\Desktop\time1` 执行 `npm run dev`
-- 当前新版安装包：`C:\Users\poyi\Desktop\time1\release-v017\FocusLink-0.1.7-x64.exe`
-- 当前新版免安装启动：`C:\Users\poyi\Desktop\time1\release-v017\win-unpacked\FocusLink.exe`
 
 ```bash
 # 安装依赖（含 better-sqlite3 原生模块编译）
@@ -48,35 +53,49 @@ npm install
 # 重建原生模块以适配 Electron（如需要）
 npm run rebuild
 
-# 开发模式
+# 开发模式（主窗口 + 专注小窗热更新）
 npm run dev
 
 # 类型检查 + 构建
 npm run build
 
 # 打包 Windows 安装包
-npm run dist
-# 或仅 Windows
 npm run dist:win
 
 # 运行测试
 npm test
+
+# 代码格式化 / 检查
+npm run format
+npm run format:check
 ```
 
-## Release 版本
+开发服务器默认端口 `5174`，专注小窗开发地址为 `http://localhost:5174/mini.html`。
 
-仓库里的 `releases/` 目录保存安装包归档；本地 electron-builder 输出目录保留为 `release-v0xx`。
+## 下载与安装
+
+每个版本构建后会生成两类产物（位于仓库根目录的 `release-vXXX/` 文件夹，当前版本为 `release-v018b/`）：
+
+| 类型 | 路径 | 说明 |
+| --- | --- | --- |
+| 安装包 | `release-v018b/FocusLink-0.1.8-x64.exe` | NSIS 安装程序，双击即可安装，无需 PowerShell |
+| 免安装版 | `release-v018b/win-unpacked/FocusLink.exe` | 解压即可双击运行的便携版 |
+
+安装版默认安装到 `%LOCALAPPDATA%\Programs\FocusLink\`，会创建桌面快捷方式和开始菜单项。
+
+历史版本归档：
 
 | 版本 | 安装包 |
 | --- | --- |
-| `0.1.0` | `releases/v0.1.0/FocusLink-0.1.0-x64.exe` |
-| `0.1.1` | `releases/v0.1.1/FocusLink-0.1.1-x64.exe` |
-| `0.1.2` | `releases/v0.1.2/FocusLink-0.1.2-x64.exe` |
-| `0.1.3` | `releases/v0.1.3/FocusLink-0.1.3-x64.exe` |
-| `0.1.4` | `releases/v0.1.4/FocusLink-0.1.4-x64.exe` |
-| `0.1.5` | `releases/v0.1.5/FocusLink-0.1.5-x64.exe` |
-| `0.1.6` | `releases/v0.1.6/FocusLink-0.1.6-x64.exe` |
-| `0.1.7` | `releases/v0.1.7/FocusLink-0.1.7-x64.exe` |
+| `0.1.0` | `release/FocusLink-0.1.0-x64.exe` |
+| `0.1.1` | `release-v011/FocusLink-0.1.1-x64.exe` |
+| `0.1.2` | `release-v012/FocusLink-0.1.2-x64.exe` |
+| `0.1.3` | `release-v013/FocusLink-0.1.3-x64.exe` |
+| `0.1.4` | `release-v014/FocusLink-0.1.4-x64.exe` |
+| `0.1.5` | `release-v015/FocusLink-0.1.5-x64.exe` |
+| `0.1.6` | `release-v016/FocusLink-0.1.6-x64.exe` |
+| `0.1.7` | `release-v017/FocusLink-0.1.7-x64.exe` |
+| `0.1.8` | `release-v018b/FocusLink-0.1.8-x64.exe` |
 
 ## 全局快捷键
 
@@ -86,8 +105,9 @@ npm test
 | 结束当前专注 | `Ctrl + Alt + Enter` |
 | 打开 / 隐藏主窗口 | `Ctrl + Alt + F` |
 | 快速关联任务 | `Ctrl + Alt + T` |
+| 显示 / 隐藏专注小窗 | `Ctrl + Alt + M` |
 
-快捷键可在设置页修改，修改后自动重新注册；注册失败（冲突）会弹出 Toast 提示，不会崩溃。
+快捷键统一使用 `Ctrl+Alt+` 修饰键以避免系统冲突。可在设置页修改，修改后自动重新注册；注册失败（冲突）会弹出 Toast 提示，不会崩溃，并自动恢复旧快捷键。
 
 ## 滴答清单 / TickTick 集成
 
@@ -95,20 +115,12 @@ npm test
 
 采用 Adapter 架构，**稳定官方任务同步 + 实验性 Focus 适配器 + 本地记录兜底**：
 
-- **稳定通道**：TickTick / Dida365 Open API（`tasks:read` / `tasks:write` scope）
-  - OAuth 授权（PKCE loopback）
-  - 拉取清单/任务
-  - **在任务备注/描述中追加专注记录**（默认同步模式）
+- **dida CLI（推荐）**：复用本地 `dida` 命令行工具的 OAuth token，读取清单/任务，并把专注记录追加到任务备注
+- **TickTick / Dida365 Open API**：OAuth 授权（PKCE loopback），拉取清单/任务，在任务备注中追加专注记录
 - **实验性 Focus 适配器**：默认关闭，依赖非官方 V2/session API，不稳定
 - **本地兜底**：所有专注记录先保存本地，同步失败进入 `sync_queue`，绝不丢数据
 
-### 配置步骤
-
-1. 前往 [TickTick 开发者平台](https://developer.ticktick.com/)（国内为 [滴答清单开放平台](https://developer.dida365.com/)）创建应用
-2. 获取 `Client ID` 和 `Client Secret`
-3. 将回调地址配置为：`http://localhost:18321/callback`
-4. 在 FocusLink 设置页填写 Client ID / Secret，选择区域（国内/海外），点击「连接滴答清单」
-5. 浏览器会打开授权页，授权后自动回到应用
+> 详细命令模板、诊断步骤见 [docs/DIDA_CLI.md](docs/DIDA_CLI.md)。
 
 ### 同步模式
 
@@ -118,56 +130,41 @@ npm test
 | 实验 · 写入 Focus 记录 | 尝试写入 Focus/Pomodoro（非官方 API，不稳定） |
 | 仅本地 | 不同步，只保存本地 |
 
-> 注意：官方 Open API 主要提供 `tasks:read` / `tasks:write`，Focus/Pomodoro 写入能力依赖非官方 V2/session API，不能当成稳定官方接口来依赖。
-
 ### Token 安全
 
-OAuth token 通过 `electron-store` 加密文件保存（`focuslink-credentials`），**不存 localStorage**。生产环境可替换为 `keytar`（OS keychain）。
+OAuth token 通过 `JsonStore` 加密文件保存（`focuslink-credentials.json`，XOR 混淆 + base64），**不存 localStorage**。生产环境可替换为 `keytar`（OS keychain）。
 
 ## 项目结构
 
 ```
-time1/
+time-dida/
 ├── electron/                  # 主进程
-│   ├── main.ts                 # 入口：单实例锁、窗口、托盘、快捷键、电源事件
-│   ├── preload.ts              # contextBridge 暴露类型安全 IPC
-│   ├── ipc.ts                  # IPC 处理器
-│   ├── tray.ts                 # 系统托盘（状态联动）
-│   ├── hotkeys.ts              # 全局快捷键
-│   ├── logger.ts               # 日志系统
-│   ├── credentials.ts          # OAuth token 凭证存储
-│   ├── settingsStore.ts        # 应用设置
-│   ├── export.ts               # 数据导出（JSON/CSV/Markdown）
-│   ├── cli.ts                  # CLI 预留（本地 HTTP server）
-│   ├── db/
-│   │   ├── schema.ts           # 内联 Schema
-│   │   └── index.ts            # 数据库访问层
-│   ├── timer/
-│   │   ├── stateMachine.ts     # 纯状态机
-│   │   └── manager.ts          # TimerManager（三时间账本 + 崩溃恢复）
-│   ├── tasks/
-│   │   └── localProvider.ts    # 本地任务
-│   ├── providers/
-│   │   ├── ticktickAdapter.ts  # TickTick 官方适配器
-│   │   └── experimentalFocus.ts # 实验性 Focus 适配器（默认关闭）
-│   └── sync/
-│       └── syncService.ts      # sync_queue 处理
-├── src/                        # 渲染进程 (React)
-│   ├── App.tsx                 # 主壳 + 导航
-│   ├── components/
-│   │   ├── TimerPanel.tsx      # 左侧计时区
-│   │   ├── TaskPanel.tsx       # 右侧任务区
-│   │   ├── SegmentTimeline.tsx # 片段时间线
-│   │   ├── HistoryPanel.tsx    # 历史记录
-│   │   ├── SettingsPanel.tsx   # 设置
-│   │   └── Toast.tsx
-│   ├── store/useStore.ts       # Zustand
-│   └── lib/time.ts             # 时间格式化
-├── shared/types.ts             # 共享类型（主/渲染共用）
-├── tests/                      # Vitest 测试
-│   ├── stateMachine.test.ts    # 状态机测试
-│   └── timeModel.test.ts       # 三时间模型测试
-└── electron-builder.yml
+│   ├── main.ts                # 入口：单实例锁、窗口、托盘、快捷键、电源事件
+│   ├── preload.ts             # contextBridge 暴露类型安全 IPC
+│   ├── ipc.ts                 # IPC 处理器（按域分流副作用）
+│   ├── tray.ts                # 系统托盘（状态联动）
+│   ├── hotkeys.ts             # 全局快捷键（debounce + 失败检测）
+│   ├── logger.ts              # 日志系统
+│   ├── credentials.ts         # OAuth token 凭证存储
+│   ├── jsonStore.ts           # 轻量 JSON 存储（替代 electron-store）
+│   ├── settingsStore.ts       # 应用设置
+│   ├── export.ts              # 数据导出（JSON/CSV/Markdown）
+│   ├── cli.ts                 # CLI 预留（本地 HTTP server）
+│   ├── db/                    # SQLite 数据访问层 + Schema
+│   ├── timer/                 # 状态机 + TimerManager（三时间账本 + 崩溃恢复）
+│   ├── tasks/                 # 本地任务 + dida CLI Provider
+│   ├── providers/             # TickTick OAuth 适配器 + 实验性 Focus 适配器
+│   └── sync/                  # sync_queue 处理
+├── src/                       # 渲染进程 (React)
+│   ├── App.tsx                # 主壳 + 导航
+│   ├── mini.tsx               # 专注小窗入口
+│   ├── components/            # TimerPanel / TaskPanel / MiniWindow / HistoryPanel / ...
+│   ├── store/useStore.ts      # Zustand
+│   └── lib/                   # time / historyStats / paneLayout / syncStatus
+├── shared/types.ts            # 共享类型（主/渲染共用，IPC 契约）
+├── tests/                     # Vitest 测试
+├── docs/                      # 产品/架构/UI/CLI/测试/变更文档
+└── electron-builder.yml       # 打包配置
 ```
 
 ## 关键设计
@@ -189,6 +186,7 @@ time1/
 ### 数据完整性
 
 数据库触发器强制：
+
 - `segment_ended_at` 不能早于 `segment_started_at`
 - `pause_ended_at` 不能早于 `pause_started_at`
 - 不允许负时间
@@ -204,13 +202,20 @@ time1/
 npm test
 ```
 
-覆盖：
-- 状态机所有合法/非法转换
-- Toggle 行为
-- 完整专注流程（多次暂停/继续）
-- **三时间模型核心场景**（45+5+45 → 90/5/95）
-- 多次暂停累加
-- 时间回退保护（不出现负时间）
+覆盖：状态机所有合法/非法转换、Toggle 行为、完整专注流程（多次暂停/继续）、三时间模型核心场景（45+5+45 → 90/5/95）、多次暂停累加、时间回退保护。详见 [docs/TESTING.md](docs/TESTING.md)。
+
+## 数据与日志位置
+
+应用数据全部位于 Electron 的 `userData` 目录，Windows 下为 `%APPDATA%/FocusLink/`：
+
+| 类型 | 路径 |
+| --- | --- |
+| 数据库 | `%APPDATA%/FocusLink/focuslink.db` |
+| 设置 | `%APPDATA%/FocusLink/focuslink-settings.json` |
+| 凭证 | `%APPDATA%/FocusLink/focuslink-credentials.json`（XOR 混淆） |
+| 日志 | `%APPDATA%/FocusLink/logs/focuslink-YYYY-MM-DD.log` |
+
+日志按天滚动，记录所有关键操作（timer/hotkey/ipc/cli/database/jsonStore 等作用域）。
 
 ## 常见问题
 
@@ -218,16 +223,29 @@ npm test
 A: 运行 `npm run rebuild` 重新编译原生模块以适配 Electron。
 
 **Q: 快捷键无效？**
-A: 可能与其他软件冲突，查看设置页 Toast 提示；修改为其他组合键。
+A: 可能与其他软件冲突，查看设置页 Toast 提示；修改为其他组合键。`Ctrl+Alt+M` 在部分系统会被占用，可改用 `Ctrl+Alt+Shift+M`。
 
 **Q: 滴答清单登录失败？**
-A: 确认回调地址为 `http://localhost:18321/callback`；确认 Client ID/Secret 正确；确认区域选择正确（国内 dida365 / 海外 ticktick）。
+A: 确认回调地址为 `http://localhost:18321/callback`；确认 Client ID/Secret 正确；确认区域选择正确（国内 dida365 / 海外 ticktick）。使用 dida CLI 时先在终端执行 `dida auth login` 完成登录。
 
 **Q: 同步失败会丢数据吗？**
 A: 不会。所有记录先保存本地，同步失败进入 `sync_queue`，可重试（最多 5 次后标记 failed）。
 
 **Q: 关闭窗口后还在计时吗？**
-A: 是。关闭窗口默认最小化到托盘，主进程继续计时。
+A: 是。关闭窗口默认最小化到托盘，主进程继续计时。退出只能通过托盘菜单的「退出」。
+
+## 文档
+
+完整文档位于 `docs/`：
+
+- [产品规格](docs/PRODUCT_SPEC.md)
+- [架构说明](docs/ARCHITECTURE.md)
+- [UI 规格](docs/UI_SPEC.md)
+- [dida CLI 集成](docs/DIDA_CLI.md)
+- [测试指南](docs/TESTING.md)
+- [变更日志](docs/CHANGELOG.md)
+
+历史修复报告归档于 `docs/archive/`。
 
 ## 后续扩展
 
@@ -237,9 +255,6 @@ A: 是。关闭窗口默认最小化到托盘，主进程继续计时。
 - 统计图表（基于已有数据模型，无需重构）
 - 打包 macOS/Linux
 
-## 数据位置
+## License
 
-- 数据库：`%APPDATA%/FocusLink/focuslink.db`
-- 设置：`%APPDATA%/FocusLink/focuslink-settings.json`
-- 凭证：`%APPDATA%/FocusLink/focuslink-credentials.json`（加密）
-- 日志：`%APPDATA%/FocusLink/logs/focuslink-YYYY-MM-DD.log`
+MIT
