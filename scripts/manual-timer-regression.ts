@@ -9,7 +9,10 @@
 //   Pause 1 ≈ 3s, Pause 2 ≈ 2s
 //   累计专注 ≈ 15s, 累计暂停 ≈ 5s, 总历时 ≈ 20s
 //   mixedTimelineItems = 5 条 (3 专注 + 2 暂停)
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
+import { APP_VERSION } from '../shared/version';
+
+const realDateNow = Date.now;
 
 // 纯 JS 内存数据库（模拟 focus_sessions / focus_segments / pause_events 三张表）
 // 避免 better-sqlite3 native module 版本冲突
@@ -101,10 +104,13 @@ describe('manual-timer-regression: 5/3/4/2/6 场景', () => {
     timer = new TimerManager('new-segment');
   });
 
+  afterEach(() => {
+    Date.now = realDateNow;
+  });
+
   it('执行场景并输出完整验收数据', () => {
     const T0 = 1_000_000;
     let fakeNow = T0;
-    const realDateNow = Date.now;
     Date.now = () => fakeNow;
 
     const steps: Array<{ step: string; snap: any; now: number }> = [];
@@ -215,7 +221,7 @@ describe('manual-timer-regression: 5/3/4/2/6 场景', () => {
     // ===== 输出完整验收报告 =====
     console.log('\n');
     console.log('========================================================');
-    console.log('  FocusLink v0.2.0 Manual Timer Regression Test');
+    console.log(`  FocusLink v${APP_VERSION} Manual Timer Regression Test`);
     console.log('  场景: start 5s → pause 3s → resume 4s → pause 2s → resume 6s → stop');
     console.log('========================================================\n');
 

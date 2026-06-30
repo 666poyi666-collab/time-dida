@@ -4,6 +4,7 @@
 // 暂停态统一使用橙色（warning），专注态使用绿色（accent）
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TimerSnapshot, AppSettings } from '@shared/types';
+import { isMiniWindowCompact } from '@shared/miniWindowLayout';
 import { formatDuration } from '../lib/time';
 import {
   getMainDisplayMs,
@@ -207,7 +208,7 @@ export function MiniWindow() {
   const isRunning = state === 'running';
   const isPaused = state === 'paused';
 
-  const isCompact = !collapsed && (containerSize.width < 276 || containerSize.height < 112);
+  const isCompact = isMiniWindowCompact(containerSize.width, containerSize.height, collapsed);
 
   // ─── 事件处理 ────────────────────────────────────────────────
   const handleToggle = useCallback(async (e: React.MouseEvent) => {
@@ -240,7 +241,7 @@ export function MiniWindow() {
   }, []);
 
   // ─── COLLAPSED 模式（40px 高度横条） ───────────────────────
-  // 收起态：状态点（专注绿/暂停红）+ 当前片段时间
+  // 收起态：状态点（专注绿/暂停橙）+ 当前片段时间
   if (collapsed) {
     return (
       <div

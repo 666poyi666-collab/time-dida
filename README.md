@@ -2,7 +2,7 @@
 
 全局快捷键驱动的专注时间记录器 + 滴答清单任务关联器。
 
-> 当前版本：**v0.2.3**
+> 当前版本：**v0.2.4**
 > 仓库：https://github.com/666poyi666-collab/time-dida
 
 它不是普通秒表，也不是普通番茄钟，而是一个 **Focus Session + Focus Segment 时间账本系统**。
@@ -74,12 +74,12 @@ npm run format:check
 
 ## 下载与安装
 
-每个版本构建后会生成两类产物（位于仓库根目录的 `release-vXXX/` 文件夹，当前版本为 `release-v023/`）：
+每个版本构建后会生成两类产物（位于仓库根目录的 `release-vXXX/` 文件夹，当前版本为 `release-v024/`）：
 
 | 类型 | 路径 | 说明 |
 | --- | --- | --- |
-| 安装包 | `release-v023/FocusLink-0.2.3-x64.exe` | NSIS 安装程序，双击即可安装，无需 PowerShell |
-| 免安装版 | `release-v023/FocusLink-0.2.3-x64-portable.exe` | 单文件便携版，双击即可运行 |
+| 安装包 | `release-v024/FocusLink-0.2.4-x64.exe` | NSIS 安装程序，双击即可安装，无需 PowerShell |
+| 免安装版 | `release-v024/FocusLink-0.2.4-x64-portable.exe` | 单文件便携版，双击即可运行 |
 
 安装版默认安装到 `%LOCALAPPDATA%\Programs\FocusLink\`，会创建桌面快捷方式和开始菜单项。
 
@@ -87,9 +87,9 @@ npm run format:check
 
 | 版本 | 安装包 |
 | --- | --- |
-| `0.2.1` | `release-v021-new/FocusLink-0.2.1-x64.exe` |
 | `0.2.2` | `release-v022/FocusLink-0.2.2-x64.exe` |
 | `0.2.3` | `release-v023/FocusLink-0.2.3-x64.exe` |
+| `0.2.4` | `release-v024/FocusLink-0.2.4-x64.exe` |
 
 ## 全局快捷键
 
