@@ -19,6 +19,10 @@ import {
 } from './hotkeys.js';
 import type { TimerSnapshot } from '@shared/types';
 import { APP_VERSION, APP_COMMIT, APP_BUILD_TIME, APP_RELEASE_DIR } from '@shared/version';
+import {
+  hasTicktickLinkedSegments,
+  shouldAutoSyncFinishedSession,
+} from '@shared/autoSyncPolicy';
 import { enqueueSessionSync, runPending } from './sync/syncService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -429,15 +433,13 @@ function handleTimerStateTransition(snap: TimerSnapshot): void {
 function autoSyncFinishedSession(sessionId: string): void {
   if (autoSyncSessions.has(sessionId)) return;
   const settings = getSettings();
-  if (settings.syncMode === 'local-only') {
-    logger.info('sync', 'auto sync skipped: local-only mode', { sessionId });
-    return;
-  }
-  const ticktickSegments = listSegments(sessionId).filter(
-    (seg) => seg.taskId && seg.taskSource === 'ticktick',
-  );
-  if (ticktickSegments.length === 0) {
-    logger.info('sync', 'auto sync skipped: no ticktick-linked segments', { sessionId });
+  const segments = listSegments(sessionId);
+  if (!shouldAutoSyncFinishedSession(settings.syncMode, segments)) {
+    if (settings.syncMode === 'local-only') {
+      logger.info('sync', 'auto sync skipped: local-only mode', { sessionId });
+    } else if (!hasTicktickLinkedSegments(segments)) {
+      logger.info('sync', 'auto sync skipped: no ticktick-linked segments', { sessionId });
+    }
     return;
   }
 
