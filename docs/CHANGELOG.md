@@ -3,6 +3,51 @@
 > 本仓库遵循简易版本记录。每个版本对应一个 `release-vXXX/` 打包目录。
 > 历史修复细节见 `docs/archive/` 下的各报告文档。
 
+## v0.2.1 (2026-06-30)
+
+### UI/UX 打磨 + 全局动效系统（克制、统一、无感但高级）
+
+> 详见 `docs/V021_FINAL_FLOW_REPORT.md`。本轮不改任何底层逻辑，仅动表现层。
+
+#### 1. 全局动效 tokens 系统（核心新增）
+- `src/index.css` 新增动画节奏 tokens：`--motion-fast`(120ms) / `--motion-normal`(180ms) / `--motion-slow`(260ms)
+- 新增 3 条统一缓动：`--ease-out` / `--ease-in-out` / `--ease-soft`
+- 新增缩放 tokens：`--scale-hover`(1.02) / `--scale-active`(0.98)
+- 新增 12 个动效工具类：`motion-base/smooth/lift/scale/press/digit/fade-up/fade-in/breathe/rhythm-fill/state-bg/accordion`
+- 支持 `prefers-reduced-motion` 无障碍降级（关闭所有 transition/animation）
+- Framer Motion easing 统一为 `[0.22, 1, 0.36, 1]`（180ms），与 CSS 对齐
+
+#### 2. 各组件动效改造
+- **MiniWindow**：进度条 `motion-state-bg`，状态切换颜色渐变，数字稳定
+- **TimerPanel**：CumStat `motion-state-bg` + `motion-digit`，header/subtitle `motion-fade-up`，按钮 `motion-press`
+- **TaskPanel**：空状态 `motion-fade-in` + `motion-breathe`，当前 segment badge subtle glow，子任务 `motion-fade-in`
+- **HistoryPanel**：Session 卡片 `motion-lift`，AnimatePresence `duration:0.18`，三点菜单 `motion-fade-in`
+- **SegmentTimeline**：空状态 `motion-fade-in`，时间线项 `motion-base`，时长 `motion-digit`
+- **SettingsPanel / Toast / App / TaskPicker**：统一替换零散 `transition-colors/duration` 为 `motion-base/press`
+
+#### 3. 语义色一致性修复
+- `TimerPanel.tsx` CumStat paused tone：`warning`（橙）→ `danger`（红）
+- `index.css` `.pause-glow`：`rgb(var(--warning)/...)` → `rgb(var(--danger)/...)`
+
+#### 4. 版本与打包
+- `package.json` / `shared/version.ts` / `electron/main.ts` → 0.2.1
+- `electron-builder.yml`：输出目录 `release-v021`，新增 `portable` target，`publish:null`
+- `.gitignore`：排除 `design-pack/`（设计参考包）
+- 产物：`FocusLink-0.2.1-x64.exe`（NSIS 86.61MB）+ `FocusLink-0.2.1-x64-portable.exe`（86.39MB）
+
+### 未触碰的核心逻辑
+- TimerManager / state machine / SQLite / dida CLI Provider / pauseEvents / mixedTimelineItems / IPC / 快捷键 / 托盘 / 云端写入 — 全部原样
+
+### 验证
+- `npm run format` 通过
+- `npm run typecheck` 通过
+- `npm test` 通过（48/48 全绿）
+- `npm run build` 通过
+- `npx electron-builder --win` 通过（NSIS + portable 双产物）
+
+### 提交
+- `5bd74ef` Polish UI/UX with unified motion system (v0.2.1)
+
 ## v0.2.0 (2026-06-30)
 
 ### 稳定版交付：计时核心 + 小窗 + 时间线 + 历史记录全链路验收
