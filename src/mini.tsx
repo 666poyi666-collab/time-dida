@@ -1,0 +1,9 @@
+// 专注小窗渲染入口 - 独立窗口，显示当前计时状态
+import { createRoot } from 'react-dom/client';
+import { MiniWindow } from './components/MiniWindow';
+import './index.css';
+
+const container = document.getElementById('root');
+if (container) {
+  createRoot(container).render(<MiniWindow />);
+}

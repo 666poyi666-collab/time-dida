@@ -1,0 +1,231 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter-tight/600.css';
+@import '@fontsource/inter-tight/700.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* FocusLink design tokens: compact, border-led desktop tool surfaces. */
+    --app-bg: 12 13 13;
+    --app-surface: 19 21 20;
+    --app-surface-2: 27 30 29;
+    --app-elevated: 35 38 37;
+    --app-overlay: 0 0 0 / 0.52;
+    --app-text: 235 239 246;
+    --app-muted: 163 170 166;
+    --app-subtle: 111 119 116;
+    --app-inverse: 255 255 255;
+    --app-border: 49 55 53;
+    --app-border-strong: 72 82 78;
+    --app-border-subtle: 32 37 35;
+    --app-accent: 0 101 253;
+    --app-accent-hover: 37 124 255;
+    --app-accent-soft: 0 101 253 / 0.12;
+    --app-accent-fg: 255 255 255;
+    --app-success: 16 185 129;
+    --app-warning: 245 158 11;
+    --app-danger: 244 63 94;
+    --app-info: 14 165 233;
+    --radius-sm: 5px;
+    --radius-md: 7px;
+    --radius-lg: 8px;
+    --radius-xl: 10px;
+    --shadow-sm: 0 1px 0 rgb(255 255 255 / 0.03);
+    --shadow-md: 0 8px 22px -18px rgb(0 0 0 / 0.45);
+    --shadow-lg: 0 18px 44px -26px rgb(0 0 0 / 0.65);
+    --shadow-glow: 0 0 28px -12px rgb(var(--app-accent) / 0.8);
+
+    /* Backward-compatible aliases used by the current Tailwind config. */
+    --bg-base: var(--app-bg);
+    --bg-card: var(--app-surface);
+    --bg-subtle: var(--app-surface-2);
+    --bg-elevated: var(--app-elevated);
+    --fg-default: var(--app-text);
+    --fg-muted: var(--app-muted);
+    --fg-subtle: var(--app-subtle);
+    --border: var(--app-border);
+    --border-strong: var(--app-border-strong);
+    --accent: var(--app-accent);
+    --accent-fg: var(--app-accent-fg);
+    --accent-muted: 0 38 107;
+    --success: var(--app-success);
+    --warning: var(--app-warning);
+    --danger: var(--app-danger);
+    --info: var(--app-info);
+  }
+
+  .light {
+    --app-bg: 246 248 251;
+    --app-surface: 255 255 255;
+    --app-surface-2: 239 243 248;
+    --app-elevated: 250 252 255;
+    --app-overlay: 15 23 42 / 0.36;
+    --app-text: 14 18 24;
+    --app-muted: 72 84 100;
+    --app-subtle: 126 141 159;
+    --app-border: 225 230 238;
+    --app-border-strong: 205 214 226;
+    --app-border-subtle: 236 240 246;
+    --app-accent: 0 101 253;
+    --app-accent-hover: 0 87 218;
+    --app-accent-soft: 0 101 253 / 0.1;
+    --app-accent-fg: 255 255 255;
+    --accent-muted: 212 226 255;
+  }
+
+  /* 主题色变体 */
+  .accent-indigo { --app-accent: 99 102 241; --app-accent-hover: 129 140 248; --accent: var(--app-accent); --accent-muted: 49 46 129; }
+  .accent-violet { --app-accent: 139 92 246; --app-accent-hover: 167 139 250; --accent: var(--app-accent); --accent-muted: 76 29 149; }
+  .accent-emerald { --app-accent: 16 185 129; --app-accent-hover: 52 211 153; --accent: var(--app-accent); --accent-muted: 6 95 70; }
+  .accent-rose { --app-accent: 244 63 94; --app-accent-hover: 251 113 133; --accent: var(--app-accent); --accent-muted: 159 18 57; }
+  .accent-amber { --app-accent: 245 158 11; --app-accent-hover: 251 191 36; --accent: var(--app-accent); --accent-muted: 120 53 15; }
+  .accent-sky { --app-accent: 14 165 233; --app-accent-hover: 56 189 248; --accent: var(--app-accent); --accent-muted: 12 74 110; }
+
+  .nav-active {
+    background: linear-gradient(180deg, rgb(var(--accent) / 0.18), rgb(var(--accent) / 0.1));
+    color: rgb(var(--accent));
+    box-shadow:
+      inset 0 0 0 1px rgb(var(--accent) / 0.26),
+      0 8px 18px -14px rgb(var(--accent) / 0.9);
+  }
+
+  .progress-bar {
+    background: rgb(var(--accent) / 0.12);
+  }
+  .progress-bar-fill {
+    background: rgb(var(--accent));
+    box-shadow: 0 0 6px rgb(var(--accent) / 0.4);
+  }
+
+  .selected-accent {
+    border-color: rgb(var(--accent) / 0.5);
+    background-color: rgb(var(--accent) / 0.06);
+  }
+
+  .state-dot-running {
+    background: rgb(var(--accent));
+    box-shadow: 0 0 0 0 rgb(var(--accent) / 0.5);
+    animation: state-pulse 2s infinite;
+  }
+
+  @keyframes state-pulse {
+    0% { box-shadow: 0 0 0 0 rgb(var(--accent) / 0.5); }
+    70% { box-shadow: 0 0 0 6px rgb(var(--accent) / 0); }
+    100% { box-shadow: 0 0 0 0 rgb(var(--accent) / 0); }
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    font-family: 'Inter', 'Microsoft YaHei UI', 'HarmonyOS Sans SC', 'PingFang SC', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    user-select: none;
+    overflow: hidden;
+    background:
+      linear-gradient(135deg, rgb(12 13 13), rgb(15 18 17) 48%, rgb(18 16 18));
+    letter-spacing: 0;
+  }
+
+  /* 滚动条 */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--border));
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--fg-subtle));
+  }
+
+  /* focus-visible */
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent) / 0.5);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .glass {
+    background: linear-gradient(180deg, rgb(var(--bg-card) / 0.94), rgb(var(--bg-base) / 0.9));
+    backdrop-filter: blur(18px) saturate(1.15);
+    -webkit-backdrop-filter: blur(18px) saturate(1.15);
+    box-shadow: var(--shadow-lg), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  }
+
+  .timer-digit {
+    font-family: 'Inter Tight', 'Inter', ui-monospace, 'SFMono-Regular', monospace;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+    letter-spacing: 0;
+  }
+
+  .focus-glow {
+    box-shadow:
+      0 0 0 1px rgb(var(--accent) / 0.15),
+      0 0 40px -8px rgb(var(--accent) / 0.3),
+      0 0 80px -16px rgb(var(--accent) / 0.15);
+  }
+
+  .surface-grid {
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.03) 1px, transparent 1px),
+      linear-gradient(180deg, rgb(var(--accent) / 0.06), transparent 42%);
+    background-size: 18px 18px, 18px 18px, 100% 100%;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-medium transition-all duration-150;
+    @apply disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn rounded-lg px-5 py-2.5 text-sm bg-accent text-accent-fg;
+    @apply hover:brightness-110 active:scale-[0.98];
+    box-shadow: 0 10px 24px -16px rgb(var(--accent) / 0.95), inset 0 1px 0 rgb(255 255 255 / 0.16);
+  }
+  .btn-ghost {
+    @apply btn rounded-lg px-3.5 py-2 text-sm text-fg-muted;
+    @apply hover:bg-bg-subtle hover:text-fg;
+  }
+  .btn-outline {
+    @apply btn rounded-lg border border-border px-3.5 py-2 text-sm text-fg;
+    @apply hover:bg-bg-subtle;
+    background: linear-gradient(180deg, rgb(var(--app-surface-2) / 0.72), rgb(var(--app-surface) / 0.62));
+  }
+
+  .card {
+    @apply rounded-lg border border-border;
+    background: linear-gradient(180deg, rgb(var(--app-surface) / 0.96), rgb(var(--app-surface-2) / 0.74));
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.04) inset,
+      0 18px 38px -34px rgb(0 0 0 / 0.8);
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-border px-3.5 py-2.5 text-sm text-fg;
+    @apply placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/40;
+    @apply transition-shadow duration-150;
+    background: rgb(var(--app-surface-2) / 0.76);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
+  }
+}

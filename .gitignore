@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-electron/
+release/
+release-v*/
+*.log
+.env
+.env.local
+focuslink-data/
+test-data/
+.DS_Store
