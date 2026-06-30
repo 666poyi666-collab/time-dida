@@ -1,7 +1,7 @@
 // 专注小窗 - FocusLink 核心交互入口
-// 三种模式：EXPANDED（默认）、COMPACT（宽 < 260px）、COLLAPSED（40px 高度横条）
+// 三种模式：EXPANDED（默认）、COMPACT（窄/矮尺寸）、COLLAPSED（40px 高度横条）
 // 透明无边框窗口，始终置顶，支持拖拽和主题同步
-// 暂停态统一使用红色（danger），专注态使用绿色（accent）
+// 暂停态统一使用橙色（warning），专注态使用绿色（accent）
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TimerSnapshot, AppSettings } from '@shared/types';
 import { formatDuration } from '../lib/time';
@@ -35,11 +35,11 @@ const STATE_LABEL: Record<string, string> = {
   stopping: '结束中',
 };
 
-// 暂停态统一红色（danger），专注态绿色（accent）
+// 暂停态统一橙色（warning），专注态绿色（accent）
 const STATE_DOT: Record<string, string> = {
   idle: 'bg-fg-subtle',
   running: 'state-dot-running',
-  paused: 'bg-danger',
+  paused: 'bg-warning',
   finished: 'bg-success',
   stopping: 'bg-fg-subtle',
 };
@@ -47,7 +47,7 @@ const STATE_DOT: Record<string, string> = {
 const STATE_TEXT: Record<string, string> = {
   idle: 'text-fg-muted',
   running: 'text-accent',
-  paused: 'text-danger',
+  paused: 'text-warning',
   finished: 'text-success',
   stopping: 'text-fg-muted',
 };
@@ -123,7 +123,7 @@ export function MiniWindow() {
   const [, setNow] = useState(Date.now());
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [collapsed, setCollapsed] = useState(false);
-  const [containerWidth, setContainerWidth] = useState(300);
+  const [containerSize, setContainerSize] = useState({ width: 300, height: 132 });
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ─── 初始化设置 ──────────────────────────────────────────────
@@ -169,14 +169,16 @@ export function MiniWindow() {
     return () => unsub();
   }, []);
 
-  // ─── 容器宽度检测（EXPANDED vs COMPACT） ─────────────────────
+  // ─── 容器尺寸检测（固定模式：EXPANDED vs COMPACT） ───────────
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        const w = entry.contentRect.width;
-        if (w > 0) setContainerWidth(w);
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setContainerSize({ width, height });
+        }
       }
     });
     ro.observe(el);
@@ -205,8 +207,7 @@ export function MiniWindow() {
   const isRunning = state === 'running';
   const isPaused = state === 'paused';
 
-  const isCompact = !collapsed && containerWidth < 260;
-  const isExpanded = !collapsed && containerWidth >= 260;
+  const isCompact = !collapsed && (containerSize.width < 276 || containerSize.height < 112);
 
   // ─── 事件处理 ────────────────────────────────────────────────
   const handleToggle = useCallback(async (e: React.MouseEvent) => {
@@ -244,7 +245,7 @@ export function MiniWindow() {
     return (
       <div
         ref={containerRef}
-        className="glass motion-base flex h-full w-full items-center overflow-hidden rounded-lg border border-border/80 px-3 text-fg"
+        className="glass motion-base flex h-full w-full items-center overflow-hidden rounded-xl border border-border/80 px-3 text-fg"
         onDoubleClick={handleExpand}
         title="双击展开"
       >
@@ -253,7 +254,7 @@ export function MiniWindow() {
           <StateDot state={state} size="xs" />
           <span
             className={`timer-digit motion-digit text-sm font-bold tracking-tight ${
-              isPaused ? 'text-danger' : isRunning ? 'text-accent' : ''
+              isPaused ? 'text-warning' : isRunning ? 'text-accent' : ''
             }`}
           >
             {formatDuration(displayActive)}
@@ -287,34 +288,34 @@ export function MiniWindow() {
     return (
       <div
         ref={containerRef}
-        className="glass motion-base flex h-full w-full items-center gap-2 overflow-hidden rounded-lg border border-border/80 px-3 text-fg"
+        className="glass motion-base flex h-full w-full items-center justify-between gap-2 overflow-hidden rounded-xl border border-border/80 px-3 text-fg"
       >
-        <div className="flex min-w-0 flex-none items-center gap-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <StateDot state={state} />
           <div className="min-w-0">
             <span
               className={`timer-digit motion-digit block text-base font-bold leading-none ${
-                isPaused ? 'text-danger' : isRunning ? 'text-accent' : ''
+                isPaused ? 'text-warning' : isRunning ? 'text-accent' : ''
               }`}
             >
               {formatDuration(displayActive)}
             </span>
-            <span className="block max-w-[54px] truncate text-[10px] leading-tight text-fg-subtle">
+            <span className="block truncate text-[10px] leading-tight text-fg-subtle">
               {currentTaskTitle ?? (state === 'idle' ? '准备开始' : '未关联任务')}
             </span>
           </div>
         </div>
 
-        <div className="flex flex-none items-center gap-0.5">
+        <div className="flex shrink-0 items-center gap-1">
           <button
-            className="no-drag motion-press rounded-md bg-bg-subtle/70 p-1 text-fg-muted hover:bg-accent/10 hover:text-accent"
+            className="no-drag motion-press rounded-lg bg-bg-subtle/80 p-1.5 text-fg-muted hover:bg-accent/10 hover:text-accent"
             onClick={handleToggle}
             title={state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始'}
           >
             {state === 'running' ? <Pause size={13} /> : <Play size={13} />}
           </button>
           <button
-            className="no-drag motion-press rounded-md bg-bg-subtle/70 p-1 text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:opacity-30"
+            className="no-drag motion-press rounded-lg bg-bg-subtle/80 p-1.5 text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:opacity-30"
             onClick={handleStop}
             disabled={state === 'idle' || state === 'finished'}
             title="结束"
@@ -331,7 +332,7 @@ export function MiniWindow() {
   return (
     <div
       ref={containerRef}
-      className="glass motion-base relative h-full w-full overflow-hidden rounded-lg border border-border/80 p-3 text-fg"
+      className="glass motion-base relative h-full w-full overflow-hidden rounded-2xl border border-border/80 p-3 text-fg"
     >
       {/* 顶部状态行：状态点 + 状态标签 + 操作按钮 */}
       <div className="flex items-center gap-1.5">
@@ -372,7 +373,7 @@ export function MiniWindow() {
       <div className="mt-2 flex flex-col items-center gap-0.5">
         <span
           className={`timer-digit motion-digit text-[26px] font-bold leading-none ${
-            isPaused ? 'text-danger' : isRunning ? 'text-accent' : ''
+            isPaused ? 'text-warning' : isRunning ? 'text-accent' : ''
           }`}
         >
           {formatDuration(displayActive)}
@@ -397,17 +398,17 @@ export function MiniWindow() {
           </span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-[9px] font-semibold text-danger">当前暂停</span>
+          <span className="text-[9px] font-semibold text-warning">当前暂停</span>
           <span
             className={`timer-digit motion-digit text-[11px] font-bold ${
-              isPaused ? 'text-danger' : 'text-fg-subtle'
+              isPaused ? 'text-warning' : 'text-fg-subtle'
             }`}
           >
             {formatDuration(isPaused ? currentPauseMs : 0)}
           </span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-[9px] font-semibold text-danger/80">累计暂停</span>
+          <span className="text-[9px] font-semibold text-warning/85">累计暂停</span>
           <span className="timer-digit motion-digit text-[11px] font-bold text-fg-muted">
             {formatDuration(cumulativePauseMs)}
           </span>

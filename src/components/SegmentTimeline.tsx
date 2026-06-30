@@ -1,4 +1,4 @@
-// Segment 时间线 - 用真实 pauseEvents 构建混合时间线，暂停片段用红色
+// Segment 时间线 - 用真实 pauseEvents 构建混合时间线，暂停片段用橙色
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link2, Merge, Clock, Coffee, Play } from 'lucide-react';
@@ -112,7 +112,7 @@ export function SegmentTimeline() {
             const duration = getDisplayDuration(item);
             const isSelected = isFocus && selected.has(item.id);
 
-            // 颜色：专注绿色（accent），暂停红色（danger）
+            // 颜色：专注绿色（accent），暂停橙色（warning）
             const dotBorderCls = isFocus
               ? item.isActive
                 ? 'border-accent bg-accent'
@@ -120,31 +120,31 @@ export function SegmentTimeline() {
                   ? 'border-accent/35 bg-bg-card'
                   : 'border-accent/45 bg-bg-card'
               : item.isActive
-                ? 'border-danger bg-danger'
-                : 'border-danger/40 bg-bg-card';
+                ? 'border-warning bg-warning'
+                : 'border-warning/40 bg-bg-card';
             const dotInnerCls = isFocus
               ? item.isActive
                 ? 'bg-white'
                 : 'bg-accent/55'
               : item.isActive
                 ? 'bg-white'
-                : 'bg-danger/55';
+                : 'bg-warning/55';
 
             const rowBorderCls = isSelected
               ? 'border-accent bg-accent/5'
               : item.isActive
                 ? isFocus
                   ? 'border-accent/35 bg-accent/5 shadow-soft'
-                  : 'border-danger/40 bg-danger/10 shadow-soft'
+                  : 'border-warning/40 bg-warning/10 shadow-soft'
                 : isFocus
                   ? 'border-border bg-bg-card/85 hover:bg-bg-subtle/55'
-                  : 'border-danger/20 bg-danger/5 hover:bg-danger/10';
+                  : 'border-warning/20 bg-warning/5 hover:bg-warning/10';
 
             const chipCls = isFocus
               ? 'status-chip border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] text-accent'
-              : 'status-chip border-danger/25 bg-danger/10 px-2 py-0.5 text-[10px] text-danger';
+              : 'status-chip border-warning/25 bg-warning/10 px-2 py-0.5 text-[10px] text-warning';
 
-            const titleColorCls = isFocus ? 'text-fg' : 'text-danger';
+            const titleColorCls = isFocus ? 'text-fg' : 'text-warning';
 
             return (
               <motion.div
@@ -164,7 +164,7 @@ export function SegmentTimeline() {
                 <div
                   className={`mt-1 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 ${dotBorderCls} ${
                     item.isActive ? 'ring-2 ring-offset-1 ring-offset-bg-card' : ''
-                  } ${isFocus ? 'ring-accent/30' : 'ring-danger/30'}`}
+                  } ${isFocus ? 'ring-accent/30' : 'ring-warning/30'}`}
                 >
                   <span className={`h-1.5 w-1.5 rounded-full ${dotInnerCls}`} />
                 </div>
@@ -175,7 +175,7 @@ export function SegmentTimeline() {
                     </span>
                     <span
                       className={`timer-digit motion-digit flex-shrink-0 text-xs ${
-                        isFocus ? 'text-fg-muted' : 'text-danger/80'
+                        isFocus ? 'text-fg-muted' : 'text-warning/80'
                       }`}
                     >
                       {formatDuration(duration)}
@@ -191,7 +191,7 @@ export function SegmentTimeline() {
                         {isFocus ? (
                           <Play size={9} className="text-accent" />
                         ) : (
-                          <Coffee size={9} className="text-danger" />
+                          <Coffee size={9} className="text-warning" />
                         )}
                       </span>
                     ) : item.endedAt ? (

@@ -190,7 +190,7 @@ export default function App() {
   const effectiveLeft = leftWidth ?? null;
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-bg-base text-fg antialiased">
+    <div className="flex h-screen w-screen flex-col bg-bg-base text-fg antialiased surface-grid">
       {/* 标题栏 */}
       <header
         className="relative flex items-center justify-between border-b border-border/80 bg-bg-card/95 px-4 py-2.5 shadow-soft backdrop-blur-xl select-none"
@@ -251,10 +251,13 @@ export default function App() {
       {/* 主体 */}
       <main className="relative flex-1 overflow-hidden">
         {view === 'timer' && (
-          <div ref={containerRef} className="flex h-full w-full min-w-0 overflow-hidden bg-bg-base">
+          <div
+            ref={containerRef}
+            className="flex h-full w-full min-w-0 overflow-hidden bg-bg-base/95"
+          >
             {/* 左侧计时区 */}
             <div
-              className="flex flex-col overflow-y-auto p-5"
+              className="flex flex-col overflow-y-auto px-5 py-4"
               style={{
                 width:
                   effectiveLeft ??
@@ -263,7 +266,7 @@ export default function App() {
                 minWidth: LEFT_PANE_MIN,
                 flexShrink: 0,
                 background:
-                  'linear-gradient(180deg, rgb(var(--app-bg) / 1), rgb(var(--app-surface-2) / 0.54))',
+                  'linear-gradient(180deg, rgb(var(--app-bg) / 0.98), rgb(var(--app-surface-2) / 0.46))',
               }}
             >
               <TimerPanel />
@@ -276,7 +279,7 @@ export default function App() {
             <div
               onMouseDown={onMouseDown}
               onDoubleClick={onDoubleClick}
-              className={`group motion-base relative z-10 flex-shrink-0 cursor-col-resize ${isDividerDragging ? 'bg-accent/[0.08]' : 'hover:bg-bg-subtle/70'}`}
+              className={`group motion-base relative z-10 flex-shrink-0 cursor-col-resize ${isDividerDragging ? 'bg-accent/[0.06]' : 'hover:bg-bg-subtle/55'}`}
               style={{ width: PANE_DIVIDER_WIDTH }}
               title="拖动调整左右宽度，双击恢复默认"
             >
@@ -299,15 +302,15 @@ export default function App() {
                 }}
               />
               <div
-                className={`motion-base absolute left-1/2 top-1/2 flex h-8 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-bg-card shadow-soft group-hover:border-accent/40 group-hover:text-accent group-hover:opacity-100 ${isDividerDragging ? 'border-accent/55 text-accent opacity-100' : 'border-border text-fg-subtle opacity-70'}`}
+                className={`motion-base absolute left-1/2 top-1/2 flex h-9 w-3 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-bg-card/95 shadow-soft group-hover:border-accent/40 group-hover:text-accent group-hover:opacity-100 ${isDividerDragging ? 'border-accent/55 text-accent opacity-100 shadow-glow' : 'border-border text-fg-subtle opacity-70'}`}
               >
-                <GripVertical size={13} />
+                <GripVertical size={11} />
               </div>
             </div>
 
             {/* 右侧任务区 */}
             <div
-              className="flex-1 overflow-y-auto border-l border-border/70 p-5"
+              className="flex-1 overflow-y-auto border-l border-border/60 px-5 py-4"
               style={{
                 minWidth: RIGHT_PANE_MIN,
                 background:

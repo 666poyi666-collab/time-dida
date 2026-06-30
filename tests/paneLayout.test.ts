@@ -13,7 +13,7 @@ describe('pane layout constraints', () => {
   it('allows dragging the divider to the right until the left pane max is reached', () => {
     const containerWidth = 1400;
 
-    expect(clampLeftPaneWidth(containerWidth, 720)).toBe(LEFT_PANE_MAX);
+    expect(clampLeftPaneWidth(containerWidth, 640)).toBe(LEFT_PANE_MAX);
   });
 
   it('allows dragging the divider to the left until the left pane min is reached', () => {
@@ -23,7 +23,7 @@ describe('pane layout constraints', () => {
   });
 
   it('preserves the right pane minimum by clamping oversized saved widths', () => {
-    const containerWidth = 960;
+    const containerWidth = 860;
     const width = clampLeftPaneWidth(containerWidth, 860);
 
     expect(width).toBe(containerWidth - RIGHT_PANE_MIN - PANE_DIVIDER_WIDTH);

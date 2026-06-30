@@ -75,8 +75,8 @@ function StateBadge({ state }: { state: string }) {
     },
     paused: {
       label: '已暂停',
-      dotCls: 'bg-danger',
-      pillCls: 'border-danger/25 bg-danger/10 text-danger',
+      dotCls: 'bg-warning',
+      pillCls: 'border-warning/25 bg-warning/10 text-warning',
     },
     finished: {
       label: '已结束',
@@ -109,7 +109,7 @@ function MinuteRhythmBar({ state, minuteRhythmSec }: { state: string; minuteRhyt
   const isPaused = state === 'paused';
   const isRunning = state === 'running';
   const pct = (minuteRhythmSec / 60) * 100;
-  const barCls = isPaused ? 'bg-danger' : 'bg-accent';
+  const barCls = isPaused ? 'bg-warning' : 'bg-accent';
 
   return (
     <div className="w-full">
@@ -437,7 +437,7 @@ export function TimerPanel() {
           {state === 'paused' && (
             <motion.div
               key="pulse-paused"
-              className="pointer-events-none absolute inset-0 bg-danger/[0.04]"
+              className="pointer-events-none absolute inset-0 bg-warning/[0.05]"
               initial={{ opacity: 0 }}
               animate={{ opacity: [0.14, 0.26, 0.14] }}
               exit={{ opacity: 0 }}
@@ -454,7 +454,7 @@ export function TimerPanel() {
             </span>
             <div
               className={`mt-2 timer-digit motion-digit text-[68px] font-bold leading-none ${
-                state === 'paused' ? 'text-danger' : 'text-fg'
+                state === 'paused' ? 'text-warning' : 'text-fg'
               }`}
             >
               {formatDurationPadded(currentSegmentMs)}
@@ -469,7 +469,7 @@ export function TimerPanel() {
           <div
             className={`motion-state-bg flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-soft ${
               state === 'paused'
-                ? 'border-danger/20 bg-danger/10 text-danger'
+                ? 'border-warning/25 bg-warning/10 text-warning'
                 : 'border-accent/20 bg-accent/10 text-accent'
             }`}
           >
@@ -502,7 +502,7 @@ export function TimerPanel() {
             label="累计暂停"
             value={formatDuration(cumulativePauseMs)}
             icon={<Coffee size={11} />}
-            tone={state === 'paused' ? 'danger' : 'neutral'}
+            tone={state === 'paused' ? 'warning' : 'neutral'}
           />
           <CumStat
             label="总历时"

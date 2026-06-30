@@ -740,7 +740,7 @@ function TaskTreeItem({
     <>
       <div
         className={`
-          group motion-base relative flex items-center gap-2 rounded-xl p-2.5
+          group motion-base relative flex items-center gap-2 rounded-xl px-2.5 py-2
           ${
             isParent
               ? 'border border-border bg-bg-card/95 shadow-soft hover:border-border-strong/70 hover:bg-bg-subtle/65'
@@ -753,7 +753,7 @@ function TaskTreeItem({
           isParent
             ? { marginLeft: 0 }
             : {
-                marginLeft: depth * 18,
+                marginLeft: depth * 16,
                 borderLeftWidth: '2px',
                 borderLeftColor: isHighlighted
                   ? 'rgb(var(--accent) / 0.6)'
@@ -762,24 +762,26 @@ function TaskTreeItem({
         }
       >
         {/* 折叠/展开按钮 */}
-        <button
-          className="motion-base flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-fg-subtle hover:bg-bg-elevated hover:text-fg"
-          onClick={() => hasChildren && onToggleCollapse(task.id)}
-          title={hasChildren ? (isCollapsed ? '展开子任务' : '收起子任务') : ''}
-        >
-          {hasChildren ? (
-            isCollapsed ? (
+        {hasChildren ? (
+          <button
+            className="motion-base flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-fg-subtle hover:bg-bg-elevated hover:text-fg"
+            onClick={() => onToggleCollapse(task.id)}
+            title={isCollapsed ? '展开子任务' : '收起子任务'}
+          >
+            {isCollapsed ? (
               <ChevronRight size={14} />
             ) : (
               <ChevronDown size={14} />
-            )
-          ) : (
+            )}
+          </button>
+        ) : (
+          <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center">
             <span className="block h-1.5 w-1.5 rounded-full bg-fg-subtle/30" />
-          )}
-        </button>
+          </span>
+        )}
 
         <div
-          className={`motion-state-bg flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/70 text-fg-subtle'}`}
+          className={`motion-state-bg flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/60 text-fg-subtle'}`}
         >
           {hasChildren ? (
             <ListTree size={13} />

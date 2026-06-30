@@ -462,7 +462,7 @@ export function SettingsPanel() {
                   className="btn-ghost text-xs"
                   onClick={() => {
                     window.focuslink.mini.reset();
-                    addToast('已恢复默认大小 300×132', 'success');
+                    addToast('已恢复默认大小 320×144', 'success');
                   }}
                 >
                   恢复默认大小
@@ -487,11 +487,12 @@ export function SettingsPanel() {
                           <button
                             className="btn-outline min-w-[180px] justify-between font-mono text-xs"
                             onClick={() => captureKey(key)}
+                            title={settings.hotkeys[key]}
                           >
                             {capturing === key ? (
                               <span className="text-accent">按下组合键...</span>
                             ) : (
-                              <span>{settings.hotkeys[key]}</span>
+                              <span>{formatHotkey(settings.hotkeys[key])}</span>
                             )}
                           </button>
                           <HotkeyStatusBadge state={status} />
@@ -515,9 +516,9 @@ export function SettingsPanel() {
                           }`}
                         >
                           {status.tone === 'ok'
-                            ? `当前生效：${activeAccelerator ?? settings.hotkeys[key]}`
+                            ? `当前生效：${formatHotkey(activeAccelerator ?? settings.hotkeys[key])}`
                             : activeDiffers
-                              ? `当前实际生效：${activeAccelerator}，设置值尚未接管`
+                              ? `当前实际生效：${formatHotkey(activeAccelerator)}，设置值尚未接管`
                               : (status.title ?? '当前快捷键尚未注册成功')}
                         </p>
                       </div>
@@ -1055,6 +1056,14 @@ function normalizeKey(key: string): string | null {
     ArrowRight: 'Right',
   };
   return map[key] ?? null;
+}
+
+function formatHotkey(accelerator: string | null): string {
+  if (!accelerator) return '未注册';
+  return accelerator
+    .split('+')
+    .map((part) => (part === 'CommandOrControl' ? 'Ctrl' : part === 'Return' ? 'Enter' : part))
+    .join(' + ');
 }
 
 // ============ CLI 诊断面板 ============

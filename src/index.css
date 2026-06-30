@@ -11,21 +11,21 @@
 @layer base {
   :root {
     /* FocusLink tokens adapted from the dashboard kit: quiet surfaces, border-led depth, green product accent. */
-    --background: #f7f9fb;
+    --background: #f5f7fa;
     --foreground: #111827;
     --card: #ffffff;
     --card-foreground: #111827;
-    --muted: #eef2f6;
+    --muted: #eef2f5;
     --muted-foreground: #667085;
-    --border-token: #e4e9f0;
-    --input-token: #dfe6ee;
+    --border-token: #e3e8ef;
+    --input-token: #dce3ec;
     --primary: #10b981;
     --primary-foreground: #ffffff;
     --primary-soft: #dff8ec;
     --accent-token: #e9f8f1;
     --accent-foreground-token: #05734f;
     --ring-token: #31c48d;
-    --radius: 12px;
+    --radius: 16px;
 
     /* Motion tokens — 统一节奏，禁止组件各自乱写 transition。
        原则：轻、稳、顺；优先 transform/opacity；禁止 bounce；最长 260ms。 */
@@ -38,18 +38,18 @@
     --scale-hover: 1.02;
     --scale-active: 0.98;
 
-    --app-bg: 247 249 251;
+    --app-bg: 245 247 250;
     --app-surface: 255 255 255;
-    --app-surface-2: 241 245 249;
+    --app-surface-2: 240 244 248;
     --app-elevated: 255 255 255;
     --app-overlay: 15 23 42 / 0.34;
     --app-text: 17 24 39;
     --app-muted: 71 84 103;
     --app-subtle: 118 132 151;
     --app-inverse: 255 255 255;
-    --app-border: 226 233 240;
-    --app-border-strong: 202 213 226;
-    --app-border-subtle: 239 244 248;
+    --app-border: 224 231 239;
+    --app-border-strong: 198 209 222;
+    --app-border-subtle: 237 242 247;
     --app-accent: 16 185 129;
     --app-accent-hover: 5 150 105;
     --app-accent-soft: 16 185 129 / 0.12;
@@ -58,13 +58,13 @@
     --app-warning: 245 158 11;
     --app-danger: 239 68 68;
     --app-info: 14 165 233;
-    --radius-sm: 7px;
-    --radius-md: 9px;
-    --radius-lg: 12px;
-    --radius-xl: 16px;
+    --radius-sm: 8px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
     --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.04);
-    --shadow-md: 0 10px 26px -22px rgb(16 24 40 / 0.35);
-    --shadow-lg: 0 22px 56px -40px rgb(16 24 40 / 0.38);
+    --shadow-md: 0 10px 26px -24px rgb(16 24 40 / 0.34);
+    --shadow-lg: 0 20px 52px -42px rgb(16 24 40 / 0.36);
     --shadow-glow:
       0 0 0 1px rgb(var(--app-accent) / 0.14), 0 18px 44px -30px rgb(var(--app-accent) / 0.45);
 
@@ -88,14 +88,14 @@
   }
 
   .light {
-    --background: #f7f9fb;
+    --background: #f5f7fa;
     --foreground: #111827;
     --card: #ffffff;
     --card-foreground: #111827;
-    --muted: #eef2f6;
+    --muted: #eef2f5;
     --muted-foreground: #667085;
-    --border-token: #e4e9f0;
-    --input-token: #dfe6ee;
+    --border-token: #e3e8ef;
+    --input-token: #dce3ec;
     --primary: #10b981;
     --primary-foreground: #ffffff;
     --primary-soft: #dff8ec;
@@ -103,17 +103,17 @@
     --accent-foreground-token: #05734f;
     --ring-token: #31c48d;
 
-    --app-bg: 247 249 251;
+    --app-bg: 245 247 250;
     --app-surface: 255 255 255;
-    --app-surface-2: 241 245 249;
+    --app-surface-2: 240 244 248;
     --app-elevated: 255 255 255;
     --app-overlay: 15 23 42 / 0.36;
     --app-text: 17 24 39;
     --app-muted: 71 84 103;
     --app-subtle: 118 132 151;
-    --app-border: 226 233 240;
-    --app-border-strong: 202 213 226;
-    --app-border-subtle: 239 244 248;
+    --app-border: 224 231 239;
+    --app-border-strong: 198 209 222;
+    --app-border-subtle: 237 242 247;
     --app-accent: 16 185 129;
     --app-accent-hover: 5 150 105;
     --app-accent-soft: 16 185 129 / 0.12;
@@ -262,7 +262,8 @@
     -moz-osx-font-smoothing: grayscale;
     user-select: none;
     overflow: hidden;
-    background: rgb(var(--app-bg));
+    background:
+      linear-gradient(180deg, rgb(var(--app-bg)) 0%, rgb(var(--app-surface-2) / 0.62) 100%);
     letter-spacing: 0;
   }
 
@@ -291,12 +292,12 @@
 
 @layer components {
   .glass {
-    background: rgb(var(--bg-card) / 0.9);
-    backdrop-filter: blur(18px) saturate(1.15);
-    -webkit-backdrop-filter: blur(18px) saturate(1.15);
+    background: rgb(var(--bg-card) / 0.94);
+    backdrop-filter: blur(16px) saturate(1.08);
+    -webkit-backdrop-filter: blur(16px) saturate(1.08);
     box-shadow:
-      var(--shadow-lg),
-      inset 0 1px 0 rgb(255 255 255 / 0.42);
+      0 1px 0 rgb(255 255 255 / 0.58) inset,
+      var(--shadow-md);
   }
 
   .timer-digit {
@@ -315,15 +316,15 @@
 
   .pause-glow {
     box-shadow:
-      0 0 0 1px rgb(var(--danger) / 0.2),
-      0 20px 54px -38px rgb(var(--danger) / 0.4);
+      0 0 0 1px rgb(var(--warning) / 0.2),
+      0 20px 54px -38px rgb(var(--warning) / 0.34);
   }
 
   .surface-grid {
     background-image:
-      linear-gradient(rgb(var(--accent) / 0.045) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(var(--accent) / 0.035) 1px, transparent 1px);
-    background-size: 22px 22px;
+      linear-gradient(rgb(var(--app-border-strong) / 0.2) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(var(--app-border-strong) / 0.14) 1px, transparent 1px);
+    background-size: 28px 28px;
   }
 
   .btn {
@@ -361,10 +362,11 @@
   }
 
   .card {
-    @apply rounded-xl border border-border;
-    background: rgb(var(--app-surface) / 0.94);
+    @apply border border-border;
+    border-radius: var(--radius-xl);
+    background: rgb(var(--app-surface) / 0.96);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.56) inset,
+      0 1px 0 rgb(255 255 255 / 0.64) inset,
       var(--shadow-md);
     transition:
       border-color var(--motion-normal) var(--ease-out),
@@ -372,15 +374,16 @@
   }
 
   .input {
-    @apply w-full rounded-xl border border-border px-3.5 py-2.5 text-sm text-fg;
+    @apply w-full border border-border px-3.5 py-2.5 text-sm text-fg;
     @apply placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/45;
+    border-radius: var(--radius-lg);
     transition:
       border-color var(--motion-fast) var(--ease-out),
       box-shadow var(--motion-normal) var(--ease-out),
       background-color var(--motion-fast) var(--ease-out);
     min-height: 40px;
-    background: rgb(var(--app-surface) / 0.92);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.46);
+    background: rgb(var(--app-surface) / 0.94);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.52);
   }
 
   .app-section {

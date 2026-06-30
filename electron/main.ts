@@ -4,7 +4,7 @@ import { app, BrowserWindow, shell, powerMonitor, Tray, ipcMain, screen } from '
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from './logger.js';
-import { initDatabase, closeDatabase } from './db/index.js';
+import { initDatabase, closeDatabase, listSegments } from './db/index.js';
 import { TimerManager } from './timer/manager.js';
 import { createTray, destroyTray } from './tray.js';
 import { registerIpc, setTimerForHotkeys } from './ipc.js';
@@ -18,7 +18,8 @@ import {
   type HotkeyHandlers,
 } from './hotkeys.js';
 import type { TimerSnapshot } from '@shared/types';
-import { APP_COMMIT, APP_BUILD_TIME, APP_RELEASE_DIR } from '@shared/version';
+import { APP_VERSION, APP_COMMIT, APP_BUILD_TIME, APP_RELEASE_DIR } from '@shared/version';
+import { enqueueSessionSync, runPending } from './sync/syncService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -30,6 +31,7 @@ let tray: Tray | null = null;
 let isQuitting = false;
 // 上次计时器状态，用于检测状态转换触发小窗自动显示/隐藏
 let lastTimerState: TimerSnapshot['state'] | null = null;
+const autoSyncSessions = new Set<string>();
 
 // ============ 单实例锁 ============
 const gotLock = app.requestSingleInstanceLock();
@@ -48,6 +50,26 @@ if (!gotLock) {
 const isDev = !app.isPackaged;
 function devUrl(): string {
   return process.env['VITE_DEV_SERVER_URL'] || 'http://localhost:5174';
+}
+
+const MINI_SIZE_PRESETS = [
+  { width: 260, height: 88 },
+  { width: 320, height: 144 },
+  { width: 420, height: 184 },
+] as const;
+const MINI_COLLAPSED_HEIGHT = 40;
+
+function snapMiniWindowSize(width: number, height: number): { width: number; height: number } {
+  let best: { width: number; height: number } = MINI_SIZE_PRESETS[1];
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const preset of MINI_SIZE_PRESETS) {
+    const score = Math.abs(width - preset.width) * 1.1 + Math.abs(height - preset.height) * 1.8;
+    if (score < bestScore) {
+      best = preset;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 function createMainWindow(): BrowserWindow {
@@ -133,19 +155,23 @@ function createMainWindow(): BrowserWindow {
 function createMiniWindow(): BrowserWindow {
   const settings = getSettings();
   const cfg = settings.miniWindow;
-  // 小窗尺寸限制：最小 240×88，默认 300×132，最大 520×240
-  const MIN_W = 240;
-  const MIN_H = 88;
-  const MAX_W = 520;
-  const MAX_H = 240;
-  const DEFAULT_W = 300;
-  const DEFAULT_H = 132;
-  const collapsedHeight = 40;
+  // 小窗固定尺寸：紧凑 260×88，标准 320×144，展开 420×184；收起 40px 高。
+  const MIN_W = MINI_SIZE_PRESETS[0].width;
+  const MIN_H = MINI_COLLAPSED_HEIGHT;
+  const MAX_W = MINI_SIZE_PRESETS[2].width;
+  const MAX_H = MINI_SIZE_PRESETS[2].height;
+  const DEFAULT_W = MINI_SIZE_PRESETS[1].width;
+  const DEFAULT_H = MINI_SIZE_PRESETS[1].height;
 
   // 启动时校验保存的尺寸是否合理，不合理则恢复默认
   let initWidth = cfg.width && cfg.width >= MIN_W && cfg.width <= MAX_W ? cfg.width : DEFAULT_W;
   let initHeight =
     cfg.height && cfg.height >= MIN_H && cfg.height <= MAX_H ? cfg.height : DEFAULT_H;
+  if (!cfg.collapsed) {
+    const snapped = snapMiniWindowSize(initWidth, initHeight);
+    initWidth = snapped.width;
+    initHeight = snapped.height;
+  }
   let initX = cfg.x;
   let initY = cfg.y;
   // 校验位置是否在屏幕内（避免上次保存位置已不在任何屏幕）
@@ -168,7 +194,7 @@ function createMiniWindow(): BrowserWindow {
       initY = null;
     }
   }
-  const useHeight = cfg.collapsed ? collapsedHeight : initHeight;
+  const useHeight = cfg.collapsed ? MINI_COLLAPSED_HEIGHT : initHeight;
 
   const opts: Electron.BrowserWindowConstructorOptions = {
     width: initWidth,
@@ -220,12 +246,23 @@ function createMiniWindow(): BrowserWindow {
 
   // 节流保存窗口位置和大小
   let saveTimer: NodeJS.Timeout | null = null;
+  let applyingSnap = false;
   const scheduleSave = () => {
+    if (applyingSnap) return;
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       if (!miniWindow || miniWindow.isDestroyed()) return;
       const cur = getSettings();
-      const bounds = miniWindow.getBounds();
+      let bounds = miniWindow.getBounds();
+      if (!cur.miniWindow.collapsed) {
+        const snapped = snapMiniWindowSize(bounds.width, bounds.height);
+        if (snapped.width !== bounds.width || snapped.height !== bounds.height) {
+          applyingSnap = true;
+          miniWindow.setBounds({ ...bounds, width: snapped.width, height: snapped.height }, false);
+          applyingSnap = false;
+          bounds = miniWindow.getBounds();
+        }
+      }
       // 收起时不保存高度（避免下次启动也是收起高度）
       const saveHeight = cur.miniWindow.collapsed ? cur.miniWindow.height : bounds.height;
       const saveWidth = bounds.width;
@@ -267,9 +304,8 @@ function collapseMiniWindow(): void {
   const cur = getSettings();
   if (cur.miniWindow.collapsed) return;
   const bounds = miniWindow.getBounds();
-  const collapsedHeight = 40;
   miniWindow.setBounds(
-    { x: bounds.x, y: bounds.y, width: bounds.width, height: collapsedHeight },
+    { x: bounds.x, y: bounds.y, width: bounds.width, height: MINI_COLLAPSED_HEIGHT },
     false,
   );
   updateSettings({ miniWindow: { ...cur.miniWindow, collapsed: true } });
@@ -282,9 +318,11 @@ function expandMiniWindow(): void {
   const cur = getSettings();
   if (!cur.miniWindow.collapsed) return;
   const bounds = miniWindow.getBounds();
-  const restoreH =
-    cur.miniWindow.height >= 88 && cur.miniWindow.height <= 240 ? cur.miniWindow.height : 132;
-  miniWindow.setBounds({ x: bounds.x, y: bounds.y, width: bounds.width, height: restoreH }, false);
+  const restore = snapMiniWindowSize(cur.miniWindow.width, cur.miniWindow.height);
+  miniWindow.setBounds(
+    { x: bounds.x, y: bounds.y, width: restore.width, height: restore.height },
+    false,
+  );
   updateSettings({ miniWindow: { ...cur.miniWindow, collapsed: false } });
   logger.info('main', 'mini window expanded (no animation)');
 }
@@ -296,18 +334,18 @@ function resetMiniWindow(): void {
   updateSettings({
     miniWindow: {
       ...cur.miniWindow,
-      width: 300,
-      height: 132,
+      width: MINI_SIZE_PRESETS[1].width,
+      height: MINI_SIZE_PRESETS[1].height,
       x: null,
       y: null,
       collapsed: false,
     },
   });
-  miniWindow.setSize(300, 132);
+  miniWindow.setSize(MINI_SIZE_PRESETS[1].width, MINI_SIZE_PRESETS[1].height);
   // 重置到屏幕右上角
   const primary = screen.getPrimaryDisplay();
   miniWindow.setPosition(
-    primary.workArea.x + primary.workArea.width - 300 - 24,
+    primary.workArea.x + primary.workArea.width - MINI_SIZE_PRESETS[1].width - 24,
     primary.workArea.y + 24,
   );
   logger.info('main', 'mini window reset to default');
@@ -379,10 +417,51 @@ function handleTimerStateTransition(snap: TimerSnapshot): void {
 
   // 专注结束：从 running/paused 转为 finished
   const justFinished = snap.state === 'finished' && (prev === 'running' || prev === 'paused');
+  if (justFinished && snap.sessionId) {
+    autoSyncFinishedSession(snap.sessionId);
+  }
   if (justFinished && cur.miniWindow.autoHideOnFocusEnd) {
     logger.info('main', 'focus finished, auto-hide mini window');
     hideMiniWindow();
   }
+}
+
+function autoSyncFinishedSession(sessionId: string): void {
+  if (autoSyncSessions.has(sessionId)) return;
+  const settings = getSettings();
+  if (settings.syncMode === 'local-only') {
+    logger.info('sync', 'auto sync skipped: local-only mode', { sessionId });
+    return;
+  }
+  const ticktickSegments = listSegments(sessionId).filter(
+    (seg) => seg.taskId && seg.taskSource === 'ticktick',
+  );
+  if (ticktickSegments.length === 0) {
+    logger.info('sync', 'auto sync skipped: no ticktick-linked segments', { sessionId });
+    return;
+  }
+
+  autoSyncSessions.add(sessionId);
+  try {
+    enqueueSessionSync(sessionId);
+  } catch (err) {
+    logger.warn('sync', 'auto enqueue failed', {
+      sessionId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return;
+  }
+
+  void runPending()
+    .then((result) => {
+      logger.info('sync', 'auto sync after focus finished', { sessionId, ...result });
+    })
+    .catch((err) => {
+      logger.warn('sync', 'auto sync run failed', {
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 }
 
 function getAllWindows(): BrowserWindow[] {
@@ -434,14 +513,14 @@ function ensureTrayAndHotkeys(): void {
 app.whenReady().then(() => {
   logger.init();
   // 版本标识：启动时输出完整版本信息，避免用户打开旧版
-  logger.info('main', 'FocusLink version: 0.2.1', {
+  logger.info('main', `FocusLink version: ${APP_VERSION}`, {
     commit: APP_COMMIT,
     buildTime: APP_BUILD_TIME,
     releaseDir: APP_RELEASE_DIR,
     electronVersion: app.getVersion(),
     isDev,
   });
-  console.log(`FocusLink version: 0.2.1`);
+  console.log(`FocusLink version: ${APP_VERSION}`);
   console.log(`commit: ${APP_COMMIT}`);
   console.log(`buildTime: ${APP_BUILD_TIME}`);
   console.log(`releaseDir: ${APP_RELEASE_DIR}`);

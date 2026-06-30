@@ -182,8 +182,11 @@ export function HistoryPanel() {
     if (!task || !target) return;
     setLinking(true);
     try {
+      let linkedSessionId: string | null = null;
       if (target.kind === 'segment') {
         await window.focuslink.timer.linkTask(target.segmentId, task.id, task.source, task.title);
+        linkedSessionId =
+          detail?.segments.find((seg) => seg.id === target.segmentId)?.sessionId ?? expanded;
         addToast(`已关联：${task.title}`, 'success');
       } else if (target.kind === 'session-default') {
         await window.focuslink.timer.linkSessionTask(
@@ -192,6 +195,7 @@ export function HistoryPanel() {
           task.source,
           task.title,
         );
+        linkedSessionId = target.sessionId;
         addToast(`已设为默认任务：${task.title}`, 'success');
       } else if (target.kind === 'batch-unlinked') {
         const count = await window.focuslink.timer.linkSegmentsBatch(
@@ -201,6 +205,7 @@ export function HistoryPanel() {
           task.title,
           true,
         );
+        linkedSessionId = target.sessionId;
         addToast(`已批量关联 ${count} 个未关联片段到：${task.title}`, 'success');
       } else if (target.kind === 'batch-all') {
         if (!confirm('确认把本次所有专注片段（含已关联）都改为同一任务？')) return;
@@ -211,10 +216,14 @@ export function HistoryPanel() {
           task.title,
           false,
         );
+        linkedSessionId = target.sessionId;
         addToast(`已把全部 ${count} 个片段关联到：${task.title}`, 'success');
       }
       // 刷新详情
       if (expanded) await reloadDetail(expanded);
+      if (task.source === 'ticktick' && linkedSessionId) {
+        void autoSyncLinkedSession(linkedSessionId);
+      }
     } catch (e) {
       addToast('关联失败：' + (e as Error).message, 'error');
     } finally {
@@ -272,6 +281,60 @@ export function HistoryPanel() {
       addToast('完成任务失败：' + (e as Error).message, 'error');
     } finally {
       setLinking(false);
+    }
+  };
+
+  const autoSyncLinkedSession = async (sessionId: string) => {
+    if (syncingSessionId) return;
+    setSyncingSessionId(sessionId);
+    setSessionSyncMeta((prev) => ({
+      ...prev,
+      [sessionId]: {
+        label: '同步中',
+        tone: 'warn',
+        title: '已关联滴答任务，正在写入任务备注',
+      },
+    }));
+    try {
+      await window.focuslink.sync.enqueueSession(sessionId);
+      const result = await window.focuslink.sync.runPending();
+      await refreshSyncQueue();
+      if (result.failed > 0) {
+        setSessionSyncMeta((prev) => ({
+          ...prev,
+          [sessionId]: {
+            label: `失败 ${result.failed} 条`,
+            tone: 'error',
+            title: '同步队列里有失败项，请检查设置、CLI 或网络',
+          },
+        }));
+        addToast('任务已关联，但自动同步失败；可在同步队列重试。', 'error');
+        return;
+      }
+      setSessionSyncMeta((prev) => ({
+        ...prev,
+        [sessionId]: {
+          label: result.succeeded > 0 ? `已同步 ${result.succeeded} 条` : '已入队',
+          tone: 'ok',
+          title: '滴答任务备注同步已完成或已被队列记录',
+        },
+      }));
+      if (result.succeeded > 0) {
+        addToast(`已自动同步 ${result.succeeded} 条专注记录到滴答备注`, 'success');
+      }
+    } catch (e) {
+      await refreshSyncQueue().catch(() => undefined);
+      setSessionSyncMeta((prev) => ({
+        ...prev,
+        [sessionId]: {
+          label: '同步失败',
+          tone: 'error',
+          title: (e as Error).message,
+        },
+      }));
+      addToast('自动同步失败：' + (e as Error).message, 'error');
+    } finally {
+      setSyncingSessionId(null);
     }
   };
 
@@ -501,120 +564,71 @@ export function HistoryPanel() {
                         transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
                         className="border-t border-border"
                       >
-                        <div className="space-y-4 p-4">
-                          {/* A. Session 总览：6 项统计 */}
-                          <SessionOverview detail={detail} />
-
-                          {/* B. 本地 / 云端状态 */}
-                          <LocalCloudStatePanel detail={detail} />
-
-                          {/* C. 批量任务关联区域 */}
-                          <BatchLinkPanel
-                            sessionId={session.id}
-                            segments={detail.segments}
-                            linking={linking}
-                            filter={segmentFilter[session.id] ?? 'all'}
-                            onFilterChange={(f) =>
-                              setSegmentFilter((prev) => ({ ...prev, [session.id]: f }))
-                            }
-                            onBatchUnlinked={() =>
-                              setPickerTarget({
-                                kind: 'batch-unlinked',
-                                sessionId: session.id,
-                                title: '把所有未关联片段关联到某任务',
-                              })
-                            }
-                            onBatchAll={() =>
-                              setPickerTarget({
-                                kind: 'batch-all',
-                                sessionId: session.id,
-                                title: '把所有片段改为同一任务',
-                              })
-                            }
+                        <div className="space-y-3.5 p-4">
+                          <SessionDetailHeader
+                            detail={detail}
+                            syncState={syncState}
+                            syncing={syncingSessionId === session.id}
                           />
 
-                          {/* Session 默认任务 */}
-                          <div className="rounded-lg border border-border bg-bg-subtle/30 p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="text-[10px] uppercase tracking-widest text-fg-subtle">
-                                  本次专注默认任务
-                                </p>
-                                <p className="mt-0.5 truncate text-sm font-medium text-fg">
-                                  {detail.session.defaultTaskTitle ?? '未设置'}
-                                </p>
-                              </div>
-                              <div className="flex shrink-0 items-center gap-1.5">
-                                <button
-                                  className="btn-outline motion-press text-[11px]"
-                                  disabled={linking}
-                                  onClick={() =>
-                                    setPickerTarget({
-                                      kind: 'session-default',
-                                      sessionId: session.id,
-                                      title: '设置本次专注默认任务',
-                                    })
-                                  }
-                                  title="设置/更换默认任务"
-                                >
-                                  <Star size={11} />
-                                  {detail.session.defaultTaskTitle ? '更换' : '设置'}
-                                </button>
-                                {detail.session.defaultTaskTitle && (
-                                  <button
-                                    className="btn-ghost motion-press text-[11px] text-rose-400 hover:bg-rose-500/10"
-                                    disabled={linking}
-                                    onClick={() => handleClearSessionDefault(session.id)}
-                                    title="清除默认任务"
-                                  >
-                                    <Unlink size={11} />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
+                          <HistoryTimelineList
+                            segments={detail.segments}
+                            pauses={detail.pauses}
+                            filter={segmentFilter[session.id] ?? 'all'}
+                            linking={linking}
+                            onLink={(segId, idx) =>
+                              setPickerTarget({
+                                kind: 'segment',
+                                segmentId: segId,
+                                title: `专注片段 ${idx + 1} 关联任务`,
+                              })
+                            }
+                            onClear={handleClearSegment}
+                            onComplete={handleCompleteTask}
+                            completedTaskIds={completedTaskIds}
+                          />
 
-                          {/* D. 专注片段列表（紧凑行） */}
-                          {detail.segments.length > 0 && (
-                            <CompactSegmentList
+                          <div className="grid gap-3 xl:grid-cols-[1fr_280px]">
+                            <BatchLinkPanel
+                              sessionId={session.id}
                               segments={detail.segments}
-                              filter={segmentFilter[session.id] ?? 'all'}
                               linking={linking}
-                              onLink={(segId, idx) =>
+                              filter={segmentFilter[session.id] ?? 'all'}
+                              onFilterChange={(f) =>
+                                setSegmentFilter((prev) => ({ ...prev, [session.id]: f }))
+                              }
+                              onBatchUnlinked={() =>
                                 setPickerTarget({
-                                  kind: 'segment',
-                                  segmentId: segId,
-                                  title: `专注片段 ${idx + 1} 关联任务`,
+                                  kind: 'batch-unlinked',
+                                  sessionId: session.id,
+                                  title: '把所有未关联片段关联到某任务',
                                 })
                               }
-                              onClear={handleClearSegment}
-                              onComplete={handleCompleteTask}
-                              completedTaskIds={completedTaskIds}
+                              onBatchAll={() =>
+                                setPickerTarget({
+                                  kind: 'batch-all',
+                                  sessionId: session.id,
+                                  title: '把所有片段改为同一任务',
+                                })
+                              }
                             />
-                          )}
 
-                          {/* E. 暂停记录（默认折叠） */}
-                          {detail.pauses.length > 0 && (
-                            <CollapsiblePauseList
-                              pauses={detail.pauses}
-                              expanded={!!pausesExpanded[session.id]}
-                              onToggle={() =>
-                                setPausesExpanded((prev) => ({
-                                  ...prev,
-                                  [session.id]: !prev[session.id],
-                                }))
+                            <SessionDefaultTaskCard
+                              detail={detail}
+                              linking={linking}
+                              onSet={() =>
+                                setPickerTarget({
+                                  kind: 'session-default',
+                                  sessionId: session.id,
+                                  title: '设置本次专注默认任务',
+                                })
                               }
-                              onLinkPause={() =>
-                                addToast(
-                                  '暂停片段关联任务需要扩展数据结构，当前版本暂不支持。',
-                                  'info',
-                                )
-                              }
+                              onClear={() => handleClearSessionDefault(session.id)}
                             />
-                          )}
+                          </div>
 
                           {/* 操作 */}
-                          <div className="flex items-center gap-2 pt-1">
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
                             <button
                               className="btn-primary motion-press text-xs"
                               disabled={linking || syncingSessionId === session.id}
@@ -729,6 +743,381 @@ function SessionSyncBadge({ state }: { state: SessionSyncState }) {
       <Icon size={10} />
       {state.label}
     </span>
+  );
+}
+
+function SessionDetailHeader({
+  detail,
+  syncState,
+  syncing,
+}: {
+  detail: SessionDetail;
+  syncState: SessionSyncState;
+  syncing: boolean;
+}) {
+  const { session, segments, pauses } = detail;
+  const linked = segments.filter((seg) => seg.taskId && seg.taskSource);
+  const ticktick = linked.filter((seg) => seg.taskSource === 'ticktick');
+  const unlinked = Math.max(0, segments.length - linked.length);
+  const ticktickMs = ticktick.reduce((sum, seg) => sum + seg.activeElapsedMs, 0);
+
+  return (
+    <div className="rounded-2xl border border-border bg-bg-subtle/35 px-3.5 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="timer-digit text-sm font-bold text-fg">
+              {formatDuration(session.activeElapsedMs)}
+            </p>
+            <span className="text-xs text-fg-subtle">
+              {formatDateTime(session.startedAt)}
+              {session.endedAt && ` - ${formatDateTime(session.endedAt)}`}
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <SessionSyncBadge
+              state={
+                syncing
+                  ? { label: '同步中', tone: 'warn', title: '正在处理同步队列' }
+                  : syncState
+              }
+            />
+            <TinyStatusChip
+              tone="ok"
+              icon={<CheckCircle2 size={10} />}
+              text="本地已保存"
+              title="Session、专注片段、暂停片段已写入本地 SQLite"
+            />
+            <TinyStatusChip
+              tone={ticktick.length > 0 ? 'ok' : 'muted'}
+              icon={<RefreshCw size={10} />}
+              text={`滴答备注 ${ticktick.length} 段 · ${formatDuration(ticktickMs)}`}
+              title="可通过 dida CLI / TickTick 通道写入任务备注的专注片段"
+            />
+            <TinyStatusChip
+              tone={unlinked > 0 ? 'warn' : 'muted'}
+              icon={<AlertCircle size={10} />}
+              text={unlinked > 0 ? `未关联 ${unlinked}` : '片段已关联'}
+            />
+          </div>
+        </div>
+        <div className="grid min-w-[260px] flex-1 grid-cols-3 gap-2 sm:flex-none">
+          <TinyStat label="总历时" value={formatDuration(session.wallElapsedMs)} />
+          <TinyStat label="暂停" value={formatDuration(session.pauseElapsedMs)} tone="warning" />
+          <TinyStat label="片段" value={`${segments.length}+${pauses.length}`} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TinyStatusChip({
+  tone,
+  icon,
+  text,
+  title,
+}: {
+  tone: 'ok' | 'warn' | 'muted';
+  icon: React.ReactNode;
+  text: string;
+  title?: string;
+}) {
+  const cls =
+    tone === 'ok'
+      ? 'border-success/20 bg-success/10 text-success'
+      : tone === 'warn'
+        ? 'border-warning/25 bg-warning/10 text-warning'
+        : 'border-border bg-bg-card/70 text-fg-subtle';
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium ${cls}`}
+    >
+      {icon}
+      {text}
+    </span>
+  );
+}
+
+function TinyStat({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: string;
+  tone?: 'default' | 'warning';
+}) {
+  return (
+    <div
+      className={`rounded-xl border px-2.5 py-2 ${
+        tone === 'warning' ? 'border-warning/25 bg-warning/10' : 'border-border bg-bg-card/75'
+      }`}
+    >
+      <div
+        className={`timer-digit text-xs font-bold ${
+          tone === 'warning' ? 'text-warning' : 'text-fg'
+        }`}
+      >
+        {value}
+      </div>
+      <div className="mt-0.5 text-[10px] font-medium text-fg-subtle">{label}</div>
+    </div>
+  );
+}
+
+function SessionDefaultTaskCard({
+  detail,
+  linking,
+  onSet,
+  onClear,
+}: {
+  detail: SessionDetail;
+  linking: boolean;
+  onSet: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-bg-card/82 p-3">
+      <div className="flex h-full flex-col justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-fg-subtle">
+            <Star size={11} className="text-accent" />
+            本次默认任务
+          </p>
+          <p className="mt-2 truncate text-sm font-semibold text-fg">
+            {detail.session.defaultTaskTitle ?? '未设置'}
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-fg-subtle">
+            继续专注时，新专注片段会沿用这个任务。
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button className="btn-outline motion-press text-[11px]" disabled={linking} onClick={onSet}>
+            <Star size={11} />
+            {detail.session.defaultTaskTitle ? '更换' : '设置'}
+          </button>
+          {detail.session.defaultTaskTitle && (
+            <button
+              className="btn-ghost motion-press text-[11px] text-rose-400 hover:bg-rose-500/10"
+              disabled={linking}
+              onClick={onClear}
+              title="清除默认任务"
+            >
+              <Unlink size={11} />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type HistoryTimelineItem =
+  | { type: 'focus'; segment: FocusSegment; index: number; startedAt: number }
+  | { type: 'pause'; pause: PauseEvent; index: number; startedAt: number };
+
+function HistoryTimelineList({
+  segments,
+  pauses,
+  filter,
+  linking,
+  onLink,
+  onClear,
+  onComplete,
+  completedTaskIds,
+}: {
+  segments: FocusSegment[];
+  pauses: PauseEvent[];
+  filter: SegmentFilter;
+  linking: boolean;
+  onLink: (segmentId: string, index: number) => void;
+  onClear: (segmentId: string) => void;
+  onComplete: (seg: FocusSegment) => void;
+  completedTaskIds: Set<string>;
+}) {
+  const segmentItems: HistoryTimelineItem[] = segments
+    .map((segment, index) => ({ type: 'focus' as const, segment, index, startedAt: segment.startedAt }))
+    .filter(({ segment }) => {
+      const hasTask = !!segment.taskId && !!segment.title;
+      if (filter === 'linked') return hasTask;
+      if (filter === 'unlinked') return !hasTask;
+      return true;
+    });
+  const pauseItems: HistoryTimelineItem[] =
+    filter === 'all'
+      ? pauses.map((pause, index) => ({
+          type: 'pause' as const,
+          pause,
+          index,
+          startedAt: pause.pauseStartedAt,
+        }))
+      : [];
+  const items = [...segmentItems, ...pauseItems].sort((a, b) => a.startedAt - b.startedAt);
+
+  return (
+    <div className="rounded-2xl border border-border bg-bg-card/90 p-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Activity size={14} className="text-accent" />
+          <p className="text-[11px] font-bold uppercase tracking-widest text-fg-muted">
+            片段时间线
+          </p>
+          <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+            专注 {segments.length}
+          </span>
+          {pauses.length > 0 && (
+            <span className="rounded-md bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+              暂停 {pauses.length}
+            </span>
+          )}
+        </div>
+        {filter !== 'all' && (
+          <span className="text-[10px] text-fg-subtle">暂停片段仅在“全部”视图展示</span>
+        )}
+      </div>
+
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border bg-bg-subtle/35 py-5 text-center text-[11px] text-fg-subtle">
+          当前筛选条件下没有片段
+        </div>
+      ) : (
+        <div className="relative space-y-1.5">
+          <div className="absolute bottom-2 left-[17px] top-2 w-px bg-border" />
+          {items.map((item) =>
+            item.type === 'focus' ? (
+              <HistoryFocusTimelineRow
+                key={item.segment.id}
+                seg={item.segment}
+                index={item.index}
+                linking={linking}
+                onLink={() => onLink(item.segment.id, item.index)}
+                onClear={() => onClear(item.segment.id)}
+                onComplete={() => onComplete(item.segment)}
+                isTaskCompleted={
+                  !!item.segment.taskId && completedTaskIds.has(item.segment.taskId)
+                }
+              />
+            ) : (
+              <HistoryPauseTimelineRow key={item.pause.id} pause={item.pause} index={item.index} />
+            ),
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HistoryFocusTimelineRow({
+  seg,
+  index,
+  linking,
+  onLink,
+  onClear,
+  onComplete,
+  isTaskCompleted,
+}: {
+  seg: FocusSegment;
+  index: number;
+  linking: boolean;
+  onLink: () => void;
+  onClear: () => void;
+  onComplete: () => void;
+  isTaskCompleted: boolean;
+}) {
+  const hasTask = !!seg.taskId && !!seg.title;
+  return (
+    <div
+      className={`relative flex gap-3 rounded-xl border px-3 py-2.5 ${
+        hasTask ? 'border-border bg-bg-subtle/35' : 'border-warning/35 bg-warning/5'
+      }`}
+    >
+      <div className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-accent">
+        <Activity size={14} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold text-fg">专注片段 {index + 1}</span>
+          <span className="timer-digit text-xs font-semibold text-accent">
+            {formatDuration(seg.activeElapsedMs)}
+          </span>
+          <span className="truncate text-[11px] text-fg-subtle">
+            {formatDateTime(seg.startedAt)}
+            {seg.endedAt && ` - ${formatDateTime(seg.endedAt)}`}
+          </span>
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          {hasTask ? (
+            <>
+              <Link2 size={11} className="text-accent" />
+              <span className="max-w-[360px] truncate text-[12px] font-medium text-fg">
+                {seg.title}
+              </span>
+              {seg.taskSource === 'ticktick' && (
+                <span className="rounded-md bg-success/10 px-1.5 py-0.5 text-[10px] text-success">
+                  滴答
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-[12px] font-medium text-warning">任务未关联</span>
+          )}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1 self-center">
+        <button
+          className="motion-press rounded-lg border border-border bg-bg-card/70 px-2 py-1 text-[10px] text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:opacity-40"
+          disabled={linking}
+          onClick={onLink}
+        >
+          {hasTask ? '更换' : '关联'}
+        </button>
+        {hasTask && (
+          <>
+            <button
+              className="motion-press rounded-lg border border-border bg-bg-card/70 px-2 py-1 text-[10px] text-rose-400 hover:bg-rose-500/10 disabled:opacity-40"
+              disabled={linking}
+              onClick={onClear}
+            >
+              清除
+            </button>
+            <button
+              className="motion-press rounded-lg border border-success/20 bg-success/10 px-2 py-1 text-[10px] text-success hover:bg-success/15 disabled:opacity-40"
+              disabled={linking || isTaskCompleted}
+              onClick={onComplete}
+              title="在任务来源中完成该任务"
+            >
+              {isTaskCompleted ? '已完成' : '完成'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HistoryPauseTimelineRow({ pause, index }: { pause: PauseEvent; index: number }) {
+  return (
+    <div className="relative flex gap-3 rounded-xl border border-warning/20 bg-warning/5 px-3 py-2.5">
+      <div className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-warning/25 bg-warning/10 text-warning">
+        <Coffee size={14} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold text-warning">暂停片段 {index + 1}</span>
+          <span className="timer-digit text-xs font-semibold text-warning">
+            {formatDuration(pause.durationMs)}
+          </span>
+          <span className="truncate text-[11px] text-fg-subtle">
+            {formatDateTime(pause.pauseStartedAt)}
+            {pause.pauseEndedAt ? ` - ${formatDateTime(pause.pauseEndedAt)}` : ' - 进行中'}
+          </span>
+        </div>
+        <p className="mt-1.5 text-[11px] text-fg-subtle">
+          暂停记录只计入休息时间，不参与任务同步。
+        </p>
+      </div>
+    </div>
   );
 }
 

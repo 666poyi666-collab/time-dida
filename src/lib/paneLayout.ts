@@ -1,8 +1,8 @@
-export const LEFT_PANE_MIN = 360;
-export const LEFT_PANE_MAX = 640;
-export const RIGHT_PANE_MIN = 420;
-export const PANE_DIVIDER_WIDTH = 8;
-export const DEFAULT_LEFT_PANE_RATIO = 0.52;
+export const LEFT_PANE_MIN = 320;
+export const LEFT_PANE_MAX = 560;
+export const RIGHT_PANE_MIN = 360;
+export const PANE_DIVIDER_WIDTH = 6;
+export const DEFAULT_LEFT_PANE_RATIO = 0.46;
 
 export interface PaneLayoutBounds {
   minLeft: number;
