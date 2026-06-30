@@ -10,35 +10,51 @@
 
 @layer base {
   :root {
-    /* FocusLink design tokens: compact, border-led desktop tool surfaces. */
-    --app-bg: 12 13 13;
-    --app-surface: 19 21 20;
-    --app-surface-2: 27 30 29;
-    --app-elevated: 35 38 37;
-    --app-overlay: 0 0 0 / 0.52;
-    --app-text: 235 239 246;
-    --app-muted: 163 170 166;
-    --app-subtle: 111 119 116;
+    /* FocusLink tokens adapted from the dashboard kit: quiet surfaces, border-led depth, green product accent. */
+    --background: #f7f9fb;
+    --foreground: #111827;
+    --card: #ffffff;
+    --card-foreground: #111827;
+    --muted: #eef2f6;
+    --muted-foreground: #667085;
+    --border-token: #e4e9f0;
+    --input-token: #dfe6ee;
+    --primary: #10b981;
+    --primary-foreground: #ffffff;
+    --primary-soft: #dff8ec;
+    --accent-token: #e9f8f1;
+    --accent-foreground-token: #05734f;
+    --ring-token: #31c48d;
+    --radius: 12px;
+
+    --app-bg: 247 249 251;
+    --app-surface: 255 255 255;
+    --app-surface-2: 241 245 249;
+    --app-elevated: 255 255 255;
+    --app-overlay: 15 23 42 / 0.34;
+    --app-text: 17 24 39;
+    --app-muted: 71 84 103;
+    --app-subtle: 118 132 151;
     --app-inverse: 255 255 255;
-    --app-border: 49 55 53;
-    --app-border-strong: 72 82 78;
-    --app-border-subtle: 32 37 35;
-    --app-accent: 0 101 253;
-    --app-accent-hover: 37 124 255;
-    --app-accent-soft: 0 101 253 / 0.12;
+    --app-border: 226 233 240;
+    --app-border-strong: 202 213 226;
+    --app-border-subtle: 239 244 248;
+    --app-accent: 16 185 129;
+    --app-accent-hover: 5 150 105;
+    --app-accent-soft: 16 185 129 / 0.12;
     --app-accent-fg: 255 255 255;
     --app-success: 16 185 129;
     --app-warning: 245 158 11;
-    --app-danger: 244 63 94;
+    --app-danger: 239 68 68;
     --app-info: 14 165 233;
-    --radius-sm: 5px;
-    --radius-md: 7px;
-    --radius-lg: 8px;
-    --radius-xl: 10px;
-    --shadow-sm: 0 1px 0 rgb(255 255 255 / 0.03);
-    --shadow-md: 0 8px 22px -18px rgb(0 0 0 / 0.45);
-    --shadow-lg: 0 18px 44px -26px rgb(0 0 0 / 0.65);
-    --shadow-glow: 0 0 28px -12px rgb(var(--app-accent) / 0.8);
+    --radius-sm: 7px;
+    --radius-md: 9px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.04);
+    --shadow-md: 0 10px 26px -22px rgb(16 24 40 / 0.35);
+    --shadow-lg: 0 22px 56px -40px rgb(16 24 40 / 0.38);
+    --shadow-glow: 0 0 0 1px rgb(var(--app-accent) / 0.14), 0 18px 44px -30px rgb(var(--app-accent) / 0.45);
 
     /* Backward-compatible aliases used by the current Tailwind config. */
     --bg-base: var(--app-bg);
@@ -52,7 +68,7 @@
     --border-strong: var(--app-border-strong);
     --accent: var(--app-accent);
     --accent-fg: var(--app-accent-fg);
-    --accent-muted: 0 38 107;
+    --accent-muted: 207 245 227;
     --success: var(--app-success);
     --warning: var(--app-warning);
     --danger: var(--app-danger);
@@ -60,26 +76,79 @@
   }
 
   .light {
-    --app-bg: 246 248 251;
+    --background: #f7f9fb;
+    --foreground: #111827;
+    --card: #ffffff;
+    --card-foreground: #111827;
+    --muted: #eef2f6;
+    --muted-foreground: #667085;
+    --border-token: #e4e9f0;
+    --input-token: #dfe6ee;
+    --primary: #10b981;
+    --primary-foreground: #ffffff;
+    --primary-soft: #dff8ec;
+    --accent-token: #e9f8f1;
+    --accent-foreground-token: #05734f;
+    --ring-token: #31c48d;
+
+    --app-bg: 247 249 251;
     --app-surface: 255 255 255;
-    --app-surface-2: 239 243 248;
-    --app-elevated: 250 252 255;
+    --app-surface-2: 241 245 249;
+    --app-elevated: 255 255 255;
     --app-overlay: 15 23 42 / 0.36;
-    --app-text: 14 18 24;
-    --app-muted: 72 84 100;
-    --app-subtle: 126 141 159;
-    --app-border: 225 230 238;
-    --app-border-strong: 205 214 226;
-    --app-border-subtle: 236 240 246;
-    --app-accent: 0 101 253;
-    --app-accent-hover: 0 87 218;
-    --app-accent-soft: 0 101 253 / 0.1;
+    --app-text: 17 24 39;
+    --app-muted: 71 84 103;
+    --app-subtle: 118 132 151;
+    --app-border: 226 233 240;
+    --app-border-strong: 202 213 226;
+    --app-border-subtle: 239 244 248;
+    --app-accent: 16 185 129;
+    --app-accent-hover: 5 150 105;
+    --app-accent-soft: 16 185 129 / 0.12;
     --app-accent-fg: 255 255 255;
-    --accent-muted: 212 226 255;
+    --accent-muted: 207 245 227;
+  }
+
+  .dark {
+    --background: #0e1115;
+    --foreground: #eff1f4;
+    --card: #12171d;
+    --card-foreground: #eff1f4;
+    --muted: #1c232b;
+    --muted-foreground: #a9b6c7;
+    --border-token: #2c3642;
+    --input-token: #333f4c;
+    --primary: #34d399;
+    --primary-foreground: #052e20;
+    --primary-soft: #063f2e;
+    --accent-token: #073f2f;
+    --accent-foreground-token: #a7f3d0;
+    --ring-token: #10b981;
+
+    --app-bg: 14 17 21;
+    --app-surface: 18 23 29;
+    --app-surface-2: 28 35 43;
+    --app-elevated: 35 43 52;
+    --app-overlay: 0 0 0 / 0.54;
+    --app-text: 239 241 244;
+    --app-muted: 169 182 199;
+    --app-subtle: 119 132 150;
+    --app-border: 44 54 66;
+    --app-border-strong: 67 80 96;
+    --app-border-subtle: 31 39 48;
+    --app-accent: 52 211 153;
+    --app-accent-hover: 110 231 183;
+    --app-accent-soft: 52 211 153 / 0.13;
+    --app-accent-fg: 5 46 32;
+    --accent-muted: 6 78 59;
+    --shadow-sm: 0 1px 0 rgb(255 255 255 / 0.03);
+    --shadow-md: 0 12px 30px -24px rgb(0 0 0 / 0.75);
+    --shadow-lg: 0 22px 60px -34px rgb(0 0 0 / 0.85);
+    --shadow-glow: 0 0 0 1px rgb(var(--app-accent) / 0.12), 0 20px 54px -34px rgb(var(--app-accent) / 0.5);
   }
 
   /* 主题色变体 */
-  .accent-indigo { --app-accent: 99 102 241; --app-accent-hover: 129 140 248; --accent: var(--app-accent); --accent-muted: 49 46 129; }
+  .accent-indigo { --app-accent: 16 185 129; --app-accent-hover: 5 150 105; --accent: var(--app-accent); --accent-muted: 207 245 227; }
   .accent-violet { --app-accent: 139 92 246; --app-accent-hover: 167 139 250; --accent: var(--app-accent); --accent-muted: 76 29 149; }
   .accent-emerald { --app-accent: 16 185 129; --app-accent-hover: 52 211 153; --accent: var(--app-accent); --accent-muted: 6 95 70; }
   .accent-rose { --app-accent: 244 63 94; --app-accent-hover: 251 113 133; --accent: var(--app-accent); --accent-muted: 159 18 57; }
@@ -87,11 +156,11 @@
   .accent-sky { --app-accent: 14 165 233; --app-accent-hover: 56 189 248; --accent: var(--app-accent); --accent-muted: 12 74 110; }
 
   .nav-active {
-    background: linear-gradient(180deg, rgb(var(--accent) / 0.18), rgb(var(--accent) / 0.1));
+    background: rgb(var(--accent) / 0.12);
     color: rgb(var(--accent));
     box-shadow:
-      inset 0 0 0 1px rgb(var(--accent) / 0.26),
-      0 8px 18px -14px rgb(var(--accent) / 0.9);
+      inset 0 0 0 1px rgb(var(--accent) / 0.18),
+      0 1px 2px rgb(var(--accent) / 0.08);
   }
 
   .progress-bar {
@@ -131,13 +200,12 @@
   }
 
   body {
-    font-family: 'Inter', 'Microsoft YaHei UI', 'HarmonyOS Sans SC', 'PingFang SC', system-ui, -apple-system, sans-serif;
+    font-family: 'Microsoft YaHei UI', 'Inter', 'Segoe UI', 'HarmonyOS Sans SC', 'PingFang SC', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     user-select: none;
     overflow: hidden;
-    background:
-      linear-gradient(135deg, rgb(12 13 13), rgb(15 18 17) 48%, rgb(18 16 18));
+    background: rgb(var(--app-bg));
     letter-spacing: 0;
   }
 
@@ -159,21 +227,21 @@
 
   /* focus-visible */
   :focus-visible {
-    outline: 2px solid rgb(var(--accent) / 0.5);
+    outline: 2px solid rgb(var(--accent) / 0.42);
     outline-offset: 2px;
   }
 }
 
 @layer components {
   .glass {
-    background: linear-gradient(180deg, rgb(var(--bg-card) / 0.94), rgb(var(--bg-base) / 0.9));
+    background: rgb(var(--bg-card) / 0.9);
     backdrop-filter: blur(18px) saturate(1.15);
     -webkit-backdrop-filter: blur(18px) saturate(1.15);
-    box-shadow: var(--shadow-lg), inset 0 1px 0 rgb(255 255 255 / 0.06);
+    box-shadow: var(--shadow-lg), inset 0 1px 0 rgb(255 255 255 / 0.42);
   }
 
   .timer-digit {
-    font-family: 'Inter Tight', 'Inter', ui-monospace, 'SFMono-Regular', monospace;
+    font-family: 'Inter Tight', 'Microsoft YaHei UI', 'Inter', ui-monospace, 'SFMono-Regular', monospace;
     font-variant-numeric: tabular-nums;
     font-feature-settings: 'tnum';
     letter-spacing: 0;
@@ -181,51 +249,66 @@
 
   .focus-glow {
     box-shadow:
-      0 0 0 1px rgb(var(--accent) / 0.15),
-      0 0 40px -8px rgb(var(--accent) / 0.3),
-      0 0 80px -16px rgb(var(--accent) / 0.15);
+      0 0 0 1px rgb(var(--accent) / 0.18),
+      0 20px 54px -38px rgb(var(--accent) / 0.42);
   }
 
   .surface-grid {
     background-image:
-      linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(255 255 255 / 0.03) 1px, transparent 1px),
-      linear-gradient(180deg, rgb(var(--accent) / 0.06), transparent 42%);
-    background-size: 18px 18px, 18px 18px, 100% 100%;
+      linear-gradient(rgb(var(--accent) / 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(var(--accent) / 0.035) 1px, transparent 1px);
+    background-size: 22px 22px;
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 font-medium transition-all duration-150;
+    @apply inline-flex items-center justify-center gap-2 font-semibold transition-all duration-150;
     @apply disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply btn rounded-lg px-5 py-2.5 text-sm bg-accent text-accent-fg;
+    @apply btn rounded-xl px-5 py-2.5 text-sm bg-accent text-accent-fg;
     @apply hover:brightness-110 active:scale-[0.98];
-    box-shadow: 0 10px 24px -16px rgb(var(--accent) / 0.95), inset 0 1px 0 rgb(255 255 255 / 0.16);
+    min-height: 40px;
+    box-shadow: 0 12px 24px -18px rgb(var(--accent) / 0.9), inset 0 1px 0 rgb(255 255 255 / 0.18);
   }
   .btn-ghost {
-    @apply btn rounded-lg px-3.5 py-2 text-sm text-fg-muted;
-    @apply hover:bg-bg-subtle hover:text-fg;
+    @apply btn rounded-xl px-3.5 py-2 text-sm text-fg-muted;
+    @apply hover:bg-bg-subtle hover:text-fg active:scale-[0.98];
   }
   .btn-outline {
-    @apply btn rounded-lg border border-border px-3.5 py-2 text-sm text-fg;
-    @apply hover:bg-bg-subtle;
-    background: linear-gradient(180deg, rgb(var(--app-surface-2) / 0.72), rgb(var(--app-surface) / 0.62));
+    @apply btn rounded-xl border border-border px-3.5 py-2 text-sm text-fg;
+    @apply hover:bg-bg-subtle active:scale-[0.98];
+    min-height: 40px;
+    background: rgb(var(--app-surface) / 0.82);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5);
   }
 
   .card {
-    @apply rounded-lg border border-border;
-    background: linear-gradient(180deg, rgb(var(--app-surface) / 0.96), rgb(var(--app-surface-2) / 0.74));
+    @apply rounded-xl border border-border;
+    background: rgb(var(--app-surface) / 0.94);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.04) inset,
-      0 18px 38px -34px rgb(0 0 0 / 0.8);
+      0 1px 0 rgb(255 255 255 / 0.56) inset,
+      var(--shadow-md);
   }
 
   .input {
-    @apply w-full rounded-lg border border-border px-3.5 py-2.5 text-sm text-fg;
-    @apply placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/40;
+    @apply w-full rounded-xl border border-border px-3.5 py-2.5 text-sm text-fg;
+    @apply placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/45;
     @apply transition-shadow duration-150;
-    background: rgb(var(--app-surface-2) / 0.76);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
+    min-height: 40px;
+    background: rgb(var(--app-surface) / 0.92);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.46);
+  }
+
+  .app-section {
+    @apply rounded-xl border border-border bg-bg-card/90;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .kbd-chip {
+    @apply inline-flex items-center rounded-md border border-border bg-bg-subtle px-1.5 py-0.5 text-[10px] font-semibold text-fg-muted;
+  }
+
+  .status-chip {
+    @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold;
   }
 }

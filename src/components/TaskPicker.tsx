@@ -179,25 +179,25 @@ export function TaskPicker({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 backdrop-blur-sm"
       onClick={handleCancel}
     >
       <div
-        className="card flex h-[72vh] w-[min(600px,92vw)] flex-col overflow-hidden rounded-xl"
+        className="card flex h-[72vh] w-[min(640px,92vw)] flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 标题栏 */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-accent/25 bg-accent/10 text-accent">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-accent">
               <ListTree size={15} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-fg">{title}</span>
+                <span className="text-sm font-bold text-fg">{title}</span>
                 <SourceBadge isLocal={isLocal} isCli={isCli} />
               </div>
-              <p className="mt-0.5 text-[10px] text-fg-subtle">{filteredTree.length} 个可选任务</p>
+              <p className="mt-0.5 text-[10px] font-medium text-fg-subtle">{filteredTree.length} 个可选任务</p>
             </div>
           </div>
           <button
@@ -217,12 +217,21 @@ export function TaskPicker({
               className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-subtle"
             />
             <input
-              className="input !rounded-lg !pl-10 !pr-3.5"
+              className="input !pl-10 !pr-9"
               placeholder="搜索任务标题..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               autoFocus
             />
+            {query && (
+              <button
+                className="absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-fg-subtle transition-colors hover:bg-bg-subtle hover:text-fg"
+                onClick={() => setQuery('')}
+                title="清除搜索"
+              >
+                <X size={13} />
+              </button>
+            )}
           </div>
           {!isLocal && ticktickProjects.length > 0 && (
             <select
@@ -241,14 +250,14 @@ export function TaskPicker({
         </div>
 
         {/* 任务树 */}
-        <div className="flex-1 space-y-1 overflow-y-auto p-4">
+        <div className="flex-1 space-y-1.5 overflow-y-auto p-4">
           {loading ? (
             <div className="flex h-full items-center justify-center text-fg-subtle">
               <Loader2 size={20} className="animate-spin" />
             </div>
           ) : filteredTree.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border bg-bg-card/30 text-fg-subtle">
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-bg-subtle">
+            <div className="flex h-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-bg-card/50 text-fg-subtle">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-bg-subtle">
                 <Search size={20} />
               </div>
               <p className="text-sm font-medium text-fg-muted">
@@ -282,7 +291,7 @@ export function TaskPicker({
         <div className="flex items-center justify-between border-t border-border px-5 py-3">
           <span className="min-w-0 text-xs text-fg-subtle">
             {pickedTask ? (
-              <span className="inline-flex max-w-[320px] items-center gap-1 rounded-md border border-accent/25 bg-accent/10 px-2 py-1 text-accent">
+              <span className="inline-flex max-w-[360px] items-center gap-1 rounded-full border border-accent/20 bg-accent/10 px-2.5 py-1 text-accent">
                 <Check size={11} />
                 <span className="truncate">{pickedTask.title}</span>
               </span>
@@ -338,14 +347,18 @@ function PickerItem({
   return (
     <>
       <div
-        className={`group relative flex cursor-pointer items-center gap-2 rounded-lg border p-2.5 transition-all duration-150 ${
-          isPicked ? 'selected-accent ring-1 ring-accent/40' : isParent ? 'border-border bg-bg-card/75 hover:bg-bg-subtle/65' : 'border-transparent bg-bg-card/20 hover:border-border hover:bg-bg-subtle/45'
+        className={`group relative flex cursor-pointer items-center gap-2 rounded-xl border p-2.5 transition-all duration-150 ${
+          isPicked
+            ? 'selected-accent ring-1 ring-accent/30'
+            : isParent
+              ? 'border-border bg-bg-card/90 hover:bg-bg-subtle/65'
+              : 'border-transparent bg-bg-card/25 hover:border-border hover:bg-bg-subtle/55'
         } ${isSelected ? 'border-accent/50' : ''}`}
         style={
           isParent
             ? { marginLeft: 0 }
             : {
-                marginLeft: depth * 20,
+                marginLeft: depth * 18,
                 borderLeftWidth: '2px',
                 borderLeftColor: 'rgb(var(--border))',
               }
@@ -356,7 +369,7 @@ function PickerItem({
         }}
       >
         <button
-          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-bg-elevated hover:text-fg"
+          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-fg-subtle transition-colors hover:bg-bg-elevated hover:text-fg"
           onClick={(e) => {
             e.stopPropagation();
             if (hasChildren) onToggleCollapse(task.id);
@@ -372,13 +385,13 @@ function PickerItem({
             <span className="block h-1 w-1 rounded-full bg-fg-subtle/30" />
           )}
         </button>
-        <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/70 text-fg-subtle'}`}>
+        <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/70 text-fg-subtle'}`}>
           {hasChildren ? <ListTree size={13} /> : isCompleted ? <CheckCircle size={14} className="text-success/80" /> : <Circle size={14} className="text-fg-subtle/50" />}
         </span>
         <div className="min-w-0 flex-1">
           <p
             className={`truncate ${
-              isParent ? 'text-[13px] font-semibold text-fg' : 'text-sm text-fg'
+              isParent ? 'text-[13px] font-bold text-fg' : 'text-[13px] text-fg'
             } ${isCompleted ? 'line-through opacity-50' : ''}`}
           >
             {task.title}
@@ -386,12 +399,12 @@ function PickerItem({
         </div>
         <div className="flex flex-shrink-0 items-center gap-1">
           {hasChildren && (
-            <span className="rounded-md bg-bg-subtle px-1.5 py-0.5 text-[10px] text-fg-subtle">
+            <span className="rounded-md bg-bg-subtle px-1.5 py-0.5 text-[10px] font-medium text-fg-subtle">
               {childCount}
             </span>
           )}
           {isPicked && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent">
+            <span className="inline-flex items-center gap-1 rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
               <Check size={10} /> 已选
             </span>
           )}
@@ -421,7 +434,7 @@ function PickerItem({
 
 function SourceBadge({ isLocal, isCli }: { isLocal: boolean; isCli: boolean }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-bg-subtle px-2 py-0.5 text-[10px] font-medium text-fg-muted">
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-bg-subtle px-2 py-0.5 text-[10px] font-semibold text-fg-muted">
       {isLocal ? <HardDrive size={10} /> : isCli ? <Terminal size={10} /> : <Cloud size={10} />}
       {isLocal ? '本地' : isCli ? 'dida CLI' : 'TickTick'}
     </span>

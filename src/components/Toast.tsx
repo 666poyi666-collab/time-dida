@@ -6,15 +6,15 @@ import { useStore } from '../store/useStore';
 const typeConfig = {
   success: {
     Icon: CheckCircle2,
-    iconColor: 'text-emerald-400',
-    border: 'border-l-emerald-400',
-    glow: 'shadow-[0_0_12px_rgba(52,211,153,0.12)]',
+    iconColor: 'text-success',
+    border: 'border-l-success',
+    glow: 'shadow-[0_0_12px_rgb(var(--success)/0.12)]',
   },
   error: {
     Icon: AlertCircle,
-    iconColor: 'text-rose-400',
-    border: 'border-l-rose-400',
-    glow: 'shadow-[0_0_12px_rgba(251,113,133,0.12)]',
+    iconColor: 'text-danger',
+    border: 'border-l-danger',
+    glow: 'shadow-[0_0_12px_rgb(var(--danger)/0.12)]',
   },
   info: {
     Icon: Info,

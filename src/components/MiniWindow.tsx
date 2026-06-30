@@ -35,16 +35,16 @@ const STATE_LABEL: Record<string, string> = {
 const STATE_DOT: Record<string, string> = {
   idle: 'bg-fg-subtle',
   running: 'state-dot-running',
-  paused: 'bg-amber-400',
-  finished: 'bg-emerald-400',
+  paused: 'bg-warning',
+  finished: 'bg-success',
   stopping: 'bg-fg-subtle',
 };
 
 const STATE_TEXT: Record<string, string> = {
   idle: 'text-fg-muted',
   running: 'text-accent',
-  paused: 'text-amber-400',
-  finished: 'text-emerald-400',
+  paused: 'text-warning',
+  finished: 'text-success',
   stopping: 'text-fg-muted',
 };
 

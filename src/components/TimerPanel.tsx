@@ -62,34 +62,34 @@ function StateBadge({ state }: { state: string }) {
     idle: {
       label: '未开始',
       dotCls: 'bg-fg-subtle',
-      pillCls: 'bg-bg-subtle text-fg-muted',
+      pillCls: 'border-border bg-bg-subtle text-fg-muted',
     },
     running: {
       label: '专注中',
       dotCls: 'bg-accent',
-      pillCls: 'bg-accent/15 text-accent',
+      pillCls: 'border-accent/20 bg-accent/10 text-accent',
       pulse: true,
     },
     paused: {
       label: '已暂停',
-      dotCls: 'bg-amber-400',
-      pillCls: 'bg-amber-500/15 text-amber-400',
+      dotCls: 'bg-warning',
+      pillCls: 'border-warning/25 bg-warning/10 text-warning',
     },
     finished: {
       label: '已结束',
-      dotCls: 'bg-emerald-400',
-      pillCls: 'bg-emerald-500/15 text-emerald-400',
+      dotCls: 'bg-success',
+      pillCls: 'border-success/25 bg-success/10 text-success',
     },
     stopping: {
       label: '结束中',
       dotCls: 'bg-fg-subtle',
-      pillCls: 'bg-accent/15 text-accent',
+      pillCls: 'border-accent/20 bg-accent/10 text-accent',
     },
   };
   const c = config[state] ?? config.idle;
 
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold ${c.pillCls}`}>
+    <span className={`status-chip ${c.pillCls}`}>
       <span className="relative flex h-1.5 w-1.5">
         {c.pulse && (
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
@@ -114,18 +114,18 @@ function TimeStat({
   tone?: 'accent' | 'warning' | 'info' | 'neutral';
 }) {
   const toneCls = {
-    accent: 'border-accent/35 bg-accent/10 text-accent',
+    accent: 'border-accent/25 bg-accent/10 text-accent',
     warning: 'border-warning/30 bg-warning/10 text-warning',
     info: 'border-info/30 bg-info/10 text-info',
-    neutral: 'border-border bg-bg-subtle/45 text-fg-subtle',
+    neutral: 'border-border bg-bg-card text-fg-subtle',
   }[tone];
   return (
-    <div className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${toneCls}`}>
+    <div className={`rounded-xl border px-3.5 py-3 text-left transition-colors ${toneCls}`}>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-bg-card/60">{icon}</span>
-        <span className="text-[10px] font-medium text-fg-subtle">{label}</span>
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-bg-card/80 shadow-soft">{icon}</span>
+        <span className="text-[10px] font-semibold text-fg-subtle">{label}</span>
       </div>
-      <div className="timer-digit text-lg font-semibold text-fg">{value}</div>
+      <div className="timer-digit text-lg font-bold text-fg">{value}</div>
     </div>
   );
 }
@@ -139,7 +139,7 @@ function FocusFlowLine({ state }: { state: string }) {
 
   return (
     <div className="w-full">
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-subtle">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-bg-subtle">
         <motion.div
           className={`h-full rounded-full ${isPaused ? 'bg-warning' : 'bg-accent'}`}
           initial={false}
@@ -148,8 +148,8 @@ function FocusFlowLine({ state }: { state: string }) {
         />
       </div>
       <div className="mt-1.5 flex items-center justify-between">
-        <span className="text-[11px] text-fg-subtle">无限正计时</span>
-        <span className="text-[11px] font-medium text-fg-muted">手动结束后保存</span>
+        <span className="text-[11px] font-medium text-fg-subtle">无限正计时</span>
+        <span className="text-[11px] font-semibold text-fg-muted">手动结束后保存</span>
       </div>
     </div>
   );
@@ -181,15 +181,17 @@ function TaskCard({
   onClear?: () => void;
 }) {
   return (
-    <div className="flex items-start gap-2.5 rounded-lg border border-border bg-bg-base/55 px-3.5 py-2.5">
-      <Link2 size={14} className="mt-0.5 flex-shrink-0 text-accent" />
+    <div className="app-section flex items-start gap-2.5 px-3.5 py-3">
+      <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+        <Link2 size={14} />
+      </span>
       <div className="min-w-0 flex-1">
-        <span className="text-[10px] font-semibold text-fg-subtle">{label}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">{label}</span>
         <p className="mt-0.5 truncate text-sm font-medium text-fg">{title}</p>
       </div>
       {onClear && (
         <button
-          className="rounded-md p-1 text-fg-subtle transition-colors hover:bg-bg-subtle hover:text-danger"
+          className="rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-danger/10 hover:text-danger"
           onClick={onClear}
           title="清除关联"
         >
@@ -212,12 +214,14 @@ function UnlinkedTaskCard({
 }) {
   return (
     <button
-      className="flex w-full items-center gap-2.5 rounded-lg border border-dashed border-border bg-bg-base/40 px-3.5 py-2.5 text-left transition-colors hover:border-accent/50 hover:bg-accent/5"
+      className="flex w-full items-center gap-2.5 rounded-xl border border-dashed border-border bg-bg-card/70 px-3.5 py-3 text-left transition-colors hover:border-accent/45 hover:bg-accent/5"
       onClick={onPick}
     >
-      <Link2 size={14} className="flex-shrink-0 text-fg-subtle" />
+      <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-bg-subtle text-fg-subtle">
+        <Link2 size={14} />
+      </span>
       <div className="min-w-0 flex-1">
-        <span className="text-[10px] font-semibold text-fg-subtle">{label}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">{label}</span>
         <p className="mt-0.5 text-sm text-fg-subtle">{emptyText}</p>
       </div>
       <Search size={12} className="flex-shrink-0 text-fg-subtle" />
@@ -377,11 +381,11 @@ export function TimerPanel() {
     : '快捷键加载中';
 
   return (
-    <div className="mx-auto flex w-full max-w-[520px] flex-col">
+    <div className="mx-auto flex w-full max-w-[560px] flex-col">
       {/* 状态与当前模式 */}
-      <div className="mb-5 flex items-center justify-between gap-3">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <StateBadge state={state} />
-        <span className="text-xs text-fg-subtle">
+        <span className="text-xs font-medium text-fg-subtle">
           {isIdle
             ? preSelectedTask
               ? '已选择即将专注任务'
@@ -392,16 +396,16 @@ export function TimerPanel() {
 
       {/* 大号计时器 */}
       <div
-        className={`relative overflow-hidden rounded-xl border border-border bg-bg-card/70 p-4 transition-all duration-500 ${
+        className={`card relative overflow-hidden p-5 transition-all duration-500 ${
           state === 'running' ? 'focus-glow' : ''
         }`}
       >
-        <div className="surface-grid pointer-events-none absolute inset-0 opacity-70" />
+        <div className="surface-grid pointer-events-none absolute inset-0 opacity-45" />
         <AnimatePresence>
           {state === 'running' && (
             <motion.div
               key="pulse"
-              className="pointer-events-none absolute inset-0 bg-accent/5"
+              className="pointer-events-none absolute inset-0 bg-accent/[0.035]"
               initial={{ opacity: 0 }}
               animate={{ opacity: [0.18, 0.36, 0.18] }}
               exit={{ opacity: 0 }}
@@ -411,17 +415,17 @@ export function TimerPanel() {
         </AnimatePresence>
         <div className="relative flex items-start justify-between gap-3">
           <div>
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-fg-subtle">Focus Ledger</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-fg-subtle">Focus Ledger</span>
             <div className="mt-2 flex items-end gap-2">
-              <span className="timer-digit text-[66px] font-bold leading-none text-fg tabular-nums">
+              <span className="timer-digit text-[64px] font-bold leading-none text-fg tabular-nums">
                 {formatDuration(activeMs)}
               </span>
             </div>
-            <span className="mt-2 block text-xs font-medium text-fg-subtle">
+            <span className="mt-2 block text-xs font-medium leading-relaxed text-fg-subtle">
               {isIdle ? '无限正计时，开始后手动结束保存' : state === 'paused' ? '专注已暂停，恢复后继续记录' : '当前有效专注时间'}
             </span>
           </div>
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-accent/25 bg-accent/10 text-accent shadow-soft">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-accent/20 bg-accent/10 text-accent shadow-soft">
             {state === 'paused' ? <Coffee size={22} /> : state === 'running' ? <Activity size={22} /> : <Clock3 size={22} />}
           </div>
         </div>
@@ -485,11 +489,13 @@ export function TimerPanel() {
       {isIdle && (
         <div className="mt-5 w-full space-y-2">
           {preSelectedTask ? (
-            <div className="space-y-2 rounded-lg border border-accent/40 bg-accent/5 p-3">
+            <div className="space-y-2 rounded-xl border border-accent/30 bg-accent/5 p-3.5">
               <div className="flex items-start gap-2.5">
-                <Link2 size={14} className="mt-0.5 flex-shrink-0 text-accent" />
+                <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                  <Link2 size={14} />
+                </span>
                 <div className="min-w-0 flex-1">
-                  <span className="text-[10px] font-semibold text-fg-subtle">即将专注任务</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">即将专注任务</span>
                   <p className="mt-0.5 truncate text-sm font-medium text-fg">{preSelectedTask.title}</p>
                 </div>
               </div>
@@ -524,7 +530,7 @@ export function TimerPanel() {
 
       {/* 控制按钮 */}
       <div className="mt-6 flex items-center gap-3">
-        <button className="btn-primary flex min-w-[164px] items-center justify-center gap-2" onClick={handleToggle}>
+        <button className="btn-primary flex min-w-[172px] items-center justify-center gap-2" onClick={handleToggle}>
           {state === 'running' ? <Pause size={16} /> : <Play size={16} />}
           {toggleLabel}
         </button>
@@ -539,9 +545,14 @@ export function TimerPanel() {
       </div>
 
       {/* 快捷键提示 */}
-      <p className="mt-4 text-[11px] text-fg-subtle">
-        {hotkeyHint}
-      </p>
+      <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[11px] text-fg-subtle">
+        <span className="font-medium text-fg-muted">快捷键</span>
+        {hotkeyHint.split(' · ').map((part) => (
+          <span key={part} className="kbd-chip">
+            {part}
+          </span>
+        ))}
+      </div>
 
       {/* TaskPicker 弹窗 */}
       {pickerMode && pickerConfig && (

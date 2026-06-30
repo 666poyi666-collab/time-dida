@@ -42,8 +42,8 @@ export default {
         info: 'rgb(var(--info) / <alpha-value>)',
       },
       fontFamily: {
-        sans: ['Inter', 'Microsoft YaHei UI', 'HarmonyOS Sans SC', 'PingFang SC', 'system-ui', 'sans-serif'],
-        mono: ['"Inter Tight"', 'JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        sans: ['Microsoft YaHei UI', 'Inter', 'Segoe UI', 'HarmonyOS Sans SC', 'PingFang SC', 'system-ui', 'sans-serif'],
+        mono: ['"Inter Tight"', 'Microsoft YaHei UI', 'Inter', 'JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       borderRadius: {
         sm: 'var(--radius-sm)',

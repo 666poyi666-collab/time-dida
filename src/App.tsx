@@ -178,38 +178,38 @@ export default function App() {
     <div className="flex h-screen w-screen flex-col bg-bg-base text-fg antialiased">
       {/* 标题栏 */}
       <header
-        className="relative flex items-center justify-between border-b border-border/80 bg-bg-card/90 px-4 py-2 shadow-soft backdrop-blur-xl select-none"
-        style={{ minHeight: 44 }}
+        className="relative flex items-center justify-between border-b border-border/80 bg-bg-card/95 px-4 py-2.5 shadow-soft backdrop-blur-xl select-none"
+        style={{ minHeight: 52 }}
       >
-        <div className="flex items-center gap-2.5">
+        <div className="flex min-w-[190px] items-center gap-2.5">
           <BrandMark state={snapshot?.state ?? 'idle'} />
           <div className="leading-tight">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold">FocusLink</span>
+              <span className="text-[15px] font-semibold tracking-normal">FocusLink</span>
               {snapshot && <StatePill state={snapshot.state} />}
             </div>
-            <p className="text-[10px] font-medium text-fg-subtle">Focus session ledger</p>
+            <p className="text-[10px] font-medium text-fg-subtle">Session task ledger</p>
           </div>
         </div>
 
         {/* 导航 */}
-        <nav className="flex items-center gap-0.5 rounded-lg border border-border bg-bg-subtle/70 p-0.5">
+        <nav className="flex items-center gap-1 rounded-xl border border-border bg-bg-subtle/70 p-1">
           <NavBtn active={view === 'timer'} onClick={() => setView('timer')} icon={<TimerIcon size={14} />} label="计时" />
           <NavBtn active={view === 'history'} onClick={() => setView('history')} icon={<HistoryIcon size={14} />} label="历史" />
           <NavBtn active={view === 'settings'} onClick={() => setView('settings')} icon={<SettingsIcon size={14} />} label="设置" />
         </nav>
 
         {/* 窗口控制按钮 */}
-        <div className="flex items-center gap-0.5">
+        <div className="flex min-w-[190px] items-center justify-end gap-1">
           <button
-            className="flex h-7 w-7 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
             onClick={() => window.focuslink.window.minimizeToTray()}
             title="最小化到托盘"
           >
             <Minus size={14} />
           </button>
           <button
-            className="flex h-7 w-7 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-rose-500/80 hover:text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger"
             onClick={() => window.focuslink.window.minimizeToTray()}
             title="关闭（保留在托盘）"
           >
@@ -221,16 +221,16 @@ export default function App() {
       {/* 主体 */}
       <main className="relative flex-1 overflow-hidden">
         {view === 'timer' && (
-          <div ref={containerRef} className="flex h-full w-full min-w-0 overflow-hidden">
+          <div ref={containerRef} className="flex h-full w-full min-w-0 overflow-hidden bg-bg-base">
             {/* 左侧计时区 */}
             <div
-              className="flex flex-col overflow-y-auto p-6"
+              className="flex flex-col overflow-y-auto p-5"
               style={{
                 width: effectiveLeft ?? `min(${Math.round(DEFAULT_LEFT_PANE_RATIO * 100)}%, ${LEFT_PANE_MAX}px)`,
                 maxWidth: `min(${LEFT_PANE_MAX}px, calc(100% - ${RIGHT_PANE_MIN + PANE_DIVIDER_WIDTH}px))`,
                 minWidth: LEFT_PANE_MIN,
                 flexShrink: 0,
-                background: 'linear-gradient(180deg, rgb(var(--app-surface) / 0.98), rgb(var(--app-bg) / 0.94))',
+                background: 'linear-gradient(180deg, rgb(var(--app-bg) / 1), rgb(var(--app-surface-2) / 0.54))',
               }}
             >
               <TimerPanel />
@@ -243,7 +243,7 @@ export default function App() {
             <div
               onMouseDown={onMouseDown}
               onDoubleClick={onDoubleClick}
-              className={`group relative z-10 flex-shrink-0 cursor-col-resize transition-all duration-150 ${isDividerDragging ? 'bg-accent/10' : ''}`}
+              className={`group relative z-10 flex-shrink-0 cursor-col-resize transition-colors duration-150 ${isDividerDragging ? 'bg-accent/[0.08]' : 'hover:bg-bg-subtle/70'}`}
               style={{ width: PANE_DIVIDER_WIDTH }}
               title="拖动调整左右宽度，双击恢复默认"
             >
@@ -251,29 +251,29 @@ export default function App() {
               <div
                 className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 rounded-full transition-all duration-150"
                 style={{
-                  background: 'rgb(var(--app-border))',
-                  opacity: isDividerDragging ? 0.95 : 0.6,
+                  background: isDividerDragging ? 'rgb(var(--app-accent))' : 'rgb(var(--app-border))',
+                  opacity: isDividerDragging ? 0.75 : 0.72,
                 }}
               />
               {/* 悬停高亮层 */}
               <div
-                className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full opacity-0 transition-all duration-150 group-hover:opacity-100"
+                className="absolute inset-y-4 left-1/2 w-px -translate-x-1/2 rounded-full opacity-0 transition-all duration-150 group-hover:opacity-100"
                 style={{
                   background: 'rgb(var(--app-accent))',
-                  boxShadow: '0 0 8px 1px rgb(var(--app-accent) / 0.45)',
+                  boxShadow: '0 0 0 1px rgb(var(--app-accent) / 0.16)',
                 }}
               />
-              <div className={`absolute left-1/2 top-1/2 flex h-9 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-lg border bg-bg-card shadow-soft transition-all duration-150 group-hover:border-accent/45 group-hover:text-accent group-hover:opacity-100 ${isDividerDragging ? 'border-accent/55 text-accent opacity-100' : 'border-border text-fg-subtle opacity-75'}`}>
-                <GripVertical size={16} />
+              <div className={`absolute left-1/2 top-1/2 flex h-8 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-bg-card shadow-soft transition-all duration-150 group-hover:border-accent/40 group-hover:text-accent group-hover:opacity-100 ${isDividerDragging ? 'border-accent/55 text-accent opacity-100' : 'border-border text-fg-subtle opacity-70'}`}>
+                <GripVertical size={13} />
               </div>
             </div>
 
             {/* 右侧任务区 */}
             <div
-              className="flex-1 overflow-y-auto border-l border-border/70 p-6"
+              className="flex-1 overflow-y-auto border-l border-border/70 p-5"
               style={{
                 minWidth: RIGHT_PANE_MIN,
-                background: 'linear-gradient(180deg, rgb(var(--app-bg) / 1), rgb(var(--app-surface) / 0.72))',
+                background: 'linear-gradient(180deg, rgb(var(--app-surface) / 0.72), rgb(var(--app-bg) / 1))',
               }}
             >
               <TaskPanel />
@@ -293,13 +293,13 @@ function BrandMark({ state }: { state: string }) {
   const running = state === 'running';
   return (
     <div
-      className={`relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl border border-accent/25 bg-accent/10 text-accent shadow-soft ${
+      className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-2xl border border-accent/20 bg-accent/10 text-accent shadow-soft ${
         running ? 'shadow-glow' : ''
       }`}
     >
-      <div className="absolute inset-x-1 top-1 h-px bg-white/25" />
+      <div className="absolute inset-x-1.5 top-1.5 h-px bg-white/45" />
       <Activity size={16} className="relative z-10" />
-      <span className={`absolute bottom-1 h-1 w-3 rounded-full bg-accent ${running ? 'animate-pulse' : 'opacity-60'}`} />
+      <span className={`absolute bottom-1.5 h-1 w-3 rounded-full bg-accent ${running ? 'animate-pulse' : 'opacity-60'}`} />
     </div>
   );
 }
@@ -314,7 +314,7 @@ function StatePill({ state }: { state: string }) {
           ? 'border-success/25 bg-success/10 text-success'
           : 'border-border bg-bg-subtle text-fg-muted';
   return (
-    <span className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${cls}`}>
+    <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${cls}`}>
       {stateLabel(state)}
     </span>
   );
@@ -334,10 +334,10 @@ function NavBtn({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-xs font-medium transition-all duration-200 ${
+      className={`flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-semibold transition-all duration-200 ${
         active
-          ? 'nav-active shadow-sm'
-          : 'text-fg-muted hover:text-fg hover:bg-bg-card/50'
+          ? 'nav-active'
+          : 'text-fg-muted hover:bg-bg-card/75 hover:text-fg'
       }`}
     >
       {icon}

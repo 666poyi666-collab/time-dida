@@ -21,6 +21,7 @@ import {
   ListTree,
   Star,
   Layers3,
+  X,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import type { Task, Project, SyncQueueItem } from '@shared/types';
@@ -320,16 +321,16 @@ export function TaskPanel() {
   );
 
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3.5">
       {/* 任务来源状态卡 */}
-      <div className="card p-3.5">
+      <div className="card p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div
-              className={`flex h-8 w-8 items-center justify-center rounded-md ${
+              className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
                 remoteConnected
-                  ? 'bg-accent/10 text-accent'
-                  : 'bg-bg-subtle text-fg-subtle'
+                  ? 'border-accent/20 bg-accent/10 text-accent'
+                  : 'border-border bg-bg-subtle text-fg-subtle'
               }`}
             >
               {isLocal ? (
@@ -343,12 +344,12 @@ export function TaskPanel() {
               )}
             </div>
             <div>
-              <p className="text-sm font-semibold leading-tight text-fg">
+              <p className="text-sm font-bold leading-tight text-fg">
                 {isLocal && '本地任务'}
                 {isCli && (remoteConnected ? 'dida CLI 已连接' : 'dida CLI 未连接')}
                 {isOAuth && (remoteConnected ? 'TickTick 已连接' : 'TickTick 未连接')}
               </p>
-              <p className="text-[11px] text-fg-subtle">
+              <p className="mt-0.5 text-[11px] font-medium text-fg-subtle">
                 {isLocal && '在设置页可切换为 dida CLI 或 TickTick OAuth'}
                 {isCli &&
                   (remoteConnected
@@ -371,7 +372,7 @@ export function TaskPanel() {
         </div>
 
         {cliError && (
-          <div className="mt-3 flex items-start gap-2 rounded-lg border border-danger/15 bg-danger/10 px-3.5 py-2.5">
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-danger/15 bg-danger/10 px-3.5 py-2.5">
             <AlertCircle size={14} className="mt-0.5 flex-shrink-0 text-danger/70" />
             <p className="text-xs leading-relaxed text-danger/80">{cliError}</p>
           </div>
@@ -413,12 +414,21 @@ export function TaskPanel() {
               className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-subtle"
             />
             <input
-              className="input !rounded-lg !pl-10 !pr-3.5"
+              className="input !pl-10 !pr-9"
               placeholder="搜索任务标题..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && isCli && handleSearch()}
             />
+            {query && (
+              <button
+                className="absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-fg-subtle transition-colors hover:bg-bg-subtle hover:text-fg"
+                onClick={() => setQuery('')}
+                title="清除搜索"
+              >
+                <X size={13} />
+              </button>
+            )}
           </div>
           {isCli && (
             <button
@@ -435,7 +445,7 @@ export function TaskPanel() {
 
         <div className="flex items-center justify-between">
           <button
-            className="flex items-center gap-1.5 rounded-md border border-border bg-bg-subtle px-3 py-1 text-[11px] font-medium text-fg-muted transition-colors hover:bg-bg-elevated hover:text-fg"
+            className="status-chip border-border bg-bg-card text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
             onClick={() => setShowCompleted((v) => !v)}
             title="默认隐藏已完成任务"
           >
@@ -443,7 +453,7 @@ export function TaskPanel() {
             {showCompleted ? '已显示已完成任务' : '已隐藏已完成任务'}
           </button>
           {completedHidden > 0 && !showCompleted && (
-            <span className="text-[11px] text-fg-subtle">
+            <span className="rounded-full bg-bg-subtle px-2.5 py-1 text-[11px] font-medium text-fg-subtle">
               已隐藏 {completedHidden} 个已完成
             </span>
           )}
@@ -472,10 +482,10 @@ export function TaskPanel() {
       </div>
 
       {/* 任务树列表 */}
-      <div className="flex-1 space-y-1 overflow-y-auto pr-0.5">
+      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
         {filteredTree.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border bg-bg-card/35 py-12 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-bg-subtle text-fg-subtle">
+          <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-bg-card/55 py-12 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-bg-subtle text-fg-subtle">
               <ListTree size={24} />
             </div>
             <div className="space-y-1">
@@ -623,12 +633,17 @@ function TaskMetric({
   title?: string;
 }) {
   return (
-    <div className={`rounded-lg border px-3 py-2 ${tone === 'accent' ? 'border-accent/30 bg-accent/10' : 'border-border bg-bg-card/55'}`} title={title}>
+    <div
+      className={`rounded-xl border px-3 py-2.5 ${
+        tone === 'accent' ? 'border-accent/25 bg-accent/10' : 'border-border bg-bg-card/80'
+      }`}
+      title={title}
+    >
       <div className="mb-1.5 flex items-center justify-between gap-2 text-fg-subtle">
         <span className={tone === 'accent' ? 'text-accent' : ''}>{icon}</span>
-        <span className="text-[10px] font-medium">{label}</span>
+        <span className="text-[10px] font-semibold">{label}</span>
       </div>
-      <div className="truncate text-xs font-semibold text-fg">{value}</div>
+      <div className="truncate text-xs font-bold text-fg">{value}</div>
     </div>
   );
 }
@@ -719,11 +734,11 @@ function TaskTreeItem({
     <>
       <div
         className={`
-          group relative flex items-center gap-2 rounded-lg p-2.5 transition-all duration-150
+          group relative flex items-center gap-2 rounded-xl p-2.5 transition-all duration-150
           ${
             isParent
-              ? 'border border-border bg-bg-card/85 shadow-soft hover:bg-bg-subtle/70'
-              : 'border border-transparent bg-bg-card/20 hover:border-border hover:bg-bg-subtle/45'
+              ? 'border border-border bg-bg-card/95 shadow-soft hover:border-border-strong/70 hover:bg-bg-subtle/65'
+              : 'border border-transparent bg-bg-card/25 hover:border-border hover:bg-bg-subtle/55'
           }
           ${isHighlighted ? 'selected-accent' : ''}
           ${isCompleted ? 'opacity-50' : ''}
@@ -732,17 +747,17 @@ function TaskTreeItem({
           isParent
             ? { marginLeft: 0 }
             : {
-                marginLeft: depth * 20,
+                marginLeft: depth * 18,
                 borderLeftWidth: '2px',
                 borderLeftColor: isHighlighted
                   ? 'rgb(var(--accent) / 0.6)'
-                  : 'rgb(var(--border))',
+                  : 'rgb(var(--border) / 0.85)',
               }
         }
       >
         {/* 折叠/展开按钮 */}
         <button
-          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-bg-elevated hover:text-fg"
+          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-fg-subtle transition-colors hover:bg-bg-elevated hover:text-fg"
           onClick={() => hasChildren && onToggleCollapse(task.id)}
           title={hasChildren ? (isCollapsed ? '展开子任务' : '收起子任务') : ''}
         >
@@ -753,17 +768,17 @@ function TaskTreeItem({
               <ChevronDown size={14} />
             )
           ) : (
-            <span className="block h-1 w-1 rounded-full bg-fg-subtle/30" />
+            <span className="block h-1.5 w-1.5 rounded-full bg-fg-subtle/30" />
           )}
         </button>
 
-        <div className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/70 text-fg-subtle'}`}>
+        <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/70 text-fg-subtle'}`}>
           {hasChildren ? <ListTree size={13} /> : <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />}
         </div>
 
         {/* 完成状态标记 */}
         <button
-          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-success/10 hover:text-success disabled:pointer-events-none"
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-fg-subtle transition-colors hover:bg-success/10 hover:text-success disabled:pointer-events-none"
           onClick={(e) => {
             e.stopPropagation();
             if (!isCompleted) onCompleteTask(task);
@@ -772,7 +787,7 @@ function TaskTreeItem({
           title={isCompleted ? '已完成' : '完成任务并同步到任务来源'}
         >
           {isCompleted ? (
-            <CheckCircle size={14} className="text-emerald-500/70" />
+            <CheckCircle size={14} className="text-success/75" />
           ) : (
             <Circle size={14} className="text-fg-subtle/50" />
           )}
@@ -782,7 +797,7 @@ function TaskTreeItem({
         <div className="min-w-0 flex-1">
           <p
             className={`truncate transition-colors ${
-              isParent ? 'text-[13px]' : 'text-sm'
+              isParent ? 'text-[13px]' : 'text-[13px]'
             } ${
               isCompleted
                 ? 'font-normal text-fg-subtle line-through decoration-fg-subtle/40'
@@ -793,9 +808,11 @@ function TaskTreeItem({
           >
             {task.title}
           </p>
-          <div className="mt-0.5 flex items-center gap-2 text-[10px] text-fg-subtle">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-fg-subtle">
             {task.dueDate && (
-              <span>{new Date(task.dueDate).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}</span>
+              <span className="rounded-md bg-bg-subtle px-1.5 py-px">
+                {new Date(task.dueDate).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}
+              </span>
             )}
             {hasChildren && (
               <span className="rounded-md bg-bg-subtle px-1.5 py-px text-fg-subtle">
@@ -819,12 +836,12 @@ function TaskTreeItem({
         {(isCurrentSegmentTask || isSessionDefaultTask) && (
           <div className="flex flex-shrink-0 items-center gap-1">
             {isCurrentSegmentTask && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent">
+              <span className="inline-flex items-center gap-1 rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
                 <Link2 size={10} /> 当前片段
               </span>
             )}
             {isSessionDefaultTask && !isCurrentSegmentTask && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+              <span className="inline-flex items-center gap-1 rounded-full border border-success/20 bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
                 <Star size={10} /> 本次默认
               </span>
             )}
@@ -834,7 +851,7 @@ function TaskTreeItem({
         {/* 操作按钮 - hover 时才显示 */}
         <div className="flex flex-shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
           <button
-            className="flex h-6 items-center gap-1 rounded-lg px-2 text-[11px] font-medium text-fg-subtle transition-colors hover:bg-accent/10 hover:text-accent"
+            className="flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-fg-subtle transition-colors hover:bg-accent/10 hover:text-accent"
             onClick={() => onLinkSegment(task)}
             title="关联到当前片段"
             disabled={!currentSegmentId}
@@ -843,7 +860,7 @@ function TaskTreeItem({
             片段
           </button>
           <button
-            className="flex h-6 items-center gap-1 rounded-lg px-2 text-[11px] font-medium text-fg-subtle transition-colors hover:bg-accent/10 hover:text-accent"
+            className="flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-fg-subtle transition-colors hover:bg-accent/10 hover:text-accent"
             onClick={() => onLinkSession(task)}
             title="设为会话默认任务"
           >
@@ -943,14 +960,18 @@ function SyncStatus() {
   return (
     <div className="card flex items-center justify-between p-3.5">
       <div className="flex min-w-0 items-center gap-2.5">
-        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-          hasProblem ? 'bg-danger/10 text-danger' : hasPending ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success'
+        <div className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
+          hasProblem
+            ? 'border-danger/20 bg-danger/10 text-danger'
+            : hasPending
+              ? 'border-warning/25 bg-warning/10 text-warning'
+              : 'border-success/20 bg-success/10 text-success'
         }`}>
           {hasProblem ? <AlertCircle size={15} /> : hasPending ? <RefreshCw size={15} /> : <CheckCircle2 size={15} />}
         </div>
         <div className="min-w-0">
-          <p className="truncate text-xs font-medium text-fg">{statusTitle}</p>
-          <p className="truncate text-[10px] text-fg-subtle">{statusSub}</p>
+          <p className="truncate text-xs font-bold text-fg">{statusTitle}</p>
+          <p className="mt-0.5 truncate text-[10px] font-medium text-fg-subtle">{statusSub}</p>
         </div>
       </div>
       <button

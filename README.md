@@ -38,8 +38,8 @@ Electron · React · TypeScript · Vite · SQLite (better-sqlite3) · Zustand ·
 ### 本机从哪里启动
 
 - 开发调试：在 `C:\Users\poyi\Desktop\time1` 执行 `npm run dev`
-- 当前新版安装包：`C:\Users\poyi\Desktop\time1\release-v016\FocusLink-0.1.6-x64.exe`
-- 当前新版免安装启动：`C:\Users\poyi\Desktop\time1\release-v016\win-unpacked\FocusLink.exe`
+- 当前新版安装包：`C:\Users\poyi\Desktop\time1\release-v017\FocusLink-0.1.7-x64.exe`
+- 当前新版免安装启动：`C:\Users\poyi\Desktop\time1\release-v017\win-unpacked\FocusLink.exe`
 
 ```bash
 # 安装依赖（含 better-sqlite3 原生模块编译）
@@ -76,6 +76,7 @@ npm test
 | `0.1.4` | `releases/v0.1.4/FocusLink-0.1.4-x64.exe` |
 | `0.1.5` | `releases/v0.1.5/FocusLink-0.1.5-x64.exe` |
 | `0.1.6` | `releases/v0.1.6/FocusLink-0.1.6-x64.exe` |
+| `0.1.7` | `releases/v0.1.7/FocusLink-0.1.7-x64.exe` |
 
 ## 全局快捷键
 

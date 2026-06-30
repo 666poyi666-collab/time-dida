@@ -1,7 +1,7 @@
 export const LEFT_PANE_MIN = 360;
 export const LEFT_PANE_MAX = 640;
 export const RIGHT_PANE_MIN = 420;
-export const PANE_DIVIDER_WIDTH = 10;
+export const PANE_DIVIDER_WIDTH = 8;
 export const DEFAULT_LEFT_PANE_RATIO = 0.52;
 
 export interface PaneLayoutBounds {

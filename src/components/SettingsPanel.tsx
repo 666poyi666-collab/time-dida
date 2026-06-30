@@ -13,9 +13,9 @@ const HOTKEY_LABELS: Record<keyof AppSettings['hotkeys'], string> = {
 };
 
 const ACCENTS = [
-  { id: 'indigo', label: '靛蓝', color: '#6366f1' },
+  { id: 'indigo', label: '薄荷绿', color: '#10b981' },
   { id: 'violet', label: '紫', color: '#8b5cf6' },
-  { id: 'emerald', label: '翠绿', color: '#10b981' },
+  { id: 'emerald', label: '深绿', color: '#059669' },
   { id: 'rose', label: '玫瑰', color: '#f43f5e' },
   { id: 'amber', label: '琥珀', color: '#f59e0b' },
   { id: 'sky', label: '天蓝', color: '#0ea5e9' },
@@ -312,7 +312,7 @@ export function SettingsPanel() {
                         key={a.id}
                         onClick={() => update({ accentColor: a.id })}
                         className={`h-7 w-7 rounded-full border-2 transition-transform ${
-                          settings.accentColor === a.id ? 'scale-110 border-white' : 'border-transparent'
+                          settings.accentColor === a.id ? 'scale-110 border-fg shadow-soft' : 'border-transparent'
                         }`}
                         style={{ backgroundColor: a.color }}
                         title={a.label}
