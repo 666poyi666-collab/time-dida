@@ -80,3 +80,15 @@ export function getMinuteRhythmSec(snapshot: TimerSnapshot | null, now: number):
   const ms = getMainDisplayMs(snapshot, now);
   return Math.floor(ms / 1000) % 60;
 }
+
+/**
+ * 当前任务标题（统一来源）
+ * 优先级：snapshot.currentTaskTitle → 当前 segment 的 title → session 默认任务 → null
+ */
+export function getCurrentTaskTitle(snapshot: TimerSnapshot | null): string | null {
+  if (!snapshot) return null;
+  if (snapshot.currentTaskTitle) return snapshot.currentTaskTitle;
+  const seg = snapshot.segments?.find((s) => s.id === snapshot.currentSegmentId);
+  if (seg?.title) return seg.title;
+  return null;
+}

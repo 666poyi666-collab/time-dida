@@ -1,6 +1,7 @@
 // 专注小窗 - FocusLink 核心交互入口
 // 三种模式：EXPANDED（默认）、COMPACT（宽 < 260px）、COLLAPSED（40px 高度横条）
 // 透明无边框窗口，始终置顶，支持拖拽和主题同步
+// 暂停态统一使用红色（danger），专注态使用绿色（accent）
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TimerSnapshot, AppSettings } from '@shared/types';
 import { formatDuration } from '../lib/time';
@@ -10,6 +11,8 @@ import {
   getCurrentPauseDisplayMs,
   getCumulativeActiveMs,
   getCumulativePauseMs,
+  getWallElapsedMs,
+  getCurrentTaskTitle,
 } from '../lib/timerSelectors';
 import { Play, Pause, Square, ChevronDown, ChevronUp, Maximize2, Link2 } from 'lucide-react';
 
@@ -32,10 +35,11 @@ const STATE_LABEL: Record<string, string> = {
   stopping: '结束中',
 };
 
+// 暂停态统一红色（danger），专注态绿色（accent）
 const STATE_DOT: Record<string, string> = {
   idle: 'bg-fg-subtle',
   running: 'state-dot-running',
-  paused: 'bg-warning',
+  paused: 'bg-danger',
   finished: 'bg-success',
   stopping: 'bg-fg-subtle',
 };
@@ -43,7 +47,7 @@ const STATE_DOT: Record<string, string> = {
 const STATE_TEXT: Record<string, string> = {
   idle: 'text-fg-muted',
   running: 'text-accent',
-  paused: 'text-warning',
+  paused: 'text-danger',
   finished: 'text-success',
   stopping: 'text-fg-muted',
 };
@@ -112,7 +116,7 @@ function ProgressBar({ compact = false }: { compact?: boolean }) {
     </div>
   );
 }
-// ─── MiniWindow 主组件// ─── MiniWindow 主组件 ──────────────────────────────────────────
+// ─── MiniWindow 主组件 ──────────────────────────────────────────
 
 export function MiniWindow() {
   const [snapshot, setSnapshot] = useState<TimerSnapshot | null>(null);
@@ -190,13 +194,14 @@ export function MiniWindow() {
   // ─── 派生状态 ────────────────────────────────────────────────
   const state = snapshot?.state ?? 'idle';
   const nowMs = Date.now();
-  // 5 项核心信息，全部走统一 selector
+  // 6 项核心信息，全部走统一 selector
   const displayActive = getMainDisplayMs(snapshot, nowMs); // 大时间（当前片段）
   const currentFocusMs = getCurrentSegmentDisplayMs(snapshot, nowMs); // 当前专注片段
   const currentPauseMs = getCurrentPauseDisplayMs(snapshot, nowMs); // 当前暂停片段
   const cumulativeActiveMs = getCumulativeActiveMs(snapshot, nowMs); // 累计专注
   const cumulativePauseMs = getCumulativePauseMs(snapshot, nowMs); // 累计暂停
-  const currentTaskTitle = snapshot?.currentTaskTitle ?? null;
+  const wallElapsedMs = getWallElapsedMs(snapshot); // 总历时
+  const currentTaskTitle = getCurrentTaskTitle(snapshot);
   const isRunning = state === 'running';
   const isPaused = state === 'paused';
 
@@ -234,6 +239,7 @@ export function MiniWindow() {
   }, []);
 
   // ─── COLLAPSED 模式（40px 高度横条） ───────────────────────
+  // 收起态：状态点（专注绿/暂停红）+ 当前片段时间
   if (collapsed) {
     return (
       <div
@@ -247,7 +253,7 @@ export function MiniWindow() {
           <StateDot state={state} size="xs" />
           <span
             className={`timer-digit text-sm font-bold tracking-tight ${
-              state === 'paused' ? 'text-warning' : ''
+              isPaused ? 'text-danger' : isRunning ? 'text-accent' : ''
             }`}
           >
             {formatDuration(displayActive)}
@@ -273,6 +279,7 @@ export function MiniWindow() {
   }
 
   // ─── COMPACT 模式（宽 < 260px，单行） ──────────────────────
+  // 紧凑态：状态 + 当前专注/当前暂停 + 任务短标题
   if (isCompact) {
     return (
       <div
@@ -284,13 +291,13 @@ export function MiniWindow() {
           <div className="min-w-0">
             <span
               className={`timer-digit block text-base font-bold leading-none ${
-                state === 'paused' ? 'text-warning' : ''
+                isPaused ? 'text-danger' : isRunning ? 'text-accent' : ''
               }`}
             >
               {formatDuration(displayActive)}
             </span>
             <span className="block max-w-[54px] truncate text-[10px] leading-tight text-fg-subtle">
-              {snapshot?.currentTaskTitle ?? (state === 'idle' ? '准备开始' : '未关联任务')}
+              {currentTaskTitle ?? (state === 'idle' ? '准备开始' : '未关联任务')}
             </span>
           </div>
         </div>
@@ -316,7 +323,8 @@ export function MiniWindow() {
     );
   }
 
-  // ─── EXPANDED 模式（默认，完整 UI，含 5 项核心信息） ───────
+  // ─── EXPANDED 模式（默认，完整 UI，含 6 项核心信息） ───────
+  // 显示：当前任务 / 当前专注 / 累计专注 / 当前暂停 / 累计暂停 / 总历时
   return (
     <div
       ref={containerRef}
@@ -368,7 +376,7 @@ export function MiniWindow() {
         </span>
       </div>
 
-      {/* 4 项累计 / 当前统计（2×2 网格） */}
+      {/* 6 项统计：当前专注 / 累计专注 / 当前暂停 / 累计暂停 / 总历时（合并为 2×3 网格） */}
       <div className="mt-2.5 grid grid-cols-2 gap-x-2 gap-y-1.5 px-0.5">
         <div className="flex items-center justify-between">
           <span className="text-[9px] font-semibold text-accent">当前专注</span>
@@ -396,6 +404,12 @@ export function MiniWindow() {
           <span className="text-[9px] font-semibold text-danger/80">累计暂停</span>
           <span className="timer-digit text-[11px] font-bold tabular-nums text-fg-muted">
             {formatDuration(cumulativePauseMs)}
+          </span>
+        </div>
+        <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5">
+          <span className="text-[9px] font-semibold text-fg-subtle">总历时</span>
+          <span className="timer-digit text-[11px] font-bold tabular-nums text-fg">
+            {formatDuration(wallElapsedMs)}
           </span>
         </div>
       </div>

@@ -4,8 +4,12 @@ const { execSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const APP_VERSION = '0.1.9';
-const APP_RELEASE_DIR = 'release-v019';
+// 从 package.json 读取版本，避免多处硬编码不同步
+const pkg = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf8'),
+);
+const APP_VERSION = pkg.version;
+const APP_RELEASE_DIR = `release-v${APP_VERSION.replace(/\./g, '')}`;
 
 let commit = 'unknown';
 try {

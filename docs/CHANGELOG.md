@@ -3,6 +3,68 @@
 > 本仓库遵循简易版本记录。每个版本对应一个 `release-vXXX/` 打包目录。
 > 历史修复细节见 `docs/archive/` 下的各报告文档。
 
+## v0.2.0 (2026-06-30)
+
+### 稳定版交付：计时核心 + 小窗 + 时间线 + 历史记录全链路验收
+
+#### 1. 版本标识升级到 v0.2.0
+- `package.json` 版本号 → 0.2.0
+- `shared/version.ts` APP_VERSION / APP_RELEASE_DIR → 0.2.0 / release-v020
+- `scripts/gen-version.js` 改为从 package.json 读取版本，避免多处硬编码不同步
+- `electron-builder.yml` 输出目录 → release-v020
+- `electron/main.ts` 启动日志输出 FocusLink version: 0.2.0
+- 设置页关于页显示 v0.2.0 + Build commit + Build Time + Release 目录
+
+#### 2. 小窗三形态完整修复
+- 新增 `getCurrentTaskTitle` selector（`src/lib/timerSelectors.ts`）
+- MiniWindow EXPANDED 态新增「总历时」信息（6 项核心信息齐全）
+  - 当前任务 / 当前专注 / 累计专注 / 当前暂停 / 累计暂停 / 总历时
+- MiniWindow 暂停态颜色统一改为红色（danger），不再用橙色（warning）
+  - STATE_DOT.paused: bg-warning → bg-danger
+  - STATE_TEXT.paused: text-warning → text-danger
+  - COLLAPSED / COMPACT 态同步修正
+- 所有显示值统一走 selector，不再直接读 snapshot.activeElapsedMs
+
+#### 3. 历史记录页面信息密度优化
+- Session 总览：总历时 / 累计专注 / 累计暂停 / 专注片段数 / 暂停片段数 / 未关联数（6 项统计）
+- 新增「本地 / 云端状态」面板，明确显示「滴答清单云端专注记录：未实现」
+- 新增批量关联区域：批量补关联 / 全部改为同一任务 / 只看未关联 / 只看已关联
+- 专注片段改为紧凑单行布局（替代大卡片），未关联片段高亮虚线边框
+- 暂停记录默认折叠，展开后紧凑红色列表，三点菜单提供「关联到任务 / 添加备注」
+- 暂停片段关联任务提示明确：「暂停片段关联任务需要扩展数据结构，当前版本暂不支持」
+- 「同步可视度」改名为「本地 / 云端状态」
+- 「同步到滴答」改名为「同步到滴答备注」
+
+#### 4. dida 云端专注记录设计文档
+- 新增 `docs/DIDA_CLOUD_FOCUS_SYNC_DESIGN.md`
+- 诚实结论：当前版本无法安全写入滴答云端专注记录，**暂不实现**
+- 文档覆盖：dida CLI 能力边界、官方 API 缺失、覆盖式写入风险、同步队列设计、回滚策略
+
+#### 5. 手动回归测试脚本
+- 新增 `scripts/manual-timer-regression.ts`
+- 模拟 5/3/4/2/6 场景，输出 segments / pauseEvents / mixedTimelineItems / TimerPanel 值 / MiniWindow 值 / History 值
+- 新增 `npm run manual-test` 命令
+- vitest.config.ts include 加入该脚本
+
+#### 6. 计时核心逻辑回归验证（未改动，仅验证）
+- 5/3/4/2/6 场景：Segment 1=5s, Segment 2=4s（非 9s 累计）, Segment 3=6s（非 15s 累计）
+- Pause 1=3s, Pause 2=2s
+- 累计专注=15s, 累计暂停=5s, 总历时=20s
+- mixedTimelineItems=5 条（3 专注 + 2 暂停）
+- TimerPanel / MiniWindow / History 显示值全部通过 selector 统一口径验证
+
+### 未触碰的核心逻辑
+- Timer 状态机、SQLite schema、dida CLI Provider、快捷键、IPC 通道 — 全部原样
+- 右侧 dida 任务区 — 未改
+
+### 验证
+- `npm run format` 通过
+- `npm run typecheck` 通过
+- `npm test` 通过（47/47 全绿）
+- `npm run manual-test` 通过（5/3/4/2/6 场景全断言通过）
+- `npm run build` 通过
+- `npm run dist:win` 通过（release-v020/）
+
 ## v0.1.9 (2026-06-30)
 
 ### 核心计时 Bug 真正修复（基于真实运行测试）
