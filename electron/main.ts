@@ -434,14 +434,14 @@ function ensureTrayAndHotkeys(): void {
 app.whenReady().then(() => {
   logger.init();
   // 版本标识：启动时输出完整版本信息，避免用户打开旧版
-  logger.info('main', 'FocusLink version: 0.2.0', {
+  logger.info('main', 'FocusLink version: 0.2.1', {
     commit: APP_COMMIT,
     buildTime: APP_BUILD_TIME,
     releaseDir: APP_RELEASE_DIR,
     electronVersion: app.getVersion(),
     isDev,
   });
-  console.log(`FocusLink version: 0.2.0`);
+  console.log(`FocusLink version: 0.2.1`);
   console.log(`commit: ${APP_COMMIT}`);
   console.log(`buildTime: ${APP_BUILD_TIME}`);
   console.log(`releaseDir: ${APP_RELEASE_DIR}`);

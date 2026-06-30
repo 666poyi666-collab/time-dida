@@ -39,8 +39,8 @@ export function Toast() {
               initial={{ opacity: 0, y: 16, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-              className={`glass pointer-events-auto flex items-center gap-2 rounded-lg border border-border border-l-[3px] ${cfg.border} px-3.5 py-2 shadow-soft ${cfg.glow} cursor-pointer select-none transition-[box-shadow,backdrop-filter] duration-200 hover:brightness-110`}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className={`glass motion-base pointer-events-auto flex items-center gap-2 rounded-lg border border-border border-l-[3px] ${cfg.border} px-3.5 py-2 shadow-soft ${cfg.glow} cursor-pointer select-none hover:brightness-110`}
               onClick={() => removeToast(t.id)}
             >
               <cfg.Icon size={15} className={`shrink-0 ${cfg.iconColor}`} />

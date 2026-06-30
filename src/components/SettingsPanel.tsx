@@ -288,7 +288,7 @@ export function SettingsPanel() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium transition-all ${
+                  className={`motion-press flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium ${
                     isActive
                       ? 'nav-active bg-accent text-white shadow-sm'
                       : 'text-fg-muted hover:bg-bg-subtle hover:text-fg'
@@ -332,7 +332,7 @@ export function SettingsPanel() {
                       <button
                         key={a.id}
                         onClick={() => update({ accentColor: a.id })}
-                        className={`h-7 w-7 rounded-full border-2 transition-transform ${
+                        className={`motion-base h-7 w-7 rounded-full border-2 ${
                           settings.accentColor === a.id
                             ? 'scale-110 border-fg shadow-soft'
                             : 'border-transparent'
@@ -1016,7 +1016,7 @@ function ChoiceBtn({
   return (
     <button
       onClick={onClick}
-      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+      className={`motion-press rounded-lg px-3 py-1.5 text-xs font-medium ${
         active ? 'bg-accent text-accent-fg' : 'bg-bg-subtle text-fg-muted hover:text-fg'
       }`}
     >
@@ -1029,12 +1029,12 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   return (
     <button
       onClick={() => onChange(!checked)}
-      className={`relative h-6 w-11 rounded-full transition-colors ${
+      className={`motion-base relative h-6 w-11 rounded-full ${
         checked ? 'bg-accent' : 'bg-bg-subtle'
       }`}
     >
       <span
-        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-[var(--motion-normal)] ease-[var(--ease-out)] ${
           checked ? 'translate-x-5' : 'translate-x-0.5'
         }`}
       />

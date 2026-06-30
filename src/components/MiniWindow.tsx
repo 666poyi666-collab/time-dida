@@ -103,14 +103,14 @@ function ProgressBar({ compact = false }: { compact?: boolean }) {
   if (compact) {
     return (
       <div className="h-1 w-14 overflow-hidden rounded-full bg-bg-subtle">
-        <div className="h-full w-2/3 rounded-full bg-accent transition-all duration-500" />
+        <div className="motion-state-bg h-full w-2/3 rounded-full bg-accent" />
       </div>
     );
   }
   return (
     <div className="flex w-full items-center gap-2">
       <div className="progress-bar h-1 flex-1 overflow-hidden rounded-full">
-        <div className="progress-bar-fill h-full w-full rounded-full transition-all duration-500" />
+        <div className="motion-state-bg progress-bar-fill h-full w-full rounded-full" />
       </div>
       <span className="text-[9px] text-fg-subtle">正计时</span>
     </div>
@@ -244,7 +244,7 @@ export function MiniWindow() {
     return (
       <div
         ref={containerRef}
-        className="glass flex h-full w-full items-center overflow-hidden rounded-lg border border-border/80 px-3 text-fg"
+        className="glass motion-base flex h-full w-full items-center overflow-hidden rounded-lg border border-border/80 px-3 text-fg"
         onDoubleClick={handleExpand}
         title="双击展开"
       >
@@ -252,13 +252,16 @@ export function MiniWindow() {
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <StateDot state={state} size="xs" />
           <span
-            className={`timer-digit text-sm font-bold tracking-tight ${
+            className={`timer-digit motion-digit text-sm font-bold tracking-tight ${
               isPaused ? 'text-danger' : isRunning ? 'text-accent' : ''
             }`}
           >
             {formatDuration(displayActive)}
           </span>
-          <span className={`text-[10px] font-semibold ${STATE_TEXT[state]}`}>
+          <span
+            className={`motion-fade-up text-[10px] font-semibold ${STATE_TEXT[state]}`}
+            key={state}
+          >
             {STATE_LABEL[state]}
           </span>
         </div>
@@ -267,7 +270,7 @@ export function MiniWindow() {
         <div className="flex items-center gap-2 flex-shrink-0">
           <ProgressBar compact />
           <button
-            className="no-drag rounded-md p-1 text-fg-subtle transition-colors hover:bg-bg-subtle hover:text-fg"
+            className="no-drag motion-press rounded-md p-1 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
             onClick={handleExpand}
             title="展开"
           >
@@ -284,13 +287,13 @@ export function MiniWindow() {
     return (
       <div
         ref={containerRef}
-        className="glass flex h-full w-full items-center gap-2 overflow-hidden rounded-lg border border-border/80 px-3 text-fg"
+        className="glass motion-base flex h-full w-full items-center gap-2 overflow-hidden rounded-lg border border-border/80 px-3 text-fg"
       >
         <div className="flex min-w-0 flex-none items-center gap-1.5">
           <StateDot state={state} />
           <div className="min-w-0">
             <span
-              className={`timer-digit block text-base font-bold leading-none ${
+              className={`timer-digit motion-digit block text-base font-bold leading-none ${
                 isPaused ? 'text-danger' : isRunning ? 'text-accent' : ''
               }`}
             >
@@ -304,14 +307,14 @@ export function MiniWindow() {
 
         <div className="flex flex-none items-center gap-0.5">
           <button
-            className="no-drag rounded-md bg-bg-subtle/70 p-1 text-fg-muted transition-colors hover:bg-accent/10 hover:text-accent"
+            className="no-drag motion-press rounded-md bg-bg-subtle/70 p-1 text-fg-muted hover:bg-accent/10 hover:text-accent"
             onClick={handleToggle}
             title={state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始'}
           >
             {state === 'running' ? <Pause size={13} /> : <Play size={13} />}
           </button>
           <button
-            className="no-drag rounded-md bg-bg-subtle/70 p-1 text-fg-muted transition-colors hover:bg-bg-elevated hover:text-fg disabled:opacity-30"
+            className="no-drag motion-press rounded-md bg-bg-subtle/70 p-1 text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:opacity-30"
             onClick={handleStop}
             disabled={state === 'idle' || state === 'finished'}
             title="结束"
@@ -328,25 +331,28 @@ export function MiniWindow() {
   return (
     <div
       ref={containerRef}
-      className="glass relative h-full w-full overflow-hidden rounded-lg border border-border/80 p-3 text-fg"
+      className="glass motion-base relative h-full w-full overflow-hidden rounded-lg border border-border/80 p-3 text-fg"
     >
       {/* 顶部状态行：状态点 + 状态标签 + 操作按钮 */}
       <div className="flex items-center gap-1.5">
         <StateDot state={state} size="xs" />
-        <span className={`text-[10px] font-semibold ${STATE_TEXT[state]}`}>
+        <span
+          className={`motion-fade-up text-[10px] font-semibold ${STATE_TEXT[state]}`}
+          key={state}
+        >
           {STATE_LABEL[state]}
         </span>
       </div>
       <div className="absolute right-3 top-3 flex items-center gap-0.5">
         <button
-          className="no-drag rounded-md p-1 text-fg-subtle transition-colors hover:bg-bg-subtle hover:text-fg"
+          className="no-drag motion-press rounded-md p-1 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
           onClick={handleOpenMain}
           title="打开主窗口"
         >
           <Maximize2 size={11} />
         </button>
         <button
-          className="no-drag rounded-md p-1 text-fg-subtle transition-colors hover:bg-bg-subtle hover:text-fg"
+          className="no-drag motion-press rounded-md p-1 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
           onClick={handleCollapse}
           title="收起"
         >
@@ -362,16 +368,16 @@ export function MiniWindow() {
         </span>
       </div>
 
-      {/* 大号计时数字（当前片段时间） */}
+      {/* 大号计时数字（当前片段时间） — motion-digit 保证数字稳定不闪跳 */}
       <div className="mt-2 flex flex-col items-center gap-0.5">
         <span
-          className={`timer-digit text-[26px] font-bold leading-none tabular-nums ${
+          className={`timer-digit motion-digit text-[26px] font-bold leading-none ${
             isPaused ? 'text-danger' : isRunning ? 'text-accent' : ''
           }`}
         >
           {formatDuration(displayActive)}
         </span>
-        <span className="text-[9px] font-medium text-fg-subtle">
+        <span className="motion-fade-up text-[9px] font-medium text-fg-subtle" key={`sub-${state}`}>
           {isPaused ? '当前暂停片段' : isRunning ? '当前专注片段' : '尚未开始'}
         </span>
       </div>
@@ -380,20 +386,20 @@ export function MiniWindow() {
       <div className="mt-2.5 grid grid-cols-2 gap-x-2 gap-y-1.5 px-0.5">
         <div className="flex items-center justify-between">
           <span className="text-[9px] font-semibold text-accent">当前专注</span>
-          <span className="timer-digit text-[11px] font-bold tabular-nums text-fg">
+          <span className="timer-digit motion-digit text-[11px] font-bold text-fg">
             {formatDuration(isRunning ? currentFocusMs : 0)}
           </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-[9px] font-semibold text-accent/80">累计专注</span>
-          <span className="timer-digit text-[11px] font-bold tabular-nums text-fg-muted">
+          <span className="timer-digit motion-digit text-[11px] font-bold text-fg-muted">
             {formatDuration(cumulativeActiveMs)}
           </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-[9px] font-semibold text-danger">当前暂停</span>
           <span
-            className={`timer-digit text-[11px] font-bold tabular-nums ${
+            className={`timer-digit motion-digit text-[11px] font-bold ${
               isPaused ? 'text-danger' : 'text-fg-subtle'
             }`}
           >
@@ -402,13 +408,13 @@ export function MiniWindow() {
         </div>
         <div className="flex items-center justify-between">
           <span className="text-[9px] font-semibold text-danger/80">累计暂停</span>
-          <span className="timer-digit text-[11px] font-bold tabular-nums text-fg-muted">
+          <span className="timer-digit motion-digit text-[11px] font-bold text-fg-muted">
             {formatDuration(cumulativePauseMs)}
           </span>
         </div>
         <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5">
           <span className="text-[9px] font-semibold text-fg-subtle">总历时</span>
-          <span className="timer-digit text-[11px] font-bold tabular-nums text-fg">
+          <span className="timer-digit motion-digit text-[11px] font-bold text-fg">
             {formatDuration(wallElapsedMs)}
           </span>
         </div>
@@ -419,17 +425,17 @@ export function MiniWindow() {
         <ProgressBar />
       </div>
 
-      {/* 底部控制按钮 */}
+      {/* 底部控制按钮 — motion-press 提供按下反馈 */}
       <div className="absolute bottom-3 left-0 right-0 flex items-center justify-center gap-2">
         <button
-          className="no-drag inline-flex items-center gap-1.5 rounded-lg bg-accent/95 px-3.5 py-1.5 text-[11px] font-semibold text-accent-fg transition-all hover:brightness-110 active:scale-[0.97]"
+          className="no-drag motion-press inline-flex items-center gap-1.5 rounded-lg bg-accent/95 px-3.5 py-1.5 text-[11px] font-semibold text-accent-fg hover:brightness-110"
           onClick={handleToggle}
         >
           {state === 'running' ? <Pause size={11} /> : <Play size={11} />}
           {state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始'}
         </button>
         <button
-          className="no-drag inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-subtle/50 px-3 py-1.5 text-[11px] font-medium text-fg-muted transition-all hover:bg-bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-30"
+          className="no-drag motion-press inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-subtle/50 px-3 py-1.5 text-[11px] font-medium text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-30"
           onClick={handleStop}
           disabled={state === 'idle' || state === 'finished'}
         >

@@ -76,7 +76,7 @@ export function SegmentTimeline() {
 
   if (items.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-bg-card/55 p-4 text-center text-xs text-fg-subtle">
+      <div className="motion-fade-in rounded-xl border border-dashed border-border bg-bg-card/55 p-4 text-center text-xs text-fg-subtle">
         暂无片段。按快捷键开始专注后会创建第一个片段。
       </div>
     );
@@ -95,7 +95,7 @@ export function SegmentTimeline() {
           </span>
         </h3>
         {selected.size >= 2 && (
-          <button className="btn-ghost text-xs" onClick={handleMerge}>
+          <button className="btn-ghost motion-press text-xs" onClick={handleMerge}>
             <Merge size={13} />
             合并 {selected.size} 个
           </button>
@@ -153,8 +153,8 @@ export function SegmentTimeline() {
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 8 }}
-                transition={{ duration: 0.25 }}
-                className={`relative flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${rowBorderCls}`}
+                transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                className={`motion-base relative flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${rowBorderCls}`}
                 onClick={() => {
                   // 仅专注片段可选（用于合并）；暂停片段为展示，不可选
                   if (isFocus) toggleSelect(item.id);
@@ -174,7 +174,7 @@ export function SegmentTimeline() {
                       {item.title}
                     </span>
                     <span
-                      className={`timer-digit flex-shrink-0 text-xs tabular-nums ${
+                      className={`timer-digit motion-digit flex-shrink-0 text-xs ${
                         isFocus ? 'text-fg-muted' : 'text-danger/80'
                       }`}
                     >

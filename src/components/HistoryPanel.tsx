@@ -380,7 +380,7 @@ export function HistoryPanel() {
         </div>
 
         <div className="mb-4 space-y-3">
-          <div className="card p-3.5">
+          <div className="card motion-lift p-3.5">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-fg">
                 <CalendarDays size={15} className="text-accent" />
@@ -394,7 +394,7 @@ export function HistoryPanel() {
               {RANGE_PRESETS.map((item) => (
                 <button
                   key={item.id}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  className={`motion-press rounded-lg px-3 py-1.5 text-xs font-medium ${
                     rangePreset === item.id
                       ? 'bg-accent text-accent-fg'
                       : 'border border-border bg-bg-subtle text-fg-muted hover:text-fg'
@@ -438,8 +438,8 @@ export function HistoryPanel() {
         </div>
 
         {filteredSessions.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-bg-card/40 py-12 text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-bg-subtle text-fg-subtle">
+          <div className="motion-fade-in rounded-lg border border-dashed border-border bg-bg-card/40 py-12 text-center">
+            <div className="motion-breathe mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-bg-subtle text-fg-subtle">
               <Inbox size={22} />
             </div>
             <p className="text-sm font-medium text-fg-muted">当前时间范围没有专注记录</p>
@@ -450,14 +450,14 @@ export function HistoryPanel() {
             {filteredSessions.map((session) => {
               const syncState = getDisplayedSyncState(session.id);
               return (
-                <motion.div key={session.id} layout className="card overflow-hidden">
+                <motion.div key={session.id} layout className="card motion-lift overflow-hidden">
                   <button
-                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-bg-subtle/40"
+                    className="motion-base flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-bg-subtle/40"
                     onClick={() => toggleExpand(session.id)}
                   >
                     <ChevronRight
                       size={15}
-                      className={`shrink-0 text-fg-subtle transition-transform duration-200 ${
+                      className={`shrink-0 text-fg-subtle transition-transform duration-[var(--motion-normal)] ease-[var(--ease-out)] ${
                         expanded === session.id ? 'rotate-90' : ''
                       }`}
                     />
@@ -498,7 +498,7 @@ export function HistoryPanel() {
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
                         className="border-t border-border"
                       >
                         <div className="space-y-4 p-4">
@@ -546,7 +546,7 @@ export function HistoryPanel() {
                               </div>
                               <div className="flex shrink-0 items-center gap-1.5">
                                 <button
-                                  className="btn-outline text-[11px]"
+                                  className="btn-outline motion-press text-[11px]"
                                   disabled={linking}
                                   onClick={() =>
                                     setPickerTarget({
@@ -562,7 +562,7 @@ export function HistoryPanel() {
                                 </button>
                                 {detail.session.defaultTaskTitle && (
                                   <button
-                                    className="btn-ghost text-[11px] text-rose-400 hover:bg-rose-500/10"
+                                    className="btn-ghost motion-press text-[11px] text-rose-400 hover:bg-rose-500/10"
                                     disabled={linking}
                                     onClick={() => handleClearSessionDefault(session.id)}
                                     title="清除默认任务"
@@ -616,7 +616,7 @@ export function HistoryPanel() {
                           {/* 操作 */}
                           <div className="flex items-center gap-2 pt-1">
                             <button
-                              className="btn-primary text-xs"
+                              className="btn-primary motion-press text-xs"
                               disabled={linking || syncingSessionId === session.id}
                               onClick={() => handleSyncSession(session.id)}
                               title="把本次已关联滴答任务的专注时间同步到任务备注"
@@ -629,25 +629,25 @@ export function HistoryPanel() {
                             </button>
                             <SessionSyncBadge state={syncState} />
                             <button
-                              className="btn-outline text-xs"
+                              className="btn-outline motion-press text-xs"
                               onClick={() => handleExport(session.id, 'markdown')}
                             >
                               <Download size={12} /> Markdown
                             </button>
                             <button
-                              className="btn-outline text-xs"
+                              className="btn-outline motion-press text-xs"
                               onClick={() => handleExport(session.id, 'csv')}
                             >
                               <Download size={12} /> CSV
                             </button>
                             <button
-                              className="btn-outline text-xs"
+                              className="btn-outline motion-press text-xs"
                               onClick={() => handleExport(session.id, 'json')}
                             >
                               <Download size={12} /> JSON
                             </button>
                             <button
-                              className="btn-ghost ml-auto text-xs text-rose-400 hover:bg-rose-500/10"
+                              className="btn-ghost motion-press ml-auto text-xs text-rose-400 hover:bg-rose-500/10"
                               onClick={() => handleDelete(session.id)}
                             >
                               <Trash2 size={12} /> 删除
@@ -835,7 +835,7 @@ function BatchLinkPanel({
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <button
-          className="btn-outline text-[11px]"
+          className="btn-outline motion-press text-[11px]"
           disabled={linking || unlinkedCount === 0}
           onClick={onBatchUnlinked}
           title={unlinkedCount === 0 ? '没有未关联片段' : '只更新未关联任务的 segment'}
@@ -844,7 +844,7 @@ function BatchLinkPanel({
           批量关联未关联片段{unlinkedCount > 0 ? `（${unlinkedCount}）` : ''}
         </button>
         <button
-          className="btn-ghost text-[11px]"
+          className="btn-ghost motion-press text-[11px]"
           disabled={linking || segments.length === 0}
           onClick={onBatchAll}
           title="覆盖所有 segment（含已关联），需确认"
@@ -885,7 +885,7 @@ function FilterChip({
 }) {
   return (
     <button
-      className={`rounded-md px-2 py-1 text-[10px] font-medium transition-colors ${
+      className={`motion-base rounded-md px-2 py-1 text-[10px] font-medium ${
         active ? 'bg-accent text-accent-fg' : 'text-fg-muted hover:text-fg'
       }`}
       onClick={onClick}
@@ -987,7 +987,7 @@ function CompactSegmentRow({
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div
-      className={`rounded-md border px-2.5 py-1.5 text-xs transition-colors ${
+      className={`motion-base rounded-md border px-2.5 py-1.5 text-xs ${
         hasTask ? 'border-border bg-bg-subtle/30' : 'border-dashed border-warning/40 bg-warning/5'
       }`}
     >
@@ -998,7 +998,7 @@ function CompactSegmentRow({
           {formatDateTime(seg.startedAt)}
           {seg.endedAt && ` → ${formatDateTime(seg.endedAt)}`}
         </span>
-        <span className="timer-digit ml-auto shrink-0 text-[11px] font-semibold tabular-nums text-fg">
+        <span className="timer-digit motion-digit ml-auto shrink-0 text-[11px] font-semibold text-fg">
           {formatDuration(seg.activeElapsedMs)}
         </span>
       </div>
@@ -1015,7 +1015,7 @@ function CompactSegmentRow({
           {hasTask ? (
             <>
               <button
-                className="rounded border border-border bg-bg-card/50 px-1.5 py-0.5 text-[10px] text-fg-muted transition-colors hover:bg-bg-elevated hover:text-fg disabled:opacity-40"
+                className="motion-press rounded border border-border bg-bg-card/50 px-1.5 py-0.5 text-[10px] text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:opacity-40"
                 disabled={linking}
                 onClick={onLink}
                 title="更换任务"
@@ -1023,7 +1023,7 @@ function CompactSegmentRow({
                 更换
               </button>
               <button
-                className="rounded border border-border bg-bg-card/50 px-1.5 py-0.5 text-[10px] text-rose-400 transition-colors hover:bg-rose-500/10 disabled:opacity-40"
+                className="motion-press rounded border border-border bg-bg-card/50 px-1.5 py-0.5 text-[10px] text-rose-400 hover:bg-rose-500/10 disabled:opacity-40"
                 disabled={linking}
                 onClick={onClear}
                 title="清除关联"
@@ -1032,7 +1032,7 @@ function CompactSegmentRow({
               </button>
               <div className="relative">
                 <button
-                  className="rounded p-0.5 text-fg-subtle transition-colors hover:bg-bg-elevated hover:text-fg"
+                  className="motion-base rounded p-0.5 text-fg-subtle hover:bg-bg-elevated hover:text-fg"
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenuOpen((v) => !v);
@@ -1044,9 +1044,9 @@ function CompactSegmentRow({
                 {menuOpen && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                    <div className="absolute right-0 top-6 z-20 w-36 rounded-lg border border-border bg-bg-card py-1 shadow-lg">
+                    <div className="motion-fade-in absolute right-0 top-6 z-20 w-36 rounded-lg border border-border bg-bg-card py-1 shadow-lg">
                       <button
-                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[10px] text-emerald-500 transition-colors hover:bg-emerald-500/10 disabled:opacity-50"
+                        className="motion-base flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[10px] text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
                         disabled={linking || isTaskCompleted}
                         onClick={() => {
                           setMenuOpen(false);
@@ -1063,7 +1063,7 @@ function CompactSegmentRow({
             </>
           ) : (
             <button
-              className="rounded border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent transition-colors hover:bg-accent/20 disabled:opacity-40"
+              className="motion-press rounded border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent hover:bg-accent/20 disabled:opacity-40"
               disabled={linking}
               onClick={onLink}
               title="关联任务"
@@ -1093,7 +1093,7 @@ function CollapsiblePauseList({
   return (
     <div className="opacity-80">
       <button
-        className="flex w-full items-center gap-2 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2 text-left transition-colors hover:bg-danger/10"
+        className="motion-base flex w-full items-center gap-2 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2 text-left hover:bg-danger/10"
         onClick={onToggle}
       >
         <Coffee size={12} className="text-danger/70" />
@@ -1103,7 +1103,7 @@ function CollapsiblePauseList({
         <span className="text-[10px] text-fg-subtle">· 总暂停 {formatDuration(totalPauseMs)}</span>
         <ChevronDown
           size={13}
-          className={`ml-auto text-fg-subtle transition-transform ${expanded ? 'rotate-180' : ''}`}
+          className={`ml-auto text-fg-subtle transition-transform duration-[var(--motion-normal)] ease-[var(--ease-out)] ${expanded ? 'rotate-180' : ''}`}
         />
       </button>
       <AnimatePresence>
@@ -1112,7 +1112,7 @@ function CollapsiblePauseList({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
             className="overflow-hidden"
           >
             <div className="mt-1 space-y-1">
@@ -1148,11 +1148,11 @@ function PauseRow({
         </span>
       </div>
       <div className="flex items-center gap-1.5">
-        <span className="timer-digit shrink-0 text-[10px] text-danger/80">
+        <span className="timer-digit motion-digit shrink-0 text-[10px] text-danger/80">
           {formatDuration(pause.durationMs)}
         </span>
         <button
-          className="rounded p-0.5 text-fg-subtle transition-colors hover:bg-danger/10 hover:text-danger"
+          className="motion-base rounded p-0.5 text-fg-subtle hover:bg-danger/10 hover:text-danger"
           onClick={(e) => {
             e.stopPropagation();
             setMenuOpen((v) => !v);
@@ -1164,9 +1164,9 @@ function PauseRow({
         {menuOpen && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-            <div className="absolute right-0 top-6 z-20 w-40 rounded-lg border border-border bg-bg-card py-1 shadow-lg">
+            <div className="motion-fade-in absolute right-0 top-6 z-20 w-40 rounded-lg border border-border bg-bg-card py-1 shadow-lg">
               <button
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger"
+                className="motion-base flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-fg-muted hover:bg-danger/10 hover:text-danger"
                 onClick={() => {
                   setMenuOpen(false);
                   onLinkPause();
@@ -1176,7 +1176,7 @@ function PauseRow({
                 关联到任务
               </button>
               <button
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
+                className="motion-base flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-fg-muted hover:bg-bg-subtle hover:text-fg"
                 onClick={() => setMenuOpen(false)}
               >
                 <Clock3 size={11} />
@@ -1202,8 +1202,8 @@ function DetailStat({
   const cls = tone === 'warn' ? 'border-warning/30 bg-warning/10' : 'border-border bg-bg-subtle/40';
   const textCls = tone === 'warn' ? 'text-warning' : 'text-fg';
   return (
-    <div className={`rounded-lg border px-3 py-2.5 text-left ${cls}`}>
-      <div className={`timer-digit text-sm font-semibold ${textCls}`}>{value}</div>
+    <div className={`motion-base rounded-lg border px-3 py-2.5 text-left ${cls}`}>
+      <div className={`timer-digit motion-digit text-sm font-semibold ${textCls}`}>{value}</div>
       <div className="mt-0.5 text-[10px] font-medium text-fg-subtle">{label}</div>
     </div>
   );
@@ -1219,7 +1219,7 @@ function SummaryPanel({
   items: PeriodSummary[];
 }) {
   return (
-    <div className="card p-3.5">
+    <div className="card motion-lift p-3.5">
       <div className="mb-3 flex items-center justify-between gap-2 text-xs font-semibold text-fg-muted">
         <span className="flex items-center gap-2">
           {icon}
@@ -1234,7 +1234,7 @@ function SummaryPanel({
           {items.map((item) => (
             <div
               key={item.label}
-              className={`flex items-center justify-between rounded-lg px-3 py-2 ${
+              className={`motion-base flex items-center justify-between rounded-lg px-3 py-2 ${
                 item.count > 0 ? 'bg-bg-subtle/45 text-fg-muted' : 'bg-bg-card/25 text-fg-subtle'
               }`}
             >

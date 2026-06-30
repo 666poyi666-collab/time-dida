@@ -232,14 +232,14 @@ export default function App() {
         {/* 窗口控制按钮 */}
         <div className="flex min-w-[190px] items-center justify-end gap-1">
           <button
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
+            className="motion-base flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted hover:bg-bg-subtle hover:text-fg"
             onClick={() => window.focuslink.window.minimizeToTray()}
             title="最小化到托盘"
           >
             <Minus size={14} />
           </button>
           <button
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger"
+            className="motion-base flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted hover:bg-danger/10 hover:text-danger"
             onClick={() => window.focuslink.window.minimizeToTray()}
             title="关闭（保留在托盘）"
           >
@@ -276,13 +276,13 @@ export default function App() {
             <div
               onMouseDown={onMouseDown}
               onDoubleClick={onDoubleClick}
-              className={`group relative z-10 flex-shrink-0 cursor-col-resize transition-colors duration-150 ${isDividerDragging ? 'bg-accent/[0.08]' : 'hover:bg-bg-subtle/70'}`}
+              className={`group motion-base relative z-10 flex-shrink-0 cursor-col-resize ${isDividerDragging ? 'bg-accent/[0.08]' : 'hover:bg-bg-subtle/70'}`}
               style={{ width: PANE_DIVIDER_WIDTH }}
               title="拖动调整左右宽度，双击恢复默认"
             >
               {/* 中心指示线 */}
               <div
-                className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 rounded-full transition-all duration-150"
+                className="motion-base absolute inset-y-0 left-1/2 w-px -translate-x-1/2 rounded-full"
                 style={{
                   background: isDividerDragging
                     ? 'rgb(var(--app-accent))'
@@ -292,14 +292,14 @@ export default function App() {
               />
               {/* 悬停高亮层 */}
               <div
-                className="absolute inset-y-4 left-1/2 w-px -translate-x-1/2 rounded-full opacity-0 transition-all duration-150 group-hover:opacity-100"
+                className="motion-base absolute inset-y-4 left-1/2 w-px -translate-x-1/2 rounded-full opacity-0 group-hover:opacity-100"
                 style={{
                   background: 'rgb(var(--app-accent))',
                   boxShadow: '0 0 0 1px rgb(var(--app-accent) / 0.16)',
                 }}
               />
               <div
-                className={`absolute left-1/2 top-1/2 flex h-8 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-bg-card shadow-soft transition-all duration-150 group-hover:border-accent/40 group-hover:text-accent group-hover:opacity-100 ${isDividerDragging ? 'border-accent/55 text-accent opacity-100' : 'border-border text-fg-subtle opacity-70'}`}
+                className={`motion-base absolute left-1/2 top-1/2 flex h-8 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-bg-card shadow-soft group-hover:border-accent/40 group-hover:text-accent group-hover:opacity-100 ${isDividerDragging ? 'border-accent/55 text-accent opacity-100' : 'border-border text-fg-subtle opacity-70'}`}
               >
                 <GripVertical size={13} />
               </div>
@@ -374,7 +374,7 @@ function NavBtn({
   return (
     <button
       onClick={onClick}
-      className={`flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-semibold transition-all duration-200 ${
+      className={`motion-press flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-semibold ${
         active ? 'nav-active' : 'text-fg-muted hover:bg-bg-card/75 hover:text-fg'
       }`}
     >

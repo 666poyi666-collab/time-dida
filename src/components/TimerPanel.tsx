@@ -75,8 +75,8 @@ function StateBadge({ state }: { state: string }) {
     },
     paused: {
       label: '已暂停',
-      dotCls: 'bg-warning',
-      pillCls: 'border-warning/25 bg-warning/10 text-warning',
+      dotCls: 'bg-danger',
+      pillCls: 'border-danger/25 bg-danger/10 text-danger',
     },
     finished: {
       label: '已结束',
@@ -109,13 +109,13 @@ function MinuteRhythmBar({ state, minuteRhythmSec }: { state: string; minuteRhyt
   const isPaused = state === 'paused';
   const isRunning = state === 'running';
   const pct = (minuteRhythmSec / 60) * 100;
-  const barCls = isPaused ? 'bg-warning' : 'bg-accent';
+  const barCls = isPaused ? 'bg-danger' : 'bg-accent';
 
   return (
     <div className="w-full">
       <div className="h-2 w-full overflow-hidden rounded-full bg-bg-subtle">
         <div
-          className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${barCls} ${
+          className={`motion-rhythm-fill h-full rounded-full ${barCls} ${
             isRunning ? 'shadow-[0_0_8px_rgb(var(--app-accent)/0.35)]' : ''
           }`}
           style={{ width: `${isRunning || isPaused ? pct : 0}%` }}
@@ -123,7 +123,7 @@ function MinuteRhythmBar({ state, minuteRhythmSec }: { state: string; minuteRhyt
       </div>
       <div className="mt-1.5 flex items-center justify-between">
         <span className="text-[11px] font-medium text-fg-subtle">分钟节奏（60 秒循环）</span>
-        <span className="timer-digit text-[11px] font-semibold text-fg-muted tabular-nums">
+        <span className="timer-digit motion-digit text-[11px] font-semibold text-fg-muted">
           {String(minuteRhythmSec).padStart(2, '0')}s / 60s
         </span>
       </div>
@@ -141,21 +141,22 @@ function CumStat({
   label: string;
   value: string;
   icon: React.ReactNode;
-  tone?: 'accent' | 'warning' | 'info' | 'neutral';
+  tone?: 'accent' | 'warning' | 'info' | 'neutral' | 'danger';
 }) {
   const toneCls = {
     accent: 'text-accent',
     warning: 'text-warning',
     info: 'text-info',
     neutral: 'text-fg-subtle',
+    danger: 'text-danger',
   }[tone];
   return (
     <div className="flex flex-col items-center gap-1 text-center">
-      <div className={`flex items-center gap-1 ${toneCls}`}>
+      <div className={`flex items-center gap-1 motion-state-bg ${toneCls}`}>
         {icon}
         <span className="text-[10px] font-semibold uppercase tracking-wide">{label}</span>
       </div>
-      <div className="timer-digit text-base font-bold text-fg tabular-nums">{value}</div>
+      <div className="timer-digit motion-digit text-base font-bold text-fg">{value}</div>
     </div>
   );
 }
@@ -192,7 +193,7 @@ function TaskCard({
       </div>
       {onClear && (
         <button
-          className="rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-danger/10 hover:text-danger"
+          className="motion-press rounded-lg p-1.5 text-fg-subtle hover:bg-danger/10 hover:text-danger"
           onClick={onClear}
           title="清除关联"
         >
@@ -215,7 +216,7 @@ function UnlinkedTaskCard({
 }) {
   return (
     <button
-      className="flex w-full items-center gap-2.5 rounded-xl border border-dashed border-border bg-bg-card/70 px-3.5 py-3 text-left transition-colors hover:border-accent/45 hover:bg-accent/5"
+      className="motion-base flex w-full items-center gap-2.5 rounded-xl border border-dashed border-border bg-bg-card/70 px-3.5 py-3 text-left hover:border-accent/45 hover:bg-accent/5"
       onClick={onPick}
     >
       <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-bg-subtle text-fg-subtle">
@@ -410,12 +411,14 @@ export function TimerPanel() {
       {/* 顶部状态行 */}
       <div className="mb-4 flex items-center justify-between gap-3">
         <StateBadge state={state} />
-        <span className="text-xs font-medium text-fg-subtle">{headerHint}</span>
+        <span key={`hint-${state}`} className="motion-fade-up text-xs font-medium text-fg-subtle">
+          {headerHint}
+        </span>
       </div>
 
       {/* 大看板：当前片段时间 + 分钟节奏条 + 三项累计统计 */}
       <div
-        className={`card relative overflow-hidden p-5 transition-all duration-500 ${
+        className={`card motion-state-bg relative overflow-hidden p-5 ${
           state === 'running' ? 'focus-glow' : state === 'paused' ? 'pause-glow' : ''
         }`}
       >
@@ -434,7 +437,7 @@ export function TimerPanel() {
           {state === 'paused' && (
             <motion.div
               key="pulse-paused"
-              className="pointer-events-none absolute inset-0 bg-warning/[0.04]"
+              className="pointer-events-none absolute inset-0 bg-danger/[0.04]"
               initial={{ opacity: 0 }}
               animate={{ opacity: [0.14, 0.26, 0.14] }}
               exit={{ opacity: 0 }}
@@ -443,27 +446,30 @@ export function TimerPanel() {
           )}
         </AnimatePresence>
 
-        {/* 大时间 + 副标题 */}
+        {/* 大时间 + 副标题 — motion-digit 保证数字稳定不闪跳 */}
         <div className="relative flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <span className="text-[10px] font-bold uppercase tracking-widest text-fg-subtle">
               Focus Segment
             </span>
             <div
-              className={`mt-2 timer-digit text-[68px] font-bold leading-none tabular-nums ${
-                state === 'paused' ? 'text-warning' : 'text-fg'
+              className={`mt-2 timer-digit motion-digit text-[68px] font-bold leading-none ${
+                state === 'paused' ? 'text-danger' : 'text-fg'
               }`}
             >
               {formatDurationPadded(currentSegmentMs)}
             </div>
-            <span className="mt-2 block text-xs font-medium leading-relaxed text-fg-subtle">
+            <span
+              key={`sub-${state}`}
+              className="motion-fade-up mt-2 block text-xs font-medium leading-relaxed text-fg-subtle"
+            >
               {segmentSubtitle}
             </span>
           </div>
           <div
-            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-soft ${
+            className={`motion-state-bg flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-soft ${
               state === 'paused'
-                ? 'border-warning/20 bg-warning/10 text-warning'
+                ? 'border-danger/20 bg-danger/10 text-danger'
                 : 'border-accent/20 bg-accent/10 text-accent'
             }`}
           >
@@ -496,7 +502,7 @@ export function TimerPanel() {
             label="累计暂停"
             value={formatDuration(cumulativePauseMs)}
             icon={<Coffee size={11} />}
-            tone={state === 'paused' ? 'warning' : 'neutral'}
+            tone={state === 'paused' ? 'danger' : 'neutral'}
           />
           <CumStat
             label="总历时"
@@ -594,14 +600,14 @@ export function TimerPanel() {
       {/* 控制按钮 */}
       <div className="mt-6 flex items-center gap-3">
         <button
-          className="btn-primary flex min-w-[172px] items-center justify-center gap-2"
+          className="btn-primary motion-press flex min-w-[172px] items-center justify-center gap-2"
           onClick={handleToggle}
         >
           {state === 'running' ? <Pause size={16} /> : <Play size={16} />}
           {toggleLabel}
         </button>
         <button
-          className="btn-outline flex items-center gap-2"
+          className="btn-outline motion-press flex items-center gap-2"
           onClick={handleStop}
           disabled={isIdle || isFinished}
         >

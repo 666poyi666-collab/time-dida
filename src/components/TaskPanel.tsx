@@ -323,7 +323,7 @@ export function TaskPanel() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div
-              className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
+              className={`motion-state-bg flex h-9 w-9 items-center justify-center rounded-xl border ${
                 remoteConnected
                   ? 'border-accent/20 bg-accent/10 text-accent'
                   : 'border-border bg-bg-subtle text-fg-subtle'
@@ -358,7 +358,7 @@ export function TaskPanel() {
             </div>
           </div>
           <button
-            className="btn-ghost flex h-8 w-8 items-center justify-center rounded-lg !p-0 text-fg-muted"
+            className="btn-ghost motion-press flex h-8 w-8 items-center justify-center rounded-lg !p-0 text-fg-muted"
             onClick={() => handleRefresh()}
             disabled={loadingTasks || (isOAuth && !ticktickConnected)}
             title="刷新任务列表"
@@ -368,7 +368,7 @@ export function TaskPanel() {
         </div>
 
         {cliError && (
-          <div className="mt-3 flex items-start gap-2 rounded-xl border border-danger/15 bg-danger/10 px-3.5 py-2.5">
+          <div className="motion-fade-in mt-3 flex items-start gap-2 rounded-xl border border-danger/15 bg-danger/10 px-3.5 py-2.5">
             <AlertCircle size={14} className="mt-0.5 flex-shrink-0 text-danger/70" />
             <p className="text-xs leading-relaxed text-danger/80">{cliError}</p>
           </div>
@@ -428,7 +428,7 @@ export function TaskPanel() {
             />
             {query && (
               <button
-                className="absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-fg-subtle transition-colors hover:bg-bg-subtle hover:text-fg"
+                className="motion-base absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-fg-subtle hover:bg-bg-subtle hover:text-fg"
                 onClick={() => setQuery('')}
                 title="清除搜索"
               >
@@ -438,7 +438,7 @@ export function TaskPanel() {
           </div>
           {isCli && (
             <button
-              className="btn-outline flex h-10 items-center gap-1.5 !px-4 !py-0"
+              className="btn-outline motion-press flex h-10 items-center gap-1.5 !px-4 !py-0"
               onClick={handleSearch}
               disabled={loadingTasks || !query.trim()}
               title="按 Enter 也可搜索"
@@ -451,7 +451,7 @@ export function TaskPanel() {
 
         <div className="flex items-center justify-between">
           <button
-            className="status-chip border-border bg-bg-card text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
+            className="motion-base status-chip border-border bg-bg-card text-fg-muted hover:bg-bg-subtle hover:text-fg"
             onClick={() => setShowCompleted((v) => !v)}
             title="默认隐藏已完成任务"
           >
@@ -475,7 +475,7 @@ export function TaskPanel() {
               onKeyDown={(e) => e.key === 'Enter' && handleCreateLocal()}
             />
             <button
-              className="btn-primary flex h-10 items-center justify-center !gap-1.5 !px-4 !py-0"
+              className="btn-primary motion-press flex h-10 items-center justify-center !gap-1.5 !px-4 !py-0"
               onClick={handleCreateLocal}
               title="新建本地任务"
               disabled={!creating.trim()}
@@ -490,8 +490,8 @@ export function TaskPanel() {
       {/* 任务树列表 */}
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
         {filteredTree.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-bg-card/55 py-12 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-bg-subtle text-fg-subtle">
+          <div className="motion-fade-in flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-bg-card/55 py-12 text-center">
+            <div className="motion-breathe flex h-12 w-12 items-center justify-center rounded-xl bg-bg-subtle text-fg-subtle">
               <ListTree size={24} />
             </div>
             <div className="space-y-1">
@@ -640,7 +640,7 @@ function TaskMetric({
 }) {
   return (
     <div
-      className={`rounded-xl border px-3 py-2.5 ${
+      className={`motion-base rounded-xl border px-3 py-2.5 ${
         tone === 'accent' ? 'border-accent/25 bg-accent/10' : 'border-border bg-bg-card/80'
       }`}
       title={title}
@@ -740,7 +740,7 @@ function TaskTreeItem({
     <>
       <div
         className={`
-          group relative flex items-center gap-2 rounded-xl p-2.5 transition-all duration-150
+          group motion-base relative flex items-center gap-2 rounded-xl p-2.5
           ${
             isParent
               ? 'border border-border bg-bg-card/95 shadow-soft hover:border-border-strong/70 hover:bg-bg-subtle/65'
@@ -763,7 +763,7 @@ function TaskTreeItem({
       >
         {/* 折叠/展开按钮 */}
         <button
-          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-fg-subtle transition-colors hover:bg-bg-elevated hover:text-fg"
+          className="motion-base flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-fg-subtle hover:bg-bg-elevated hover:text-fg"
           onClick={() => hasChildren && onToggleCollapse(task.id)}
           title={hasChildren ? (isCollapsed ? '展开子任务' : '收起子任务') : ''}
         >
@@ -779,7 +779,7 @@ function TaskTreeItem({
         </button>
 
         <div
-          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/70 text-fg-subtle'}`}
+          className={`motion-state-bg flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/70 text-fg-subtle'}`}
         >
           {hasChildren ? (
             <ListTree size={13} />
@@ -790,7 +790,7 @@ function TaskTreeItem({
 
         {/* 完成状态标记 */}
         <button
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-fg-subtle transition-colors hover:bg-success/10 hover:text-success disabled:pointer-events-none"
+          className="motion-base flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-fg-subtle hover:bg-success/10 hover:text-success disabled:pointer-events-none"
           onClick={(e) => {
             e.stopPropagation();
             if (!isCompleted) onCompleteTask(task);
@@ -808,7 +808,7 @@ function TaskTreeItem({
         {/* 标题 + 元信息 */}
         <div className="min-w-0 flex-1">
           <p
-            className={`truncate transition-colors ${isParent ? 'text-[13px]' : 'text-[13px]'} ${
+            className={`motion-base truncate ${isParent ? 'text-[13px]' : 'text-[13px]'} ${
               isCompleted
                 ? 'font-normal text-fg-subtle line-through decoration-fg-subtle/40'
                 : isParent
@@ -845,9 +845,9 @@ function TaskTreeItem({
 
         {/* 关联标识 - 当前片段 / 本次默认 */}
         {(isCurrentSegmentTask || isSessionDefaultTask) && (
-          <div className="flex flex-shrink-0 items-center gap-1">
+          <div className="motion-fade-in flex flex-shrink-0 items-center gap-1">
             {isCurrentSegmentTask && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
+              <span className="inline-flex items-center gap-1 rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent shadow-[0_0_8px_rgb(var(--app-accent)/0.18)]">
                 <Link2 size={10} /> 当前片段
               </span>
             )}
@@ -860,9 +860,9 @@ function TaskTreeItem({
         )}
 
         {/* 操作按钮 - hover 时才显示 */}
-        <div className="flex flex-shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+        <div className="flex flex-shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-[var(--motion-fast)] ease-[var(--ease-out)] group-hover:opacity-100">
           <button
-            className="flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-fg-subtle transition-colors hover:bg-accent/10 hover:text-accent"
+            className="motion-press flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-fg-subtle hover:bg-accent/10 hover:text-accent"
             onClick={() => onLinkSegment(task)}
             title="关联到当前片段"
             disabled={!currentSegmentId}
@@ -871,7 +871,7 @@ function TaskTreeItem({
             片段
           </button>
           <button
-            className="flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-fg-subtle transition-colors hover:bg-accent/10 hover:text-accent"
+            className="motion-press flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-fg-subtle hover:bg-accent/10 hover:text-accent"
             onClick={() => onLinkSession(task)}
             title="设为会话默认任务"
           >
@@ -883,7 +883,7 @@ function TaskTreeItem({
 
       {/* 子任务（递归） */}
       {hasChildren && !isCollapsed && (
-        <div className="space-y-1">
+        <div className="motion-fade-in space-y-1">
           {task.children!.map((child) => (
             <TaskTreeItem
               key={child.id}
@@ -977,10 +977,10 @@ function SyncStatus() {
           : '暂无同步队列记录';
 
   return (
-    <div className="card flex items-center justify-between p-3.5">
+    <div className="card motion-lift flex items-center justify-between p-3.5">
       <div className="flex min-w-0 items-center gap-2.5">
         <div
-          className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
+          className={`motion-state-bg flex h-9 w-9 items-center justify-center rounded-xl border ${
             hasProblem
               ? 'border-danger/20 bg-danger/10 text-danger'
               : hasPending
@@ -1002,7 +1002,7 @@ function SyncStatus() {
         </div>
       </div>
       <button
-        className="btn-ghost flex h-8 items-center gap-1.5 !px-3 text-xs"
+        className="btn-ghost motion-press flex h-8 items-center gap-1.5 !px-3 text-xs"
         onClick={handleSync}
         disabled={syncing || (!hasPending && !hasProblem)}
       >

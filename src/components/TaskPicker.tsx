@@ -200,7 +200,7 @@ export function TaskPicker({
             </div>
           </div>
           <button
-            className="rounded-md p-1 text-fg-subtle transition-colors hover:bg-bg-subtle hover:text-fg"
+            className="motion-base rounded-md p-1 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
             onClick={handleCancel}
             title="关闭"
           >
@@ -224,7 +224,7 @@ export function TaskPicker({
             />
             {query && (
               <button
-                className="absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-fg-subtle transition-colors hover:bg-bg-subtle hover:text-fg"
+                className="motion-base absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-fg-subtle hover:bg-bg-subtle hover:text-fg"
                 onClick={() => setQuery('')}
                 title="清除搜索"
               >
@@ -346,7 +346,7 @@ function PickerItem({
   return (
     <>
       <div
-        className={`group relative flex cursor-pointer items-center gap-2 rounded-xl border p-2.5 transition-all duration-150 ${
+        className={`group motion-base relative flex cursor-pointer items-center gap-2 rounded-xl border p-2.5 ${
           isPicked
             ? 'selected-accent ring-1 ring-accent/30'
             : isParent
@@ -368,7 +368,7 @@ function PickerItem({
         }}
       >
         <button
-          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-fg-subtle transition-colors hover:bg-bg-elevated hover:text-fg"
+          className="motion-base flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-fg-subtle hover:bg-bg-elevated hover:text-fg"
           onClick={(e) => {
             e.stopPropagation();
             if (hasChildren) onToggleCollapse(task.id);
