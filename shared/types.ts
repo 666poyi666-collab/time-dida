@@ -103,6 +103,8 @@ export interface TimerSnapshot {
   /** 当前暂停开始时间，若正在暂停 */
   currentPauseStartedAt: number | null;
   segments: SegmentSummary[];
+  /** 真实暂停事件列表（含当前进行中的暂停），用于前端构建混合时间线，不再靠间隙推导 */
+  pauseEvents: PauseEventSummary[];
   lastTick: number;
 }
 
@@ -115,6 +117,17 @@ export interface SegmentSummary {
   startedAt: number;
   endedAt: number | null;
   activeElapsedMs: number;
+}
+
+/** 暂停事件摘要（暴露给前端，用于混合时间线显示） */
+export interface PauseEventSummary {
+  id: string;
+  segmentId: string | null;
+  pauseStartedAt: number;
+  pauseEndedAt: number | null;
+  durationMs: number;
+  /** 是否为当前进行中的暂停 */
+  isCurrent: boolean;
 }
 
 /** 任务统一模型 */

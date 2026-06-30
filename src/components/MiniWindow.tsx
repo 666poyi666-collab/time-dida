@@ -4,8 +4,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TimerSnapshot, AppSettings } from '@shared/types';
 import { formatDuration } from '../lib/time';
-import { getMainDisplayMs } from '../lib/timerSelectors';
-import { Play, Pause, Square, ChevronDown, ChevronUp, Maximize2 } from 'lucide-react';
+import {
+  getMainDisplayMs,
+  getCurrentSegmentDisplayMs,
+  getCurrentPauseDisplayMs,
+  getCumulativeActiveMs,
+  getCumulativePauseMs,
+} from '../lib/timerSelectors';
+import { Play, Pause, Square, ChevronDown, ChevronUp, Maximize2, Link2 } from 'lucide-react';
 
 // ─── 常量 ───────────────────────────────────────────────────────
 
@@ -183,8 +189,16 @@ export function MiniWindow() {
 
   // ─── 派生状态 ────────────────────────────────────────────────
   const state = snapshot?.state ?? 'idle';
-  // 统一走 selector：running 显示当前专注片段，paused 显示当前暂停片段
-  const displayActive = getMainDisplayMs(snapshot, Date.now());
+  const nowMs = Date.now();
+  // 5 项核心信息，全部走统一 selector
+  const displayActive = getMainDisplayMs(snapshot, nowMs); // 大时间（当前片段）
+  const currentFocusMs = getCurrentSegmentDisplayMs(snapshot, nowMs); // 当前专注片段
+  const currentPauseMs = getCurrentPauseDisplayMs(snapshot, nowMs); // 当前暂停片段
+  const cumulativeActiveMs = getCumulativeActiveMs(snapshot, nowMs); // 累计专注
+  const cumulativePauseMs = getCumulativePauseMs(snapshot, nowMs); // 累计暂停
+  const currentTaskTitle = snapshot?.currentTaskTitle ?? null;
+  const isRunning = state === 'running';
+  const isPaused = state === 'paused';
 
   const isCompact = !collapsed && containerWidth < 260;
   const isExpanded = !collapsed && containerWidth >= 260;
@@ -302,7 +316,7 @@ export function MiniWindow() {
     );
   }
 
-  // ─── EXPANDED 模式（默认，完整 UI） ────────────────────────
+  // ─── EXPANDED 模式（默认，完整 UI，含 5 项核心信息） ───────
   return (
     <div
       ref={containerRef}
@@ -332,18 +346,58 @@ export function MiniWindow() {
         </button>
       </div>
 
-      {/* 大号计时数字 */}
-      <div className="absolute inset-x-3 top-9 bottom-14 flex flex-col items-center justify-center gap-0.5">
+      {/* 当前任务 */}
+      <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
+        <Link2 size={10} className="flex-shrink-0 text-accent" />
+        <span className="max-w-[230px] truncate text-[11px] font-medium text-fg-muted">
+          {currentTaskTitle ?? (state === 'idle' ? '点击开始专注' : '未关联任务')}
+        </span>
+      </div>
+
+      {/* 大号计时数字（当前片段时间） */}
+      <div className="mt-2 flex flex-col items-center gap-0.5">
         <span
-          className={`timer-digit text-[30px] font-bold leading-none ${
-            state === 'paused' ? 'text-warning' : ''
+          className={`timer-digit text-[26px] font-bold leading-none tabular-nums ${
+            isPaused ? 'text-danger' : isRunning ? 'text-accent' : ''
           }`}
         >
           {formatDuration(displayActive)}
         </span>
-        <span className="mt-1 max-w-[260px] truncate text-xs font-medium text-fg-muted">
-          {snapshot?.currentTaskTitle ?? (state === 'idle' ? '点击开始专注' : '未关联任务')}
+        <span className="text-[9px] font-medium text-fg-subtle">
+          {isPaused ? '当前暂停片段' : isRunning ? '当前专注片段' : '尚未开始'}
         </span>
+      </div>
+
+      {/* 4 项累计 / 当前统计（2×2 网格） */}
+      <div className="mt-2.5 grid grid-cols-2 gap-x-2 gap-y-1.5 px-0.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-semibold text-accent">当前专注</span>
+          <span className="timer-digit text-[11px] font-bold tabular-nums text-fg">
+            {formatDuration(isRunning ? currentFocusMs : 0)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-semibold text-accent/80">累计专注</span>
+          <span className="timer-digit text-[11px] font-bold tabular-nums text-fg-muted">
+            {formatDuration(cumulativeActiveMs)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-semibold text-danger">当前暂停</span>
+          <span
+            className={`timer-digit text-[11px] font-bold tabular-nums ${
+              isPaused ? 'text-danger' : 'text-fg-subtle'
+            }`}
+          >
+            {formatDuration(isPaused ? currentPauseMs : 0)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-semibold text-danger/80">累计暂停</span>
+          <span className="timer-digit text-[11px] font-bold tabular-nums text-fg-muted">
+            {formatDuration(cumulativePauseMs)}
+          </span>
+        </div>
       </div>
 
       {/* 进度条（25 分钟目标） */}

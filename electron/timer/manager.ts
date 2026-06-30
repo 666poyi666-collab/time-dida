@@ -39,6 +39,7 @@ import type {
   FocusSession,
   FocusSegment,
   PauseEvent,
+  PauseEventSummary,
   SegmentSummary,
   TaskSource,
 } from '@shared/types';
@@ -58,6 +59,11 @@ export class TimerManager {
   private currentPause: PauseEvent | null = null;
   /** 当前 segment 自上次持久化以来已累计的活跃毫秒（增量） */
   private activeElapsedMs = 0;
+  /** 当前 segment 开始时的累计 activeElapsedMs 基准。
+   *  segment 的独立时长 = this.activeElapsedMs - this.currentSegmentActiveBaseMs。
+   *  这样 resume 创建新 segment 时，新 segment 从 0 开始计时，
+   *  而不是错误地继承整个 session 的累计值。 */
+  private currentSegmentActiveBaseMs = 0;
   private pauseElapsedMs = 0;
   /** 上一次 tick 的时间戳，用于增量计算 */
   private lastTick = 0;
@@ -107,6 +113,11 @@ export class TimerManager {
       this.currentPause = openPause;
       this.currentSegment = lastSegment;
       this.activeElapsedMs = active.activeElapsedMs;
+      // 反推当前 segment 基准：累计 active - 当前 segment 已结算的独立时长
+      this.currentSegmentActiveBaseMs = Math.max(
+        0,
+        this.activeElapsedMs - (lastSegment?.activeElapsedMs ?? 0),
+      );
       this.pauseElapsedMs = active.pauseElapsedMs;
       this.state = 'paused';
       logger.info('timer', 'recovered as paused', { sessionId: active.id });
@@ -114,6 +125,11 @@ export class TimerManager {
       // 重启前在 running：根据 lastTick 重算
       this.currentSegment = lastSegment;
       this.activeElapsedMs = active.activeElapsedMs;
+      // 反推当前 segment 基准：累计 active - 当前 segment 已结算的独立时长
+      this.currentSegmentActiveBaseMs = Math.max(
+        0,
+        this.activeElapsedMs - (lastSegment?.activeElapsedMs ?? 0),
+      );
       this.pauseElapsedMs = active.pauseElapsedMs;
       const now = Date.now();
       const delta = Math.max(0, now - lastTick);
@@ -178,6 +194,7 @@ export class TimerManager {
     const segment = this.createSegment(session.id, now);
     this.currentSegment = segment;
     this.activeElapsedMs = 0;
+    this.currentSegmentActiveBaseMs = 0;
     this.pauseElapsedMs = 0;
     this.lastTick = now;
     this.state = 'running';
@@ -228,6 +245,7 @@ export class TimerManager {
     this.currentSegment = segment;
 
     this.activeElapsedMs = 0;
+    this.currentSegmentActiveBaseMs = 0;
     this.pauseElapsedMs = 0;
     this.lastTick = now;
     this.state = 'running';
@@ -295,13 +313,17 @@ export class TimerManager {
     }
     this.currentPause = null;
 
-    // 按设置决定是否新建 segment
-    if (this.segmentBehavior === 'new-segment' && this.session) {
-      // 先结算旧 segment
+    // 本项目规则固定为：resume 始终创建新的 focus segment。
+    // 即使 settings.segmentBehavior === 'continue-segment' 也无视，
+    // 保证"暂停后继续，专注时间从 0 开始"这一核心语义。
+    if (this.session) {
+      // 先结算旧 segment（写入其独立时长）
       this.closeSegment(now);
-      // 新建 segment
+      // 新建 segment，重置 active 基准 = 当前累计 activeElapsedMs
+      // 这样新 segment 的独立时长 = activeElapsedMs - base，从 0 开始
       const seg = this.createSegment(this.session.id, now);
       this.currentSegment = seg;
+      this.currentSegmentActiveBaseMs = this.activeElapsedMs;
       // 新 segment 沿用 session 默认任务（含标题）
       if (this.session.defaultTaskId && this.session.defaultTaskSource) {
         seg.taskId = this.session.defaultTaskId;
@@ -310,14 +332,14 @@ export class TimerManager {
         updateSegment(seg);
       }
     }
-    // continue-segment: 沿用 currentSegment，activeElapsedMs 不清零
 
     this.lastTick = now;
     this.state = 'running';
     this.persistMeta(now);
     this.startTick();
-    logger.info('timer', 'resumed', {
-      newSegment: this.segmentBehavior === 'new-segment',
+    logger.info('timer', 'resumed (always new segment)', {
+      newSegmentId: this.currentSegment?.id,
+      activeBase: this.currentSegmentActiveBaseMs,
       pauseMs: this.pauseElapsedMs,
     });
     this.emit();
@@ -579,7 +601,12 @@ export class TimerManager {
   private closeSegment(now: number): void {
     if (!this.currentSegment) return;
     this.currentSegment.endedAt = now;
-    this.currentSegment.activeElapsedMs = this.activeElapsedMs;
+    // segment 独立时长 = 累计 activeElapsedMs - 该 segment 开始时的基准
+    // 这样新 segment 从 0 开始，旧 segment 保留自己的真实时长
+    this.currentSegment.activeElapsedMs = Math.max(
+      0,
+      this.activeElapsedMs - this.currentSegmentActiveBaseMs,
+    );
     this.currentSegment.updatedAt = now;
     updateSegment(this.currentSegment);
   }
@@ -622,7 +649,11 @@ export class TimerManager {
     const now = Date.now();
     this.settleActive(now);
     if (this.currentSegment && this.session) {
-      this.currentSegment.activeElapsedMs = this.activeElapsedMs;
+      // segment 写入独立时长（差值），session 写入累计值
+      this.currentSegment.activeElapsedMs = Math.max(
+        0,
+        this.activeElapsedMs - this.currentSegmentActiveBaseMs,
+      );
       this.currentSegment.updatedAt = now;
       updateSegment(this.currentSegment);
       this.session.activeElapsedMs = this.activeElapsedMs;
@@ -668,6 +699,7 @@ export class TimerManager {
     }
 
     const segments: SegmentSummary[] = this.buildSegmentSummaries(now);
+    const pauseEvents: PauseEventSummary[] = this.buildPauseEventSummaries();
 
     return {
       state: this.state,
@@ -685,6 +717,7 @@ export class TimerManager {
       wallElapsedMs: wallMs,
       currentPauseStartedAt,
       segments,
+      pauseEvents,
       // lastTick = 上次活跃结算时间（running 时）；渲染层用 (now - lastTick) 算增量
       lastTick: this.lastTick > 0 ? this.lastTick : now,
     };
@@ -694,8 +727,12 @@ export class TimerManager {
     if (!this.session) return [];
     const segs = listSegments(this.session.id);
     return segs.map((s) => {
-      // 当前运行中的 segment 显示已结算值，渲染层用 lastTick 动态算增量
-      const activeMs = this.currentSegment?.id === s.id ? this.activeElapsedMs : s.activeElapsedMs;
+      // 当前运行中的 segment：返回独立时长（累计值 - 基准），渲染层用 lastTick 动态算增量
+      // 其它已结算 segment：直接用 DB 中的独立时长
+      const activeMs =
+        this.currentSegment?.id === s.id
+          ? Math.max(0, this.activeElapsedMs - this.currentSegmentActiveBaseMs)
+          : s.activeElapsedMs;
       return {
         id: s.id,
         taskId: s.taskId,
@@ -708,6 +745,20 @@ export class TimerManager {
         activeElapsedMs: activeMs,
       };
     });
+  }
+
+  /** 构建暂停事件摘要（含当前进行中的暂停），暴露给前端构建混合时间线 */
+  private buildPauseEventSummaries(): PauseEventSummary[] {
+    if (!this.session) return [];
+    const pauses = listPauses(this.session.id);
+    return pauses.map((p) => ({
+      id: p.id,
+      segmentId: p.segmentId,
+      pauseStartedAt: p.pauseStartedAt,
+      pauseEndedAt: p.pauseEndedAt,
+      durationMs: p.durationMs,
+      isCurrent: this.currentPause?.id === p.id,
+    }));
   }
 
   dispose(): void {

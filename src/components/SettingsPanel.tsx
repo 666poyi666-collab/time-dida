@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import type { AppSettings } from '@shared/types';
+import { APP_COMMIT, APP_BUILD_TIME } from '@shared/version';
 import {
   LogOut,
   Loader2,
@@ -806,7 +807,17 @@ export function SettingsPanel() {
               <Section title="FocusLink" desc="全局快捷键驱动的专注计时器 + 滴答清单任务关联工具">
                 <Row label="当前版本">
                   <span className="rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs font-mono text-fg-muted">
-                    v0.1.8
+                    v0.1.9
+                  </span>
+                </Row>
+                <Row label="Build">
+                  <span className="rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs font-mono text-fg-muted">
+                    {APP_COMMIT}
+                  </span>
+                </Row>
+                <Row label="Build Time">
+                  <span className="rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs font-mono text-fg-muted">
+                    {APP_BUILD_TIME}
                   </span>
                 </Row>
               </Section>

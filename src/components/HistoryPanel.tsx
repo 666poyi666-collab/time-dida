@@ -612,12 +612,12 @@ export function HistoryPanel() {
                             </div>
                           )}
 
-                          {/* 暂停记录 - 弱化显示，默认不提供关联入口，三点菜单可选关联 */}
+                          {/* 暂停记录 - 弱化显示，红色，默认不提供关联入口，三点菜单可选关联 */}
                           {detail.pauses.length > 0 && (
                             <div className="opacity-70">
                               <div className="mb-1.5 flex items-center gap-2">
-                                <Coffee size={12} className="text-warning" />
-                                <p className="text-[10px] font-semibold uppercase tracking-widest text-fg-subtle">
+                                <Coffee size={12} className="text-danger" />
+                                <p className="text-[10px] font-semibold uppercase tracking-widest text-danger/80">
                                   暂停记录 ({detail.pauses.length})
                                 </p>
                               </div>
@@ -629,7 +629,7 @@ export function HistoryPanel() {
                                     index={i}
                                     onLinkPause={() =>
                                       addToast(
-                                        '暂停片段暂不支持关联任务，该能力将在后续版本扩展本地数据结构后启用。',
+                                        '暂停片段关联任务需要扩展数据结构，当前版本暂不支持。',
                                         'info',
                                       )
                                     }
@@ -1032,7 +1032,7 @@ function SegmentRow({
   );
 }
 
-/** 暂停记录行 - 弱化显示，三点菜单提供可选关联入口 */
+/** 暂停记录行 - 红色弱化显示，三点菜单提供可选关联入口 */
 function PauseRow({
   pause,
   index,
@@ -1044,20 +1044,20 @@ function PauseRow({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
-    <div className="relative flex items-center justify-between rounded-lg border border-warning/15 bg-warning/5 px-3 py-1.5 text-xs">
+    <div className="relative flex items-center justify-between rounded-lg border border-danger/15 bg-danger/5 px-3 py-1.5 text-xs">
       <div className="flex min-w-0 items-center gap-2">
-        <Coffee size={11} className="shrink-0 text-warning/70" />
+        <Coffee size={11} className="shrink-0 text-danger/70" />
         <span className="text-fg-muted">
           暂停 {index + 1} · {formatDateTime(pause.pauseStartedAt)}
           {pause.pauseEndedAt ? ` → ${formatDateTime(pause.pauseEndedAt)}` : ' → 进行中'}
         </span>
       </div>
       <div className="flex items-center gap-1.5">
-        <span className="timer-digit shrink-0 text-fg-subtle">
+        <span className="timer-digit shrink-0 text-danger/80">
           {formatDuration(pause.durationMs)}
         </span>
         <button
-          className="rounded-md p-1 text-fg-subtle transition-colors hover:bg-bg-subtle hover:text-fg"
+          className="rounded-md p-1 text-fg-subtle transition-colors hover:bg-danger/10 hover:text-danger"
           onClick={(e) => {
             e.stopPropagation();
             setMenuOpen((v) => !v);
@@ -1069,9 +1069,9 @@ function PauseRow({
         {menuOpen && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-            <div className="absolute right-0 top-7 z-20 w-36 rounded-lg border border-border bg-bg-card py-1 shadow-lg">
+            <div className="absolute right-0 top-7 z-20 w-40 rounded-lg border border-border bg-bg-card py-1 shadow-lg">
               <button
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger"
                 onClick={() => {
                   setMenuOpen(false);
                   onLinkPause();

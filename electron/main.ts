@@ -18,6 +18,7 @@ import {
   type HotkeyHandlers,
 } from './hotkeys.js';
 import type { TimerSnapshot } from '@shared/types';
+import { APP_COMMIT, APP_BUILD_TIME, APP_RELEASE_DIR } from '@shared/version';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -432,7 +433,18 @@ function ensureTrayAndHotkeys(): void {
 
 app.whenReady().then(() => {
   logger.init();
-  logger.info('main', 'FocusLink starting', { version: app.getVersion(), isDev });
+  // 版本标识：启动时输出完整版本信息，避免用户打开旧版
+  logger.info('main', 'FocusLink version: 0.1.9', {
+    commit: APP_COMMIT,
+    buildTime: APP_BUILD_TIME,
+    releaseDir: APP_RELEASE_DIR,
+    electronVersion: app.getVersion(),
+    isDev,
+  });
+  console.log(`FocusLink version: 0.1.9`);
+  console.log(`commit: ${APP_COMMIT}`);
+  console.log(`buildTime: ${APP_BUILD_TIME}`);
+  console.log(`releaseDir: ${APP_RELEASE_DIR}`);
 
   initDatabase();
 

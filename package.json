@@ -1,13 +1,14 @@
 {
   "name": "focuslink",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "FocusLink - 全局快捷键驱动的专注时间记录器 + 滴答清单任务关联器",
   "author": "FocusLink",
   "main": "dist-electron/main.js",
   "license": "MIT",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "gen-version": "node scripts/gen-version.js",
+    "build": "npm run gen-version && tsc --noEmit && vite build",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
     "test": "vitest run",

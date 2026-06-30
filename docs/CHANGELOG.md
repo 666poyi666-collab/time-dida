@@ -3,6 +3,57 @@
 > 本仓库遵循简易版本记录。每个版本对应一个 `release-vXXX/` 打包目录。
 > 历史修复细节见 `docs/archive/` 下的各报告文档。
 
+## v0.1.9 (2026-06-30)
+
+### 核心计时 Bug 真正修复（基于真实运行测试）
+
+#### 1. 修复 resume 后专注时间不从 0 开始的根本 Bug
+- **根因**：`TimerManager.activeElapsedMs` 是 session 累计值，但 `closeSegment` 和 `buildSegmentSummaries` 之前直接把它当成当前 segment 的值，导致每个 segment 拿到的都是累计值而非本段时长
+- **修复**：引入 `currentSegmentActiveBaseMs` 字段，记录当前 segment 开始时的累计 activeElapsedMs 基准
+  - segment 独立时长 = `activeElapsedMs - currentSegmentActiveBaseMs`（差值计算）
+  - resume 创建新 segment 时重置基准，新 segment 从 0 开始
+  - closeSegment / persistSnapshot / buildSegmentSummaries 全部改用差值
+- **强制规则**：resume 始终创建新 segment，无视 `segmentBehavior` 设置
+
+#### 2. 真实 pauseEvents 暴露给前端
+- TimerSnapshot 新增 `pauseEvents: PauseEventSummary[]` 字段
+- 新增 `PauseEventSummary` 类型（含 isCurrent 标记）
+- `TimerManager.getSnapshot()` 调用 `buildPauseEventSummaries()` 从 `listPauses` 返回真实暂停事件
+- 前端不再靠 Segment 间隙推导暂停，避免暂停片段丢失或被混成专注片段
+
+#### 3. MiniWindow 显示 5 项核心信息
+- 当前任务、当前专注、累计专注、当前暂停、累计暂停
+- EXPANDED 模式 2×2 网格布局
+- 暂停态大时间和「当前暂停」用红色（danger）
+
+#### 4. SegmentTimeline 用真实 pauseEvents + 暂停红色
+- 新增 `src/lib/buildMixedTimeline.ts` 公共构建器
+- 暂停片段改用红色（danger），不再用橙色（warning）
+- 用 `snapshot.pauseEvents` 真实数据构建，不再靠间隙推导
+
+#### 5. HistoryPanel 暂停记录改红色
+- 暂停记录区边框/图标/文字改用 danger（红色）
+- PauseRow 三点菜单提示文案明确：「暂停片段关联任务需要扩展数据结构，当前版本暂不支持」
+
+#### 6. 版本标识 v0.1.9
+- 新增 `shared/version.ts` + `scripts/gen-version.js`（build 时注入 commit/buildTime）
+- 主进程启动日志输出 version/commit/buildTime/releaseDir
+- 设置页关于页显示 v0.1.9 + Build commit + Build Time
+
+#### 7. 真实场景测试通过（5/3/4/2/6）
+- 新增 `tests/timerScenario.test.ts`，用纯 JS 内存 mock 验证真实场景
+- 测试输出：Segment 1=5s, Pause 1=3s, Segment 2=4s, Pause 2=2s, Segment 3=6s
+- 累计专注=15s, 累计暂停=5s, 混合时间线=5 条（3 专注 + 2 暂停）
+
+### 云端同步
+- **滴答清单云端专注记录写入：未实现，后续单独设计**
+
+### 验证
+- `tsc --noEmit` 通过
+- `npm test` 通过（47/47 全绿，含 5/3/4/2/6 真实场景测试）
+- `npm run build` 通过（1915 模块）
+- `npm run dist:win` 通过（release-v019/FocusLink-0.1.9-x64.exe）
+
 ## v0.1.8 (2026-06-30)
 
 ### 计时 UI 语义修正 + 历史记录交互重构
