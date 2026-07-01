@@ -82,6 +82,9 @@ const api = {
     export: (id: string, format: 'json' | 'csv' | 'markdown') =>
       ipcRenderer.invoke('sessions:export', id, format),
   },
+  segments: {
+    delete: (id: string) => ipcRenderer.invoke('segments:delete', id),
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (settings: unknown) => ipcRenderer.invoke('settings:set', settings),
@@ -109,6 +112,8 @@ const api = {
     list: () => ipcRenderer.invoke('sync:list'),
     retry: (id: string) => ipcRenderer.invoke('sync:retry', id),
     runPending: () => ipcRenderer.invoke('sync:run-pending'),
+    resyncSegment: (segmentId: string) =>
+      ipcRenderer.invoke('sync:resync-segment', segmentId),
   },
   window: {
     minimizeToTray: () => ipcRenderer.send('window:minimize-to-tray'),

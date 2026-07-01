@@ -565,6 +565,19 @@ app.whenReady().then(() => {
   // 崩溃恢复
   timer.recover();
 
+  // 启动时自动处理积压的同步队列（迁移重置的失败项等）
+  void runPending()
+    .then((result) => {
+      if (result.processed > 0) {
+        logger.info('sync', 'startup sync completed', result);
+      }
+    })
+    .catch((err) => {
+      logger.warn('sync', 'startup sync failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+
   // 专注小窗 IPC 控制
   ipcMain.on('mini:show', () => showMiniWindow());
   ipcMain.on('mini:hide', () => hideMiniWindow());

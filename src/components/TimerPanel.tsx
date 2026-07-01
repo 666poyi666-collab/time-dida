@@ -407,7 +407,11 @@ export function TimerPanel() {
       ? '正在记录每个专注片段'
       : state === 'paused'
         ? '恢复后进入新专注片段'
-        : '已结束';
+        : isFinished
+          ? preSelectedTask
+            ? '已选择即将专注任务'
+            : '可先选任务，也可直接开始'
+          : '已结束';
 
   return (
     <div className="mx-auto flex w-full max-w-[560px] flex-col">
@@ -533,8 +537,8 @@ export function TimerPanel() {
         </div>
       )}
 
-      {/* idle 状态预选任务区 - "先选任务再开始专注"流程 */}
-      {isIdle && (
+      {/* idle/finished 状态预选任务区 - "先选任务再开始专注"流程；finished 也显示避免 UI 空洞 */}
+      {(isIdle || isFinished) && (
         <div className="mt-5 w-full space-y-2">
           {preSelectedTask ? (
             <div className="space-y-2 rounded-xl border border-accent/30 bg-accent/5 p-3.5">

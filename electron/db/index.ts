@@ -52,6 +52,67 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE focus_sessions ADD COLUMN default_task_title TEXT');
     logger.info('database', 'migration: added focus_sessions.default_task_title');
   }
+  // focus_segments.cloud_focus_id：存储已同步到滴答云端的专注记录 ID，用于删除时联动
+  if (!hasCol('focus_segments', 'cloud_focus_id')) {
+    database.exec('ALTER TABLE focus_segments ADD COLUMN cloud_focus_id TEXT');
+    logger.info('database', 'migration: added focus_segments.cloud_focus_id');
+  }
+  // v0.2.22 修复：合并片段时未先 closeSegment，导致 segment.activeElapsedMs 过期，
+  // 与 session.activeElapsedMs 不一致。这里对已结束的 session 做数据修复：
+  // 若 session 只有一个 segment，直接把 segment.activeElapsedMs 设为 session.activeElapsedMs。
+  repairSegmentDurations(database);
+}
+
+/** 修复历史数据：确保已结束 session 的 segment.activeElapsedMs 之和不小于 session 总时长 */
+function repairSegmentDurations(database: Database.Database): void {
+  const sessions = database
+    .prepare(
+      `SELECT id, active_elapsed_ms AS activeElapsedMs, ended_at AS endedAt FROM focus_sessions WHERE ended_at IS NOT NULL`,
+    )
+    .all() as Array<{ id: string; activeElapsedMs: number; endedAt: number }>;
+  let repaired = 0;
+  for (const s of sessions) {
+    const segs = database
+      .prepare(
+        `SELECT id, active_elapsed_ms AS activeElapsedMs FROM focus_segments WHERE session_id = ?`,
+      )
+      .all(s.id) as Array<{ id: string; activeElapsedMs: number }>;
+    if (segs.length === 0) continue;
+    const segSum = segs.reduce((sum, seg) => sum + seg.activeElapsedMs, 0);
+    // 不一致：单 segment 直接用 session 总值；多 segment 按比例补差到第一个
+    if (Math.abs(segSum - s.activeElapsedMs) > 1000) {
+      if (segs.length === 1) {
+        database
+          .prepare(`UPDATE focus_segments SET active_elapsed_ms = ? WHERE id = ?`)
+          .run(s.activeElapsedMs, segs[0].id);
+        repaired++;
+        logger.info('database', 'repaired single segment duration', {
+          sessionId: s.id,
+          segmentId: segs[0].id,
+          from: segs[0].activeElapsedMs,
+          to: s.activeElapsedMs,
+        });
+      } else {
+        // 多 segment：把差值加到第一个 segment（最常见的合并目标）
+        const diff = s.activeElapsedMs - segSum;
+        const newFirst = Math.max(0, segs[0].activeElapsedMs + diff);
+        database
+          .prepare(`UPDATE focus_segments SET active_elapsed_ms = ? WHERE id = ?`)
+          .run(newFirst, segs[0].id);
+        repaired++;
+        logger.info('database', 'repaired multi-segment duration (diff to first)', {
+          sessionId: s.id,
+          segmentId: segs[0].id,
+          diff,
+          from: segs[0].activeElapsedMs,
+          to: newFirst,
+        });
+      }
+    }
+  }
+  if (repaired > 0) {
+    logger.info('database', `repairSegmentDurations: repaired ${repaired} sessions`);
+  }
 }
 
 export function getDb(): Database.Database {
@@ -120,7 +181,17 @@ export function listSessions(limit = 100): FocusSession[] {
 
 export function deleteSession(id: string): void {
   const db = getDb();
-  db.prepare('DELETE FROM focus_sessions WHERE id = ?').run(id);
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM sync_queue WHERE payload LIKE ?').run(`%"sessionId":"${id}"%`);
+    const segIds = db.prepare('SELECT id FROM focus_segments WHERE session_id = ?').all(id) as Array<{ id: string }>;
+    for (const seg of segIds) {
+      db.prepare('DELETE FROM sync_queue WHERE payload LIKE ?').run(`%"segmentId":"${seg.id}"%`);
+    }
+    db.prepare('DELETE FROM pause_events WHERE session_id = ?').run(id);
+    db.prepare('DELETE FROM focus_segments WHERE session_id = ?').run(id);
+    db.prepare('DELETE FROM focus_sessions WHERE id = ?').run(id);
+  });
+  tx();
 }
 
 // ============ Segment ============
@@ -164,6 +235,16 @@ export function listSegments(sessionId: string): FocusSegment[] {
 export function deleteSegment(id: string): void {
   const db = getDb();
   db.prepare('DELETE FROM focus_segments WHERE id = ?').run(id);
+}
+
+/** 记录已同步到滴答云端的专注记录 ID，用于删除时联动 */
+export function setSegmentCloudFocusId(segmentId: string, cloudFocusId: string | null): void {
+  const db = getDb();
+  db.prepare('UPDATE focus_segments SET cloud_focus_id = ?, updated_at = ? WHERE id = ?').run(
+    cloudFocusId,
+    Date.now(),
+    segmentId,
+  );
 }
 
 // ============ Pause ============
@@ -294,6 +375,14 @@ export function getSyncQueueItem(id: string): SyncQueueItem | null {
   return row ? rowToSyncQueue(row) : null;
 }
 
+export function resetFailedSyncItems(): number {
+  const db = getDb();
+  const info = db
+    .prepare("UPDATE sync_queue SET status = 'pending', retry_count = 0, last_error = NULL WHERE status = 'failed'")
+    .run();
+  return info.changes;
+}
+
 // ============ Settings ============
 
 export function getSetting(key: string): string | null {
@@ -374,6 +463,7 @@ interface SegmentRow {
   ended_at: number | null;
   active_elapsed_ms: number;
   note: string | null;
+  cloud_focus_id: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -388,6 +478,7 @@ function rowToSegment(r: SegmentRow): FocusSegment {
     endedAt: r.ended_at,
     activeElapsedMs: r.active_elapsed_ms,
     note: r.note,
+    cloudFocusId: r.cloud_focus_id,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

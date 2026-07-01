@@ -44,6 +44,8 @@ export function getQueueSessionId(item: SyncQueueItem): string | null {
   if (!payload) return null;
   if (payload.type === 'session-note' && payload.sessionId) return payload.sessionId;
   if (payload.type === 'segment-note' && payload.sessionId) return payload.sessionId;
+  if (payload.type === 'segment-focus' && payload.sessionId) return payload.sessionId;
+  if (payload.type === 'segment-comment' && payload.sessionId) return payload.sessionId;
   return null;
 }
 
@@ -52,7 +54,7 @@ export function queueItemToSessionSyncState(item: SyncQueueItem): SessionSyncSta
     return {
       label: '已同步',
       tone: 'ok',
-      title: '最近一次同步已完成：已写入滴答任务评论或任务内容',
+      title: '最近一次同步已完成：已写入滴答云端专注记录或任务评论',
     };
   }
   if (item.status === 'pending') {

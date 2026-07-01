@@ -46,7 +46,7 @@ Keep state labels precise:
 - Use `已同步` / `未同步` / `同步失败` only for cloud sync queue state.
 - Do not use vague labels such as `可同步`.
 - If a session has linked segments but no session default task, collapsed history rows must not say `未关联`.
-- dida CLI sync should be described as `同步到滴答评论`; if fallback happens, mention task content only in diagnostics.
+- dida CLI sync should be described as `同步到滴答清单`; if fallback happens, mention task content only in diagnostics.
 
 ## Mini Window Rules
 

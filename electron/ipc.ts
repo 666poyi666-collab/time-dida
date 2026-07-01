@@ -30,6 +30,7 @@ import {
   listQueue,
   retryItem,
   runPending,
+  resyncSegment,
 } from './sync/syncService.js';
 import {
   listSessions,
@@ -37,6 +38,7 @@ import {
   listSegments,
   listPauses,
   deleteSession,
+  deleteSegment,
 } from './db/index.js';
 import { exportSessionById } from './export.js';
 import { logger } from './logger.js';
@@ -338,7 +340,52 @@ export function registerIpc(
     if (!session) return null;
     return { session, segments: listSegments(id), pauses: listPauses(id) };
   });
-  ipcMain.handle('sessions:delete', (_e, id: string) => deleteSession(id));
+  ipcMain.handle('sessions:delete', async (_e, id: string) => {
+    // 先删除云端专注记录，再删除本地数据
+    const segs = listSegments(id);
+    let cloudDeleted = 0;
+    let cloudFailed = 0;
+    for (const seg of segs) {
+      if (seg.cloudFocusId) {
+        try {
+          const ok = await ticktickCliProvider.deleteFocusRecord?.(seg.id);
+          if (ok) cloudDeleted++;
+          else cloudFailed++;
+        } catch (err) {
+          logger.warn('ipc', 'failed to delete cloud focus record', {
+            segmentId: seg.id,
+            cloudFocusId: seg.cloudFocusId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          cloudFailed++;
+        }
+      }
+    }
+    deleteSession(id);
+    timer.resetIfSession(id);
+    // 若计时器卡在 finished 状态（1.5s 自动重置窗口内），立即重置为 idle，
+    // 避免用户回到计时界面看到 finished 状态的 UI 空洞
+    timer.resetIfFinished();
+    logger.info('ipc', 'session deleted', { sessionId: id, cloudDeleted, cloudFailed });
+    // 始终返回最新快照，确保渲染层 UI 一致
+    return timer.getSnapshot();
+  });
+
+  /** 删除单个 segment：先删云端专注记录，再删本地 */
+  ipcMain.handle('segments:delete', async (_e, id: string) => {
+    let cloudDeleted = false;
+    try {
+      cloudDeleted = (await ticktickCliProvider.deleteFocusRecord?.(id)) ?? false;
+    } catch (err) {
+      logger.warn('ipc', 'segments:delete cloud deletion failed', {
+        segmentId: id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    deleteSegment(id);
+    logger.info('ipc', 'segment deleted', { segmentId: id, cloudDeleted });
+    return { cloudDeleted };
+  });
   ipcMain.handle('sessions:export', (_e, id: string, format: 'json' | 'csv' | 'markdown') =>
     exportSessionById(id, format),
   );
@@ -425,6 +472,11 @@ export function registerIpc(
   ipcMain.handle('sync:list', () => listQueue());
   ipcMain.handle('sync:retry', (_e, id: string) => retryItem(id));
   ipcMain.handle('sync:run-pending', () => runPending());
+  /** 删除单个 segment 的云端专注记录并重新同步（保留本地数据） */
+  ipcMain.handle('sync:resync-segment', async (_e, segmentId: string) => {
+    const result = await resyncSegment(segmentId);
+    return result;
+  });
 
   // ============ Window ============
   ipcMain.on('window:minimize-to-tray', () => window.hide());

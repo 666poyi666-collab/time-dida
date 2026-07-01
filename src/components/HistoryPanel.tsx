@@ -144,23 +144,24 @@ export function HistoryPanel() {
 
   const handleDelete = async (id: string) => {
     const isCurrentSession = snapshot?.sessionId === id;
-    if (isCurrentSession && (snapshot.state === 'running' || snapshot.state === 'paused')) {
+    if (isCurrentSession && snapshot && (snapshot.state === 'running' || snapshot.state === 'paused')) {
       addToast('当前专注仍在进行中，请先结束专注后再删除这条记录。', 'error');
       return;
     }
-    if (!confirm('确认删除这条专注记录？此操作不可撤销。')) return;
+    if (!confirm('确认删除这条专注记录？本地记录和已同步到滴答云端的专注记录都将被删除。')) return;
     try {
-      await window.focuslink.sessions.delete(id);
-      if (isCurrentSession) {
-        const snap = await window.focuslink.timer.reset();
-        setSnapshot(snap);
+      // sessions:delete 会先删除云端专注记录，再删除本地数据
+      const freshSnapshot = await window.focuslink.sessions.delete(id);
+      // 始终用最新快照更新 UI，防止计时界面空白
+      if (freshSnapshot) {
+        setSnapshot(freshSnapshot);
       }
       await load();
       if (expanded === id) {
         setExpanded(null);
         setDetail(null);
       }
-      addToast('已删除', 'success');
+      addToast('已删除（含云端记录）', 'success');
     } catch (e) {
       addToast('删除失败：' + (e as Error).message, 'error');
     }
@@ -293,6 +294,35 @@ export function HistoryPanel() {
     }
   };
 
+  /** 删除单个片段的云端专注记录并重新同步（保留本地数据） */
+  const handleResyncSegment = async (seg: FocusSegment) => {
+    if (!seg.taskId || seg.taskSource !== 'ticktick') {
+      addToast('该片段未关联滴答任务，无法重新同步', 'error');
+      return;
+    }
+    if (
+      !confirm(
+        `确认删除该片段已同步到滴答云端的专注记录，并重新同步？\n\n这会先删除云端记录，再以当前关联的任务重新上传。\n本地数据保留不变。`,
+      )
+    )
+      return;
+    setLinking(true);
+    try {
+      const result = await window.focuslink.sync.resyncSegment(seg.id);
+      if (result.ok) {
+        addToast('已删除云端记录并重新同步', 'success');
+      } else {
+        addToast('重新同步失败：' + (result.error ?? '未知错误'), 'error');
+      }
+      if (expanded) await reloadDetail(expanded);
+      await refreshSyncQueue();
+    } catch (e) {
+      addToast('重新同步失败：' + (e as Error).message, 'error');
+    } finally {
+      setLinking(false);
+    }
+  };
+
   const autoSyncLinkedSession = async (sessionId: string) => {
     if (syncingSessionId) return;
     setSyncingSessionId(sessionId);
@@ -329,7 +359,7 @@ export function HistoryPanel() {
         },
       }));
       if (result.succeeded > 0) {
-        addToast(`已自动同步 ${result.succeeded} 条专注记录到滴答评论`, 'success');
+        addToast(`已自动同步 ${result.succeeded} 条专注记录到滴答清单`, 'success');
       }
     } catch (e) {
       await refreshSyncQueue().catch(() => undefined);
@@ -353,10 +383,17 @@ export function HistoryPanel() {
     try {
       const detailForSync: SessionDetail | null =
         detail?.session.id === sessionId ? detail : await window.focuslink.sessions.get(sessionId);
+      // 只同步已结束、已关联滴答任务的片段（运行中的片段无法同步）
       const ticktickSegments =
-        detailForSync?.segments.filter((seg) => seg.taskId && seg.taskSource === 'ticktick') ?? [];
+        detailForSync?.segments.filter(
+          (seg) => seg.taskId && seg.taskSource === 'ticktick' && seg.endedAt,
+        ) ?? [];
+      const runningSegments =
+        detailForSync?.segments.filter(
+          (seg) => seg.taskId && seg.taskSource === 'ticktick' && !seg.endedAt,
+        ) ?? [];
 
-      if (ticktickSegments.length === 0) {
+      if (ticktickSegments.length === 0 && runningSegments.length === 0) {
         setSessionSyncMeta((prev) => ({
           ...prev,
           [sessionId]: {
@@ -366,6 +403,72 @@ export function HistoryPanel() {
           },
         }));
         addToast('没有已关联滴答任务的片段；先把片段关联到滴答任务。', 'info');
+        return;
+      }
+
+      if (ticktickSegments.length === 0 && runningSegments.length > 0) {
+        addToast('专注仍在进行中，请先结束后再同步', 'info');
+        return;
+      }
+
+      // 检测已同步的片段：如果存在，询问是否删除云端旧记录并重新同步
+      // （修复云端时间偏大等历史错误记录）
+      const alreadySyncedSegments = ticktickSegments.filter((seg) => seg.cloudFocusId);
+      const unsyncedSegments = ticktickSegments.filter((seg) => !seg.cloudFocusId);
+
+      let useResync = false;
+      if (alreadySyncedSegments.length > 0) {
+        const msg =
+          alreadySyncedSegments.length === ticktickSegments.length
+            ? `本次 ${ticktickSegments.length} 个片段都已同步到云端。\n\n如果云端记录有误（如时间偏大），可以删除云端旧记录并重新上传正确的专注时长。\n\n点击"确定"删除云端旧记录并重新同步；点击"取消"则跳过已同步的片段。`
+            : `本次有 ${alreadySyncedSegments.length} 个片段已同步、${unsyncedSegments.length} 个未同步。\n\n如果云端记录有误（如时间偏大），可以删除云端旧记录并重新上传正确的专注时长。\n\n点击"确定"删除云端旧记录并重新同步全部片段；点击"取消"则只同步未同步的片段。`;
+        useResync = confirm(msg);
+      }
+
+      if (useResync) {
+        // 走重新同步路径：对每个片段先删云端再重新上传
+        setSessionSyncMeta((prev) => ({
+          ...prev,
+          [sessionId]: {
+            label: '重新同步中',
+            tone: 'warn',
+            title: '正在删除云端记录并重新上传',
+          },
+        }));
+        let succeeded = 0;
+        let failed = 0;
+        for (const seg of ticktickSegments) {
+          try {
+            const result = await window.focuslink.sync.resyncSegment(seg.id);
+            if (result.ok) succeeded++;
+            else failed++;
+          } catch {
+            failed++;
+          }
+        }
+        await refreshSyncQueue();
+        if (expanded) await reloadDetail(expanded);
+        if (failed === 0) {
+          setSessionSyncMeta((prev) => ({
+            ...prev,
+            [sessionId]: {
+              label: `已重新同步 ${succeeded} 条`,
+              tone: 'ok',
+              title: '云端记录已删除并重新上传',
+            },
+          }));
+          addToast(`已删除云端记录并重新同步 ${succeeded} 条`, 'success');
+        } else {
+          setSessionSyncMeta((prev) => ({
+            ...prev,
+            [sessionId]: {
+              label: `成功 ${succeeded} / 失败 ${failed}`,
+              tone: 'error',
+              title: '部分片段重新同步失败，请查看日志',
+            },
+          }));
+          addToast(`重新同步完成：成功 ${succeeded} 条，失败 ${failed} 条`, 'error');
+        }
         return;
       }
 
@@ -391,20 +494,20 @@ export function HistoryPanel() {
           [sessionId]: {
             label: `已同步 ${result.succeeded} 条`,
             tone: 'ok',
-            title: '本次同步已成功写入滴答任务评论',
+            title: '本次同步已成功写入滴答云端',
           },
         }));
-        addToast(`已同步 ${result.succeeded} 条专注记录到滴答评论`, 'success');
+        addToast(`已同步 ${result.succeeded} 条专注记录到滴答清单`, 'success');
       } else {
         setSessionSyncMeta((prev) => ({
           ...prev,
           [sessionId]: {
             label: '无待同步项',
             tone: 'warn',
-            title: '没有新的待同步队列项',
+            title: '没有新的待同步队列项（可能已全部同步）',
           },
         }));
-        addToast('没有需要同步的滴答任务记录', 'info');
+        addToast('没有需要同步的滴答任务记录（可能已全部同步）', 'info');
       }
     } catch (e) {
       await refreshSyncQueue().catch(() => undefined);
@@ -417,6 +520,91 @@ export function HistoryPanel() {
         },
       }));
       addToast('同步失败：' + (e as Error).message, 'error');
+    } finally {
+      setSyncingSessionId(null);
+    }
+  };
+
+  /** 会话级重新同步：删除所有已关联滴答任务的片段的云端记录，然后重新上传 */
+  const handleResyncSession = async (sessionId: string) => {
+    if (syncingSessionId) return;
+    setSyncingSessionId(sessionId);
+    try {
+      const detailForSync: SessionDetail | null =
+        detail?.session.id === sessionId ? detail : await window.focuslink.sessions.get(sessionId);
+      const ticktickSegments =
+        detailForSync?.segments.filter(
+          (seg) => seg.taskId && seg.taskSource === 'ticktick' && seg.endedAt,
+        ) ?? [];
+
+      if (ticktickSegments.length === 0) {
+        addToast('没有已关联滴答任务且已结束的片段', 'info');
+        return;
+      }
+
+      if (
+        !confirm(
+          `确认删除本次 ${ticktickSegments.length} 个片段已同步到滴答云端的专注记录，并重新同步？\n\n这会先删除云端记录，再以当前关联的任务和正确的专注时长重新上传。\n本地数据保留不变。\n\n适用于修复云端时间偏大等错误记录。`,
+        )
+      )
+        return;
+
+      setSessionSyncMeta((prev) => ({
+        ...prev,
+        [sessionId]: {
+          label: '重新同步中',
+          tone: 'warn',
+          title: '正在删除云端记录并重新上传',
+        },
+      }));
+
+      let succeeded = 0;
+      let failed = 0;
+      for (const seg of ticktickSegments) {
+        try {
+          const result = await window.focuslink.sync.resyncSegment(seg.id);
+          if (result.ok) succeeded++;
+          else failed++;
+        } catch {
+          failed++;
+        }
+      }
+
+      await refreshSyncQueue();
+      if (expanded) await reloadDetail(expanded);
+
+      if (failed === 0) {
+        setSessionSyncMeta((prev) => ({
+          ...prev,
+          [sessionId]: {
+            label: `已重新同步 ${succeeded} 条`,
+            tone: 'ok',
+            title: '云端记录已删除并重新上传',
+          },
+        }));
+        addToast(`已删除云端记录并重新同步 ${succeeded} 条`, 'success');
+      } else {
+        setSessionSyncMeta((prev) => ({
+          ...prev,
+          [sessionId]: {
+            label: `成功 ${succeeded} / 失败 ${failed}`,
+            tone: 'error',
+            title: '部分片段重新同步失败，请查看日志',
+          },
+        }));
+        addToast(`重新同步完成：成功 ${succeeded} 条，失败 ${failed} 条`, 'error');
+      }
+    } catch (e) {
+      await refreshSyncQueue().catch(() => undefined);
+      setSessionSyncMeta((prev) => ({
+        ...prev,
+        [sessionId]: {
+          label: '重新同步失败',
+          tone: 'error',
+          title: (e as Error).message,
+        },
+      }));
+      addToast('重新同步失败：' + (e as Error).message, 'error');
     } finally {
       setSyncingSessionId(null);
     }
@@ -597,6 +785,7 @@ export function HistoryPanel() {
                             }
                             onClear={handleClearSegment}
                             onComplete={handleCompleteTask}
+                            onResync={handleResyncSegment}
                             completedTaskIds={completedTaskIds}
                           />
 
@@ -645,13 +834,25 @@ export function HistoryPanel() {
                               className="btn-primary motion-press text-xs"
                               disabled={linking || syncingSessionId === session.id}
                               onClick={() => handleSyncSession(session.id)}
-                              title="把本次已关联滴答任务的专注时间同步到任务评论；评论失败时回退到任务内容"
+                              title="把本次已关联滴答任务的专注时间同步到滴答云端；已存在的会跳过"
                             >
                               <RefreshCw
                                 size={12}
                                 className={syncingSessionId === session.id ? 'animate-spin' : ''}
                               />
-                              {syncingSessionId === session.id ? '同步中' : '同步到滴答评论'}
+                              {syncingSessionId === session.id ? '同步中' : '同步到滴答清单'}
+                            </button>
+                            <button
+                              className="btn-outline motion-press text-xs border-accent/30 text-accent hover:bg-accent/10"
+                              disabled={linking || syncingSessionId === session.id}
+                              onClick={() => handleResyncSession(session.id)}
+                              title="删除云端专注记录并以正确的专注时长重新上传（修复云端时间偏大等错误）"
+                            >
+                              <RefreshCw
+                                size={12}
+                                className={syncingSessionId === session.id ? 'animate-spin' : ''}
+                              />
+                              重新同步
                             </button>
                             <SessionSyncBadge state={syncState} />
                             <button
@@ -980,6 +1181,7 @@ function HistoryTimelineList({
   onLink,
   onClear,
   onComplete,
+  onResync,
   completedTaskIds,
 }: {
   segments: FocusSegment[];
@@ -989,6 +1191,7 @@ function HistoryTimelineList({
   onLink: (segmentId: string, index: number) => void;
   onClear: (segmentId: string) => void;
   onComplete: (seg: FocusSegment) => void;
+  onResync: (seg: FocusSegment) => void;
   completedTaskIds: Set<string>;
 }) {
   const segmentItems: HistoryTimelineItem[] = segments
@@ -1054,6 +1257,7 @@ function HistoryTimelineList({
                 onLink={() => onLink(item.segment.id, item.index)}
                 onClear={() => onClear(item.segment.id)}
                 onComplete={() => onComplete(item.segment)}
+                onResync={() => onResync(item.segment)}
                 isTaskCompleted={!!item.segment.taskId && completedTaskIds.has(item.segment.taskId)}
               />
             ) : (
@@ -1073,6 +1277,7 @@ function HistoryFocusTimelineRow({
   onLink,
   onClear,
   onComplete,
+  onResync,
   isTaskCompleted,
 }: {
   seg: FocusSegment;
@@ -1081,9 +1286,11 @@ function HistoryFocusTimelineRow({
   onLink: () => void;
   onClear: () => void;
   onComplete: () => void;
+  onResync: () => void;
   isTaskCompleted: boolean;
 }) {
   const hasTask = !!seg.taskId && !!seg.title;
+  const isSynced = !!seg.cloudFocusId;
   return (
     <div
       className={`relative flex gap-3 rounded-xl border px-3 py-2.5 ${
@@ -1103,6 +1310,11 @@ function HistoryFocusTimelineRow({
             {formatDateTime(seg.startedAt)}
             {seg.endedAt && ` - ${formatDateTime(seg.endedAt)}`}
           </span>
+          {isSynced && (
+            <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent" title="已同步到滴答云端">
+              已同步
+            </span>
+          )}
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           {hasTask ? (
@@ -1146,6 +1358,14 @@ function HistoryFocusTimelineRow({
               title="在任务来源中完成该任务"
             >
               {isTaskCompleted ? '已完成' : '完成'}
+            </button>
+            <button
+              className="motion-press rounded-lg border border-accent/20 bg-accent/5 px-2 py-1 text-[10px] text-accent hover:bg-accent/10 disabled:opacity-40"
+              disabled={linking}
+              onClick={onResync}
+              title="删除云端专注记录并以当前任务重新同步"
+            >
+              重新同步
             </button>
           </>
         )}
@@ -1245,7 +1465,7 @@ function LocalCloudStatePanel({ detail }: { detail: SessionDetail }) {
                 className={ticktick.length > 0 ? 'text-success' : 'text-fg-subtle'}
               />
               <span className="text-fg-muted">
-                滴答评论同步：未同步 {ticktick.length} 个片段（{formatDuration(ticktickMs)}）
+                滴答清单同步：未同步 {ticktick.length} 个片段（{formatDuration(ticktickMs)}）
               </span>
             </div>
           </div>

@@ -69,6 +69,7 @@ export class TimerManager {
   private lastTick = 0;
   private tickTimer: NodeJS.Timeout | null = null;
   private persistTimer: NodeJS.Timeout | null = null;
+  private resetTimeout: NodeJS.Timeout | null = null;
   private listeners = new Set<SnapshotListener>();
   private segmentBehavior: 'new-segment' | 'continue-segment' = 'new-segment';
 
@@ -389,7 +390,11 @@ export class TimerManager {
     });
     this.emit();
     // 完成后自动重置为 idle，保留数据
-    setTimeout(() => this.reset(), 1500);
+    if (this.resetTimeout) clearTimeout(this.resetTimeout);
+    this.resetTimeout = setTimeout(() => {
+      this.resetTimeout = null;
+      this.reset();
+    }, 1500);
     return this.getSnapshot();
   }
 
@@ -400,6 +405,11 @@ export class TimerManager {
       if (this.state !== 'finished' && this.state !== 'idle') {
         logger.warn('timer', `force reset from ${this.state}`);
       }
+    }
+    // 取消 pending 的自动 reset（避免冗余触发或清空新专注）
+    if (this.resetTimeout) {
+      clearTimeout(this.resetTimeout);
+      this.resetTimeout = null;
     }
     this.session = null;
     this.currentSegment = null;
@@ -412,6 +422,24 @@ export class TimerManager {
     this.clearMeta();
     this.emit();
     return this.getSnapshot();
+  }
+
+  resetIfSession(id: string): boolean {
+    if (this.session?.id === id) {
+      logger.info('timer', 'reset timer because current session was deleted', { sessionId: id });
+      this.reset();
+      return true;
+    }
+    return false;
+  }
+
+  /** 若计时器卡在 finished 状态（1.5s 自动重置窗口内），立即重置为 idle。
+   *  用于删除历史记录后避免用户回到计时界面看到 finished 的 UI 空洞。 */
+  resetIfFinished(): void {
+    if (this.state === 'finished') {
+      logger.info('timer', 'reset finished timer after history deletion');
+      this.reset();
+    }
   }
 
   // ============ 任务关联 ============
@@ -556,6 +584,18 @@ export class TimerManager {
   /** 合并多个 segment 为一个（按时间顺序拼接，时长相加） */
   mergeSegments(segmentIds: string[]): void {
     if (!this.session || segmentIds.length < 2) return;
+    // 若当前运行中的 segment 在合并范围内，先 closeSegment 把真实 activeElapsedMs 写入 DB，
+    // 否则 DB 里的 activeElapsedMs 是过期值（只有 closeSegment 才会更新），
+    // 合并后总时长会偏小。
+    const now = Date.now();
+    if (
+      this.currentSegment &&
+      segmentIds.includes(this.currentSegment.id) &&
+      (this.state === 'running' || this.state === 'paused')
+    ) {
+      this.settleActive(now);
+      this.closeSegment(now);
+    }
     const segs = listSegments(this.session.id).filter((s) => segmentIds.includes(s.id));
     if (segs.length < 2) return;
     segs.sort((a, b) => a.startedAt - b.startedAt);
@@ -573,7 +613,11 @@ export class TimerManager {
     if (this.currentSegment && segmentIds.includes(this.currentSegment.id)) {
       this.currentSegment = first;
     }
-    logger.info('timer', 'merged segments', { count: segs.length, into: first.id });
+    logger.info('timer', 'merged segments', {
+      count: segs.length,
+      into: first.id,
+      totalActiveMs: totalActive,
+    });
     this.emit();
   }
 
@@ -591,6 +635,7 @@ export class TimerManager {
       endedAt: null,
       activeElapsedMs: 0,
       note: null,
+      cloudFocusId: null,
       createdAt: now,
       updatedAt: now,
     };

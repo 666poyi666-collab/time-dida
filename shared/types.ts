@@ -36,6 +36,8 @@ export interface FocusSegment {
   endedAt: number | null;
   activeElapsedMs: number;
   note: string | null;
+  /** 已同步到滴答云端的专注记录 ID（用于删除时联动云端） */
+  cloudFocusId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -172,10 +174,14 @@ export interface TaskProvider {
   updateTask(taskId: string, input: Partial<TaskUpdateInput>): Promise<void>;
   /** 稳定通道：在任务备注/描述中追加专注记录 */
   appendFocusRecordToTask?(taskId: string, record: FocusRecord): Promise<void>;
+  /** 批量追加专注记录到任务备注/评论 */
+  appendFocusRecordsToTask?(taskId: string, records: FocusRecord[]): Promise<void>;
   /** 完成任务，用于把 FocusLink 内的勾选同步到任务来源 */
   completeTask?(task: Task): Promise<void>;
-  /** 实验性：直接写入 Focus/Pomodoro 记录 */
-  createFocusRecord?(record: FocusRecord): Promise<void>;
+  /** 直接写入 Focus/Pomodoro 专注记录到云端 */
+  createFocusRecord?(record: FocusRecord): Promise<string | null>;
+  /** 删除已同步到云端的专注记录（按 segmentId 查找本地存储的 cloudFocusId） */
+  deleteFocusRecord?(segmentId: string): Promise<boolean>;
 }
 
 export interface TaskUpdateInput {
@@ -187,6 +193,7 @@ export interface TaskUpdateInput {
 export interface FocusRecord {
   sessionId: string;
   segmentId?: string;
+  taskId?: string | null;
   taskTitle: string | null;
   startedAt: number;
   endedAt: number | null;
@@ -208,7 +215,7 @@ export interface AppSettings {
   theme: 'dark' | 'light';
   accentColor: string;
   segmentBehavior: 'new-segment' | 'continue-segment';
-  syncMode: 'note' | 'experimental-focus' | 'local-only';
+  syncMode: 'focus-record' | 'comment' | 'local-only';
   experimentalFocusEnabled: boolean;
   minimizeToTray: boolean;
   autoStart: boolean;
@@ -308,7 +315,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
   accentColor: 'indigo',
   segmentBehavior: 'new-segment',
-  syncMode: 'note',
+  syncMode: 'focus-record',
   experimentalFocusEnabled: false,
   minimizeToTray: true,
   autoStart: false,

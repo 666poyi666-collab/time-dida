@@ -27,8 +27,8 @@ describe('auto sync policy', () => {
     expect(shouldAutoSyncFinishedSession('local-only', [ticktickSegment])).toBe(false);
   });
 
-  it('auto-syncs finished sessions in note and experimental modes when linked to ticktick', () => {
-    expect(shouldAutoSyncFinishedSession('note', [ticktickSegment])).toBe(true);
-    expect(shouldAutoSyncFinishedSession('experimental-focus', [ticktickSegment])).toBe(true);
+  it('auto-syncs finished sessions in focus-record and comment modes when linked to ticktick', () => {
+    expect(shouldAutoSyncFinishedSession('focus-record', [ticktickSegment])).toBe(true);
+    expect(shouldAutoSyncFinishedSession('comment', [ticktickSegment])).toBe(true);
   });
 });

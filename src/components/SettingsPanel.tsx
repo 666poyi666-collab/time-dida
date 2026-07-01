@@ -2,11 +2,10 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import type { AppSettings } from '@shared/types';
-import { APP_COMMIT, APP_BUILD_TIME } from '@shared/version';
+import { APP_VERSION, APP_COMMIT, APP_BUILD_TIME } from '@shared/version';
 import {
   LogOut,
   Loader2,
-  Beaker,
   Search,
   Stethoscope,
   Copy,
@@ -768,16 +767,16 @@ export function SettingsPanel() {
                 <Row label="同步模式">
                   <div className="flex flex-col gap-1.5">
                     <ChoiceBtn
-                      active={settings.syncMode === 'note'}
-                      onClick={() => update({ syncMode: 'note' })}
+                      active={settings.syncMode === 'focus-record'}
+                      onClick={() => update({ syncMode: 'focus-record' })}
                     >
-                      稳定 · 写入任务评论
+                      云端专注记录（推荐）
                     </ChoiceBtn>
                     <ChoiceBtn
-                      active={settings.syncMode === 'experimental-focus'}
-                      onClick={() => update({ syncMode: 'experimental-focus' })}
+                      active={settings.syncMode === 'comment'}
+                      onClick={() => update({ syncMode: 'comment' })}
                     >
-                      实验 · 写入 Focus 记录
+                      写入任务评论/备注
                     </ChoiceBtn>
                     <ChoiceBtn
                       active={settings.syncMode === 'local-only'}
@@ -787,18 +786,6 @@ export function SettingsPanel() {
                     </ChoiceBtn>
                   </div>
                 </Row>
-                <Row label="实验性 Focus 同步">
-                  <Toggle
-                    checked={settings.experimentalFocusEnabled}
-                    onChange={(v) => update({ experimentalFocusEnabled: v })}
-                  />
-                </Row>
-                {settings.experimentalFocusEnabled && (
-                  <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
-                    <Beaker size={13} />
-                    实验性 Focus 同步依赖非官方 V2/session API，可能不稳定。所有记录会先保存本地。
-                  </div>
-                )}
               </Section>
             </>
           )}
@@ -808,7 +795,7 @@ export function SettingsPanel() {
               <Section title="FocusLink" desc="全局快捷键驱动的专注计时器 + 滴答清单任务关联工具">
                 <Row label="当前版本">
                   <span className="rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs font-mono text-fg-muted">
-                    v0.1.9
+                    v{APP_VERSION}
                   </span>
                 </Row>
                 <Row label="Build">
