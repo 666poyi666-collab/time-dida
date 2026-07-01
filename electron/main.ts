@@ -19,10 +19,7 @@ import {
 } from './hotkeys.js';
 import type { TimerSnapshot } from '@shared/types';
 import { APP_VERSION, APP_COMMIT, APP_BUILD_TIME, APP_RELEASE_DIR } from '@shared/version';
-import {
-  hasTicktickLinkedSegments,
-  shouldAutoSyncFinishedSession,
-} from '@shared/autoSyncPolicy';
+import { hasTicktickLinkedSegments, shouldAutoSyncFinishedSession } from '@shared/autoSyncPolicy';
 import {
   MINI_WINDOW_COLLAPSED_SIZE,
   MINI_WINDOW_COLLAPSED_HEIGHT,
@@ -205,7 +202,7 @@ function createMiniWindow(): BrowserWindow {
     maxHeight: MAX_H,
     frame: false,
     transparent: true,
-    resizable: true,
+    resizable: false,
     minimizable: false,
     maximizable: false,
     skipTaskbar: true,

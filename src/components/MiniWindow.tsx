@@ -216,7 +216,7 @@ export function MiniWindow() {
     return (
       <div
         ref={containerRef}
-        className="mini-window-shell motion-base flex h-full w-full flex-col rounded-[24px] px-3.5 py-2.5 text-fg"
+        className={`mini-window-shell mini-window-${state} mini-window-collapsed motion-base flex h-full w-full flex-col rounded-[26px] px-3.5 py-2.5 text-fg`}
         onDoubleClick={handleExpand}
         title="双击展开"
       >
@@ -228,7 +228,7 @@ export function MiniWindow() {
             </span>
           </div>
           <button
-            className="no-drag motion-press rounded-full p-1 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
+            className="mini-icon-button no-drag motion-press"
             onClick={handleExpand}
             title="展开"
           >
@@ -237,7 +237,7 @@ export function MiniWindow() {
         </div>
 
         <div className="mt-2 grid min-h-0 flex-1 grid-cols-2 gap-2">
-          <div className="min-w-0 rounded-2xl border border-border/70 bg-bg-subtle/55 px-2.5 py-1.5">
+          <div className="mini-stat-card mini-stat-card-primary min-w-0 px-2.5 py-1.5">
             <div className="truncate text-[9px] font-semibold text-fg-subtle">{primaryLabel}</div>
             <div
               className={`timer-digit motion-digit mt-0.5 text-[17px] font-bold leading-none ${activeTone}`}
@@ -245,7 +245,7 @@ export function MiniWindow() {
               {formatDuration(isIdle ? 0 : primaryMs)}
             </div>
           </div>
-          <div className="min-w-0 rounded-2xl border border-border/70 bg-bg-subtle/35 px-2.5 py-1.5">
+          <div className="mini-stat-card min-w-0 px-2.5 py-1.5">
             <div className="truncate text-[9px] font-semibold text-fg-subtle">
               {cumulativeLabel}
             </div>
@@ -262,7 +262,7 @@ export function MiniWindow() {
   return (
     <div
       ref={containerRef}
-      className="mini-window-shell motion-base flex h-full w-full flex-col rounded-[28px] px-4 py-3 text-fg"
+      className={`mini-window-shell mini-window-${state} motion-base flex h-full w-full flex-col rounded-[30px] px-4 py-3 text-fg`}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
@@ -278,14 +278,14 @@ export function MiniWindow() {
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button
-            className="no-drag motion-press rounded-full p-1.5 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
+            className="mini-icon-button no-drag motion-press"
             onClick={handleOpenMain}
             title="打开主窗口"
           >
             <Maximize2 size={12} />
           </button>
           <button
-            className="no-drag motion-press rounded-full p-1.5 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
+            className="mini-icon-button no-drag motion-press"
             onClick={handleCollapse}
             title="缩小"
           >
@@ -329,14 +329,14 @@ export function MiniWindow() {
 
       <div className="mt-auto flex items-center justify-center gap-2 pt-2">
         <button
-          className="no-drag motion-press inline-flex h-7 items-center gap-1.5 rounded-full bg-accent/95 px-4 text-[11px] font-semibold text-accent-fg hover:brightness-110"
+          className="mini-primary-button no-drag motion-press inline-flex h-7 items-center gap-1.5 px-4 text-[11px] font-semibold"
           onClick={handleToggle}
         >
           {state === 'running' ? <Pause size={12} /> : <Play size={12} />}
           {state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始'}
         </button>
         <button
-          className="no-drag motion-press inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-bg-subtle/55 px-3.5 text-[11px] font-medium text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-30"
+          className="mini-secondary-button no-drag motion-press inline-flex h-7 items-center gap-1.5 px-3.5 text-[11px] font-medium disabled:pointer-events-none disabled:opacity-30"
           onClick={handleStop}
           disabled={state === 'idle' || state === 'finished'}
         >
@@ -362,9 +362,7 @@ function MiniStat({
   const toneClass =
     tone === 'focus' ? 'text-accent' : tone === 'pause' ? 'text-warning' : 'text-fg-muted';
   return (
-    <div
-      className={`motion-state-transition min-w-0 rounded-2xl border border-border/70 bg-bg-subtle/45 px-2 py-1.5 ${className}`}
-    >
+    <div className={`mini-stat-card motion-state-transition min-w-0 px-2 py-1.5 ${className}`}>
       <div className={`truncate text-[9px] font-semibold ${toneClass}`}>{label}</div>
       <div className="timer-digit motion-digit mt-0.5 truncate text-[12px] font-bold leading-none text-fg">
         {value}

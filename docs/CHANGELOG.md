@@ -3,6 +3,17 @@
 > 本仓库遵循简易版本记录。每个版本对应一个 `release-vXXX/` 打包目录。
 > 历史修复细节见 `docs/archive/` 下的各报告文档。
 
+## v0.2.9 (2026-07-01)
+
+### checklist 子项同步打通 + 小窗质感继续打磨
+
+- 找到历史同步仍失败的真实原因：用户关联的是 dida checklist 子项，`dida task get/update 子项ID` 会返回 `undefined` 或假成功，不能按普通任务处理。
+- dida CLI provider 新增 checklist 子项上下文识别：同步备注时写入父任务内容，并标注 `子任务：xxx`，避免子项不支持备注导致丢写。
+- dida 写操作改为 `execFile` 参数数组执行，绕过 Windows shell 对中文、换行和 JSON 的破坏；已用临时 dida 任务验证中文备注、换行和 `[FocusLink]` 能真实写入云端。
+- “完成任务”支持 checklist 子项：通过更新父任务 `items` 数组把当前子项置为完成，已用临时 dida checklist 验证云端状态从 0 变为 2。
+- dida 写操作会把 `undefined` 输出视为失败，不再把“假成功”标记为同步成功。
+- 小窗固定为缩小/展开两种尺寸，移除手动拖拽缩放；外观增加状态顶线、柔和边框、专门按钮和统计卡样式。
+
 ## v0.2.8 (2026-07-01)
 
 ### dida 批量同步继续修复 + 队列交互打磨
