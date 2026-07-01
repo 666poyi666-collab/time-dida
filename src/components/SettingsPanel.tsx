@@ -462,7 +462,7 @@ export function SettingsPanel() {
                   className="btn-ghost text-xs"
                   onClick={() => {
                     window.focuslink.mini.reset();
-                    addToast('已恢复默认大小 320×144', 'success');
+                    addToast('已恢复默认展开大小 420×184', 'success');
                   }}
                 >
                   恢复默认大小
@@ -893,7 +893,7 @@ export function SettingsPanel() {
                     onChange={(v) => update({ closeToTray: v })}
                   />
                 </Row>
-                <Row label="启动后最小化到托盘">
+                <Row label="启动后最小化到托盘" desc="手动启动也隐藏主界面；开机自启动会自动进托盘">
                   <Toggle
                     checked={settings.startMinimizedToTray}
                     onChange={(v) => update({ startMinimizedToTray: v })}
@@ -905,7 +905,7 @@ export function SettingsPanel() {
                     onChange={(v) => update({ showMiniOnStart: v })}
                   />
                 </Row>
-                <Row label="开机自启动">
+                <Row label="开机自启动" desc="系统登录时带隐藏参数启动，不弹出主界面">
                   <Toggle checked={settings.autoStart} onChange={(v) => update({ autoStart: v })} />
                 </Row>
               </Section>

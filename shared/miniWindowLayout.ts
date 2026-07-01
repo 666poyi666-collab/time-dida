@@ -3,14 +3,16 @@ export type MiniWindowSize = {
   height: number;
 };
 
+export const MINI_WINDOW_COLLAPSED_SIZE = { width: 260, height: 88 } as const;
+export const MINI_WINDOW_EXPANDED_SIZE = { width: 420, height: 184 } as const;
+
 export const MINI_WINDOW_SIZE_PRESETS = [
-  { width: 260, height: 88 },
-  { width: 320, height: 144 },
-  { width: 420, height: 184 },
+  MINI_WINDOW_COLLAPSED_SIZE,
+  MINI_WINDOW_EXPANDED_SIZE,
 ] as const satisfies readonly MiniWindowSize[];
 
-export const MINI_WINDOW_DEFAULT_SIZE = MINI_WINDOW_SIZE_PRESETS[1];
-export const MINI_WINDOW_COLLAPSED_HEIGHT = 40;
+export const MINI_WINDOW_DEFAULT_SIZE = MINI_WINDOW_EXPANDED_SIZE;
+export const MINI_WINDOW_COLLAPSED_HEIGHT = MINI_WINDOW_COLLAPSED_SIZE.height;
 
 export function snapMiniWindowSize(width: number, height: number): MiniWindowSize {
   let best: MiniWindowSize = MINI_WINDOW_DEFAULT_SIZE;
@@ -25,10 +27,13 @@ export function snapMiniWindowSize(width: number, height: number): MiniWindowSiz
   return best;
 }
 
-export function isMiniWindowCompact(
-  width: number,
-  height: number,
-  collapsed: boolean,
-): boolean {
-  return !collapsed && (width < 276 || height < 112);
+export function getExpandedMiniWindowSize(width: number, height: number): MiniWindowSize {
+  const snapped = snapMiniWindowSize(width, height);
+  if (
+    snapped.width === MINI_WINDOW_COLLAPSED_SIZE.width &&
+    snapped.height === MINI_WINDOW_COLLAPSED_SIZE.height
+  ) {
+    return MINI_WINDOW_EXPANDED_SIZE;
+  }
+  return snapped;
 }

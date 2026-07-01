@@ -97,7 +97,7 @@ export function createTray(
               click: () => callbacks.onHideMini?.(),
             },
             {
-              label: '收起小窗为横条',
+              label: '缩小专注小窗',
               click: () => callbacks.onCollapseMini?.(),
             },
             {

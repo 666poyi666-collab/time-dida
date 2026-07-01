@@ -24,10 +24,12 @@ import {
   shouldAutoSyncFinishedSession,
 } from '@shared/autoSyncPolicy';
 import {
+  MINI_WINDOW_COLLAPSED_SIZE,
   MINI_WINDOW_COLLAPSED_HEIGHT,
   MINI_WINDOW_SIZE_PRESETS,
-  snapMiniWindowSize,
+  getExpandedMiniWindowSize,
 } from '@shared/miniWindowLayout';
+import { getLoginItemSettings, shouldStartHiddenToTray } from '@shared/startupPolicy';
 import { enqueueSessionSync, runPending } from './sync/syncService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,7 +49,11 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
+    if (shouldStartHiddenToTray(false, argv)) {
+      logger.info('main', 'second instance hidden startup ignored');
+      return;
+    }
     if (mainWindow) {
       if (!mainWindow.isVisible()) mainWindow.show();
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -125,8 +131,10 @@ function createMainWindow(): BrowserWindow {
 
   win.once('ready-to-show', () => {
     const settings = getSettings();
-    if (!settings.startMinimizedToTray) {
+    if (!shouldStartHiddenToTray(settings.startMinimizedToTray, process.argv)) {
       win.show();
+    } else {
+      logger.info('main', 'main window hidden on startup');
     }
   });
 
@@ -144,11 +152,11 @@ function createMainWindow(): BrowserWindow {
 function createMiniWindow(): BrowserWindow {
   const settings = getSettings();
   const cfg = settings.miniWindow;
-  // 小窗固定尺寸：紧凑 260×88，标准 320×144，展开 420×184；收起 40px 高。
+  // 小窗固定尺寸：缩小卡片 260×88，展开详情 420×184。
   const MIN_W = MINI_WINDOW_SIZE_PRESETS[0].width;
   const MIN_H = MINI_WINDOW_COLLAPSED_HEIGHT;
-  const MAX_W = MINI_WINDOW_SIZE_PRESETS[2].width;
-  const MAX_H = MINI_WINDOW_SIZE_PRESETS[2].height;
+  const MAX_W = MINI_WINDOW_SIZE_PRESETS[1].width;
+  const MAX_H = MINI_WINDOW_SIZE_PRESETS[1].height;
   const DEFAULT_W = MINI_WINDOW_SIZE_PRESETS[1].width;
   const DEFAULT_H = MINI_WINDOW_SIZE_PRESETS[1].height;
 
@@ -156,10 +164,13 @@ function createMiniWindow(): BrowserWindow {
   let initWidth = cfg.width && cfg.width >= MIN_W && cfg.width <= MAX_W ? cfg.width : DEFAULT_W;
   let initHeight =
     cfg.height && cfg.height >= MIN_H && cfg.height <= MAX_H ? cfg.height : DEFAULT_H;
-  if (!cfg.collapsed) {
-    const snapped = snapMiniWindowSize(initWidth, initHeight);
-    initWidth = snapped.width;
-    initHeight = snapped.height;
+  if (cfg.collapsed) {
+    initWidth = MINI_WINDOW_COLLAPSED_SIZE.width;
+    initHeight = MINI_WINDOW_COLLAPSED_SIZE.height;
+  } else {
+    const expanded = getExpandedMiniWindowSize(initWidth, initHeight);
+    initWidth = expanded.width;
+    initHeight = expanded.height;
   }
   let initX = cfg.x;
   let initY = cfg.y;
@@ -244,7 +255,7 @@ function createMiniWindow(): BrowserWindow {
       const cur = getSettings();
       let bounds = miniWindow.getBounds();
       if (!cur.miniWindow.collapsed) {
-        const snapped = snapMiniWindowSize(bounds.width, bounds.height);
+        const snapped = getExpandedMiniWindowSize(bounds.width, bounds.height);
         if (snapped.width !== bounds.width || snapped.height !== bounds.height) {
           applyingSnap = true;
           miniWindow.setBounds({ ...bounds, width: snapped.width, height: snapped.height }, false);
@@ -252,9 +263,9 @@ function createMiniWindow(): BrowserWindow {
           bounds = miniWindow.getBounds();
         }
       }
-      // 收起时不保存高度（避免下次启动也是收起高度）
+      // 收起时只保存位置，保留上次展开尺寸。
       const saveHeight = cur.miniWindow.collapsed ? cur.miniWindow.height : bounds.height;
-      const saveWidth = bounds.width;
+      const saveWidth = cur.miniWindow.collapsed ? cur.miniWindow.width : bounds.width;
       updateSettings({
         miniWindow: {
           ...cur.miniWindow,
@@ -287,14 +298,19 @@ function createMiniWindow(): BrowserWindow {
   return win;
 }
 
-/** 收起小窗：直接 setBounds 到 40px，无动画（避免窗口乱跳） */
+/** 收起小窗：直接 setBounds 到 260×88 缩小卡片，无动画（避免窗口乱跳） */
 function collapseMiniWindow(): void {
   if (!miniWindow || miniWindow.isDestroyed()) return;
   const cur = getSettings();
   if (cur.miniWindow.collapsed) return;
   const bounds = miniWindow.getBounds();
   miniWindow.setBounds(
-    { x: bounds.x, y: bounds.y, width: bounds.width, height: MINI_WINDOW_COLLAPSED_HEIGHT },
+    {
+      x: bounds.x,
+      y: bounds.y,
+      width: MINI_WINDOW_COLLAPSED_SIZE.width,
+      height: MINI_WINDOW_COLLAPSED_SIZE.height,
+    },
     false,
   );
   updateSettings({ miniWindow: { ...cur.miniWindow, collapsed: true } });
@@ -307,7 +323,7 @@ function expandMiniWindow(): void {
   const cur = getSettings();
   if (!cur.miniWindow.collapsed) return;
   const bounds = miniWindow.getBounds();
-  const restore = snapMiniWindowSize(cur.miniWindow.width, cur.miniWindow.height);
+  const restore = getExpandedMiniWindowSize(cur.miniWindow.width, cur.miniWindow.height);
   miniWindow.setBounds(
     { x: bounds.x, y: bounds.y, width: restore.width, height: restore.height },
     false,
@@ -534,7 +550,7 @@ app.whenReady().then(() => {
     }
     // 开机自启
     if (domains.includes('general')) {
-      app.setLoginItemSettings({ openAtLogin: s.autoStart });
+      app.setLoginItemSettings(getLoginItemSettings(s.autoStart));
     }
     // 托盘菜单需重建（含小窗选项）
     if (domains.includes('general') && tray && mainWindow && timer) {
@@ -578,7 +594,7 @@ app.whenReady().then(() => {
     ensureTrayAndHotkeys();
   }
 
-  app.setLoginItemSettings({ openAtLogin: settings.autoStart });
+  app.setLoginItemSettings(getLoginItemSettings(settings.autoStart));
 
   // 电源事件
   powerMonitor.on('suspend', () => {

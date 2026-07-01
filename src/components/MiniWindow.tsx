@@ -1,10 +1,9 @@
 // 专注小窗 - FocusLink 核心交互入口
-// 三种模式：EXPANDED（默认）、COMPACT（窄/矮尺寸）、COLLAPSED（40px 高度横条）
+// 两种模式：EXPANDED（420×184 详情卡）、COLLAPSED（260×88 缩小卡）
 // 透明无边框窗口，始终置顶，支持拖拽和主题同步
 // 暂停态统一使用橙色（warning），专注态使用绿色（accent）
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TimerSnapshot, AppSettings } from '@shared/types';
-import { isMiniWindowCompact } from '@shared/miniWindowLayout';
 import { formatDuration } from '../lib/time';
 import {
   getMainDisplayMs,
@@ -98,33 +97,12 @@ function StateDot({ state, size = 'sm' }: { state: string; size?: 'sm' | 'xs' })
   );
 }
 
-// ─── 状态线组件 ────────────────────────────────────────────────
-
-function ProgressBar({ compact = false }: { compact?: boolean }) {
-  if (compact) {
-    return (
-      <div className="h-1 w-14 overflow-hidden rounded-full bg-bg-subtle">
-        <div className="motion-state-bg h-full w-2/3 rounded-full bg-accent" />
-      </div>
-    );
-  }
-  return (
-    <div className="flex w-full items-center gap-2">
-      <div className="progress-bar h-1 flex-1 overflow-hidden rounded-full">
-        <div className="motion-state-bg progress-bar-fill h-full w-full rounded-full" />
-      </div>
-      <span className="text-[9px] text-fg-subtle">正计时</span>
-    </div>
-  );
-}
 // ─── MiniWindow 主组件 ──────────────────────────────────────────
 
 export function MiniWindow() {
   const [snapshot, setSnapshot] = useState<TimerSnapshot | null>(null);
   const [, setNow] = useState(Date.now());
-  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [collapsed, setCollapsed] = useState(false);
-  const [containerSize, setContainerSize] = useState({ width: 300, height: 132 });
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ─── 初始化设置 ──────────────────────────────────────────────
@@ -132,7 +110,6 @@ export function MiniWindow() {
     (async () => {
       try {
         const s = await window.focuslink.settings.get();
-        setSettings(s);
         setCollapsed(s.miniWindow.collapsed);
         applyThemeClass(s);
       } catch {
@@ -162,28 +139,11 @@ export function MiniWindow() {
     const unsub = window.focuslink.on('settings:changed', (...args: unknown[]) => {
       const s = args[0] as AppSettings;
       if (s) {
-        setSettings(s);
         setCollapsed(s.miniWindow.collapsed);
         applyThemeClass(s);
       }
     });
     return () => unsub();
-  }, []);
-
-  // ─── 容器尺寸检测（固定模式：EXPANDED vs COMPACT） ───────────
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          setContainerSize({ width, height });
-        }
-      }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
   }, []);
 
   // ─── running / paused 时本地每秒刷新显示 ─────────────────────
@@ -207,8 +167,11 @@ export function MiniWindow() {
   const currentTaskTitle = getCurrentTaskTitle(snapshot);
   const isRunning = state === 'running';
   const isPaused = state === 'paused';
-
-  const isCompact = isMiniWindowCompact(containerSize.width, containerSize.height, collapsed);
+  const primaryMs = isPaused ? currentPauseMs : currentFocusMs;
+  const cumulativeMs = isPaused ? cumulativePauseMs : cumulativeActiveMs;
+  const primaryLabel = isPaused ? '当前暂停' : '当前专注';
+  const cumulativeLabel = isPaused ? '累计暂停' : '累计专注';
+  const activeTone = isPaused ? 'text-warning' : isRunning ? 'text-accent' : 'text-fg';
 
   // ─── 事件处理 ────────────────────────────────────────────────
   const handleToggle = useCallback(async (e: React.MouseEvent) => {
@@ -240,210 +203,160 @@ export function MiniWindow() {
     window.focuslink.window.show();
   }, []);
 
-  // ─── COLLAPSED 模式（40px 高度横条） ───────────────────────
-  // 收起态：状态点（专注绿/暂停橙）+ 当前片段时间
+  // ─── COLLAPSED 模式（260×88 缩小卡） ───────────────────────
+  // 缩小态只展示当前 + 累计，避免信息挤在一起。
   if (collapsed) {
     return (
       <div
         ref={containerRef}
-        className="glass motion-base flex h-full w-full items-center overflow-hidden rounded-xl border border-border/80 px-3 text-fg"
+        className="mini-window-shell motion-base flex h-full w-full flex-col rounded-[22px] px-3 py-2.5 text-fg"
         onDoubleClick={handleExpand}
         title="双击展开"
       >
-        {/* 左侧：状态点 + 时间 + 状态文字 */}
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <StateDot state={state} size="xs" />
-          <span
-            className={`timer-digit motion-digit text-sm font-bold tracking-tight ${
-              isPaused ? 'text-warning' : isRunning ? 'text-accent' : ''
-            }`}
-          >
-            {formatDuration(displayActive)}
-          </span>
-          <span
-            className={`motion-fade-up text-[10px] font-semibold ${STATE_TEXT[state]}`}
-            key={state}
-          >
-            {STATE_LABEL[state]}
-          </span>
-        </div>
-
-        {/* 右侧：进度条 + 展开按钮 */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <ProgressBar compact />
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <StateDot state={state} size="xs" />
+            <span className={`truncate text-[10px] font-semibold ${STATE_TEXT[state]}`}>
+              {STATE_LABEL[state]}
+            </span>
+          </div>
           <button
-            className="no-drag motion-press rounded-md p-1 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
+            className="no-drag motion-press rounded-full p-1 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
             onClick={handleExpand}
             title="展开"
           >
             <ChevronUp size={13} />
           </button>
         </div>
-      </div>
-    );
-  }
 
-  // ─── COMPACT 模式（宽 < 260px，单行） ──────────────────────
-  // 紧凑态：状态 + 当前专注/当前暂停 + 任务短标题
-  if (isCompact) {
-    return (
-      <div
-        ref={containerRef}
-        className="glass motion-base flex h-full w-full items-center justify-between gap-2 overflow-hidden rounded-xl border border-border/80 px-3 text-fg"
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <StateDot state={state} />
-          <div className="min-w-0">
-            <span
-              className={`timer-digit motion-digit block text-base font-bold leading-none ${
-                isPaused ? 'text-warning' : isRunning ? 'text-accent' : ''
-              }`}
-            >
-              {formatDuration(displayActive)}
-            </span>
-            <span className="block truncate text-[10px] leading-tight text-fg-subtle">
-              {currentTaskTitle ?? (state === 'idle' ? '准备开始' : '未关联任务')}
-            </span>
+        <div className="mt-2 grid min-h-0 flex-1 grid-cols-2 gap-2">
+          <div className="min-w-0 rounded-2xl border border-border/70 bg-bg-subtle/55 px-2 py-1.5">
+            <div className="truncate text-[9px] font-semibold text-fg-subtle">{primaryLabel}</div>
+            <div className={`timer-digit motion-digit mt-0.5 text-[17px] font-bold leading-none ${activeTone}`}>
+              {formatDuration(primaryMs)}
+            </div>
+          </div>
+          <div className="min-w-0 rounded-2xl border border-border/70 bg-bg-subtle/35 px-2 py-1.5">
+            <div className="truncate text-[9px] font-semibold text-fg-subtle">
+              {cumulativeLabel}
+            </div>
+            <div className="timer-digit motion-digit mt-0.5 text-[17px] font-bold leading-none text-fg">
+              {formatDuration(cumulativeMs)}
+            </div>
           </div>
         </div>
-
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            className="no-drag motion-press rounded-lg bg-bg-subtle/80 p-1.5 text-fg-muted hover:bg-accent/10 hover:text-accent"
-            onClick={handleToggle}
-            title={state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始'}
-          >
-            {state === 'running' ? <Pause size={13} /> : <Play size={13} />}
-          </button>
-          <button
-            className="no-drag motion-press rounded-lg bg-bg-subtle/80 p-1.5 text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:opacity-30"
-            onClick={handleStop}
-            disabled={state === 'idle' || state === 'finished'}
-            title="结束"
-          >
-            <Square size={12} />
-          </button>
-        </div>
       </div>
     );
   }
 
-  // ─── EXPANDED 模式（默认，完整 UI，含 6 项核心信息） ───────
-  // 显示：当前任务 / 当前专注 / 累计专注 / 当前暂停 / 累计暂停 / 总历时
+  // ─── EXPANDED 模式（420×184 详情卡） ───────
   return (
     <div
       ref={containerRef}
-      className="glass motion-base relative h-full w-full overflow-hidden rounded-2xl border border-border/80 p-3 text-fg"
+      className="mini-window-shell motion-base flex h-full w-full flex-col rounded-[26px] px-4 py-3 text-fg"
     >
-      {/* 顶部状态行：状态点 + 状态标签 + 操作按钮 */}
-      <div className="flex items-center gap-1.5">
-        <StateDot state={state} size="xs" />
-        <span
-          className={`motion-fade-up text-[10px] font-semibold ${STATE_TEXT[state]}`}
-          key={state}
-        >
-          {STATE_LABEL[state]}
-        </span>
-      </div>
-      <div className="absolute right-3 top-3 flex items-center gap-0.5">
-        <button
-          className="no-drag motion-press rounded-md p-1 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
-          onClick={handleOpenMain}
-          title="打开主窗口"
-        >
-          <Maximize2 size={11} />
-        </button>
-        <button
-          className="no-drag motion-press rounded-md p-1 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
-          onClick={handleCollapse}
-          title="收起"
-        >
-          <ChevronDown size={12} />
-        </button>
-      </div>
-
-      {/* 当前任务 */}
-      <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
-        <Link2 size={10} className="flex-shrink-0 text-accent" />
-        <span className="max-w-[230px] truncate text-[11px] font-medium text-fg-muted">
-          {currentTaskTitle ?? (state === 'idle' ? '点击开始专注' : '未关联任务')}
-        </span>
-      </div>
-
-      {/* 大号计时数字（当前片段时间） — motion-digit 保证数字稳定不闪跳 */}
-      <div className="mt-2 flex flex-col items-center gap-0.5">
-        <span
-          className={`timer-digit motion-digit text-[26px] font-bold leading-none ${
-            isPaused ? 'text-warning' : isRunning ? 'text-accent' : ''
-          }`}
-        >
-          {formatDuration(displayActive)}
-        </span>
-        <span className="motion-fade-up text-[9px] font-medium text-fg-subtle" key={`sub-${state}`}>
-          {isPaused ? '当前暂停片段' : isRunning ? '当前专注片段' : '尚未开始'}
-        </span>
-      </div>
-
-      {/* 6 项统计：当前专注 / 累计专注 / 当前暂停 / 累计暂停 / 总历时（合并为 2×3 网格） */}
-      <div className="mt-2.5 grid grid-cols-2 gap-x-2 gap-y-1.5 px-0.5">
-        <div className="flex items-center justify-between">
-          <span className="text-[9px] font-semibold text-accent">当前专注</span>
-          <span className="timer-digit motion-digit text-[11px] font-bold text-fg">
-            {formatDuration(isRunning ? currentFocusMs : 0)}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <StateDot state={state} size="xs" />
+          <span className={`shrink-0 text-[10px] font-semibold ${STATE_TEXT[state]}`}>
+            {STATE_LABEL[state]}
+          </span>
+          <span className="h-3 w-px bg-border/80" />
+          <Link2 size={10} className="shrink-0 text-accent" />
+          <span className="truncate text-[11px] font-medium text-fg-muted">
+            {currentTaskTitle ?? (state === 'idle' ? '点击开始专注' : '未关联任务')}
           </span>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[9px] font-semibold text-accent/80">累计专注</span>
-          <span className="timer-digit motion-digit text-[11px] font-bold text-fg-muted">
-            {formatDuration(cumulativeActiveMs)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[9px] font-semibold text-warning">当前暂停</span>
-          <span
-            className={`timer-digit motion-digit text-[11px] font-bold ${
-              isPaused ? 'text-warning' : 'text-fg-subtle'
-            }`}
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            className="no-drag motion-press rounded-full p-1.5 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
+            onClick={handleOpenMain}
+            title="打开主窗口"
           >
-            {formatDuration(isPaused ? currentPauseMs : 0)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[9px] font-semibold text-warning/85">累计暂停</span>
-          <span className="timer-digit motion-digit text-[11px] font-bold text-fg-muted">
-            {formatDuration(cumulativePauseMs)}
-          </span>
-        </div>
-        <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5">
-          <span className="text-[9px] font-semibold text-fg-subtle">总历时</span>
-          <span className="timer-digit motion-digit text-[11px] font-bold text-fg">
-            {formatDuration(wallElapsedMs)}
-          </span>
+            <Maximize2 size={12} />
+          </button>
+          <button
+            className="no-drag motion-press rounded-full p-1.5 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
+            onClick={handleCollapse}
+            title="缩小"
+          >
+            <ChevronDown size={13} />
+          </button>
         </div>
       </div>
 
-      {/* 进度条（25 分钟目标） */}
-      <div className="absolute bottom-10 left-3 right-3">
-        <ProgressBar />
+      <div className="mt-2 flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[9px] font-semibold text-fg-subtle">
+            {isPaused ? '当前暂停片段' : isRunning ? '当前专注片段' : '当前片段'}
+          </div>
+          <div className={`timer-digit motion-digit mt-0.5 text-[34px] font-bold leading-none ${activeTone}`}>
+            {formatDuration(displayActive)}
+          </div>
+        </div>
+        <div className="grid w-[148px] grid-cols-2 gap-1.5">
+          <MiniStat label="累计专注" value={formatDuration(cumulativeActiveMs)} tone="focus" />
+          <MiniStat label="累计暂停" value={formatDuration(cumulativePauseMs)} tone="pause" />
+        </div>
       </div>
 
-      {/* 底部控制按钮 — motion-press 提供按下反馈 */}
-      <div className="absolute bottom-3 left-0 right-0 flex items-center justify-center gap-2">
+      <div className="mt-3 grid grid-cols-5 gap-1.5">
+        <MiniStat
+          label="当前专注"
+          value={formatDuration(isRunning ? currentFocusMs : 0)}
+          tone="focus"
+          className="col-span-2"
+        />
+        <MiniStat
+          label="当前暂停"
+          value={formatDuration(isPaused ? currentPauseMs : 0)}
+          tone="pause"
+          className="col-span-2"
+        />
+        <MiniStat label="总历时" value={formatDuration(wallElapsedMs)} className="col-span-1" />
+      </div>
+
+      <div className="mt-auto flex items-center justify-center gap-2 pt-2">
         <button
-          className="no-drag motion-press inline-flex items-center gap-1.5 rounded-lg bg-accent/95 px-3.5 py-1.5 text-[11px] font-semibold text-accent-fg hover:brightness-110"
+          className="no-drag motion-press inline-flex h-7 items-center gap-1.5 rounded-full bg-accent/95 px-4 text-[11px] font-semibold text-accent-fg hover:brightness-110"
           onClick={handleToggle}
         >
-          {state === 'running' ? <Pause size={11} /> : <Play size={11} />}
+          {state === 'running' ? <Pause size={12} /> : <Play size={12} />}
           {state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始'}
         </button>
         <button
-          className="no-drag motion-press inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-subtle/50 px-3 py-1.5 text-[11px] font-medium text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-30"
+          className="no-drag motion-press inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-bg-subtle/55 px-3.5 text-[11px] font-medium text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-30"
           onClick={handleStop}
           disabled={state === 'idle' || state === 'finished'}
         >
-          <Square size={10} />
+          <Square size={11} />
           结束
         </button>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  tone = 'default',
+  className = '',
+}: {
+  label: string;
+  value: string;
+  tone?: 'default' | 'focus' | 'pause';
+  className?: string;
+}) {
+  const toneClass =
+    tone === 'focus' ? 'text-accent' : tone === 'pause' ? 'text-warning' : 'text-fg-muted';
+  return (
+    <div
+      className={`min-w-0 rounded-2xl border border-border/70 bg-bg-subtle/45 px-2 py-1.5 ${className}`}
+    >
+      <div className={`truncate text-[9px] font-semibold ${toneClass}`}>{label}</div>
+      <div className="timer-digit motion-digit mt-0.5 truncate text-[12px] font-bold leading-none text-fg">
+        {value}
       </div>
     </div>
   );

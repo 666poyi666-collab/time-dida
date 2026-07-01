@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { MiniWindow } from './components/MiniWindow';
 import './index.css';
 
+document.documentElement.classList.add('mini-window-page');
+
 const container = document.getElementById('root');
 if (container) {
   createRoot(container).render(<MiniWindow />);

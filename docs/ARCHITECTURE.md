@@ -76,7 +76,7 @@
 | `components/TimerPanel.tsx` | 计时区：大计时数字、idle 预选任务、控制按钮 |
 | `components/TaskPanel.tsx` | 任务树（默认折叠、搜索展开、项目过滤） |
 | `components/TaskPicker.tsx` | 可复用任务选择器（搜索/项目/树） |
-| `components/MiniWindow.tsx` | 专注小窗（展开/紧凑/收起三模式） |
+| `components/MiniWindow.tsx` | 专注小窗（260×88 缩小卡 / 420×184 展开详情卡） |
 | `components/HistoryPanel.tsx` | 历史记录 + 后补关联 + 批量关联 |
 | `components/SegmentTimeline.tsx` | 片段时间线 |
 | `components/SettingsPanel.tsx` | 设置（外观/任务/快捷键/小窗/同步/关于） |
@@ -93,6 +93,8 @@
 | 文件 | 职责 |
 | --- | --- |
 | `types.ts` | 全部共享类型 + IPC 通道契约 + `DEFAULT_SETTINGS` |
+| `miniWindowLayout.ts` | 小窗固定尺寸与展开/缩小策略 |
+| `startupPolicy.ts` | 开机自启隐藏到托盘策略 |
 
 ### 3.4 测试 `tests/`
 
@@ -104,6 +106,8 @@
 | `paneLayout.test.ts` | 分栏布局计算 |
 | `historyStats.test.ts` | 历史统计 |
 | `syncStatus.test.ts` | 同步状态 |
+| `miniWindowLayout.test.ts` | 小窗固定尺寸、展开/缩小策略 |
+| `startupPolicy.test.ts` | 开机自启隐藏参数与启动隐藏判断 |
 
 ## 4. 数据流
 

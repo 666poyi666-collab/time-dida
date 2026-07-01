@@ -4,6 +4,7 @@ import { JsonStore } from './jsonStore.js';
 import { getSetting, setSetting } from './db/index.js';
 import { DEFAULT_SETTINGS } from '@shared/types';
 import type { AppSettings } from '@shared/types';
+import { getExpandedMiniWindowSize } from '@shared/miniWindowLayout';
 import { logger } from './logger.js';
 
 const store = new JsonStore<AppSettings>({
@@ -42,6 +43,7 @@ export function getSettings(): AppSettings {
 
   // v0.1.5 一次性迁移：强制关闭贴边自动收纳（仅执行一次）
   applyV015EdgeCollapseMigration(settings);
+  normalizeMiniWindowSize(settings);
   return settings;
 }
 
@@ -57,6 +59,21 @@ function applyV015EdgeCollapseMigration(settings: AppSettings): void {
     setSetting(SETTINGS_KEY, JSON.stringify(settings));
   }
   setSetting(MIGRATION_V015_KEY, MIGRATION_FLAG_DONE);
+}
+
+function normalizeMiniWindowSize(settings: AppSettings): void {
+  const expanded = getExpandedMiniWindowSize(settings.miniWindow.width, settings.miniWindow.height);
+  if (
+    expanded.width === settings.miniWindow.width &&
+    expanded.height === settings.miniWindow.height
+  ) {
+    return;
+  }
+  logger.info('settings', 'normalize mini window expanded size', expanded);
+  settings.miniWindow.width = expanded.width;
+  settings.miniWindow.height = expanded.height;
+  store.store = settings;
+  setSetting(SETTINGS_KEY, JSON.stringify(settings));
 }
 
 export function saveSettings(settings: AppSettings): AppSettings {

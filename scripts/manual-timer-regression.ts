@@ -259,7 +259,7 @@ describe('manual-timer-regression: 5/3/4/2/6 场景', () => {
     console.log(`  总历时: ${formatDuration(wall)}  (${wall}ms, 期望 ~20s)`);
     console.log(`  当前任务: ${taskTitle ?? '未关联'}`);
 
-    console.log('\n--- MiniWindow 显示值 (展开态 6 信息) ---');
+    console.log('\n--- MiniWindow 显示值 (展开态核心信息) ---');
     console.log(`  状态: ${finalSnap.state}`);
     console.log(`  当前任务: ${taskTitle ?? '未关联'}`);
     console.log(`  当前专注: ${formatDuration(currentSeg)}  (${currentSeg}ms)`);
