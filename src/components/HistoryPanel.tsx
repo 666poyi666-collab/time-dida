@@ -67,7 +67,7 @@ type PickerTarget =
 type SegmentFilter = 'all' | 'unlinked' | 'linked';
 
 export function HistoryPanel() {
-  const { addToast } = useStore();
+  const { snapshot, addToast, setSnapshot } = useStore();
   const [sessions, setSessions] = useState<FocusSession[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
@@ -143,9 +143,18 @@ export function HistoryPanel() {
   };
 
   const handleDelete = async (id: string) => {
+    const isCurrentSession = snapshot?.sessionId === id;
+    if (isCurrentSession && (snapshot.state === 'running' || snapshot.state === 'paused')) {
+      addToast('当前专注仍在进行中，请先结束专注后再删除这条记录。', 'error');
+      return;
+    }
     if (!confirm('确认删除这条专注记录？此操作不可撤销。')) return;
     try {
       await window.focuslink.sessions.delete(id);
+      if (isCurrentSession) {
+        const snap = await window.focuslink.timer.reset();
+        setSnapshot(snap);
+      }
       await load();
       if (expanded === id) {
         setExpanded(null);
@@ -777,9 +786,7 @@ function SessionDetailHeader({
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <SessionSyncBadge
               state={
-                syncing
-                  ? { label: '同步中', tone: 'warn', title: '正在处理同步队列' }
-                  : syncState
+                syncing ? { label: '同步中', tone: 'warn', title: '正在处理同步队列' } : syncState
               }
             />
             <TinyStatusChip
@@ -893,7 +900,11 @@ function SessionDefaultTaskCard({
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          <button className="btn-outline motion-press text-[11px]" disabled={linking} onClick={onSet}>
+          <button
+            className="btn-outline motion-press text-[11px]"
+            disabled={linking}
+            onClick={onSet}
+          >
             <Star size={11} />
             {detail.session.defaultTaskTitle ? '更换' : '设置'}
           </button>
@@ -937,7 +948,12 @@ function HistoryTimelineList({
   completedTaskIds: Set<string>;
 }) {
   const segmentItems: HistoryTimelineItem[] = segments
-    .map((segment, index) => ({ type: 'focus' as const, segment, index, startedAt: segment.startedAt }))
+    .map((segment, index) => ({
+      type: 'focus' as const,
+      segment,
+      index,
+      startedAt: segment.startedAt,
+    }))
     .filter(({ segment }) => {
       const hasTask = !!segment.taskId && !!segment.title;
       if (filter === 'linked') return hasTask;
@@ -994,9 +1010,7 @@ function HistoryTimelineList({
                 onLink={() => onLink(item.segment.id, item.index)}
                 onClear={() => onClear(item.segment.id)}
                 onComplete={() => onComplete(item.segment)}
-                isTaskCompleted={
-                  !!item.segment.taskId && completedTaskIds.has(item.segment.taskId)
-                }
+                isTaskCompleted={!!item.segment.taskId && completedTaskIds.has(item.segment.taskId)}
               />
             ) : (
               <HistoryPauseTimelineRow key={item.pause.id} pause={item.pause} index={item.index} />

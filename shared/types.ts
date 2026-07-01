@@ -321,7 +321,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     listTasksCommand: 'dida task filter --json',
     searchTasksCommand: 'dida task filter --json',
     getTaskCommand: 'dida task get {{projectId}} {{taskId}} --json',
-    appendNoteCommand: 'dida task update {{taskId}} --content "{{content}}"',
+    appendNoteCommand: 'dida task update {{taskId}} --id {{taskId}} --content "{{content}}"',
     listProjectsCommand: 'dida project list --json',
     timeoutMs: 10000,
   },

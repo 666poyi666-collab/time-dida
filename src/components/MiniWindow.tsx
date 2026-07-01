@@ -173,9 +173,10 @@ export function MiniWindow() {
   const currentTaskTitle = getCurrentTaskTitle(snapshot);
   const isRunning = state === 'running';
   const isPaused = state === 'paused';
+  const isIdle = state === 'idle' || state === 'finished';
   const primaryMs = isPaused ? currentPauseMs : currentFocusMs;
   const cumulativeMs = isPaused ? cumulativePauseMs : cumulativeActiveMs;
-  const primaryLabel = isPaused ? '当前暂停' : '当前专注';
+  const primaryLabel = isPaused ? '当前暂停' : isIdle ? '待开始' : '当前专注';
   const cumulativeLabel = isPaused ? '累计暂停' : '累计专注';
   const activeTone = isPaused ? 'text-warning' : isRunning ? 'text-accent' : 'text-fg';
 
@@ -241,7 +242,7 @@ export function MiniWindow() {
             <div
               className={`timer-digit motion-digit mt-0.5 text-[17px] font-bold leading-none ${activeTone}`}
             >
-              {formatDuration(primaryMs)}
+              {formatDuration(isIdle ? 0 : primaryMs)}
             </div>
           </div>
           <div className="min-w-0 rounded-2xl border border-border/70 bg-bg-subtle/35 px-2.5 py-1.5">
@@ -296,12 +297,12 @@ export function MiniWindow() {
       <div className="mt-2 flex items-end justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[9px] font-semibold text-fg-subtle">
-            {isPaused ? '当前暂停片段' : isRunning ? '当前专注片段' : '当前片段'}
+            {isPaused ? '当前暂停片段' : isRunning ? '当前专注片段' : '准备开始'}
           </div>
           <div
             className={`timer-digit motion-digit mt-0.5 text-[34px] font-bold leading-none ${activeTone}`}
           >
-            {formatDuration(displayActive)}
+            {formatDuration(isIdle ? 0 : displayActive)}
           </div>
         </div>
         <div className="grid w-[148px] grid-cols-2 gap-1.5">

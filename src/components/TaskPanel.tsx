@@ -909,14 +909,17 @@ function SyncStatus() {
     void refreshQueue();
   }, []);
 
-  const counts = useMemo(
-    () => ({
+  const counts = useMemo(() => {
+    const failedItems = queue.filter(
+      (item) => item.status === 'failed' || (item.status === 'pending' && !!item.lastError),
+    );
+    return {
       pending: queue.filter((item) => item.status === 'pending').length,
-      failed: queue.filter((item) => item.status === 'failed').length,
+      failed: failedItems.length,
       synced: queue.filter((item) => item.status === 'synced').length,
-    }),
-    [queue],
-  );
+      lastError: failedItems[0]?.lastError ?? null,
+    };
+  }, [queue]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -953,7 +956,7 @@ function SyncStatus() {
   const statusSub = stats
     ? `本次处理 ${stats.processed} 项，成功 ${stats.succeeded} 项`
     : hasProblem
-      ? `${counts.failed} 项失败，${counts.pending} 项待同步`
+      ? (counts.lastError ?? `${counts.failed} 项失败，${counts.pending} 项待同步`)
       : hasPending
         ? `${counts.pending} 项待同步`
         : counts.synced > 0

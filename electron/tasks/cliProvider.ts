@@ -29,7 +29,7 @@ export const DIDA_DEFAULT_TEMPLATES: TickTickCliConfig = {
   listTasksCommand: 'dida task filter --json',
   searchTasksCommand: 'dida task filter --json',
   getTaskCommand: 'dida task get {{projectId}} {{taskId}} --json',
-  appendNoteCommand: 'dida task update {{taskId}} --content "{{content}}"',
+  appendNoteCommand: 'dida task update {{taskId}} --id {{taskId}} --content "{{content}}"',
   listProjectsCommand: 'dida project list --json',
   timeoutMs: 10000,
 };
@@ -53,6 +53,15 @@ export function templatesContainTicktick(cfg: TickTickCliConfig): boolean {
     cfg.listProjectsCommand.includes('ticktick') ||
     cfg.getTaskCommand.includes('ticktick') ||
     cfg.appendNoteCommand.includes('ticktick')
+  );
+}
+
+/** 旧版 dida 模板把 taskId 当作位置参数传给 update，会触发 "--id <id> 缺失"。 */
+export function hasLegacyDidaAppendTemplate(cfg: TickTickCliConfig): boolean {
+  const command = cfg.appendNoteCommand.trim();
+  return (
+    /^dida\s+task\s+update\s+\{\{taskId\}\}\s+--content\b/.test(command) ||
+    /^dida\s+task\s+update\s+--id\s+\{\{taskId\}\}\s+--content\b/.test(command)
   );
 }
 
@@ -168,8 +177,11 @@ export async function detectCli(): Promise<CliDetectResult> {
       // 探测到 dida 后，若当前模板仍含 ticktick 字面量（旧版本残留），自动迁移为 dida 模板
       if (cmd === 'dida') {
         const cur = getSettings();
-        if (templatesContainTicktick(cur.ticktickCli)) {
-          logger.info('cli', 'auto-migrating ticktick templates -> dida templates');
+        if (
+          templatesContainTicktick(cur.ticktickCli) ||
+          hasLegacyDidaAppendTemplate(cur.ticktickCli)
+        ) {
+          logger.info('cli', 'auto-migrating stale CLI templates -> dida templates');
           applyDidaDefaults();
         }
       }

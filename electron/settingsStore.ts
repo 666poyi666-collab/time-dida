@@ -15,6 +15,7 @@ const store = new JsonStore<AppSettings>({
 const SETTINGS_KEY = 'app_settings';
 // v0.1.5 一次性迁移标记：强制关闭贴边自动收纳（UI 不稳定，交给 UI AI 重做）
 const MIGRATION_V015_KEY = 'migration.v015.edgeAutoCollapseReset';
+const MIGRATION_DIDA_APPEND_ID_KEY = 'migration.didaAppendRequiresId';
 const MIGRATION_FLAG_DONE = '1';
 
 export function getSettings(): AppSettings {
@@ -43,6 +44,7 @@ export function getSettings(): AppSettings {
 
   // v0.1.5 一次性迁移：强制关闭贴边自动收纳（仅执行一次）
   applyV015EdgeCollapseMigration(settings);
+  applyDidaAppendIdMigration(settings);
   normalizeMiniWindowSize(settings);
   return settings;
 }
@@ -74,6 +76,24 @@ function normalizeMiniWindowSize(settings: AppSettings): void {
   settings.miniWindow.height = expanded.height;
   store.store = settings;
   setSetting(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function applyDidaAppendIdMigration(settings: AppSettings): void {
+  const flag = getSetting(MIGRATION_DIDA_APPEND_ID_KEY);
+  if (flag === MIGRATION_FLAG_DONE) return;
+
+  const command = settings.ticktickCli.appendNoteCommand.trim();
+  if (
+    /^dida\s+task\s+update\s+\{\{taskId\}\}\s+--content\b/.test(command) ||
+    /^dida\s+task\s+update\s+--id\s+\{\{taskId\}\}\s+--content\b/.test(command)
+  ) {
+    logger.info('settings', 'migration: dida append note command now requires --id');
+    settings.ticktickCli.appendNoteCommand =
+      'dida task update {{taskId}} --id {{taskId}} --content "{{content}}"';
+    store.store = settings;
+    setSetting(SETTINGS_KEY, JSON.stringify(settings));
+  }
+  setSetting(MIGRATION_DIDA_APPEND_ID_KEY, MIGRATION_FLAG_DONE);
 }
 
 export function saveSettings(settings: AppSettings): AppSettings {
