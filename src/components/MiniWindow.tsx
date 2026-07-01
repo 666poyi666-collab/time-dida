@@ -3,7 +3,7 @@
 // 透明无边框窗口，始终置顶，支持拖拽和主题同步
 // 暂停态统一使用橙色（warning），专注态使用绿色（accent）
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import type { TimerSnapshot, AppSettings } from '@shared/types';
 import { formatDuration } from '../lib/time';
 import {
@@ -215,7 +215,7 @@ export function MiniWindow() {
     return (
       <div
         ref={containerRef}
-        className="mini-window-shell motion-base flex h-full w-full flex-col rounded-[22px] px-3 py-2.5 text-fg"
+        className="mini-window-shell motion-base flex h-full w-full flex-col rounded-[24px] px-3.5 py-2.5 text-fg"
         onDoubleClick={handleExpand}
         title="双击展开"
       >
@@ -236,13 +236,15 @@ export function MiniWindow() {
         </div>
 
         <div className="mt-2 grid min-h-0 flex-1 grid-cols-2 gap-2">
-          <div className="min-w-0 rounded-2xl border border-border/70 bg-bg-subtle/55 px-2 py-1.5">
+          <div className="min-w-0 rounded-2xl border border-border/70 bg-bg-subtle/55 px-2.5 py-1.5">
             <div className="truncate text-[9px] font-semibold text-fg-subtle">{primaryLabel}</div>
-            <div className={`timer-digit motion-digit mt-0.5 text-[17px] font-bold leading-none ${activeTone}`}>
+            <div
+              className={`timer-digit motion-digit mt-0.5 text-[17px] font-bold leading-none ${activeTone}`}
+            >
               {formatDuration(primaryMs)}
             </div>
           </div>
-          <div className="min-w-0 rounded-2xl border border-border/70 bg-bg-subtle/35 px-2 py-1.5">
+          <div className="min-w-0 rounded-2xl border border-border/70 bg-bg-subtle/35 px-2.5 py-1.5">
             <div className="truncate text-[9px] font-semibold text-fg-subtle">
               {cumulativeLabel}
             </div>
@@ -259,7 +261,7 @@ export function MiniWindow() {
   return (
     <div
       ref={containerRef}
-      className="mini-window-shell motion-base flex h-full w-full flex-col rounded-[26px] px-4 py-3 text-fg"
+      className="mini-window-shell motion-base flex h-full w-full flex-col rounded-[28px] px-4 py-3 text-fg"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
@@ -296,7 +298,9 @@ export function MiniWindow() {
           <div className="text-[9px] font-semibold text-fg-subtle">
             {isPaused ? '当前暂停片段' : isRunning ? '当前专注片段' : '当前片段'}
           </div>
-          <div className={`timer-digit motion-digit mt-0.5 text-[34px] font-bold leading-none ${activeTone}`}>
+          <div
+            className={`timer-digit motion-digit mt-0.5 text-[34px] font-bold leading-none ${activeTone}`}
+          >
             {formatDuration(displayActive)}
           </div>
         </div>
@@ -324,14 +328,14 @@ export function MiniWindow() {
 
       <div className="mt-auto flex items-center justify-center gap-2 pt-2">
         <button
-          className="no-drag motion-press motion-ripple motion-hover-glow inline-flex h-7 items-center gap-1.5 rounded-full bg-accent/95 px-4 text-[11px] font-semibold text-accent-fg hover:brightness-110"
+          className="no-drag motion-press inline-flex h-7 items-center gap-1.5 rounded-full bg-accent/95 px-4 text-[11px] font-semibold text-accent-fg hover:brightness-110"
           onClick={handleToggle}
         >
           {state === 'running' ? <Pause size={12} /> : <Play size={12} />}
           {state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始'}
         </button>
         <button
-          className="no-drag motion-press motion-ripple inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-bg-subtle/55 px-3.5 text-[11px] font-medium text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-30"
+          className="no-drag motion-press inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-bg-subtle/55 px-3.5 text-[11px] font-medium text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-30"
           onClick={handleStop}
           disabled={state === 'idle' || state === 'finished'}
         >

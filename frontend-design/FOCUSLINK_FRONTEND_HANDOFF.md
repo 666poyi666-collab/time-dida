@@ -1,7 +1,7 @@
 # FocusLink 前端/UI 交接文件
 
 > 目标读者：接手 UI 视觉与前端体验设计的 AI 或设计师。
-> 当前版本从 v0.2.5 开始，把 UI 设计交接资料独立放在 `frontend-design/`。
+> 当前版本：v0.2.6。此文件只描述真实 `src/` 前端，不引用未接入应用的概念设计目录。
 
 ## 1. 产品定位
 
@@ -147,6 +147,14 @@ Session 展开后优先级：
 - 卡片：边框主导、轻阴影。
 - 圆角：主界面卡片约 16-18px，小窗可 22-26px。
 - 背景：稳定灰阶，不要粗糙纹理。
+
+v0.2.6 当前落地风格：
+- 主壳使用 `app-shell` / `topbar-shell` / `workspace-pane`，避免页面像浏览器半成品。
+- 顶部导航使用 `segmented-nav`，当前 tab 以薄荷绿浅底和细边框提示。
+- 左右分割线使用 `pane-divider`，默认细线，hover / dragging 只轻微显色。
+- 任务树使用 `task-row` / `task-row-parent` / `task-row-child` / `task-tree-children`。
+- 小窗使用 `mini-window-shell`，固定两态：260×88 与 420×184。
+- 保留轻量 motion 工具类，但不要再堆毛玻璃、大面积发光和滑动切页。
 
 ## 8. 禁止改动的底层逻辑
 

@@ -1,8 +1,8 @@
-// Toast 提示容器 — v0.27: 增强动画 + 自动消失进度条
+// Toast 提示容器：轻量反馈 + 自动消失进度条
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 const TOAST_DURATION = 3200;
 
@@ -11,39 +11,36 @@ const typeConfig = {
     Icon: CheckCircle2,
     iconColor: 'text-success',
     border: 'border-l-success',
-    glow: 'shadow-[0_0_16px_rgb(var(--success)/0.18)]',
     progressBg: 'bg-success',
   },
   error: {
     Icon: AlertCircle,
     iconColor: 'text-danger',
     border: 'border-l-danger',
-    glow: 'shadow-[0_0_16px_rgb(var(--danger)/0.18)]',
     progressBg: 'bg-danger',
   },
   info: {
     Icon: Info,
     iconColor: 'text-accent',
     border: 'border-l-accent',
-    glow: 'shadow-[0_0_16px_rgb(var(--accent)/0.18)]',
     progressBg: 'bg-accent',
   },
 } as const;
 
-function ToastItem({ id, message, type, onRemove }: { id: string; message: string; type: string; onRemove: (id: string) => void }) {
-  const [progress, setProgress] = useState(0);
-
+function ToastItem({
+  id,
+  message,
+  type,
+  onRemove,
+}: {
+  id: string;
+  message: string;
+  type: string;
+  onRemove: (id: string) => void;
+}) {
   useEffect(() => {
-    const start = Date.now();
-    const frame = requestAnimationFrame(function tick() {
-      const elapsed = Date.now() - start;
-      const pct = Math.min((elapsed / TOAST_DURATION) * 100, 100);
-      setProgress(pct);
-      if (pct < 100) requestAnimationFrame(tick);
-    });
     const timer = setTimeout(() => onRemove(id), TOAST_DURATION);
     return () => {
-      cancelAnimationFrame(frame);
       clearTimeout(timer);
     };
   }, [id, onRemove]);
@@ -54,11 +51,11 @@ function ToastItem({ id, message, type, onRemove }: { id: string; message: strin
     <motion.div
       key={id}
       layout
-      initial={{ opacity: 0, y: 20, scale: 0.92, filter: 'blur(4px)' }}
-      animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-      exit={{ opacity: 0, y: -10, scale: 0.92, filter: 'blur(4px)' }}
-      transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
-      className={`glass motion-base pointer-events-auto flex items-center gap-2.5 rounded-xl border border-border border-l-[3px] ${cfg.border} px-4 py-2.5 shadow-soft ${cfg.glow} cursor-pointer select-none overflow-hidden`}
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      className={`glass motion-base pointer-events-auto flex items-center gap-2.5 rounded-xl border border-border border-l-[3px] ${cfg.border} cursor-pointer select-none overflow-hidden px-4 py-2.5 shadow-soft`}
       onClick={() => onRemove(id)}
     >
       <cfg.Icon size={15} className={`shrink-0 ${cfg.iconColor}`} />

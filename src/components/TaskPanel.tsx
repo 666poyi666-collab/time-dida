@@ -640,8 +640,8 @@ function TaskMetric({
 }) {
   return (
     <div
-      className={`motion-base rounded-xl border px-3 py-2.5 ${
-        tone === 'accent' ? 'border-accent/25 bg-accent/10' : 'border-border bg-bg-card/80'
+      className={`task-metric motion-base px-3 py-2.5 ${
+        tone === 'accent' ? 'border-accent/25 !bg-accent/10' : ''
       }`}
       title={title}
     >
@@ -740,26 +740,12 @@ function TaskTreeItem({
     <>
       <div
         className={`
-          group motion-base motion-state-transition relative flex items-center gap-2 rounded-xl px-2.5 py-2
-          ${
-            isParent
-              ? 'border border-border bg-bg-card/95 shadow-soft hover:border-border-strong/70 hover:bg-bg-subtle/65 hover:shadow-[0_4px_12px_-8px_rgba(0,0,0,0.08)]'
-              : 'border border-transparent bg-bg-card/25 hover:border-border hover:bg-bg-subtle/55'
-          }
+          group task-row motion-base motion-state-transition
+          ${isParent ? 'task-row-parent' : 'task-row-child'}
           ${isHighlighted ? 'selected-accent' : ''}
           ${isCompleted ? 'opacity-50' : ''}
         `}
-        style={
-          isParent
-            ? { marginLeft: 0 }
-            : {
-                marginLeft: depth * 16,
-                borderLeftWidth: '2px',
-                borderLeftColor: isHighlighted
-                  ? 'rgb(var(--accent) / 0.6)'
-                  : 'rgb(var(--border) / 0.85)',
-              }
-        }
+        style={isParent ? { marginLeft: 0 } : { marginLeft: depth * 12 }}
       >
         {/* 折叠/展开按钮 */}
         {hasChildren ? (
@@ -768,11 +754,7 @@ function TaskTreeItem({
             onClick={() => onToggleCollapse(task.id)}
             title={isCollapsed ? '展开子任务' : '收起子任务'}
           >
-            {isCollapsed ? (
-              <ChevronRight size={14} />
-            ) : (
-              <ChevronDown size={14} />
-            )}
+            {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
           </button>
         ) : (
           <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center">
@@ -885,7 +867,7 @@ function TaskTreeItem({
 
       {/* 子任务（递归） */}
       {hasChildren && !isCollapsed && (
-        <div className="motion-fade-in space-y-1">
+        <div className="task-tree-children motion-fade-in mt-1 space-y-1">
           {task.children!.map((child) => (
             <TaskTreeItem
               key={child.id}
@@ -979,7 +961,7 @@ function SyncStatus() {
           : '暂无同步队列记录';
 
   return (
-    <div className="card motion-lift flex items-center justify-between p-3.5">
+    <div className="card flex items-center justify-between p-3.5">
       <div className="flex min-w-0 items-center gap-2.5">
         <div
           className={`motion-state-bg flex h-9 w-9 items-center justify-center rounded-xl border ${

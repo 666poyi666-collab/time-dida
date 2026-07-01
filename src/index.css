@@ -10,22 +10,22 @@
 
 @layer base {
   :root {
-    /* FocusLink tokens adapted from the dashboard kit: quiet surfaces, border-led depth, green product accent. */
-    --background: #f5f7fa;
-    --foreground: #111827;
+    /* FocusLink product tokens: calm desktop chrome, crisp borders, mint task accent. */
+    --background: #f4f7f8;
+    --foreground: #18212f;
     --card: #ffffff;
-    --card-foreground: #111827;
-    --muted: #eef2f5;
-    --muted-foreground: #667085;
-    --border-token: #e3e8ef;
-    --input-token: #dce3ec;
-    --primary: #10b981;
+    --card-foreground: #18212f;
+    --muted: #edf2f4;
+    --muted-foreground: #667789;
+    --border-token: #dce6ec;
+    --input-token: #d6e0e7;
+    --primary: #0ea978;
     --primary-foreground: #ffffff;
-    --primary-soft: #dff8ec;
-    --accent-token: #e9f8f1;
-    --accent-foreground-token: #05734f;
-    --ring-token: #31c48d;
-    --radius: 16px;
+    --primary-soft: #dff6ed;
+    --accent-token: #e7f7f0;
+    --accent-foreground-token: #067552;
+    --ring-token: #25bf88;
+    --radius: 18px;
 
     /* Motion tokens — 统一节奏，禁止组件各自乱写 transition。
        原则：轻、稳、顺；优先 transform/opacity；禁止 bounce；最长 260ms。 */
@@ -38,21 +38,21 @@
     --scale-hover: 1.02;
     --scale-active: 0.98;
 
-    --app-bg: 245 247 250;
+    --app-bg: 244 247 248;
     --app-surface: 255 255 255;
-    --app-surface-2: 240 244 248;
-    --app-elevated: 255 255 255;
+    --app-surface-2: 238 243 246;
+    --app-elevated: 250 252 253;
     --app-overlay: 15 23 42 / 0.34;
-    --app-text: 17 24 39;
-    --app-muted: 71 84 103;
-    --app-subtle: 118 132 151;
+    --app-text: 24 33 47;
+    --app-muted: 82 98 114;
+    --app-subtle: 123 139 156;
     --app-inverse: 255 255 255;
-    --app-border: 224 231 239;
-    --app-border-strong: 198 209 222;
-    --app-border-subtle: 237 242 247;
-    --app-accent: 16 185 129;
-    --app-accent-hover: 5 150 105;
-    --app-accent-soft: 16 185 129 / 0.12;
+    --app-border: 220 230 236;
+    --app-border-strong: 195 209 219;
+    --app-border-subtle: 234 240 244;
+    --app-accent: 14 169 120;
+    --app-accent-hover: 8 140 99;
+    --app-accent-soft: 14 169 120 / 0.12;
     --app-accent-fg: 255 255 255;
     --app-success: 16 185 129;
     --app-warning: 245 158 11;
@@ -60,11 +60,11 @@
     --app-info: 14 165 233;
     --radius-sm: 8px;
     --radius-md: 10px;
-    --radius-lg: 14px;
-    --radius-xl: 18px;
-    --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.04);
-    --shadow-md: 0 10px 26px -24px rgb(16 24 40 / 0.34);
-    --shadow-lg: 0 20px 52px -42px rgb(16 24 40 / 0.36);
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.035);
+    --shadow-md: 0 14px 34px -30px rgb(16 24 40 / 0.42);
+    --shadow-lg: 0 24px 64px -48px rgb(16 24 40 / 0.45);
     --shadow-glow:
       0 0 0 1px rgb(var(--app-accent) / 0.14), 0 18px 44px -30px rgb(var(--app-accent) / 0.45);
 
@@ -88,35 +88,35 @@
   }
 
   .light {
-    --background: #f5f7fa;
-    --foreground: #111827;
+    --background: #f4f7f8;
+    --foreground: #18212f;
     --card: #ffffff;
     --card-foreground: #111827;
-    --muted: #eef2f5;
-    --muted-foreground: #667085;
-    --border-token: #e3e8ef;
-    --input-token: #dce3ec;
-    --primary: #10b981;
+    --muted: #edf2f4;
+    --muted-foreground: #667789;
+    --border-token: #dce6ec;
+    --input-token: #d6e0e7;
+    --primary: #0ea978;
     --primary-foreground: #ffffff;
-    --primary-soft: #dff8ec;
-    --accent-token: #e9f8f1;
-    --accent-foreground-token: #05734f;
-    --ring-token: #31c48d;
+    --primary-soft: #dff6ed;
+    --accent-token: #e7f7f0;
+    --accent-foreground-token: #067552;
+    --ring-token: #25bf88;
 
-    --app-bg: 245 247 250;
+    --app-bg: 244 247 248;
     --app-surface: 255 255 255;
-    --app-surface-2: 240 244 248;
-    --app-elevated: 255 255 255;
+    --app-surface-2: 238 243 246;
+    --app-elevated: 250 252 253;
     --app-overlay: 15 23 42 / 0.36;
-    --app-text: 17 24 39;
-    --app-muted: 71 84 103;
-    --app-subtle: 118 132 151;
-    --app-border: 224 231 239;
-    --app-border-strong: 198 209 222;
-    --app-border-subtle: 237 242 247;
-    --app-accent: 16 185 129;
-    --app-accent-hover: 5 150 105;
-    --app-accent-soft: 16 185 129 / 0.12;
+    --app-text: 24 33 47;
+    --app-muted: 82 98 114;
+    --app-subtle: 123 139 156;
+    --app-border: 220 230 236;
+    --app-border-strong: 195 209 219;
+    --app-border-subtle: 234 240 244;
+    --app-accent: 14 169 120;
+    --app-accent-hover: 8 140 99;
+    --app-accent-soft: 14 169 120 / 0.12;
     --app-accent-fg: 255 255 255;
     --accent-muted: 207 245 227;
   }
@@ -262,8 +262,11 @@
     -moz-osx-font-smoothing: grayscale;
     user-select: none;
     overflow: hidden;
-    background:
-      linear-gradient(180deg, rgb(var(--app-bg)) 0%, rgb(var(--app-surface-2) / 0.62) 100%);
+    background: linear-gradient(
+      180deg,
+      rgb(var(--app-bg)) 0%,
+      rgb(var(--app-surface-2) / 0.72) 100%
+    );
     letter-spacing: 0;
   }
 
@@ -298,9 +301,9 @@
 
 @layer components {
   .glass {
-    background: rgb(var(--bg-card) / 0.94);
-    backdrop-filter: blur(20px) saturate(1.12);
-    -webkit-backdrop-filter: blur(20px) saturate(1.12);
+    background: rgb(var(--bg-card) / 0.97);
+    backdrop-filter: blur(14px) saturate(1.04);
+    -webkit-backdrop-filter: blur(14px) saturate(1.04);
     box-shadow:
       0 1px 0 rgb(255 255 255 / 0.58) inset,
       0 1px 0 rgb(255 255 255 / 0.06),
@@ -311,15 +314,16 @@
     position: relative;
     isolation: isolate;
     overflow: hidden;
+    border: 1px solid rgb(var(--border) / 0.92);
+    background-clip: padding-box;
     background:
-      linear-gradient(145deg, rgb(var(--bg-card) / 0.98), rgb(var(--bg-subtle) / 0.9)),
+      linear-gradient(145deg, rgb(var(--bg-card) / 0.99), rgb(var(--bg-subtle) / 0.92)),
       rgb(var(--bg-card));
-    backdrop-filter: blur(18px) saturate(1.1);
-    -webkit-backdrop-filter: blur(18px) saturate(1.1);
+    backdrop-filter: blur(14px) saturate(1.04);
+    -webkit-backdrop-filter: blur(14px) saturate(1.04);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.48) inset,
-      0 18px 44px -30px rgb(15 23 42 / 0.48),
-      0 0 0 1px rgb(var(--border) / 0.92);
+      0 1px 0 rgb(255 255 255 / 0.42) inset,
+      0 18px 40px -30px rgb(15 23 42 / 0.48);
   }
 
   .mini-window-shell::before {
@@ -343,22 +347,192 @@
   .focus-glow {
     box-shadow:
       0 0 0 1px rgb(var(--accent) / 0.18),
-      0 0 24px -6px rgb(var(--accent) / 0.18),
-      0 20px 54px -38px rgb(var(--accent) / 0.42);
+      0 18px 48px -40px rgb(var(--accent) / 0.48),
+      var(--shadow-md);
   }
 
   .pause-glow {
     box-shadow:
       0 0 0 1px rgb(var(--warning) / 0.2),
-      0 0 20px -6px rgb(var(--warning) / 0.14),
-      0 20px 54px -38px rgb(var(--warning) / 0.34);
+      0 18px 48px -40px rgb(var(--warning) / 0.42),
+      var(--shadow-md);
   }
 
   .surface-grid {
     background-image:
-      linear-gradient(rgb(var(--app-border-strong) / 0.15) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(var(--app-border-strong) / 0.10) 1px, transparent 1px);
-    background-size: 32px 32px;
+      linear-gradient(rgb(var(--app-border-subtle) / 0.42) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(var(--app-border-subtle) / 0.32) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: linear-gradient(180deg, rgb(0 0 0 / 0.55), transparent 82%);
+  }
+
+  .app-shell {
+    background:
+      linear-gradient(180deg, rgb(var(--app-elevated) / 0.96) 0%, rgb(var(--app-bg)) 24%),
+      rgb(var(--app-bg));
+  }
+
+  .topbar-shell {
+    min-height: 56px;
+    border-bottom: 1px solid rgb(var(--border) / 0.82);
+    background: rgb(var(--app-surface) / 0.96);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.6) inset,
+      0 10px 28px -28px rgb(15 23 42 / 0.5);
+  }
+
+  .brand-mark {
+    border: 1px solid rgb(var(--accent) / 0.2);
+    background:
+      linear-gradient(180deg, rgb(var(--accent) / 0.12), rgb(var(--accent) / 0.06)),
+      rgb(var(--bg-card));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.45);
+  }
+
+  .segmented-nav {
+    border: 1px solid rgb(var(--border) / 0.78);
+    background: rgb(var(--bg-subtle) / 0.78);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.46),
+      0 1px 2px rgb(16 24 40 / 0.035);
+  }
+
+  .window-icon-button {
+    @apply flex h-8 w-8 items-center justify-center rounded-xl text-fg-muted;
+    transition:
+      background-color var(--motion-fast) var(--ease-out),
+      color var(--motion-fast) var(--ease-out),
+      transform var(--motion-fast) var(--ease-out);
+  }
+  .window-icon-button:hover {
+    background: rgb(var(--bg-subtle) / 0.88);
+    color: rgb(var(--fg-default));
+  }
+  .window-icon-button:active {
+    transform: translateY(1px);
+  }
+
+  .workspace-shell {
+    background: rgb(var(--app-bg));
+  }
+
+  .workspace-pane {
+    min-width: 0;
+    scrollbar-gutter: stable;
+  }
+
+  .workspace-pane-timer {
+    background: linear-gradient(
+      180deg,
+      rgb(var(--app-bg) / 0.94),
+      rgb(var(--app-surface-2) / 0.58)
+    );
+  }
+
+  .workspace-pane-task {
+    border-left: 1px solid rgb(var(--border) / 0.58);
+    background: linear-gradient(180deg, rgb(var(--app-elevated) / 0.68), rgb(var(--app-bg) / 0.98));
+  }
+
+  .pane-divider {
+    position: relative;
+    flex-shrink: 0;
+    cursor: col-resize;
+    background: transparent;
+    transition: background-color var(--motion-fast) var(--ease-out);
+  }
+  .pane-divider:hover,
+  .pane-divider[data-dragging='true'] {
+    background: rgb(var(--accent) / 0.055);
+  }
+  .pane-divider::before {
+    content: '';
+    position: absolute;
+    inset-block: 18px;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: rgb(var(--border) / 0.88);
+  }
+  .pane-divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 4px;
+    height: 42px;
+    transform: translate(-50%, -50%);
+    border-radius: 999px;
+    background: rgb(var(--bg-card));
+    border: 1px solid rgb(var(--border) / 0.9);
+    box-shadow: var(--shadow-sm);
+    transition:
+      border-color var(--motion-fast) var(--ease-out),
+      background-color var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-fast) var(--ease-out);
+  }
+  .pane-divider:hover::after,
+  .pane-divider[data-dragging='true']::after {
+    width: 6px;
+    border-color: rgb(var(--accent) / 0.46);
+    background: rgb(var(--accent) / 0.12);
+    box-shadow: 0 0 0 3px rgb(var(--accent) / 0.08);
+  }
+
+  .timer-hero {
+    background:
+      linear-gradient(180deg, rgb(var(--app-surface) / 0.98), rgb(var(--app-elevated) / 0.92)),
+      rgb(var(--app-surface));
+  }
+
+  .task-metric {
+    border: 1px solid rgb(var(--border) / 0.82);
+    border-radius: 16px;
+    background: rgb(var(--bg-card) / 0.9);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .task-row {
+    @apply relative flex items-center gap-2 px-2.5 py-2;
+    border-radius: 14px;
+    transition:
+      border-color var(--motion-fast) var(--ease-out),
+      background-color var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-fast) var(--ease-out);
+  }
+
+  .task-row-parent {
+    border: 1px solid rgb(var(--border) / 0.86);
+    background: rgb(var(--bg-card) / 0.95);
+    box-shadow: var(--shadow-sm);
+  }
+  .task-row-parent:hover {
+    border-color: rgb(var(--border-strong) / 0.78);
+    background: rgb(var(--app-elevated) / 0.92);
+  }
+  .task-row-child {
+    border: 1px solid transparent;
+    background: rgb(var(--bg-card) / 0.34);
+  }
+  .task-row-child:hover {
+    border-color: rgb(var(--border) / 0.74);
+    background: rgb(var(--bg-subtle) / 0.58);
+  }
+
+  .task-tree-children {
+    position: relative;
+    margin-left: 8px;
+    padding-left: 10px;
+  }
+  .task-tree-children::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 4px;
+    bottom: 4px;
+    width: 1px;
+    background: rgb(var(--border) / 0.72);
   }
 
   .btn {
@@ -380,7 +554,7 @@
     @apply hover:brightness-110;
     min-height: 40px;
     box-shadow:
-      0 12px 24px -18px rgb(var(--accent) / 0.9),
+      0 12px 24px -20px rgb(var(--accent) / 0.9),
       inset 0 1px 0 rgb(255 255 255 / 0.18);
   }
   .btn-ghost {
@@ -398,9 +572,9 @@
   .card {
     @apply border border-border;
     border-radius: var(--radius-xl);
-    background: rgb(var(--app-surface) / 0.96);
+    background: rgb(var(--app-surface) / 0.97);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.64) inset,
+      0 1px 0 rgb(255 255 255 / 0.58) inset,
       var(--shadow-md);
     transition:
       border-color var(--motion-normal) var(--ease-out),
@@ -436,12 +610,10 @@
     @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold;
   }
 
-  /* ── 动效工具类（v0.2.1 → v0.26 UI重构版）────────────────
+  /* ── 动效工具类：统一节奏，轻量反馈 ────────────────
      统一节奏：fast=120ms / normal=180ms / slow=260ms
      统一 easing：ease-out（默认）/ ease-in-out / ease-soft
      原则：优先 transform/opacity，禁止 layout thrashing，禁止 bounce。
-     v0.26 新增：glow-pulse / shimmer / slide-in / page-transition /
-               number-tick / ripple / stagger-children
   ─────────────────────────────────────────────────────────── */
 
   /* 基础过渡：颜色 + 边框 + 阴影 + transform，覆盖大多数交互反馈 */
@@ -573,15 +745,18 @@
       opacity var(--motion-normal) var(--ease-out);
   }
 
-  /* ── v0.26 新增动效 ────────────────────────────────────── */
-
   /* 专注辉光脉冲：running 状态卡片外圈光晕呼吸 */
   .motion-glow-pulse {
     animation: motion-glow-pulse 3s var(--ease-in-out) infinite;
   }
   @keyframes motion-glow-pulse {
-    0%, 100% { opacity: 0.7; }
-    50% { opacity: 1; }
+    0%,
+    100% {
+      opacity: 0.7;
+    }
+    50% {
+      opacity: 1;
+    }
   }
 
   /* 微光扫过：用于空状态图标、加载占位 */
@@ -603,8 +778,12 @@
     pointer-events: none;
   }
   @keyframes motion-shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
   }
 
   /* 页面切入：从右侧滑入 + 淡入，用于 view 切换 */
@@ -701,7 +880,8 @@
     animation: motion-idle-pulse 4s var(--ease-in-out) infinite;
   }
   @keyframes motion-idle-pulse {
-    0%, 100% {
+    0%,
+    100% {
       opacity: 0.85;
       transform: scale(1);
     }

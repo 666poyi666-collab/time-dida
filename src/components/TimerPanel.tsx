@@ -1,6 +1,5 @@
 // 左侧计时区 - 大看板：当前片段时间 + 分钟节奏条 + 三项累计统计
 import { useEffect, useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play,
   Pause,
@@ -422,42 +421,20 @@ export function TimerPanel() {
 
       {/* 大看板：当前片段时间 + 分钟节奏条 + 三项累计统计 */}
       <div
-        className={`card motion-state-transition relative overflow-hidden p-5 ${
+        className={`card timer-hero motion-state-transition relative overflow-hidden p-5 ${
           state === 'running' ? 'focus-glow' : state === 'paused' ? 'pause-glow' : ''
         }`}
       >
-        <div className="surface-grid pointer-events-none absolute inset-0 opacity-45" />
-        <AnimatePresence>
-          {state === 'running' && (
-            <motion.div
-              key="pulse-running"
-              className="pointer-events-none absolute inset-0 bg-accent/[0.035]"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: [0.18, 0.36, 0.18] }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-            />
-          )}
-          {state === 'paused' && (
-            <motion.div
-              key="pulse-paused"
-              className="pointer-events-none absolute inset-0 bg-warning/[0.05]"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: [0.14, 0.26, 0.14] }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-            />
-          )}
-        </AnimatePresence>
+        <div className="surface-grid pointer-events-none absolute inset-0 opacity-35" />
 
         {/* 大时间 + 副标题 — motion-digit 保证数字稳定不闪跳 */}
         <div className="relative flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-fg-subtle">
-              Focus Segment
+            <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">
+              当前片段
             </span>
             <div
-              className={`mt-2 timer-digit motion-digit text-[68px] font-bold leading-none ${
+              className={`mt-2 timer-digit motion-digit text-[66px] font-bold leading-none ${
                 state === 'paused' ? 'text-warning' : 'text-fg'
               }`}
             >
@@ -606,14 +583,14 @@ export function TimerPanel() {
       {/* 控制按钮 */}
       <div className="mt-6 flex items-center gap-3">
         <button
-          className="btn-primary motion-press motion-ripple motion-hover-glow flex min-w-[172px] items-center justify-center gap-2"
+          className="btn-primary motion-press flex min-w-[172px] items-center justify-center gap-2"
           onClick={handleToggle}
         >
           {state === 'running' ? <Pause size={16} /> : <Play size={16} />}
           {toggleLabel}
         </button>
         <button
-          className="btn-outline motion-press motion-ripple flex items-center gap-2"
+          className="btn-outline motion-press flex items-center gap-2"
           onClick={handleStop}
           disabled={isIdle || isFinished}
         >
