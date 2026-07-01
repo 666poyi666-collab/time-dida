@@ -3,6 +3,7 @@
 // 支持：搜索 / 选择清单 / 隐藏已完成 / 任务树 / 点击确认 / 取消
 // 规则：父任务默认折叠；搜索命中子任务时自动展开父任务；清空搜索后恢复默认折叠
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
   X,
@@ -176,11 +177,24 @@ export function TaskPicker({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center"
       onClick={handleCancel}
     >
-      <div
-        className="card flex h-[72vh] w-[min(640px,92vw)] flex-col overflow-hidden"
+      {/* 背景遮罩 — 毛玻璃 + 淡入 */}
+      <motion.div
+        className="absolute inset-0 bg-black/40 backdrop-blur-md"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+      />
+      {/* 弹窗主体 — 缩放弹入 + 微上移 */}
+      <motion.div
+        className="card relative z-10 flex h-[72vh] w-[min(640px,92vw)] flex-col overflow-hidden"
+        initial={{ opacity: 0, scale: 0.92, y: 16, filter: 'blur(6px)' }}
+        animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, scale: 0.95, y: 8, filter: 'blur(4px)' }}
+        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 标题栏 */}
@@ -311,7 +325,7 @@ export function TaskPicker({
             </button>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

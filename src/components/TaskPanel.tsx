@@ -740,10 +740,10 @@ function TaskTreeItem({
     <>
       <div
         className={`
-          group motion-base relative flex items-center gap-2 rounded-xl px-2.5 py-2
+          group motion-base motion-state-transition relative flex items-center gap-2 rounded-xl px-2.5 py-2
           ${
             isParent
-              ? 'border border-border bg-bg-card/95 shadow-soft hover:border-border-strong/70 hover:bg-bg-subtle/65'
+              ? 'border border-border bg-bg-card/95 shadow-soft hover:border-border-strong/70 hover:bg-bg-subtle/65 hover:shadow-[0_4px_12px_-8px_rgba(0,0,0,0.08)]'
               : 'border border-transparent bg-bg-card/25 hover:border-border hover:bg-bg-subtle/55'
           }
           ${isHighlighted ? 'selected-accent' : ''}

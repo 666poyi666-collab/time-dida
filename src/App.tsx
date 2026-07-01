@@ -192,9 +192,9 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen flex-col bg-bg-base text-fg antialiased surface-grid">
-      {/* 标题栏 */}
+      {/* 标题栏 — v0.27: 毛玻璃增强 */}
       <header
-        className="relative flex items-center justify-between border-b border-border/80 bg-bg-card/95 px-4 py-2.5 shadow-soft backdrop-blur-xl select-none"
+        className="motion-state-transition relative z-10 flex items-center justify-between border-b border-border/60 bg-bg-card/85 px-4 py-2.5 shadow-[0_1px_0_rgba(255,255,255,0.06),0_8px_24px_-16px_rgba(0,0,0,0.12)] backdrop-blur-2xl select-none"
         style={{ minHeight: 52 }}
       >
         <div className="flex min-w-[190px] items-center gap-2.5">
@@ -208,8 +208,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* 导航 */}
-        <nav className="flex items-center gap-1 rounded-xl border border-border bg-bg-subtle/70 p-1">
+        {/* 导航 — v0.27: 精致分段容器 */}
+        <nav className="flex items-center gap-0.5 rounded-xl border border-border/70 bg-bg-elevated/60 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-lg">
           <NavBtn
             active={view === 'timer'}
             onClick={() => setView('timer')}
@@ -285,17 +285,17 @@ export default function App() {
               </div>
             </div>
 
-            {/* 可拖拽分割线 — 悬停时更醒目 */}
+            {/* 可拖拽分割线 — v0.27: 拖动时增强视觉反馈 */}
             <div
               onMouseDown={onMouseDown}
               onDoubleClick={onDoubleClick}
-              className={`group motion-base relative z-10 flex-shrink-0 cursor-col-resize ${isDividerDragging ? 'bg-accent/[0.06]' : 'hover:bg-bg-subtle/55'}`}
+              className={`group motion-state-transition relative z-10 flex-shrink-0 cursor-col-resize ${isDividerDragging ? 'bg-accent/[0.08]' : 'hover:bg-bg-subtle/55'}`}
               style={{ width: PANE_DIVIDER_WIDTH }}
               title="拖动调整左右宽度，双击恢复默认"
             >
               {/* 中心指示线 */}
               <div
-                className="motion-base absolute inset-y-0 left-1/2 w-px -translate-x-1/2 rounded-full"
+                className="motion-state-transition absolute inset-y-0 left-1/2 w-px -translate-x-1/2 rounded-full"
                 style={{
                   background: isDividerDragging
                     ? 'rgb(var(--app-accent))'
@@ -303,16 +303,20 @@ export default function App() {
                   opacity: isDividerDragging ? 0.75 : 0.72,
                 }}
               />
-              {/* 悬停高亮层 */}
+              {/* 悬停高亮层 — 拖动时扩散 */}
               <div
-                className="motion-base absolute inset-y-4 left-1/2 w-px -translate-x-1/2 rounded-full opacity-0 group-hover:opacity-100"
+                className="motion-state-transition absolute inset-y-4 left-1/2 w-px -translate-x-1/2 rounded-full transition-all duration-200"
                 style={{
                   background: 'rgb(var(--app-accent))',
-                  boxShadow: '0 0 0 1px rgb(var(--app-accent) / 0.16)',
+                  boxShadow: isDividerDragging
+                    ? '0 0 8px rgb(var(--app-accent) / 0.3)'
+                    : '0 0 0 1px rgb(var(--app-accent) / 0.16)',
+                  opacity: isDividerDragging ? 1 : 0,
                 }}
               />
+              {/* 拖拽手柄 */}
               <div
-                className={`motion-base absolute left-1/2 top-1/2 flex h-9 w-3 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-bg-card/95 shadow-soft group-hover:border-accent/40 group-hover:text-accent group-hover:opacity-100 ${isDividerDragging ? 'border-accent/55 text-accent opacity-100 shadow-glow' : 'border-border text-fg-subtle opacity-70'}`}
+                className={`motion-state-transition motion-base absolute left-1/2 top-1/2 flex h-9 w-3 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-bg-card/95 shadow-soft group-hover:border-accent/40 group-hover:text-accent group-hover:opacity-100 ${isDividerDragging ? 'border-accent/55 text-accent opacity-100 shadow-glow scale-110' : 'border-border text-fg-subtle opacity-70'}`}
               >
                 <GripVertical size={11} />
               </div>

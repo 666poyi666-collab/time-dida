@@ -299,10 +299,11 @@
 @layer components {
   .glass {
     background: rgb(var(--bg-card) / 0.94);
-    backdrop-filter: blur(16px) saturate(1.08);
-    -webkit-backdrop-filter: blur(16px) saturate(1.08);
+    backdrop-filter: blur(20px) saturate(1.12);
+    -webkit-backdrop-filter: blur(20px) saturate(1.12);
     box-shadow:
       0 1px 0 rgb(255 255 255 / 0.58) inset,
+      0 1px 0 rgb(255 255 255 / 0.06),
       var(--shadow-md);
   }
 
@@ -342,20 +343,22 @@
   .focus-glow {
     box-shadow:
       0 0 0 1px rgb(var(--accent) / 0.18),
+      0 0 24px -6px rgb(var(--accent) / 0.18),
       0 20px 54px -38px rgb(var(--accent) / 0.42);
   }
 
   .pause-glow {
     box-shadow:
       0 0 0 1px rgb(var(--warning) / 0.2),
+      0 0 20px -6px rgb(var(--warning) / 0.14),
       0 20px 54px -38px rgb(var(--warning) / 0.34);
   }
 
   .surface-grid {
     background-image:
-      linear-gradient(rgb(var(--app-border-strong) / 0.2) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(var(--app-border-strong) / 0.14) 1px, transparent 1px);
-    background-size: 28px 28px;
+      linear-gradient(rgb(var(--app-border-strong) / 0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(var(--app-border-strong) / 0.10) 1px, transparent 1px);
+    background-size: 32px 32px;
   }
 
   .btn {
