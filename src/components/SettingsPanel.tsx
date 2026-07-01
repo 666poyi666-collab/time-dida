@@ -771,7 +771,7 @@ export function SettingsPanel() {
                       active={settings.syncMode === 'note'}
                       onClick={() => update({ syncMode: 'note' })}
                     >
-                      稳定 · 写入任务备注
+                      稳定 · 写入任务评论
                     </ChoiceBtn>
                     <ChoiceBtn
                       active={settings.syncMode === 'experimental-focus'}

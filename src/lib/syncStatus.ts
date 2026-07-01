@@ -52,14 +52,14 @@ export function queueItemToSessionSyncState(item: SyncQueueItem): SessionSyncSta
     return {
       label: '已同步',
       tone: 'ok',
-      title: '最近一次同步已完成',
+      title: '最近一次同步已完成：已写入滴答任务评论或任务内容',
     };
   }
   if (item.status === 'pending') {
     return {
       label: '待同步',
       tone: 'warn',
-      title: '已有同步队列记录，尚未成功处理',
+      title: '已有同步队列记录，尚未成功写入滴答',
     };
   }
   if (item.status === 'failed') {

@@ -2,7 +2,7 @@
 
 全局快捷键驱动的专注时间记录器 + 滴答清单任务关联器。
 
-> 当前版本：**v0.2.9**
+> 当前版本：**v0.2.10**
 > 仓库：https://github.com/666poyi666-collab/time-dida
 
 它不是普通秒表，也不是普通番茄钟，而是一个 **Focus Session + Focus Segment 时间账本系统**。
@@ -86,12 +86,12 @@ npm run format:check
 
 ## 下载与安装
 
-每个版本构建后会生成两类产物（位于仓库根目录的 `release-vXXX/` 文件夹，当前版本为 `release-v029/`）：
+每个版本构建后会生成两类产物（位于仓库根目录的 `release-vXXX/` 文件夹，当前版本为 `release-v0210/`）：
 
 | 类型 | 路径 | 说明 |
 | --- | --- | --- |
-| 安装包 | `release-v029/FocusLink-0.2.9-x64.exe` | NSIS 安装程序，双击即可安装，无需 PowerShell |
-| 免安装版 | `release-v029/FocusLink-0.2.9-x64-portable.exe` | 单文件便携版，双击即可运行 |
+| 安装包 | `release-v0210/FocusLink-0.2.10-x64.exe` | NSIS 安装程序，双击即可安装，无需 PowerShell |
+| 免安装版 | `release-v0210/FocusLink-0.2.10-x64-portable.exe` | 单文件便携版，双击即可运行 |
 
 安装版默认安装到 `%LOCALAPPDATA%\Programs\FocusLink\`，会创建桌面快捷方式和开始菜单项。
 
@@ -99,9 +99,9 @@ npm run format:check
 
 | 版本 | 安装包 |
 | --- | --- |
-| `0.2.7` | `release-v027/FocusLink-0.2.7-x64.exe` |
 | `0.2.8` | `release-v028/FocusLink-0.2.8-x64.exe` |
 | `0.2.9` | `release-v029/FocusLink-0.2.9-x64.exe` |
+| `0.2.10` | `release-v0210/FocusLink-0.2.10-x64.exe` |
 
 ## 全局快捷键
 
@@ -121,7 +121,7 @@ npm run format:check
 
 采用 Adapter 架构，**稳定官方任务同步 + 实验性 Focus 适配器 + 本地记录兜底**：
 
-- **dida CLI（推荐）**：复用本地 `dida` 命令行工具的 OAuth token，读取清单/任务，并把专注记录追加到任务备注
+- **dida CLI（推荐）**：复用本地 `dida` 命令行工具的 OAuth token，读取清单/任务，并优先把专注记录写入任务评论；评论失败时回退到任务内容
 - **TickTick / Dida365 Open API**：OAuth 授权（PKCE loopback），拉取清单/任务，在任务备注中追加专注记录
 - **实验性 Focus 适配器**：默认关闭，依赖非官方 V2/session API，不稳定
 - **本地兜底**：所有专注记录先保存本地，同步失败进入 `sync_queue`，绝不丢数据
@@ -132,7 +132,7 @@ npm run format:check
 
 | 模式 | 说明 |
 | --- | --- |
-| 稳定 · 写入任务备注 | 在滴答任务备注中追加专注记录（默认） |
+| 稳定 · 写入任务评论 | 在滴答任务评论中追加专注记录；评论失败时回退到任务内容 |
 | 实验 · 写入 Focus 记录 | 尝试写入 Focus/Pomodoro（非官方 API，不稳定） |
 | 仅本地 | 不同步，只保存本地 |
 

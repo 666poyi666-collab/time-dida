@@ -1,7 +1,7 @@
 // 历史记录 - Session 列表 + 详情 + 导出 + 删除 + Segment 任务关联/后补/批量
 // v0.2.0 信息密度优化：
 //   - Session 总览：总历时 / 累计专注 / 累计暂停 / 片段数 / 关联数 / 未关联数
-//   - 本地 / 云端状态：明确显示"云端专注记录：未实现"
+//   - 本地 / 云端状态：明确区分本地关联、滴答评论同步、云端专注记录
 //   - 批量关联区域：批量补关联 / 全部改为同一任务 / 只显示未关联 / 只显示已关联
 //   - 专注片段：紧凑单行 + 小按钮，未关联高亮
 //   - 暂停记录：默认折叠，展开后紧凑红色列表，三点菜单
@@ -301,7 +301,7 @@ export function HistoryPanel() {
       [sessionId]: {
         label: '同步中',
         tone: 'warn',
-        title: '已关联滴答任务，正在写入任务备注',
+        title: '已关联滴答任务，正在写入任务评论',
       },
     }));
     try {
@@ -325,11 +325,11 @@ export function HistoryPanel() {
         [sessionId]: {
           label: result.succeeded > 0 ? `已同步 ${result.succeeded} 条` : '已入队',
           tone: 'ok',
-          title: '滴答任务备注同步已完成或已被队列记录',
+          title: '滴答任务评论同步已完成或已被队列记录',
         },
       }));
       if (result.succeeded > 0) {
-        addToast(`已自动同步 ${result.succeeded} 条专注记录到滴答备注`, 'success');
+        addToast(`已自动同步 ${result.succeeded} 条专注记录到滴答评论`, 'success');
       }
     } catch (e) {
       await refreshSyncQueue().catch(() => undefined);
@@ -365,7 +365,7 @@ export function HistoryPanel() {
             title: '先把片段关联到滴答任务后再同步',
           },
         }));
-        addToast('没有可同步到滴答的片段；先把片段关联到滴答任务。', 'info');
+        addToast('没有已关联滴答任务的片段；先把片段关联到滴答任务。', 'info');
         return;
       }
 
@@ -391,10 +391,10 @@ export function HistoryPanel() {
           [sessionId]: {
             label: `已同步 ${result.succeeded} 条`,
             tone: 'ok',
-            title: '本次同步已成功写入滴答任务备注',
+            title: '本次同步已成功写入滴答任务评论',
           },
         }));
-        addToast(`已同步 ${result.succeeded} 条专注记录到滴答备注`, 'success');
+        addToast(`已同步 ${result.succeeded} 条专注记录到滴答评论`, 'success');
       } else {
         setSessionSyncMeta((prev) => ({
           ...prev,
@@ -555,7 +555,10 @@ export function HistoryPanel() {
                       )}
                     </div>
                     <div className="hidden items-center gap-3 text-[11px] text-fg-muted sm:flex">
-                      <SessionSyncPreview session={session} />
+                      <SessionLinkPreview
+                        session={session}
+                        segments={detail?.session.id === session.id ? detail.segments : null}
+                      />
                       <SessionSyncBadge state={syncState} />
                       <span>专注 {formatDuration(session.activeElapsedMs)}</span>
                       {session.pauseElapsedMs > 0 && (
@@ -642,13 +645,13 @@ export function HistoryPanel() {
                               className="btn-primary motion-press text-xs"
                               disabled={linking || syncingSessionId === session.id}
                               onClick={() => handleSyncSession(session.id)}
-                              title="把本次已关联滴答任务的专注时间同步到任务备注"
+                              title="把本次已关联滴答任务的专注时间同步到任务评论；评论失败时回退到任务内容"
                             >
                               <RefreshCw
                                 size={12}
                                 className={syncingSessionId === session.id ? 'animate-spin' : ''}
                               />
-                              {syncingSessionId === session.id ? '同步中' : '同步到滴答备注'}
+                              {syncingSessionId === session.id ? '同步中' : '同步到滴答评论'}
                             </button>
                             <SessionSyncBadge state={syncState} />
                             <button
@@ -704,11 +707,33 @@ const RANGE_PRESETS: Array<{ id: RangePreset; label: string }> = [
   { id: 'custom', label: '自定义' },
 ];
 
-function SessionSyncPreview({ session }: { session: FocusSession }) {
-  if (session.defaultTaskSource === 'ticktick') {
+function SessionLinkPreview({
+  session,
+  segments,
+}: {
+  session: FocusSession;
+  segments: FocusSegment[] | null;
+}) {
+  if (segments) {
+    const linked = segments.filter((seg) => seg.taskId && seg.taskSource);
+    const ticktick = linked.filter((seg) => seg.taskSource === 'ticktick');
+    if (ticktick.length > 0) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md border border-success/20 bg-success/10 px-2 py-1 text-success">
+          <CheckCircle2 size={10} /> 已关联滴答 {ticktick.length} 段
+        </span>
+      );
+    }
+    if (linked.length > 0) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-subtle px-2 py-1 text-fg-subtle">
+          <Link2 size={10} /> 已关联本地 {linked.length} 段
+        </span>
+      );
+    }
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-success/20 bg-success/10 px-2 py-1 text-success">
-        <CheckCircle2 size={10} /> 滴答可同步
+      <span className="inline-flex items-center gap-1 rounded-md border border-warning/20 bg-warning/10 px-2 py-1 text-warning">
+        <Link2 size={10} /> 片段未关联
       </span>
     );
   }
@@ -719,9 +744,16 @@ function SessionSyncPreview({ session }: { session: FocusSession }) {
       </span>
     );
   }
+  if (session.defaultTaskSource === 'ticktick') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md border border-success/20 bg-success/10 px-2 py-1 text-success">
+        <CheckCircle2 size={10} /> 默认任务已关联
+      </span>
+    );
+  }
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-warning/20 bg-warning/10 px-2 py-1 text-warning">
-      <Link2 size={10} /> 未关联
+    <span className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-subtle px-2 py-1 text-fg-subtle">
+      <Link2 size={10} /> 查看片段关联
     </span>
   );
 }
@@ -796,10 +828,22 @@ function SessionDetailHeader({
               title="Session、专注片段、暂停片段已写入本地 SQLite"
             />
             <TinyStatusChip
-              tone={ticktick.length > 0 ? 'ok' : 'muted'}
+              tone={syncState.tone === 'ok' ? 'ok' : ticktick.length > 0 ? 'warn' : 'muted'}
               icon={<RefreshCw size={10} />}
-              text={`滴答备注 ${ticktick.length} 段 · ${formatDuration(ticktickMs)}`}
-              title="可通过 dida CLI / TickTick 通道写入任务备注的专注片段"
+              text={
+                syncState.tone === 'ok'
+                  ? `滴答已同步 · ${formatDuration(ticktickMs)}`
+                  : ticktick.length > 0
+                    ? `滴答未同步 · ${ticktick.length} 段`
+                    : '无滴答片段'
+              }
+              title={
+                syncState.tone === 'ok'
+                  ? '最近一次同步已完成'
+                  : ticktick.length > 0
+                    ? '已有滴答关联片段，但还没有成功同步记录'
+                    : '当前没有关联到滴答任务的专注片段'
+              }
             />
             <TinyStatusChip
               tone={unlinked > 0 ? 'warn' : 'muted'}
@@ -1157,7 +1201,7 @@ function SessionOverview({ detail }: { detail: SessionDetail }) {
 }
 
 // ─── B. 本地 / 云端状态 ──────────────────────────────────────────
-// 明确区分：本地记录已保存 / 本地任务关联状态 / 滴答云端专注记录未实现 / 可同步备注片段数
+// 明确区分：本地记录已保存 / 本地任务关联状态 / 滴答评论同步 / 云端专注记录
 function LocalCloudStatePanel({ detail }: { detail: SessionDetail }) {
   const { segments } = detail;
   const linked = segments.filter((seg) => seg.taskId && seg.taskSource);
@@ -1193,7 +1237,7 @@ function LocalCloudStatePanel({ detail }: { detail: SessionDetail }) {
             </div>
             <div className="flex items-center gap-1.5">
               <CloudOff size={10} className="text-danger/80" />
-              <span className="text-danger/80">滴答清单云端专注记录：未实现</span>
+              <span className="text-danger/80">滴答清单专注记录：未写入</span>
             </div>
             <div className="flex items-center gap-1.5">
               <RefreshCw
@@ -1201,7 +1245,7 @@ function LocalCloudStatePanel({ detail }: { detail: SessionDetail }) {
                 className={ticktick.length > 0 ? 'text-success' : 'text-fg-subtle'}
               />
               <span className="text-fg-muted">
-                可同步到滴答任务备注的片段：{ticktick.length} 个（{formatDuration(ticktickMs)}）
+                滴答评论同步：未同步 {ticktick.length} 个片段（{formatDuration(ticktickMs)}）
               </span>
             </div>
           </div>

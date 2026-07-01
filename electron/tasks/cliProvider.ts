@@ -172,6 +172,12 @@ interface DidaTaskContext {
   isChecklistItem: boolean;
 }
 
+interface DidaComment {
+  id?: unknown;
+  title?: unknown;
+  content?: unknown;
+}
+
 /** 最近一次执行记录（供 UI 显示） */
 let lastRecord: CliExecRecord | null = null;
 
@@ -958,6 +964,78 @@ export class TickTickCliProvider implements TaskProvider {
     }
   }
 
+  private async listDidaTaskComments(
+    externalTaskId: string,
+    projectId: string,
+    cfg: TickTickCliConfig,
+  ): Promise<DidaComment[]> {
+    const r = await execDidaFileWithDiagnose(
+      ['task', 'comment', 'list', projectId, externalTaskId, '--json'],
+      cfg.timeoutMs,
+      'na',
+    );
+    if (r.record.status !== 'success') {
+      throw new Error(`CLI 读取评论失败：${r.record.error ?? r.record.stderr.slice(0, 200)}`);
+    }
+    const parsed = parseJson<unknown[]>(r.stdout, r.record);
+    if (!parsed.ok) {
+      throw new Error(`CLI 评论输出不是 JSON：${parsed.raw.slice(0, 200)}`);
+    }
+    return parsed.data
+      .filter((item): item is DidaComment => !!item && typeof item === 'object')
+      .map((item) => item as DidaComment);
+  }
+
+  private async addDidaTaskComment(
+    externalTaskId: string,
+    projectId: string,
+    title: string,
+    cfg: TickTickCliConfig,
+  ): Promise<void> {
+    const r = await execDidaFileWithDiagnose(
+      ['task', 'comment', 'add', projectId, externalTaskId, '--title', title, '--json'],
+      cfg.timeoutMs,
+      'na',
+    );
+    if (r.record.status !== 'success' || isUndefinedCliOutput(r.stdout)) {
+      throw new Error(
+        `CLI 添加评论失败：${
+          isUndefinedCliOutput(r.stdout)
+            ? 'dida 返回 undefined'
+            : (r.record.error ?? r.record.stderr.slice(0, 200))
+        }`,
+      );
+    }
+  }
+
+  private async appendDidaFocusComments(
+    externalTaskId: string,
+    projectId: string,
+    taskTitle: string | null,
+    records: FocusRecord[],
+    cfg: TickTickCliConfig,
+  ): Promise<{ added: number; skipped: number }> {
+    const comments = await this.listDidaTaskComments(externalTaskId, projectId, cfg);
+    const existingText = comments
+      .map((comment) => String(comment.title ?? comment.content ?? ''))
+      .join('\n');
+    let added = 0;
+    let skipped = 0;
+    for (const record of records) {
+      const marker = getFocusRecordMarker(record);
+      if (existingText.includes(marker)) {
+        skipped++;
+        continue;
+      }
+      const commentTitle = taskTitle
+        ? `【子任务：${taskTitle}】\n${formatFocusRecord(record)}\n${marker}`
+        : `${formatFocusRecord(record)}\n${marker}`;
+      await this.addDidaTaskComment(externalTaskId, projectId, commentTitle, cfg);
+      added++;
+    }
+    return { added, skipped };
+  }
+
   async appendFocusRecordsToTask(taskId: string, records: FocusRecord[]): Promise<void> {
     if (records.length === 0) return;
     const cfg = getConfig();
@@ -970,9 +1048,50 @@ export class TickTickCliProvider implements TaskProvider {
       throw new Error('缺少清单 ID，无法通过 dida CLI 写入任务备注。请先刷新任务列表。');
     }
 
-    const block = records.map(formatFocusRecord).join('\n');
+    if (isDidaConfig(cfg)) {
+      try {
+        const result = await this.appendDidaFocusComments(
+          externalTaskId,
+          projectId ?? '',
+          context?.isChecklistItem ? (task?.title ?? null) : null,
+          records,
+          cfg,
+        );
+        logger.info('cli', 'appended focus comments to task', {
+          taskId,
+          targetTaskId: externalTaskId,
+          checklistItem: context?.isChecklistItem ?? false,
+          added: result.added,
+          skipped: result.skipped,
+        });
+        return;
+      } catch (err) {
+        logger.warn('cli', 'append focus comments failed; fallback to task content', {
+          taskId,
+          targetTaskId: externalTaskId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    const existingContent = targetTask?.content ?? '';
+    const missingRecords = records.filter(
+      (record) => !existingContent.includes(getFocusRecordMarker(record)),
+    );
+    if (missingRecords.length === 0) {
+      logger.info('cli', 'focus records already exist in task content', {
+        taskId,
+        targetTaskId: externalTaskId,
+      });
+      return;
+    }
+    const missingBlock = missingRecords
+      .map((record) => `${formatFocusRecord(record)}\n${getFocusRecordMarker(record)}`)
+      .join('\n');
     const blockWithChecklistLabel =
-      context?.isChecklistItem && task?.title ? `【子任务：${task.title}】\n${block}` : block;
+      context?.isChecklistItem && task?.title
+        ? `【子任务：${task.title}】\n${missingBlock}`
+        : missingBlock;
     const baseContent = targetTask?.content?.trim() ?? '';
     const content = baseContent
       ? `${baseContent}\n\n${blockWithChecklistLabel}`
@@ -1248,6 +1367,12 @@ function formatFocusRecord(record: FocusRecord): string {
   const activeMin = Math.round(record.activeElapsedMs / 60000);
   const pauseMin = Math.round(record.pauseElapsedMs / 60000);
   return `[FocusLink] ${start} - ${end} | 专注 ${activeMin} 分钟 | 暂停 ${pauseMin} 分钟 | ${record.taskTitle ?? '无任务'}`;
+}
+
+function getFocusRecordMarker(record: FocusRecord): string {
+  return record.segmentId
+    ? `[FocusLink:segment:${record.segmentId}]`
+    : `[FocusLink:session:${record.sessionId}]`;
 }
 
 export const ticktickCliProvider = new TickTickCliProvider();
