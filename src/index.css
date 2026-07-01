@@ -433,10 +433,12 @@
     @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold;
   }
 
-  /* ── 动效工具类（v0.2.1）──────────────────────────────────
+  /* ── 动效工具类（v0.2.1 → v0.26 UI重构版）────────────────
      统一节奏：fast=120ms / normal=180ms / slow=260ms
      统一 easing：ease-out（默认）/ ease-in-out / ease-soft
      原则：优先 transform/opacity，禁止 layout thrashing，禁止 bounce。
+     v0.26 新增：glow-pulse / shimmer / slide-in / page-transition /
+               number-tick / ripple / stagger-children
   ─────────────────────────────────────────────────────────── */
 
   /* 基础过渡：颜色 + 边框 + 阴影 + transform，覆盖大多数交互反馈 */
@@ -568,6 +570,144 @@
       opacity var(--motion-normal) var(--ease-out);
   }
 
+  /* ── v0.26 新增动效 ────────────────────────────────────── */
+
+  /* 专注辉光脉冲：running 状态卡片外圈光晕呼吸 */
+  .motion-glow-pulse {
+    animation: motion-glow-pulse 3s var(--ease-in-out) infinite;
+  }
+  @keyframes motion-glow-pulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+  }
+
+  /* 微光扫过：用于空状态图标、加载占位 */
+  .motion-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .motion-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 40%,
+      rgb(255 255 255 / 0.12) 50%,
+      transparent 60%
+    );
+    animation: motion-shimmer 2.8s var(--ease-in-out) infinite;
+    pointer-events: none;
+  }
+  @keyframes motion-shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  /* 页面切入：从右侧滑入 + 淡入，用于 view 切换 */
+  .motion-page-in {
+    animation: motion-page-in var(--motion-slow) var(--ease-out) both;
+  }
+  @keyframes motion-page-in {
+    from {
+      opacity: 0;
+      transform: translateX(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  /* 列表项滑入：从下方轻微滑入，带交错延迟支持 */
+  .motion-slide-up {
+    animation: motion-slide-up var(--motion-normal) var(--ease-out) both;
+  }
+  @keyframes motion-slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* 数字 tick 效果：数字变化时轻微 Y 偏移 + 淡入淡出 */
+  .motion-number-tick {
+    transition:
+      transform var(--motion-fast) var(--ease-out),
+      opacity var(--motion-fast) var(--ease-out);
+  }
+
+  /* 按钮涟漪反馈：点击时从中心扩散的半透明圆环 */
+  .motion-ripple {
+    position: relative;
+    overflow: hidden;
+  }
+  .motion-ripple::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      circle at var(--ripple-x, 50%) var(--ripple-y, 50%),
+      rgb(255 255 255 / 0.18) 0%,
+      transparent 60%
+    );
+    opacity: 0;
+    transition: opacity var(--motion-fast) var(--ease-out);
+    pointer-events: none;
+  }
+  .motion-ripple:active::after {
+    opacity: 1;
+  }
+
+  /* 状态过渡增强：专注↔暂停时卡片背景色平滑渐变 */
+  .motion-state-transition {
+    transition:
+      background-color var(--motion-slow) var(--ease-in-out),
+      box-shadow var(--motion-slow) var(--ease-in-out),
+      border-color var(--motion-normal) var(--ease-in-out),
+      color var(--motion-normal) var(--ease-in-out);
+  }
+
+  /* 交错子元素入场：配合 JS 设置 --stagger-index 使用 */
+  .motion-stagger-child {
+    animation: motion-slide-up var(--motion-normal) var(--ease-out) both;
+    animation-delay: calc(var(--stagger-index, 0) * 60ms);
+  }
+
+  /* 悬停光晕：用于重要操作按钮的悬停外发光 */
+  .motion-hover-glow {
+    transition:
+      transform var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-normal) var(--ease-out),
+      filter var(--motion-fast) var(--ease-out);
+  }
+  .motion-hover-glow:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.08);
+    box-shadow:
+      0 0 0 1px rgb(var(--app-accent) / 0.15),
+      0 8px 24px -8px rgb(var(--app-accent) / 0.3);
+  }
+
+  /* 缩小态微动画：idle 状态的呼吸感，比 breathe 更轻 */
+  .motion-idle-pulse {
+    animation: motion-idle-pulse 4s var(--ease-in-out) infinite;
+  }
+  @keyframes motion-idle-pulse {
+    0%, 100% {
+      opacity: 0.85;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.005);
+    }
+  }
+
   /* reduced-motion 适配：尊重系统设置，关闭所有动画 */
   @media (prefers-reduced-motion: reduce) {
     .motion-base,
@@ -578,19 +718,35 @@
     .motion-digit,
     .motion-state-bg,
     .motion-accordion,
-    .motion-rhythm-fill {
+    .motion-rhythm-fill,
+    .motion-state-transition,
+    .motion-number-tick,
+    .motion-hover-glow {
       transition: none !important;
     }
     .motion-fade-up,
     .motion-fade-in,
-    .motion-breathe {
+    .motion-breathe,
+    .motion-glow-pulse,
+    .motion-shimmer,
+    .motion-page-in,
+    .motion-slide-up,
+    .motion-stagger-child,
+    .motion-idle-pulse {
       animation: none !important;
+    }
+    .motion-shimmer::after {
+      display: none !important;
     }
     .motion-lift:hover {
       transform: none !important;
     }
     .motion-scale:hover {
       transform: none !important;
+    }
+    .motion-hover-glow:hover {
+      transform: none !important;
+      filter: none !important;
     }
   }
 }

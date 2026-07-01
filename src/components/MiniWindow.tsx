@@ -3,6 +3,7 @@
 // 透明无边框窗口，始终置顶，支持拖拽和主题同步
 // 暂停态统一使用橙色（warning），专注态使用绿色（accent）
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { TimerSnapshot, AppSettings } from '@shared/types';
 import { formatDuration } from '../lib/time';
 import {
@@ -90,9 +91,14 @@ function applyThemeClass(s: AppSettings): void {
 
 function StateDot({ state, size = 'sm' }: { state: string; size?: 'sm' | 'xs' }) {
   const sizeClass = size === 'xs' ? 'h-1.5 w-1.5' : 'h-2 w-2';
+  const dotCls = STATE_DOT[state] ?? STATE_DOT.idle;
   return (
-    <span
-      className={`inline-block flex-shrink-0 rounded-full ${sizeClass} ${STATE_DOT[state] ?? STATE_DOT.idle}`}
+    <motion.span
+      key={`dot-${state}`}
+      className={`inline-block flex-shrink-0 rounded-full ${sizeClass} ${dotCls}`}
+      initial={{ scale: 0.6, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
     />
   );
 }
@@ -318,14 +324,14 @@ export function MiniWindow() {
 
       <div className="mt-auto flex items-center justify-center gap-2 pt-2">
         <button
-          className="no-drag motion-press inline-flex h-7 items-center gap-1.5 rounded-full bg-accent/95 px-4 text-[11px] font-semibold text-accent-fg hover:brightness-110"
+          className="no-drag motion-press motion-ripple motion-hover-glow inline-flex h-7 items-center gap-1.5 rounded-full bg-accent/95 px-4 text-[11px] font-semibold text-accent-fg hover:brightness-110"
           onClick={handleToggle}
         >
           {state === 'running' ? <Pause size={12} /> : <Play size={12} />}
           {state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始'}
         </button>
         <button
-          className="no-drag motion-press inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-bg-subtle/55 px-3.5 text-[11px] font-medium text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-30"
+          className="no-drag motion-press motion-ripple inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-bg-subtle/55 px-3.5 text-[11px] font-medium text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-30"
           onClick={handleStop}
           disabled={state === 'idle' || state === 'finished'}
         >
@@ -352,7 +358,7 @@ function MiniStat({
     tone === 'focus' ? 'text-accent' : tone === 'pause' ? 'text-warning' : 'text-fg-muted';
   return (
     <div
-      className={`min-w-0 rounded-2xl border border-border/70 bg-bg-subtle/45 px-2 py-1.5 ${className}`}
+      className={`motion-state-transition min-w-0 rounded-2xl border border-border/70 bg-bg-subtle/45 px-2 py-1.5 ${className}`}
     >
       <div className={`truncate text-[9px] font-semibold ${toneClass}`}>{label}</div>
       <div className="timer-digit motion-digit mt-0.5 truncate text-[12px] font-bold leading-none text-fg">

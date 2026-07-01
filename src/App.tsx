@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useStore } from './store/useStore';
 import { TimerPanel } from './components/TimerPanel';
 import { TaskPanel } from './components/TaskPanel';
@@ -248,13 +249,22 @@ export default function App() {
         </div>
       </header>
 
-      {/* 主体 */}
+      {/* 主体 — 页面切换动画 */}
       <main className="relative flex-1 overflow-hidden">
-        {view === 'timer' && (
-          <div
-            ref={containerRef}
-            className="flex h-full w-full min-w-0 overflow-hidden bg-bg-base/95"
-          >
+        <AnimatePresence mode="wait">
+          {view === 'timer' && (
+            <motion.div
+              key="view-timer"
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -12 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute inset-0"
+            >
+              <div
+                ref={containerRef}
+                className="flex h-full w-full min-w-0 overflow-hidden bg-bg-base/95"
+              >
             {/* 左侧计时区 */}
             <div
               className="flex flex-col overflow-y-auto px-5 py-4"
@@ -320,9 +330,33 @@ export default function App() {
               <TaskPanel />
             </div>
           </div>
-        )}
-        {view === 'history' && <HistoryPanel />}
-        {view === 'settings' && <SettingsPanel />}
+            </motion.div>
+          )}
+          {view === 'history' && (
+            <motion.div
+              key="view-history"
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -12 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute inset-0"
+            >
+              <HistoryPanel />
+            </motion.div>
+          )}
+          {view === 'settings' && (
+            <motion.div
+              key="view-settings"
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -12 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute inset-0"
+            >
+              <SettingsPanel />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
 
       <Toast />
@@ -334,15 +368,26 @@ function BrandMark({ state }: { state: string }) {
   const running = state === 'running';
   return (
     <div
-      className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-2xl border border-accent/20 bg-accent/10 text-accent shadow-soft ${
-        running ? 'shadow-glow' : ''
+      className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-2xl border border-accent/20 bg-accent/10 text-accent transition-all duration-[var(--motion-slow)] ease-[var(--ease-in-out)] ${
+        running
+          ? 'shadow-glow scale-105'
+          : 'shadow-soft'
       }`}
     >
       <div className="absolute inset-x-1.5 top-1.5 h-px bg-white/45" />
       <Activity size={16} className="relative z-10" />
       <span
-        className={`absolute bottom-1.5 h-1 w-3 rounded-full bg-accent ${running ? 'animate-pulse' : 'opacity-60'}`}
+        className={`absolute bottom-1.5 h-1 w-3 rounded-full bg-accent transition-all duration-[var(--motion-slow)] ease-[var(--ease-in-out)] ${
+          running ? 'animate-pulse w-4' : 'opacity-60'
+        }`}
       />
+      {running && (
+        <motion.div
+          className="absolute inset-0 rounded-2xl bg-accent/[0.06]"
+          animate={{ opacity: [0.3, 0.7, 0.3] }}
+          transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      )}
     </div>
   );
 }
@@ -357,7 +402,10 @@ function StatePill({ state }: { state: string }) {
           ? 'border-success/25 bg-success/10 text-success'
           : 'border-border bg-bg-subtle text-fg-muted';
   return (
-    <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${cls}`}>
+    <span
+      key={`state-pill-${state}`}
+      className={`motion-fade-up rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${cls}`}
+    >
       {stateLabel(state)}
     </span>
   );
@@ -377,7 +425,7 @@ function NavBtn({
   return (
     <button
       onClick={onClick}
-      className={`motion-press flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-semibold ${
+      className={`motion-press motion-state-transition flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-semibold ${
         active ? 'nav-active' : 'text-fg-muted hover:bg-bg-card/75 hover:text-fg'
       }`}
     >

@@ -77,6 +77,9 @@ export function SegmentTimeline() {
   if (items.length === 0) {
     return (
       <div className="motion-fade-in rounded-xl border border-dashed border-border bg-bg-card/55 p-4 text-center text-xs text-fg-subtle">
+        <div className="motion-shimmer mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-bg-subtle">
+          <Clock size={18} className="opacity-40" />
+        </div>
         暂无片段。按快捷键开始专注后会创建第一个片段。
       </div>
     );

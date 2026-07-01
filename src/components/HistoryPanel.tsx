@@ -416,7 +416,7 @@ export function HistoryPanel() {
   if (sessions.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 text-fg-subtle">
-        <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-bg-subtle/60">
+        <div className="motion-shimmer flex h-16 w-16 items-center justify-center rounded-lg bg-bg-subtle/60">
           <Inbox size={28} className="opacity-50" />
         </div>
         <div className="text-center">
@@ -502,7 +502,7 @@ export function HistoryPanel() {
 
         {filteredSessions.length === 0 ? (
           <div className="motion-fade-in rounded-lg border border-dashed border-border bg-bg-card/40 py-12 text-center">
-            <div className="motion-breathe mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-bg-subtle text-fg-subtle">
+            <div className="motion-shimmer motion-breathe mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-bg-subtle text-fg-subtle">
               <Inbox size={22} />
             </div>
             <p className="text-sm font-medium text-fg-muted">当前时间范围没有专注记录</p>

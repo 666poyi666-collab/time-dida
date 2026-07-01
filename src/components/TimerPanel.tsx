@@ -116,7 +116,11 @@ function MinuteRhythmBar({ state, minuteRhythmSec }: { state: string; minuteRhyt
       <div className="h-2 w-full overflow-hidden rounded-full bg-bg-subtle">
         <div
           className={`motion-rhythm-fill h-full rounded-full ${barCls} ${
-            isRunning ? 'shadow-[0_0_8px_rgb(var(--app-accent)/0.35)]' : ''
+            isRunning
+              ? 'shadow-[0_0_10px_rgb(var(--app-accent)/0.45),0_0_3px_rgb(var(--app-accent)/0.6)]'
+              : isPaused
+                ? 'shadow-[0_0_6px_rgb(var(--app-warning)/0.3)]'
+                : ''
           }`}
           style={{ width: `${isRunning || isPaused ? pct : 0}%` }}
         />
@@ -418,7 +422,7 @@ export function TimerPanel() {
 
       {/* 大看板：当前片段时间 + 分钟节奏条 + 三项累计统计 */}
       <div
-        className={`card motion-state-bg relative overflow-hidden p-5 ${
+        className={`card motion-state-transition relative overflow-hidden p-5 ${
           state === 'running' ? 'focus-glow' : state === 'paused' ? 'pause-glow' : ''
         }`}
       >
@@ -467,10 +471,12 @@ export function TimerPanel() {
             </span>
           </div>
           <div
-            className={`motion-state-bg flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-soft ${
+            className={`motion-state-transition flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-soft ${
               state === 'paused'
                 ? 'border-warning/25 bg-warning/10 text-warning'
-                : 'border-accent/20 bg-accent/10 text-accent'
+                : state === 'running'
+                  ? 'border-accent/20 bg-accent/10 text-accent'
+                  : 'border-border bg-bg-subtle text-fg-subtle'
             }`}
           >
             {state === 'paused' ? (
@@ -600,14 +606,14 @@ export function TimerPanel() {
       {/* 控制按钮 */}
       <div className="mt-6 flex items-center gap-3">
         <button
-          className="btn-primary motion-press flex min-w-[172px] items-center justify-center gap-2"
+          className="btn-primary motion-press motion-ripple motion-hover-glow flex min-w-[172px] items-center justify-center gap-2"
           onClick={handleToggle}
         >
           {state === 'running' ? <Pause size={16} /> : <Play size={16} />}
           {toggleLabel}
         </button>
         <button
-          className="btn-outline motion-press flex items-center gap-2"
+          className="btn-outline motion-press motion-ripple flex items-center gap-2"
           onClick={handleStop}
           disabled={isIdle || isFinished}
         >
