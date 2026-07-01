@@ -3,6 +3,16 @@
 > 本仓库遵循简易版本记录。每个版本对应一个 `release-vXXX/` 打包目录。
 > 历史修复细节见 `docs/archive/` 下的各报告文档。
 
+## v0.2.8 (2026-07-01)
+
+### dida 批量同步继续修复 + 队列交互打磨
+
+- 继续修复 dida CLI 写回任务备注：`task update` 还要求 `--project <projectId>`，默认模板改为 `dida task update {{taskId}} --id {{taskId}} --project {{projectId}} --content "{{content}}"`。
+- 新增旧设置二次迁移：已经迁移过 `--id` 但缺少 `--project` 的用户配置会自动修正。
+- 历史 Session 同步时按任务分组，同一个任务的多个片段会合并成一次备注写入，避免连续多次 update 覆盖前一条记录。
+- 同步队列会复用已有 pending/failed 项并重置为 pending，避免同一个 session 重复入队；手动重试也会清空 retryCount。
+- 同步队列错误文案增加完整 hover 提示，长错误不会撑坏任务区布局。
+
 ## v0.2.7 (2026-07-01)
 
 ### 历史同步修复 + 删除后空白防护 + 小窗空闲态优化

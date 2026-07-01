@@ -985,7 +985,9 @@ function SyncStatus() {
         </div>
         <div className="min-w-0">
           <p className="truncate text-xs font-bold text-fg">{statusTitle}</p>
-          <p className="mt-0.5 truncate text-[10px] font-medium text-fg-subtle">{statusSub}</p>
+          <p className="mt-0.5 truncate text-[10px] font-medium text-fg-subtle" title={statusSub}>
+            {statusSub}
+          </p>
         </div>
       </div>
       <button

@@ -29,7 +29,8 @@ export const DIDA_DEFAULT_TEMPLATES: TickTickCliConfig = {
   listTasksCommand: 'dida task filter --json',
   searchTasksCommand: 'dida task filter --json',
   getTaskCommand: 'dida task get {{projectId}} {{taskId}} --json',
-  appendNoteCommand: 'dida task update {{taskId}} --id {{taskId}} --content "{{content}}"',
+  appendNoteCommand:
+    'dida task update {{taskId}} --id {{taskId}} --project {{projectId}} --content "{{content}}"',
   listProjectsCommand: 'dida project list --json',
   timeoutMs: 10000,
 };
@@ -60,8 +61,10 @@ export function templatesContainTicktick(cfg: TickTickCliConfig): boolean {
 export function hasLegacyDidaAppendTemplate(cfg: TickTickCliConfig): boolean {
   const command = cfg.appendNoteCommand.trim();
   return (
-    /^dida\s+task\s+update\s+\{\{taskId\}\}\s+--content\b/.test(command) ||
-    /^dida\s+task\s+update\s+--id\s+\{\{taskId\}\}\s+--content\b/.test(command)
+    /^dida\s+task\s+update\b/.test(command) &&
+    command.includes('{{taskId}}') &&
+    command.includes('--content') &&
+    (!command.includes('--id') || !command.includes('--project'))
   );
 }
 
@@ -619,12 +622,24 @@ export class TickTickCliProvider implements TaskProvider {
   }
 
   async appendFocusRecordToTask(taskId: string, record: FocusRecord): Promise<void> {
+    await this.appendFocusRecordsToTask(taskId, [record]);
+  }
+
+  async appendFocusRecordsToTask(taskId: string, records: FocusRecord[]): Promise<void> {
+    if (records.length === 0) return;
     const cfg = getConfig();
     const task = await this.getTask(taskId);
-    const block = formatFocusRecord(record);
+    const externalTaskId = task?.externalId ?? taskId.replace(/^ticktick:/, '');
+    const projectId = task?.projectId ?? findCachedTaskProjectId(taskId);
+    if (!projectId && cfg.appendNoteCommand.includes('{{projectId}}')) {
+      throw new Error('缺少清单 ID，无法通过 dida CLI 写入任务备注。请先刷新任务列表。');
+    }
+
+    const block = records.map(formatFocusRecord).join('\n');
     const content = task?.content?.trim() ? `${task.content.trim()}\n\n${block}` : block;
     const cmd = renderTemplate(cfg.appendNoteCommand, {
-      taskId: task?.externalId ?? taskId,
+      taskId: externalTaskId,
+      projectId: projectId ?? '',
       content,
     });
     const r = await execWithDiagnose(cmd, cfg.timeoutMs, 'na');
@@ -632,7 +647,18 @@ export class TickTickCliProvider implements TaskProvider {
       logger.error('cli', 'appendFocusRecord failed', r.record.error);
       throw new Error(`CLI 追加备注失败：${r.record.error ?? r.record.stderr.slice(0, 200)}`);
     }
-    logger.info('cli', 'appended focus record to task', { taskId });
+    if (task) {
+      const cached = listTaskCache('ticktick').find(
+        (t) =>
+          t.id === task.id || t.externalId === task.externalId || t.externalId === externalTaskId,
+      );
+      if (cached) {
+        cached.content = content;
+        cached.updatedAt = Date.now();
+        upsertTaskCache(cached);
+      }
+    }
+    logger.info('cli', 'appended focus records to task', { taskId, count: records.length });
   }
 
   async completeTask(task: Task): Promise<void> {
@@ -790,6 +816,19 @@ function cacheTasks(tasks: Task[]): void {
   };
   visit(tasks);
 }
+
+function findCachedTaskProjectId(taskId: string): string | null {
+  const normalized = taskId.replace(/^ticktick:/, '');
+  const cached = listTaskCache('ticktick').find(
+    (task) =>
+      task.id === taskId ||
+      task.externalId === taskId ||
+      task.id === `ticktick:${normalized}` ||
+      task.externalId === normalized,
+  );
+  return cached?.projectId ?? null;
+}
+
 function formatFocusRecord(record: FocusRecord): string {
   const start = new Date(record.startedAt).toLocaleString('zh-CN');
   const end = record.endedAt ? new Date(record.endedAt).toLocaleString('zh-CN') : '进行中';

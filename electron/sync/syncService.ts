@@ -26,15 +26,22 @@ type Payload = {
 };
 
 async function appendFocusRecord(taskId: string, record: FocusRecord): Promise<void> {
+  await appendFocusRecords(taskId, [record]);
+}
+
+async function appendFocusRecords(taskId: string, records: FocusRecord[]): Promise<void> {
+  if (records.length === 0) return;
   const settings = getSettings();
   if (settings.taskSource === 'ticktick-cli') {
-    await ticktickCliProvider.appendFocusRecordToTask(taskId, record);
+    await ticktickCliProvider.appendFocusRecordsToTask(taskId, records);
     return;
   }
   if (!ticktickAdapter.isAuthenticated) {
     throw new Error('未登录 TickTick OAuth；若使用 dida CLI，请在设置中把任务来源切到 dida CLI。');
   }
-  await ticktickAdapter.appendFocusRecordToTask(taskId, record);
+  for (const record of records) {
+    await ticktickAdapter.appendFocusRecordToTask(taskId, record);
+  }
 }
 
 function makeItem(type: string, payload: Payload): SyncQueueItem {
@@ -51,11 +58,12 @@ function makeItem(type: string, payload: Payload): SyncQueueItem {
   };
 }
 
-function findPendingPayload(
+function findReusablePayload(
   type: Payload['type'],
   matches: (payload: Payload) => boolean,
 ): SyncQueueItem | null {
-  for (const item of listPendingSync()) {
+  for (const item of listSyncQueue()) {
+    if (item.status === 'synced' || item.status === 'skipped') continue;
     try {
       const payload = JSON.parse(item.payload) as Payload;
       if (payload.type === type && matches(payload)) return item;
@@ -67,8 +75,11 @@ function findPendingPayload(
 }
 
 export function enqueueSegmentSync(segmentId: string): SyncQueueItem {
-  const existing = findPendingPayload('segment-note', (payload) => payload.segmentId === segmentId);
-  if (existing) return existing;
+  const existing = findReusablePayload(
+    'segment-note',
+    (payload) => payload.segmentId === segmentId,
+  );
+  if (existing) return reactivateQueueItem(existing);
   const seg = getSegment(segmentId);
   const item = makeItem('segment-note', {
     type: 'segment-note',
@@ -81,11 +92,24 @@ export function enqueueSegmentSync(segmentId: string): SyncQueueItem {
 }
 
 export function enqueueSessionSync(sessionId: string): SyncQueueItem {
-  const existing = findPendingPayload('session-note', (payload) => payload.sessionId === sessionId);
-  if (existing) return existing;
+  const existing = findReusablePayload(
+    'session-note',
+    (payload) => payload.sessionId === sessionId,
+  );
+  if (existing) return reactivateQueueItem(existing);
   const item = makeItem('session-note', { type: 'session-note', sessionId });
   insertSyncQueue(item);
   logger.info('sync', `enqueued session ${sessionId}`);
+  return item;
+}
+
+function reactivateQueueItem(item: SyncQueueItem): SyncQueueItem {
+  if (item.status === 'pending' && !item.lastError) return item;
+  item.status = 'pending';
+  item.lastError = null;
+  item.retryCount = 0;
+  item.updatedAt = Date.now();
+  updateSyncQueue(item);
   return item;
 }
 
@@ -98,6 +122,7 @@ export async function retryItem(id: string): Promise<void> {
   if (!item) return;
   item.status = 'pending';
   item.lastError = null;
+  item.retryCount = 0;
   item.updatedAt = Date.now();
   updateSyncQueue(item);
 }
@@ -148,6 +173,7 @@ async function processItem(item: SyncQueueItem): Promise<{ ok: boolean; error?: 
       const segs = listSegments(payload.sessionId).filter(
         (s) => s.taskId && s.taskSource === 'ticktick',
       );
+      const recordsByTask = new Map<string, FocusRecord[]>();
       for (const seg of segs) {
         const record: FocusRecord = {
           sessionId: seg.sessionId,
@@ -161,8 +187,13 @@ async function processItem(item: SyncQueueItem): Promise<{ ok: boolean; error?: 
           note: seg.note,
         };
         if (settings.syncMode === 'note' || settings.syncMode === 'experimental-focus') {
-          await appendFocusRecord(seg.taskId!, record);
+          const list = recordsByTask.get(seg.taskId!) ?? [];
+          list.push(record);
+          recordsByTask.set(seg.taskId!, list);
         }
+      }
+      for (const [taskId, records] of recordsByTask) {
+        await appendFocusRecords(taskId, records);
       }
       if (settings.syncMode === 'experimental-focus' && settings.experimentalFocusEnabled) {
         const record: FocusRecord = {
