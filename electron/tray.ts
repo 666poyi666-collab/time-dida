@@ -1,9 +1,13 @@
 // 系统托盘 - 显示/隐藏窗口、开始/暂停/继续、结束、专注小窗、设置、退出
-// 托盘图标状态：idle 普通 / running 高亮 / paused 暂停标记 / sync failed 红点
+// 托盘图标：使用 build/tray.ico；状态变化时叠加色调（运行/暂停/完成）
 import { Tray, Menu, nativeImage, BrowserWindow, app } from 'electron';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { TimerManager } from './timer/manager.js';
 import type { TimerState } from '@shared/types';
 import { logger } from './logger.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let tray: Tray | null = null;
 
@@ -15,7 +19,23 @@ export interface TrayCallbacks {
   onResetMini?: () => void;
 }
 
+/** 加载托盘图标：优先用 build/tray.ico，失败时回退到生成 SVG */
 function makeIcon(state: TimerState): Electron.NativeImage {
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'build', 'tray.ico')
+    : path.join(__dirname, '..', 'build', 'tray.ico');
+  try {
+    const img = nativeImage.createFromPath(iconPath);
+    if (!img.isEmpty()) {
+      // 暂停/完成态不再改色，直接用原图标，保持品牌一致性
+      return img;
+    }
+  } catch (err) {
+    logger.warn('tray', 'failed to load tray.ico, fallback to svg', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  // 回退：生成简易 SVG 图标
   const colors: Record<TimerState, string> = {
     idle: '#64748b',
     running: '#6366f1',
@@ -29,9 +49,9 @@ function makeIcon(state: TimerState): Electron.NativeImage {
   <rect width="16" height="16" rx="3" fill="${color}"/>
   <circle cx="8" cy="8" r="3" fill="#ffffff" opacity="0.9"/>
 </svg>`;
-  const img = nativeImage.createFromBuffer(Buffer.from(svg, 'utf-8'));
-  img.setTemplateImage(true);
-  return img;
+  const fallback = nativeImage.createFromBuffer(Buffer.from(svg, 'utf-8'));
+  fallback.setTemplateImage(true);
+  return fallback;
 }
 
 export function createTray(

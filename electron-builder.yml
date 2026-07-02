@@ -1,7 +1,7 @@
 appId: com.focuslink.app
 productName: FocusLink
 directories:
-  output: release-v0223
+  output: release-v0224
   buildResources: build
 files:
   - dist/**/*
@@ -13,12 +13,17 @@ asarUnpack:
   - "**/node_modules/better-sqlite3/**"
   - "**/node_modules/bindings/**"
   - "**/node_modules/file-uri-to-path/**"
+extraResources:
+  - from: build/
+    to: build/
+    filter: ["**/*"]
 publish: null
 win:
   target:
     - nsis
     - portable
   artifactName: ${productName}-${version}-${arch}.${ext}
+  icon: build/icon.ico
 nsis:
   oneClick: false
   perMachine: false
@@ -26,5 +31,7 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: FocusLink
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
 portable:
   artifactName: ${productName}-${version}-${arch}-portable.${ext}

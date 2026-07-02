@@ -1,0 +1,8 @@
+Add app and tray icons v0.2.24
+
+- Extract FocusLink_app_icon.ico and FocusLink_tray_icon.ico from downloaded icon pack
+- Configure electron-builder win.icon, nsis.installerIcon, uninstallerIcon
+- Bundle build/ icons as extraResources for packaged app access
+- Main window BrowserWindow uses icon.ico
+- Tray uses tray.ico with SVG fallback
+- Add favicon.png to public/ and link in index.html / mini.html

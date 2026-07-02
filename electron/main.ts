@@ -1,6 +1,6 @@
 // Electron 主进程入口
 // 单实例锁、主窗口+专注小窗、托盘、快捷键、IPC、崩溃恢复、snapshot 推送
-import { app, BrowserWindow, shell, powerMonitor, Tray, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, shell, powerMonitor, Tray, ipcMain, screen, nativeImage } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from './logger.js';
@@ -30,6 +30,18 @@ import { getLoginItemSettings, shouldStartHiddenToTray } from '@shared/startupPo
 import { enqueueSessionSync, runPending } from './sync/syncService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/** 应用图标：开发态从项目根 build/，打包后从 resources/build/ 读取 */
+function getAppIcon(): Electron.NativeImage {
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'build', 'icon.ico')
+    : path.join(__dirname, '..', 'build', 'icon.ico');
+  try {
+    return nativeImage.createFromPath(iconPath);
+  } catch {
+    return nativeImage.createEmpty();
+  }
+}
 
 let mainWindow: BrowserWindow | null = null;
 let miniWindow: BrowserWindow | null = null;
@@ -75,6 +87,7 @@ function createMainWindow(): BrowserWindow {
     titleBarStyle: 'default',
     backgroundColor: '#0b0e14',
     title: 'FocusLink',
+    icon: getAppIcon(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
