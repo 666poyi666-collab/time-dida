@@ -1,8 +1,14 @@
-Add app and tray icons v0.2.24
+Minimal white-transparent icons + session time display fix v0.2.25
 
-- Extract FocusLink_app_icon.ico and FocusLink_tray_icon.ico from downloaded icon pack
-- Configure electron-builder win.icon, nsis.installerIcon, uninstallerIcon
-- Bundle build/ icons as extraResources for packaged app access
-- Main window BrowserWindow uses icon.ico
-- Tray uses tray.ico with SVG fallback
-- Add favicon.png to public/ and link in index.html / mini.html
+1. 修复时间段显示误导：当总历时远大于专注时长（含大量暂停）时，
+   历史列表改为显示"开始时间 · 专注时长"而非"开始→结束"时间段，
+   避免出现"专注14分钟但显示15:49→19:26"的误导。
+   详情页同步优化为"开始时间 · 专注时长 · 总历时"格式。
+
+2. 重新设计图标为白色透明简约风格：
+   - 应用图标：透明背景 + 白色细圆环 + 12点小圆点 + 中心微点
+   - 托盘图标：透明背景 + 白色圆环 + 中心点（template 风格）
+   - 去掉圆角方块背景，更简约精致
+   - 生成脚本 scripts/make-minimal-icons.ps1
+
+3. 版本号 0.2.25，打包输出 release-v0225

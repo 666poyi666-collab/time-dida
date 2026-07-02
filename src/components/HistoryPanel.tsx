@@ -730,10 +730,17 @@ export function HistoryPanel() {
                           {formatRelative(session.startedAt)}
                         </span>
                       </div>
-                      <div className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
-                        {formatDateTime(session.startedAt)}
-                        {session.endedAt && ` → ${formatDateTime(session.endedAt)}`}
-                      </div>
+                      {session.endedAt && session.wallElapsedMs > session.activeElapsedMs + 60000 ? (
+                        /* 总历时远大于专注时长（含大量暂停）：避免 "开始→结束" 时间段误导 */
+                        <div className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
+                          {formatDateTime(session.startedAt)} 开始 · 专注 {formatDuration(session.activeElapsedMs)}
+                        </div>
+                      ) : (
+                        <div className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
+                          {formatDateTime(session.startedAt)}
+                          {session.endedAt && ` → ${formatDateTime(session.endedAt)}`}
+                        </div>
+                      )}
                       {/* 默认任务标题预览 */}
                       {session.defaultTaskTitle && (
                         <div className="mt-1 flex items-center gap-1 text-[11px] text-emerald-400/80">
@@ -1011,10 +1018,16 @@ function SessionDetailHeader({
             <p className="timer-digit text-sm font-bold text-fg">
               {formatDuration(session.activeElapsedMs)}
             </p>
-            <span className="text-xs text-fg-subtle">
-              {formatDateTime(session.startedAt)}
-              {session.endedAt && ` - ${formatDateTime(session.endedAt)}`}
-            </span>
+            {session.endedAt && session.wallElapsedMs > session.activeElapsedMs + 60000 ? (
+              <span className="text-xs text-fg-subtle">
+                {formatDateTime(session.startedAt)} 开始 · 专注 {formatDuration(session.activeElapsedMs)} · 总历时 {formatDuration(session.wallElapsedMs)}
+              </span>
+            ) : (
+              <span className="text-xs text-fg-subtle">
+                {formatDateTime(session.startedAt)}
+                {session.endedAt && ` - ${formatDateTime(session.endedAt)}`}
+              </span>
+            )}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <SessionSyncBadge
