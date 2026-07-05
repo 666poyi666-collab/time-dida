@@ -89,7 +89,7 @@ export function SegmentTimeline() {
     <div className="card p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="flex items-center gap-2 text-sm font-bold">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/10 text-accent">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-success/10 text-success">
             <Clock size={14} />
           </span>
           片段时间线
@@ -115,36 +115,36 @@ export function SegmentTimeline() {
             const duration = getDisplayDuration(item);
             const isSelected = isFocus && selected.has(item.id);
 
-            // 颜色：专注绿色（accent），暂停橙色（warning）
+            // 颜色：专注绿色（success），暂停橙色（warning）
             const dotBorderCls = isFocus
               ? item.isActive
-                ? 'border-accent bg-accent'
+                ? 'border-success bg-success'
                 : item.endedAt
-                  ? 'border-accent/35 bg-bg-card'
-                  : 'border-accent/45 bg-bg-card'
+                  ? 'border-success/35 bg-bg-card'
+                  : 'border-success/45 bg-bg-card'
               : item.isActive
                 ? 'border-warning bg-warning'
                 : 'border-warning/40 bg-bg-card';
             const dotInnerCls = isFocus
               ? item.isActive
                 ? 'bg-white'
-                : 'bg-accent/55'
+                : 'bg-success/55'
               : item.isActive
                 ? 'bg-white'
                 : 'bg-warning/55';
 
             const rowBorderCls = isSelected
-              ? 'border-accent bg-accent/5'
+              ? 'border-success bg-success/5'
               : item.isActive
                 ? isFocus
-                  ? 'border-accent/35 bg-accent/5 shadow-soft'
+                  ? 'border-success/35 bg-success/5 shadow-soft'
                   : 'border-warning/40 bg-warning/10 shadow-soft'
                 : isFocus
                   ? 'border-border bg-bg-card/85 hover:bg-bg-subtle/55'
                   : 'border-warning/20 bg-warning/5 hover:bg-warning/10';
 
             const chipCls = isFocus
-              ? 'status-chip border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] text-accent'
+              ? 'status-chip border-success/20 bg-success/10 px-2 py-0.5 text-[10px] text-success'
               : 'status-chip border-warning/25 bg-warning/10 px-2 py-0.5 text-[10px] text-warning';
 
             const titleColorCls = isFocus ? 'text-fg' : 'text-warning';
@@ -167,7 +167,7 @@ export function SegmentTimeline() {
                 <div
                   className={`mt-1 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 ${dotBorderCls} ${
                     item.isActive ? 'ring-2 ring-offset-1 ring-offset-bg-card' : ''
-                  } ${isFocus ? 'ring-accent/30' : 'ring-warning/30'}`}
+                  } ${isFocus ? 'ring-success/30' : 'ring-warning/30'}`}
                 >
                   <span className={`h-1.5 w-1.5 rounded-full ${dotInnerCls}`} />
                 </div>
@@ -192,7 +192,7 @@ export function SegmentTimeline() {
                       <span className="inline-flex items-center gap-0.5 font-medium text-fg-muted">
                         进行中
                         {isFocus ? (
-                          <Play size={9} className="text-accent" />
+                          <Play size={9} className="text-success" />
                         ) : (
                           <Coffee size={9} className="text-warning" />
                         )}

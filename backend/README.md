@@ -1,6 +1,6 @@
 # Backend Area
 
-> 当前版本：v0.2.27
+> 当前版本：v0.2.28
 
 FocusLink 后端代码当前主要在 `electron/`。
 

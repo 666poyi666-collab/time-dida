@@ -680,6 +680,21 @@
       rgb(var(--app-surface));
   }
 
+  .timer-context-strip {
+    border-top: 1px solid rgb(var(--border) / 0.62);
+    border-bottom: 1px solid rgb(var(--border) / 0.5);
+    padding-block: 10px;
+  }
+
+  .timer-plan-strip {
+    border-radius: var(--radius-lg);
+    border: 1px solid rgb(var(--border) / 0.72);
+    background:
+      linear-gradient(180deg, rgb(var(--app-surface) / 0.72), rgb(var(--app-surface-2) / 0.34)),
+      rgb(var(--app-surface) / 0.72);
+    padding: 8px;
+  }
+
   .task-metric {
     border: 1px solid rgb(var(--border) / 0.82);
     border-radius: 16px;
@@ -750,6 +765,28 @@
     box-shadow:
       0 12px 24px -20px rgb(var(--accent) / 0.9),
       inset 0 1px 0 rgb(255 255 255 / 0.18);
+  }
+  .btn-focus-action {
+    @apply btn rounded-xl px-5 py-2.5 text-sm text-white;
+    min-height: 40px;
+    background: linear-gradient(180deg, rgb(var(--success) / 0.98), rgb(16 137 46 / 0.98));
+    box-shadow:
+      0 12px 24px -20px rgb(var(--success) / 0.84),
+      inset 0 1px 0 rgb(255 255 255 / 0.22);
+  }
+  .btn-focus-action:hover {
+    filter: brightness(1.05);
+  }
+  .btn-pause-action {
+    @apply btn rounded-xl px-5 py-2.5 text-sm text-white;
+    min-height: 40px;
+    background: linear-gradient(180deg, rgb(var(--warning) / 0.96), rgb(181 74 0 / 0.98));
+    box-shadow:
+      0 12px 24px -20px rgb(var(--warning) / 0.82),
+      inset 0 1px 0 rgb(255 255 255 / 0.22);
+  }
+  .btn-pause-action:hover {
+    filter: brightness(1.05);
   }
   .btn-ghost {
     @apply btn rounded-xl px-3.5 py-2 text-sm text-fg-muted;

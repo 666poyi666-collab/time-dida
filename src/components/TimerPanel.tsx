@@ -237,6 +237,49 @@ function UnlinkedTaskCard({
   );
 }
 
+function TimerContextStrip({
+  state,
+  title,
+  sourceLabel,
+  actionLabel,
+  onAction,
+}: {
+  state: string;
+  title: string | null;
+  sourceLabel: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  const linked = !!title;
+  const toneCls =
+    state === 'paused'
+      ? 'text-warning'
+      : state === 'running'
+        ? 'text-success'
+        : linked
+          ? 'text-accent'
+          : 'text-fg-subtle';
+  return (
+    <div className="timer-context-strip relative mt-4 flex items-center gap-3">
+      <span
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
+          linked ? 'bg-accent/10 text-accent' : 'bg-bg-subtle text-fg-subtle'
+        }`}
+      >
+        <Link2 size={15} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] font-semibold text-fg-subtle">{sourceLabel}</div>
+        <div className={`truncate text-sm font-semibold ${toneCls}`}>{title ?? '未选择任务'}</div>
+      </div>
+      <button className="btn-ghost shrink-0 !px-2.5 !py-1.5 text-[11px]" onClick={onAction}>
+        <Search size={11} />
+        {actionLabel}
+      </button>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────
 
 export function TimerPanel() {
@@ -260,15 +303,33 @@ export function TimerPanel() {
 
   const sessionDefaultTitle = snapshot?.sessionDefaultTaskTitle ?? null;
 
-  // 离开 idle 状态时清空预选任务（避免下次进入 idle 仍显示旧选择）
+  // 进入真实计时状态时清空预选任务；finished 仍允许先选任务再开下一轮。
   useEffect(() => {
-    if (state !== 'idle' && preSelectedTask) {
+    if ((state === 'running' || state === 'paused' || state === 'stopping') && preSelectedTask) {
       setPreSelectedTask(null);
     }
   }, [state, preSelectedTask]);
 
   const handleToggle = async () => {
     try {
+      if (state === 'finished') {
+        await window.focuslink.timer.reset();
+        if (preSelectedTask) {
+          const snap = await window.focuslink.timer.startWithTask(
+            preSelectedTask.id,
+            preSelectedTask.source,
+            preSelectedTask.title,
+          );
+          useStore.getState().setSnapshot(snap);
+          setPreSelectedTask(null);
+          addToast(`已开始新一轮专注：${preSelectedTask.title}`, 'success');
+          return;
+        }
+        const snap = await window.focuslink.timer.toggle();
+        useStore.getState().setSnapshot(snap);
+        addToast('已开始新一轮专注', 'success');
+        return;
+      }
       // idle 状态：若有预选任务则用 startWithTask 原子启动，否则普通 toggle
       if (state === 'idle' && preSelectedTask) {
         const snap = await window.focuslink.timer.startWithTask(
@@ -370,7 +431,14 @@ export function TimerPanel() {
     }
   };
 
-  const toggleLabel = state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始专注';
+  const toggleLabel =
+    state === 'running'
+      ? '暂停'
+      : state === 'paused'
+        ? '继续'
+        : state === 'finished'
+          ? '开始新专注'
+          : '开始专注';
 
   const isIdle = state === 'idle';
   const isFinished = state === 'finished';
@@ -413,6 +481,24 @@ export function TimerPanel() {
             ? '已选择即将专注任务'
             : '可先选任务，也可直接开始'
           : '已结束';
+
+  const contextTitle = isRunning
+    ? (currentSegmentTaskId?.title ?? sessionDefaultTitle)
+    : (preSelectedTask?.title ?? null);
+  const contextSourceLabel = isRunning
+    ? currentSegmentTaskId?.title
+      ? '当前片段任务'
+      : sessionDefaultTitle
+        ? '本次默认任务'
+        : '当前任务'
+    : '即将专注任务';
+  const contextActionLabel = isRunning ? (contextTitle ? '更换' : '关联') : '选择';
+  const mainActionClass =
+    state === 'running'
+      ? 'btn-pause-action'
+      : state === 'paused' || state === 'idle' || state === 'finished'
+        ? 'btn-focus-action'
+        : 'btn-primary';
 
   return (
     <div className="mx-auto flex w-full max-w-[560px] flex-col">
@@ -470,6 +556,14 @@ export function TimerPanel() {
             )}
           </div>
         </div>
+
+        <TimerContextStrip
+          state={state}
+          title={contextTitle}
+          sourceLabel={contextSourceLabel}
+          actionLabel={contextActionLabel}
+          onAction={() => setPickerMode(isRunning ? 'segment' : 'preselect')}
+        />
 
         {/* 分钟节奏条（仅运行 / 暂停时显示） */}
         {(state === 'running' || state === 'paused') && (
@@ -540,22 +634,9 @@ export function TimerPanel() {
 
       {/* idle/finished 状态预选任务区 - "先选任务再开始专注"流程；finished 也显示避免 UI 空洞 */}
       {(isIdle || isFinished) && (
-        <div className="mt-5 w-full space-y-2">
+        <div className="mt-4 w-full space-y-2">
           {preSelectedTask ? (
-            <div className="space-y-2 rounded-xl border border-accent/30 bg-accent/5 p-3.5">
-              <div className="flex items-start gap-2.5">
-                <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-                  <Link2 size={14} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">
-                    即将专注任务
-                  </span>
-                  <p className="mt-0.5 truncate text-sm font-medium text-fg">
-                    {preSelectedTask.title}
-                  </p>
-                </div>
-              </div>
+            <div className="timer-plan-strip">
               <div className="flex items-center gap-2">
                 <button
                   className="btn-ghost flex-1 text-xs"
@@ -588,7 +669,7 @@ export function TimerPanel() {
       {/* 控制按钮 */}
       <div className="mt-6 flex items-center gap-3">
         <button
-          className="btn-primary motion-press flex min-w-[172px] items-center justify-center gap-2"
+          className={`${mainActionClass} motion-press flex min-w-[172px] items-center justify-center gap-2`}
           onClick={handleToggle}
         >
           {state === 'running' ? <Pause size={16} /> : <Play size={16} />}
