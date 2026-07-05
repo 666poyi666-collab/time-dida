@@ -52,6 +52,13 @@
     --radius-2xl: 18px;
     --radius-pill: 9999px;
 
+    /* ── Accent 默认值（防止 JS 加载前白屏）──
+       JS applyTheme() 会用 .accent-* 类覆盖这些值 */
+    --app-accent: 129 140 248;
+    --app-accent-hover: 157 169 252;
+    --app-accent-soft: 129 140 248 / 0.12;
+    --app-accent-fg: 255 255 255;
+
     /* ── 间距：4px基准网格 ── */
 
     /* ── 浅色模式：Vercel/Linear 风冷白 ── */
