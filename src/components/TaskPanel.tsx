@@ -28,7 +28,7 @@ import type { Task, Project, SyncQueueItem } from '@shared/types';
 
 type TaskSource = 'local' | 'ticktick-cli' | 'ticktick-oauth';
 
-export function TaskPanel() {
+export function TaskPanel({ inDrawer = false }: { inDrawer?: boolean }) {
   const {
     snapshot,
     localTasks,
@@ -317,7 +317,7 @@ export function TaskPanel() {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3.5">
+    <div className={`flex h-full min-h-0 flex-col gap-3.5 ${inDrawer ? 'p-4' : ''}`}>
       {/* 任务来源状态卡 */}
       <div className="card p-4">
         <div className="flex items-center justify-between">

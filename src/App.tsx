@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useStore } from './store/useStore';
 import { TimerPanel } from './components/TimerPanel';
@@ -11,19 +11,14 @@ import {
   Timer as TimerIcon,
   History as HistoryIcon,
   Settings as SettingsIcon,
+  ListTodo,
   Minus,
   X,
+  PanelRightClose,
 } from 'lucide-react';
 import type { AppSettings } from '@shared/types';
-import {
-  DEFAULT_LEFT_PANE_RATIO,
-  LEFT_PANE_MAX,
-  LEFT_PANE_MIN,
-  PANE_DIVIDER_WIDTH,
-  RIGHT_PANE_MIN,
-  clampLeftPaneWidth,
-  getDefaultLeftPaneWidth,
-} from './lib/paneLayout';
+
+type View = 'timer' | 'history' | 'settings';
 
 export default function App() {
   const {
@@ -38,12 +33,8 @@ export default function App() {
     addToast,
   } = useStore();
 
-  // 左右分栏宽度（px）
-  const [leftWidth, setLeftWidth] = useState<number | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef(false);
-  const leftWidthRef = useRef<number | null>(null);
-  const [isDividerDragging, setIsDividerDragging] = useState(false);
+  // 任务抽屉：v0.3 核心变化——任务不再常驻右栏，改为召唤式滑出抽屉
+  const [taskDrawerOpen, setTaskDrawerOpen] = useState(false);
 
   // 初始化
   useEffect(() => {
@@ -73,9 +64,10 @@ export default function App() {
       unsubs.push(
         window.focuslink.on('navigate', (target) => {
           if (target === 'settings' || target === 'history' || target === 'timer') {
-            setView(target as any);
+            setView(target as View);
           } else if (target === 'tasks') {
             setView('timer');
+            setTaskDrawerOpen(true);
           }
         }),
       );
@@ -104,201 +96,99 @@ export default function App() {
     if (settings) applyTheme(settings);
   }, [settings]);
 
-  // 从设置恢复分栏宽度
-  useEffect(() => {
-    if (settings?.layout?.leftPaneWidth && settings.layout.leftPaneWidth > 0) {
-      setLeftWidth(settings.layout.leftPaneWidth);
-      leftWidthRef.current = settings.layout.leftPaneWidth;
-    }
-  }, [settings?.layout?.leftPaneWidth]);
+  const pageTransition = { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const };
 
-  useEffect(() => {
-    leftWidthRef.current = leftWidth;
-  }, [leftWidth]);
-
-  // 旧设置里保存过大的左栏宽度时，保证右侧任务区仍留出最小可用空间。
-  useEffect(() => {
-    if (!containerRef.current || leftWidth == null || view !== 'timer') return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const containerWidth = Math.min(rect.width, window.innerWidth);
-    const clamped = clampLeftPaneWidth(containerWidth, leftWidth);
-    if (clamped !== leftWidth) {
-      leftWidthRef.current = clamped;
-      setLeftWidth(clamped);
-    }
-  }, [leftWidth, view]);
-
-  // 拖拽分割线
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    draggingRef.current = true;
-    setIsDividerDragging(true);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }, []);
-
-  useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => {
-      if (!draggingRef.current || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const containerWidth = Math.min(rect.width, window.innerWidth);
-      const clamped = clampLeftPaneWidth(containerWidth, x);
-      leftWidthRef.current = clamped;
-      setLeftWidth(clamped);
-    };
-    const onMouseUp = () => {
-      if (draggingRef.current) {
-        draggingRef.current = false;
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-        setIsDividerDragging(false);
-        const widthToSave = leftWidthRef.current;
-        // 持久化
-        if (settings && widthToSave) {
-          window.focuslink.settings.set({
-            ...settings,
-            layout: { leftPaneWidth: widthToSave },
-          });
-        }
-      }
-    };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-  }, [settings]);
-
-  // 双击恢复默认比例
-  const onDoubleClick = useCallback(() => {
-    if (!containerRef.current || !settings) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const containerWidth = Math.min(rect.width, window.innerWidth);
-    const defaultLeft = getDefaultLeftPaneWidth(containerWidth);
-    leftWidthRef.current = defaultLeft;
-    setLeftWidth(defaultLeft);
-    window.focuslink.settings.set({
-      ...settings,
-      layout: { leftPaneWidth: defaultLeft },
-    });
-  }, [settings]);
-
-  // 计算实际使用的左栏宽度
-  const effectiveLeft = leftWidth ?? null;
-
-  const pageTransition = { duration: 0.18, ease: [0.22, 1, 0.36, 1] as const };
+  const timerState = snapshot?.state ?? 'idle';
+  // 画布环境光：根据计时状态切换极光层
+  const canvasCls =
+    timerState === 'running'
+      ? 'aurora-canvas aurora-canvas-focus'
+      : timerState === 'paused'
+        ? 'aurora-canvas aurora-canvas-pause'
+        : 'aurora-canvas';
 
   return (
-    <div className="app-shell flex h-screen w-screen flex-col text-fg antialiased">
-      <header className="topbar-shell relative z-10 flex items-center justify-between px-4 py-2.5 select-none">
-        <div className="flex min-w-[220px] items-center gap-2.5">
-          <BrandMark state={snapshot?.state ?? 'idle'} />
-          <div className="leading-tight">
-            <div className="flex items-center gap-2">
-              <span className="text-[15px] font-semibold tracking-normal">FocusLink</span>
-              {snapshot && <StatePill state={snapshot.state} />}
-            </div>
-            <p className="text-[10px] font-medium text-fg-subtle">专注时间账本</p>
-          </div>
-        </div>
+    <div className="app-shell flex h-screen w-screen overflow-hidden text-fg antialiased">
+      {/* ── 侧轨：v0.3 全新导航 ── */}
+      <aside className="side-rail relative z-20 flex w-14 flex-col items-center gap-1.5 py-4">
+        <BrandMark state={timerState} />
 
-        <nav className="segmented-nav flex items-center gap-0.5 rounded-2xl p-1">
-          <NavBtn
+        <div className="mt-5 flex flex-col items-center gap-1.5">
+          <RailBtn
             active={view === 'timer'}
             onClick={() => setView('timer')}
-            icon={<TimerIcon size={14} />}
+            icon={<TimerIcon size={18} />}
             label="计时"
           />
-          <NavBtn
+          <RailBtn
             active={view === 'history'}
             onClick={() => setView('history')}
-            icon={<HistoryIcon size={14} />}
+            icon={<HistoryIcon size={18} />}
             label="历史"
           />
-          <NavBtn
+          <RailBtn
             active={view === 'settings'}
             onClick={() => setView('settings')}
-            icon={<SettingsIcon size={14} />}
+            icon={<SettingsIcon size={18} />}
             label="设置"
           />
-        </nav>
-
-        <div className="flex min-w-[190px] items-center justify-end gap-1">
-          <button
-            className="window-icon-button"
-            onClick={() => window.focuslink.window.minimizeToTray()}
-            title="最小化到托盘"
-          >
-            <Minus size={14} />
-          </button>
-          <button
-            className="window-icon-button hover:!bg-danger/10 hover:!text-danger"
-            onClick={() => window.focuslink.window.minimizeToTray()}
-            title="关闭（保留在托盘）"
-          >
-            <X size={14} />
-          </button>
         </div>
-      </header>
 
-      <main className="relative flex-1 overflow-hidden">
+        {/* 任务抽屉召唤按钮：仅在计时视图显示 */}
+        <div className="mt-3 flex flex-col items-center gap-1.5">
+          {view === 'timer' && (
+            <RailBtn
+              active={taskDrawerOpen}
+              onClick={() => setTaskDrawerOpen((v) => !v)}
+              icon={<ListTodo size={18} />}
+              label="任务"
+              accent
+            />
+          )}
+        </div>
+
+        {/* 窗口控制：贴底 */}
+        <div className="mt-auto flex flex-col items-center gap-1.5">
+          <RailBtn
+            onClick={() => window.focuslink.window.minimizeToTray()}
+            icon={<Minus size={16} />}
+            label="最小化"
+            ghost
+          />
+          <RailBtn
+            onClick={() => window.focuslink.window.minimizeToTray()}
+            icon={<X size={16} />}
+            label="关闭"
+            ghost
+            danger
+          />
+        </div>
+      </aside>
+
+      {/* ── 主舞台：极光画布 ── */}
+      <main className={`relative flex-1 overflow-hidden ${canvasCls}`}>
         <AnimatePresence mode="wait">
           {view === 'timer' && (
             <motion.div
               key="view-timer"
-              initial={{ opacity: 0, y: 4 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 4 }}
+              exit={{ opacity: 0, y: -6 }}
               transition={pageTransition}
               className="absolute inset-0"
             >
-              <div
-                ref={containerRef}
-                className="workspace-shell flex h-full w-full min-w-0 overflow-hidden"
-              >
-                <div
-                  className="workspace-pane workspace-pane-timer flex flex-col overflow-y-auto px-5 py-4"
-                  style={{
-                    width:
-                      effectiveLeft ??
-                      `min(${Math.round(DEFAULT_LEFT_PANE_RATIO * 100)}%, ${LEFT_PANE_MAX}px)`,
-                    maxWidth: `min(${LEFT_PANE_MAX}px, calc(100% - ${RIGHT_PANE_MIN + PANE_DIVIDER_WIDTH}px))`,
-                    minWidth: LEFT_PANE_MIN,
-                    flexShrink: 0,
-                  }}
-                >
-                  <TimerPanel />
-                  <div className="mt-5">
-                    <SegmentTimeline />
-                  </div>
-                </div>
-
-                <div
-                  onMouseDown={onMouseDown}
-                  onDoubleClick={onDoubleClick}
-                  className="pane-divider z-10"
-                  data-dragging={isDividerDragging ? 'true' : 'false'}
-                  style={{ width: PANE_DIVIDER_WIDTH }}
-                  title="拖动调整左右宽度，双击恢复默认"
-                />
-
-                <div
-                  className="workspace-pane workspace-pane-task flex-1 overflow-y-auto px-5 py-4"
-                  style={{ minWidth: RIGHT_PANE_MIN }}
-                >
-                  <TaskPanel />
-                </div>
-              </div>
+              <TimerStage
+                taskDrawerOpen={taskDrawerOpen}
+                onToggleDrawer={() => setTaskDrawerOpen((v) => !v)}
+              />
             </motion.div>
           )}
           {view === 'history' && (
             <motion.div
               key="view-history"
-              initial={{ opacity: 0, y: 4 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 4 }}
+              exit={{ opacity: 0, y: -6 }}
               transition={pageTransition}
               className="absolute inset-0"
             >
@@ -308,9 +198,9 @@ export default function App() {
           {view === 'settings' && (
             <motion.div
               key="view-settings"
-              initial={{ opacity: 0, y: 4 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 4 }}
+              exit={{ opacity: 0, y: -6 }}
               transition={pageTransition}
               className="absolute inset-0"
             >
@@ -325,6 +215,125 @@ export default function App() {
   );
 }
 
+// ── 计时舞台：中央计时 + 底部时间线 + 任务抽屉 ──────────────
+
+function TimerStage({
+  taskDrawerOpen,
+  onToggleDrawer,
+}: {
+  taskDrawerOpen: boolean;
+  onToggleDrawer: () => void;
+}) {
+  return (
+    <div className="flex h-full w-full">
+      {/* 中央舞台区 */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-[640px] flex-1 flex-col justify-center px-6 py-6">
+          <TimerPanel />
+        </div>
+        {/* 底部片段时间线 */}
+        <div className="shrink-0 px-6 pb-5">
+          <SegmentTimeline />
+        </div>
+      </div>
+
+      {/* 任务抽屉：从右侧滑入 */}
+      <AnimatePresence>
+        {taskDrawerOpen && (
+          <>
+            <motion.div
+              key="drawer-scrim"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={onToggleDrawer}
+              className="absolute inset-0 z-30 bg-black/30 backdrop-blur-[2px]"
+            />
+            <motion.div
+              key="drawer-panel"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', stiffness: 380, damping: 38 }}
+              className="absolute bottom-0 right-0 top-0 z-40 flex w-[380px] max-w-[88vw] flex-col border-l border-border/50 bg-bg-card/95 backdrop-blur-xl"
+            >
+              {/* 抽屉头 */}
+              <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <ListTodo size={15} className="text-accent" />
+                  <span className="font-display text-sm font-semibold">任务</span>
+                </div>
+                <button
+                  className="window-icon-button"
+                  onClick={onToggleDrawer}
+                  title="关闭任务面板"
+                >
+                  <PanelRightClose size={15} />
+                </button>
+              </div>
+              {/* 抽屉内容 */}
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <TaskPanel inDrawer />
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── 侧轨按钮 ──────────────────────────────────────────────
+
+function RailBtn({
+  active,
+  onClick,
+  icon,
+  label,
+  accent,
+  ghost,
+  danger,
+}: {
+  active?: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  accent?: boolean;
+  ghost?: boolean;
+  danger?: boolean;
+}) {
+  const base = 'rail-btn relative group';
+  const stateCls = active
+    ? accent
+      ? 'bg-accent/14 text-accent shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.22),0_4px_14px_-6px_rgb(var(--accent)/0.4)]'
+      : 'nav-active'
+    : ghost
+      ? 'text-fg-subtle'
+      : 'text-fg-muted';
+  const dangerHover = danger ? 'hover:!bg-danger/10 hover:!text-danger' : '';
+  return (
+    <button
+      onClick={onClick}
+      className={`${base} ${stateCls} ${dangerHover}`}
+      title={label}
+      aria-label={label}
+    >
+      {icon}
+      {/* 悬停标签 */}
+      <span className="pointer-events-none absolute left-[52px] z-50 whitespace-nowrap rounded-lg border border-border/60 bg-bg-card/95 px-2 py-1 text-[11px] font-medium text-fg opacity-0 shadow-md backdrop-blur-md transition-all duration-150 group-hover:opacity-100 group-hover:left-[56px]">
+        {label}
+      </span>
+      {/* 激活指示条 */}
+      {active && (
+        <span className="absolute -left-2 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_8px_rgb(var(--accent)/0.6)]" />
+      )}
+    </button>
+  );
+}
+
+// ── 品牌标识 ──────────────────────────────────────────────
+
 function BrandMark({ state }: { state: string }) {
   const running = state === 'running';
   return (
@@ -332,6 +341,7 @@ function BrandMark({ state }: { state: string }) {
       className={`brand-mark relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-2xl transition-all duration-[var(--motion-slow)] ease-[var(--ease-in-out)] ${
         running ? 'shadow-glow' : 'shadow-soft'
       }`}
+      title="FocusLink"
     >
       <span className="brand-mark-ring" />
       <span className="brand-mark-progress" />
@@ -344,64 +354,6 @@ function BrandMark({ state }: { state: string }) {
       />
     </div>
   );
-}
-
-function StatePill({ state }: { state: string }) {
-  const cls =
-    state === 'running'
-      ? 'border-accent/30 bg-accent/10 text-accent'
-      : state === 'paused'
-        ? 'border-warning/25 bg-warning/10 text-warning'
-        : state === 'finished'
-          ? 'border-success/25 bg-success/10 text-success'
-          : 'border-border bg-bg-subtle text-fg-muted';
-  return (
-    <span
-      key={`state-pill-${state}`}
-      className={`motion-fade-up rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${cls}`}
-    >
-      {stateLabel(state)}
-    </span>
-  );
-}
-
-function NavBtn({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`motion-press motion-state-transition flex h-8 items-center gap-1.5 rounded-xl px-3.5 text-xs font-semibold ${
-        active ? 'nav-active' : 'text-fg-muted hover:bg-bg-card/75 hover:text-fg'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-function stateLabel(state: string): string {
-  switch (state) {
-    case 'idle':
-      return '未开始';
-    case 'running':
-      return '专注中';
-    case 'paused':
-      return '已暂停';
-    case 'finished':
-      return '已结束';
-    default:
-      return '';
-  }
 }
 
 function applyTheme(settings: AppSettings): void {
