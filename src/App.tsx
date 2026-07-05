@@ -7,15 +7,7 @@ import { SegmentTimeline } from './components/SegmentTimeline';
 import { HistoryPanel } from './components/HistoryPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Toast } from './components/Toast';
-import {
-  Timer as TimerIcon,
-  History as HistoryIcon,
-  Settings as SettingsIcon,
-  ListTodo,
-  Minus,
-  X,
-  PanelRightClose,
-} from 'lucide-react';
+import { Icon } from './components/Icon';
 import type { AppSettings } from '@shared/types';
 
 type View = 'timer' | 'history' | 'settings';
@@ -117,19 +109,19 @@ export default function App() {
           <RailBtn
             active={view === 'timer'}
             onClick={() => setView('timer')}
-            icon={<TimerIcon size={18} />}
+            icon={<Icon.Timer size="lg" />}
             label="计时"
           />
           <RailBtn
             active={view === 'history'}
             onClick={() => setView('history')}
-            icon={<HistoryIcon size={18} />}
+            icon={<Icon.History size="lg" />}
             label="历史"
           />
           <RailBtn
             active={view === 'settings'}
             onClick={() => setView('settings')}
-            icon={<SettingsIcon size={18} />}
+            icon={<Icon.Settings size="lg" />}
             label="设置"
           />
         </div>
@@ -140,7 +132,7 @@ export default function App() {
             <RailBtn
               active={taskDrawerOpen}
               onClick={() => setTaskDrawerOpen((v) => !v)}
-              icon={<ListTodo size={18} />}
+              icon={<Icon.ListTodo size="lg" />}
               label="任务"
               accent
             />
@@ -151,13 +143,13 @@ export default function App() {
         <div className="mt-auto flex flex-col items-center gap-1.5">
           <RailBtn
             onClick={() => window.focuslink.window.minimizeToTray()}
-            icon={<Minus size={16} />}
+            icon={<Icon.Minus size="md" />}
             label="最小化"
             ghost
           />
           <RailBtn
             onClick={() => window.focuslink.window.minimizeToTray()}
-            icon={<X size={16} />}
+            icon={<Icon.X size="md" />}
             label="关闭"
             ghost
             danger
@@ -261,7 +253,7 @@ function TimerStage({
               {/* 抽屉头 */}
               <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <ListTodo size={15} className="text-accent" />
+                  <Icon.ListTodo size="sm" tone="accent" />
                   <span className="font-display text-sm font-semibold">任务</span>
                 </div>
                 <button
@@ -269,7 +261,7 @@ function TimerStage({
                   onClick={onToggleDrawer}
                   title="关闭任务面板"
                 >
-                  <PanelRightClose size={15} />
+                  <Icon.PanelClose size="sm" />
                 </button>
               </div>
               {/* 抽屉内容 */}

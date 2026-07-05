@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.3.7 - 2026-07-06（极光剧场 · Step 8：图标系统重构）
+
+- **统一图标包装器**：新增 `src/components/Icon.tsx`，用 `createIcon` HOC 包装 60+ 个 lucide 图标。
+- **自适应描边**：根据图标尺寸自动调整 `strokeWidth`——xs（12px）用 2.25 粗描边保证可读，xl（22px）用 1.5 细描边保证精致。
+- **五档尺寸**：xs/sm/md/lg/xl 统一光学尺寸，告别散乱的 `size={13}`/`size={15}`/`size={18}`。
+- **语义色调**：`tone` prop 快捷映射（accent/success/warning/danger/info/muted/subtle/default）。
+- **全组件迁移**：App.tsx、TimerPanel、SegmentTimeline、MiniWindow 所有图标全部迁移到 Icon 系统。
+- typecheck + 59 测试通过。
+
 ## v0.3.6 - 2026-07-06（极光剧场 · Step 7：设计令牌精进 - 融合 Linear/VoltAgent）
 
 > 参考 [awesome-design-md](https://github.com/VoltAgent/awesome-design-md) 中 Linear 与 VoltAgent 的设计文档，将令牌精度提升到工业级。

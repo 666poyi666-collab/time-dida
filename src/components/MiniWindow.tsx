@@ -14,7 +14,7 @@ import {
   getWallElapsedMs,
   getCurrentTaskTitle,
 } from '../lib/timerSelectors';
-import { Play, Pause, Square, ChevronDown, ChevronUp, Maximize2, Link2 } from 'lucide-react';
+import { Icon } from './Icon';
 
 const ACCENT_CLASS: Record<string, string> = {
   indigo: 'accent-indigo',
@@ -212,7 +212,7 @@ export function MiniWindow() {
             onClick={handleExpand}
             title="展开"
           >
-            <ChevronUp size={13} />
+            <Icon.ChevronUp size="sm" />
           </button>
         </div>
 
@@ -257,7 +257,7 @@ export function MiniWindow() {
             {STATE_LABEL[state]}
           </span>
           <span className="h-3 w-px bg-border/80" />
-          <Link2 size={10} className="shrink-0 text-accent" />
+          <Icon.Link size="xs" tone="accent" />
           <span className="truncate text-[11px] font-medium text-fg-muted">
             {currentTaskTitle ?? (state === 'idle' ? '点击开始专注' : '未关联任务')}
           </span>
@@ -268,14 +268,14 @@ export function MiniWindow() {
             onClick={handleOpenMain}
             title="打开主窗口"
           >
-            <Maximize2 size={12} />
+            <Icon.Maximize size="xs" />
           </button>
           <button
             className="mini-icon-button no-drag motion-press"
             onClick={handleCollapse}
             title="缩小"
           >
-            <ChevronDown size={13} />
+            <Icon.ChevronDown size="sm" />
           </button>
         </div>
       </div>
@@ -318,7 +318,7 @@ export function MiniWindow() {
             className={`mini-primary-button ${primaryButtonClass} no-drag motion-press inline-flex h-7 items-center gap-1.5 px-4 text-[11px] font-semibold`}
             onClick={handleToggle}
           >
-            {state === 'running' ? <Pause size={12} /> : <Play size={12} />}
+            {state === 'running' ? <Icon.Pause size="xs" /> : <Icon.Play size="xs" />}
             {state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始'}
           </button>
           <button
@@ -326,7 +326,7 @@ export function MiniWindow() {
             onClick={handleStop}
             disabled={state === 'idle' || state === 'finished'}
           >
-            <Square size={11} />
+            <Icon.Square size="xs" />
             结束
           </button>
         </div>

@@ -1,7 +1,7 @@
 // 片段时间码头 - v0.3 水平化时间线，贴底展示
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link2, Merge, Clock, Coffee, Play, ChevronRight } from 'lucide-react';
+import { Icon } from './Icon';
 import { useStore } from '../store/useStore';
 import { formatDuration, formatClock } from '../lib/time';
 import { buildMixedTimelineItems } from '../lib/buildMixedTimeline';
@@ -81,7 +81,7 @@ export function SegmentTimeline() {
   if (items.length === 0) {
     return (
       <div className="motion-fade-in flex items-center justify-center gap-2.5 rounded-2xl border border-dashed border-border/60 bg-bg-card/40 px-4 py-3.5 text-xs text-fg-subtle">
-        <Clock size={14} className="opacity-40" />
+        <Icon.Clock size="sm" tone="subtle" />
         暂无片段 · 开始专注后这里会展示片段时间码头
       </div>
     );
@@ -93,7 +93,7 @@ export function SegmentTimeline() {
       <div className="flex items-center justify-between border-b border-border/40 px-4 py-2.5">
         <h3 className="flex items-center gap-2 text-[13px] font-bold">
           <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-success/10 text-success">
-            <Clock size={12} />
+            <Icon.Clock size="xs" tone="success" />
           </span>
           <span className="font-display">片段时间码头</span>
           <span className="text-[11px] font-normal text-fg-subtle">
@@ -103,7 +103,7 @@ export function SegmentTimeline() {
         <div className="flex items-center gap-2">
           {selected.size >= 2 && (
             <button className="btn-ghost motion-press text-[11px]" onClick={handleMerge}>
-              <Merge size={12} />
+              <Icon.Merge size="xs" />
               合并 {selected.size} 个
             </button>
           )}
@@ -201,9 +201,9 @@ export function SegmentTimeline() {
                     <span className="inline-flex items-center gap-0.5 font-medium text-fg-muted">
                       ·进行中
                       {isFocus ? (
-                        <Play size={8} className="text-success" />
+                        <Icon.Play size="xs" tone="success" />
                       ) : (
-                        <Coffee size={8} className="text-warning" />
+                        <Icon.Coffee size="xs" tone="warning" />
                       )}
                     </span>
                   ) : item.endedAt ? (
@@ -214,13 +214,13 @@ export function SegmentTimeline() {
                 {/* 滴答关联标记 */}
                 {isFocus && item.taskSource === 'ticktick' && (
                   <span className="mt-1 inline-flex w-fit items-center gap-0.5 rounded-md bg-accent/10 px-1.5 py-0.5 text-[9px] text-accent">
-                    <Link2 size={9} /> 滴答
+                    <Icon.Link size="xs" tone="accent" /> 滴答
                   </span>
                 )}
 
                 {isSelected && (
                   <span className="absolute right-1.5 top-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-success text-white">
-                    <ChevronRight size={9} />
+                    <Icon.ChevronRight size="xs" />
                   </span>
                 )}
               </motion.div>

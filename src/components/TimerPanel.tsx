@@ -1,19 +1,6 @@
 // 计时舞台 - v0.3 极光剧场核心：巨型弧光环 + 中央时间 + 控制区
 import { useEffect, useState, useMemo } from 'react';
-import {
-  Play,
-  Pause,
-  Square,
-  Link2,
-  X,
-  Star,
-  Search,
-  RefreshCw,
-  Activity,
-  Clock3,
-  Coffee,
-  Route,
-} from 'lucide-react';
+import { Icon } from './Icon';
 import { useStore } from '../store/useStore';
 import { formatDuration, formatDurationPadded } from '../lib/time';
 import {
@@ -252,7 +239,7 @@ function TaskCard({ label, title, onClear }: { label: string; title: string; onC
   return (
     <div className="app-section flex items-start gap-2.5 px-3.5 py-3">
       <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-        <Link2 size={14} />
+        <Icon.Link size="xs" tone="accent" />
       </span>
       <div className="min-w-0 flex-1">
         <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">{label}</span>
@@ -264,7 +251,7 @@ function TaskCard({ label, title, onClear }: { label: string; title: string; onC
           onClick={onClear}
           title="清除关联"
         >
-          <X size={12} />
+          <Icon.X size="xs" />
         </button>
       )}
     </div>
@@ -286,13 +273,13 @@ function UnlinkedTaskCard({
       onClick={onPick}
     >
       <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-bg-subtle text-fg-subtle">
-        <Link2 size={14} />
+        <Icon.Link size="xs" />
       </span>
       <div className="min-w-0 flex-1">
         <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">{label}</span>
         <p className="mt-0.5 text-sm text-fg-subtle">{emptyText}</p>
       </div>
-      <Search size={12} className="flex-shrink-0 text-fg-subtle" />
+      <Icon.Search size="xs" tone="subtle" />
     </button>
   );
 }
@@ -473,7 +460,14 @@ export function TimerPanel() {
     state === 'paused' ? 'text-warning' : state === 'running' ? 'text-fg' : 'text-fg-muted';
 
   // 状态图标
-  const StateIcon = state === 'paused' ? Coffee : state === 'running' ? Activity : Clock3;
+  const stateIcon =
+    state === 'paused' ? (
+      <Icon.Coffee size="sm" tone="warning" />
+    ) : state === 'running' ? (
+      <Icon.Activity size="sm" tone="success" />
+    ) : (
+      <Icon.Clock size="sm" tone="subtle" />
+    );
   const stateIconTone =
     state === 'paused'
       ? 'text-warning'
@@ -545,7 +539,7 @@ export function TimerPanel() {
             {formatDurationPadded(currentSegmentMs)}
           </div>
           <div className="mt-3 flex items-center gap-1.5">
-            <StateIcon size={13} className={stateIconTone} />
+            {stateIcon}
             <span
               key={`sub-${state}`}
               className="motion-fade-up text-xs font-medium text-fg-subtle"
@@ -569,7 +563,7 @@ export function TimerPanel() {
             contextTitle ? 'bg-accent/10 text-accent' : 'bg-bg-subtle text-fg-subtle'
           }`}
         >
-          <Link2 size={15} />
+          <Icon.Link size="sm" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-[10px] font-semibold text-fg-subtle">{contextSourceLabel}</div>
@@ -591,7 +585,7 @@ export function TimerPanel() {
           className="btn-ghost shrink-0 !px-2.5 !py-1.5 text-[11px]"
           onClick={() => setPickerMode(isRunning ? 'segment' : 'preselect')}
         >
-          <Search size={11} />
+          <Icon.Search size="xs" />
           {isRunning ? (contextTitle ? '更换' : '关联') : '选择'}
         </button>
       </div>
@@ -601,19 +595,19 @@ export function TimerPanel() {
         <StatPill
           label="累计专注"
           value={formatDuration(cumulativeActiveMs)}
-          icon={<Activity size={12} />}
+          icon={<Icon.Activity size="xs" />}
           tone="success"
         />
         <StatPill
           label="累计暂停"
           value={formatDuration(cumulativePauseMs)}
-          icon={<Coffee size={12} />}
+          icon={<Icon.Coffee size="xs" />}
           tone={state === 'paused' ? 'warning' : 'neutral'}
         />
         <StatPill
           label="总历时"
           value={formatDuration(wallMs)}
-          icon={<Route size={12} />}
+          icon={<Icon.Route size="xs" />}
           tone="info"
         />
       </div>
@@ -645,7 +639,7 @@ export function TimerPanel() {
 
           {currentSegmentTaskId?.title && !sessionDefaultTitle && (
             <button className="btn-ghost w-full text-xs" onClick={() => setPickerMode('session')}>
-              <Star size={11} />
+              <Icon.Star size="xs" />
               设为本次专注默认任务
             </button>
           )}
@@ -663,7 +657,7 @@ export function TimerPanel() {
                   onClick={() => setPickerMode('preselect')}
                   title="更换即将专注的任务"
                 >
-                  <RefreshCw size={11} />
+                  <Icon.Refresh size="xs" />
                   更换任务
                 </button>
                 <button
@@ -671,7 +665,7 @@ export function TimerPanel() {
                   onClick={handleClearPreselect}
                   title="清除预选任务"
                 >
-                  <X size={11} />
+                  <Icon.X size="xs" />
                   清除
                 </button>
               </div>
@@ -692,7 +686,7 @@ export function TimerPanel() {
           className={`${mainActionClass} motion-press flex min-w-[172px] items-center justify-center gap-2`}
           onClick={handleToggle}
         >
-          {state === 'running' ? <Pause size={16} /> : <Play size={16} />}
+          {state === 'running' ? <Icon.Pause size="md" /> : <Icon.Play size="md" />}
           {toggleLabel}
         </button>
         <button
@@ -700,7 +694,7 @@ export function TimerPanel() {
           onClick={handleStop}
           disabled={isIdle || isFinished}
         >
-          <Square size={15} />
+          <Icon.Square size="sm" />
           结束专注
         </button>
       </div>
