@@ -19,15 +19,35 @@ export interface TrayCallbacks {
   onResetMini?: () => void;
 }
 
-/** 加载托盘图标：优先用 build/tray.ico，失败时回退到生成 SVG */
+/** 生成状态托盘 SVG：小尺寸保持单环 + 中心点，颜色随计时状态变化。 */
+function makeStateSvg(state: TimerState): string {
+  const tones: Record<TimerState, { ring: string; arc: string; dot: string }> = {
+    idle: { ring: '#615d59', arc: '#a39e98', dot: '#0075de' },
+    running: { ring: '#31302e', arc: '#1aae39', dot: '#0075de' },
+    paused: { ring: '#31302e', arc: '#dd5b00', dot: '#f59e0b' },
+    stopping: { ring: '#31302e', arc: '#0075de', dot: '#62aef0' },
+    finished: { ring: '#31302e', arc: '#2a9d99', dot: '#1aae39' },
+  };
+  const tone = tones[state] ?? tones.idle;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <path d="M12 4.5a7.5 7.5 0 1 1 0 15a7.5 7.5 0 0 1 0-15Z" fill="none" stroke="${tone.ring}" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M12 4.5a7.5 7.5 0 0 1 6.5 11.25" fill="none" stroke="${tone.arc}" stroke-width="2.8" stroke-linecap="round"/>
+  <circle cx="12" cy="12" r="2.3" fill="${tone.dot}"/>
+</svg>`;
+}
+
+/** 加载托盘图标：优先用状态 SVG，失败时回退到 build/tray.ico */
 function makeIcon(state: TimerState): Electron.NativeImage {
+  const stateIcon = nativeImage.createFromBuffer(Buffer.from(makeStateSvg(state), 'utf-8'));
+  if (!stateIcon.isEmpty()) return stateIcon;
+
   const iconPath = app.isPackaged
     ? path.join(process.resourcesPath, 'build', 'tray.ico')
     : path.join(__dirname, '..', 'build', 'tray.ico');
   try {
     const img = nativeImage.createFromPath(iconPath);
     if (!img.isEmpty()) {
-      // 暂停/完成态不再改色，直接用原图标，保持品牌一致性
       return img;
     }
   } catch (err) {
@@ -35,21 +55,7 @@ function makeIcon(state: TimerState): Electron.NativeImage {
       error: err instanceof Error ? err.message : String(err),
     });
   }
-  // 回退：生成简易 SVG 图标
-  const colors: Record<TimerState, string> = {
-    idle: '#64748b',
-    running: '#6366f1',
-    paused: '#f59e0b',
-    stopping: '#6366f1',
-    finished: '#10b981',
-  };
-  const color = colors[state] ?? '#64748b';
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-  <rect width="16" height="16" rx="3" fill="${color}"/>
-  <circle cx="8" cy="8" r="3" fill="#ffffff" opacity="0.9"/>
-</svg>`;
-  const fallback = nativeImage.createFromBuffer(Buffer.from(svg, 'utf-8'));
+  const fallback = nativeImage.createFromBuffer(Buffer.from(makeStateSvg(state), 'utf-8'));
   fallback.setTemplateImage(true);
   return fallback;
 }

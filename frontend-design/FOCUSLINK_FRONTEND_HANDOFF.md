@@ -1,7 +1,7 @@
 # FocusLink 前端/UI 交接文件
 
 > 目标读者：接手 UI 视觉与前端体验设计的 AI 或设计师。
-> 当前版本：v0.2.26。此文件只描述真实 `src/` 前端，不引用未接入应用的概念设计目录。
+> 当前版本：v0.2.27。此文件只描述真实 `src/` 前端，不引用未接入应用的概念设计目录。
 
 ## 1. 产品定位
 
@@ -148,9 +148,11 @@ Session 展开后优先级：
 - 圆角：主界面卡片约 16-18px，小窗可 22-26px。
 - 背景：稳定灰阶，不要粗糙纹理。
 
-v0.2.26 当前落地风格：
+v0.2.27 当前落地风格：
 - 主壳使用 `app-shell` / `topbar-shell` / `workspace-pane`，避免页面像浏览器半成品。
-- 顶部导航使用 `segmented-nav`，当前 tab 以薄荷绿浅底和细边框提示。
+- 顶部导航使用 `segmented-nav`，当前 tab 以 Notion 蓝浅底和细边框提示。
+- 全局背景使用 Notion 式暖纸面 `#f6f5f4`，结构主色为蓝，专注语义使用绿色，暂停语义使用橙色。
+- 应用图标、托盘图标和主窗口 `BrandMark` 共享同一套“纸面卡片 + 焦点环 + 任务节点”母题。
 - 左右分割线使用 `pane-divider`，默认细线，hover / dragging 只轻微显色。
 - 任务树使用 `task-row` / `task-row-parent` / `task-row-child` / `task-tree-children`。
 - 小窗使用 `mini-window-shell`，固定两态：260×88 与 420×184。

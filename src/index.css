@@ -10,22 +10,22 @@
 
 @layer base {
   :root {
-    /* FocusLink product tokens: calm desktop chrome, crisp borders, mint task accent. */
-    --background: #f4f7f8;
-    --foreground: #18212f;
+    /* FocusLink product tokens: Notion-inspired paper chrome + blue structure + green focus semantics. */
+    --background: #f6f5f4;
+    --foreground: #31302e;
     --card: #ffffff;
-    --card-foreground: #18212f;
-    --muted: #edf2f4;
-    --muted-foreground: #667789;
-    --border-token: #dce6ec;
-    --input-token: #d6e0e7;
-    --primary: #0ea978;
+    --card-foreground: #31302e;
+    --muted: #f1f0ee;
+    --muted-foreground: #615d59;
+    --border-token: #e6e6e6;
+    --input-token: #ddd9d4;
+    --primary: #0075de;
     --primary-foreground: #ffffff;
-    --primary-soft: #dff6ed;
-    --accent-token: #e7f7f0;
-    --accent-foreground-token: #067552;
-    --ring-token: #25bf88;
-    --radius: 18px;
+    --primary-soft: #e8f2ff;
+    --accent-token: #e8f2ff;
+    --accent-foreground-token: #005bab;
+    --ring-token: #0075de;
+    --radius: 16px;
 
     /* Motion tokens — 统一节奏，禁止组件各自乱写 transition。
        原则：轻、稳、顺；优先 transform/opacity；禁止 bounce；最长 260ms。 */
@@ -38,35 +38,35 @@
     --scale-hover: 1.02;
     --scale-active: 0.98;
 
-    --app-bg: 244 247 248;
+    --app-bg: 246 245 244;
     --app-surface: 255 255 255;
-    --app-surface-2: 238 243 246;
-    --app-elevated: 250 252 253;
+    --app-surface-2: 241 240 238;
+    --app-elevated: 250 249 247;
     --app-overlay: 15 23 42 / 0.34;
-    --app-text: 24 33 47;
-    --app-muted: 82 98 114;
-    --app-subtle: 123 139 156;
+    --app-text: 49 48 46;
+    --app-muted: 97 93 89;
+    --app-subtle: 163 158 152;
     --app-inverse: 255 255 255;
-    --app-border: 220 230 236;
-    --app-border-strong: 195 209 219;
-    --app-border-subtle: 234 240 244;
-    --app-accent: 14 169 120;
-    --app-accent-hover: 8 140 99;
-    --app-accent-soft: 14 169 120 / 0.12;
+    --app-border: 230 230 230;
+    --app-border-strong: 202 199 194;
+    --app-border-subtle: 238 237 235;
+    --app-accent: 0 117 222;
+    --app-accent-hover: 0 91 171;
+    --app-accent-soft: 0 117 222 / 0.1;
     --app-accent-fg: 255 255 255;
-    --app-success: 16 185 129;
-    --app-warning: 245 158 11;
+    --app-success: 26 174 57;
+    --app-warning: 221 91 0;
     --app-danger: 239 68 68;
-    --app-info: 14 165 233;
+    --app-info: 98 174 240;
     --radius-sm: 8px;
-    --radius-md: 10px;
+    --radius-md: 12px;
     --radius-lg: 16px;
-    --radius-xl: 20px;
-    --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.035);
-    --shadow-md: 0 14px 34px -30px rgb(16 24 40 / 0.42);
-    --shadow-lg: 0 24px 64px -48px rgb(16 24 40 / 0.45);
+    --radius-xl: 18px;
+    --shadow-sm: 0 1px 2px rgb(49 48 46 / 0.035);
+    --shadow-md: 0 14px 34px -32px rgb(49 48 46 / 0.34);
+    --shadow-lg: 0 24px 64px -50px rgb(49 48 46 / 0.38);
     --shadow-glow:
-      0 0 0 1px rgb(var(--app-accent) / 0.14), 0 18px 44px -30px rgb(var(--app-accent) / 0.45);
+      0 0 0 1px rgb(var(--success) / 0.18), 0 18px 44px -30px rgb(var(--success) / 0.48);
 
     /* Backward-compatible aliases used by the current Tailwind config. */
     --bg-base: var(--app-bg);
@@ -80,7 +80,7 @@
     --border-strong: var(--app-border-strong);
     --accent: var(--app-accent);
     --accent-fg: var(--app-accent-fg);
-    --accent-muted: 207 245 227;
+    --accent-muted: 232 242 255;
     --success: var(--app-success);
     --warning: var(--app-warning);
     --danger: var(--app-danger);
@@ -88,37 +88,37 @@
   }
 
   .light {
-    --background: #f4f7f8;
-    --foreground: #18212f;
+    --background: #f6f5f4;
+    --foreground: #31302e;
     --card: #ffffff;
-    --card-foreground: #111827;
-    --muted: #edf2f4;
-    --muted-foreground: #667789;
-    --border-token: #dce6ec;
-    --input-token: #d6e0e7;
-    --primary: #0ea978;
+    --card-foreground: #31302e;
+    --muted: #f1f0ee;
+    --muted-foreground: #615d59;
+    --border-token: #e6e6e6;
+    --input-token: #ddd9d4;
+    --primary: #0075de;
     --primary-foreground: #ffffff;
-    --primary-soft: #dff6ed;
-    --accent-token: #e7f7f0;
-    --accent-foreground-token: #067552;
-    --ring-token: #25bf88;
+    --primary-soft: #e8f2ff;
+    --accent-token: #e8f2ff;
+    --accent-foreground-token: #005bab;
+    --ring-token: #0075de;
 
-    --app-bg: 244 247 248;
+    --app-bg: 246 245 244;
     --app-surface: 255 255 255;
-    --app-surface-2: 238 243 246;
-    --app-elevated: 250 252 253;
+    --app-surface-2: 241 240 238;
+    --app-elevated: 250 249 247;
     --app-overlay: 15 23 42 / 0.36;
-    --app-text: 24 33 47;
-    --app-muted: 82 98 114;
-    --app-subtle: 123 139 156;
-    --app-border: 220 230 236;
-    --app-border-strong: 195 209 219;
-    --app-border-subtle: 234 240 244;
-    --app-accent: 14 169 120;
-    --app-accent-hover: 8 140 99;
-    --app-accent-soft: 14 169 120 / 0.12;
+    --app-text: 49 48 46;
+    --app-muted: 97 93 89;
+    --app-subtle: 163 158 152;
+    --app-border: 230 230 230;
+    --app-border-strong: 202 199 194;
+    --app-border-subtle: 238 237 235;
+    --app-accent: 0 117 222;
+    --app-accent-hover: 0 91 171;
+    --app-accent-soft: 0 117 222 / 0.1;
     --app-accent-fg: 255 255 255;
-    --accent-muted: 207 245 227;
+    --accent-muted: 232 242 255;
   }
 
   .dark {
@@ -162,10 +162,10 @@
 
   /* 主题色变体 */
   .accent-indigo {
-    --app-accent: 16 185 129;
-    --app-accent-hover: 5 150 105;
+    --app-accent: 0 117 222;
+    --app-accent-hover: 0 91 171;
     --accent: var(--app-accent);
-    --accent-muted: 207 245 227;
+    --accent-muted: 232 242 255;
   }
   .accent-violet {
     --app-accent: 139 92 246;
@@ -174,10 +174,10 @@
     --accent-muted: 76 29 149;
   }
   .accent-emerald {
-    --app-accent: 16 185 129;
-    --app-accent-hover: 52 211 153;
+    --app-accent: 26 174 57;
+    --app-accent-hover: 16 137 46;
     --accent: var(--app-accent);
-    --accent-muted: 6 95 70;
+    --accent-muted: 221 246 226;
   }
   .accent-rose {
     --app-accent: 244 63 94;
@@ -220,20 +220,20 @@
   }
 
   .state-dot-running {
-    background: rgb(var(--accent));
-    box-shadow: 0 0 0 0 rgb(var(--accent) / 0.5);
+    background: rgb(var(--success));
+    box-shadow: 0 0 0 0 rgb(var(--success) / 0.5);
     animation: state-pulse 2s infinite;
   }
 
   @keyframes state-pulse {
     0% {
-      box-shadow: 0 0 0 0 rgb(var(--accent) / 0.5);
+      box-shadow: 0 0 0 0 rgb(var(--success) / 0.5);
     }
     70% {
-      box-shadow: 0 0 0 6px rgb(var(--accent) / 0);
+      box-shadow: 0 0 0 6px rgb(var(--success) / 0);
     }
     100% {
-      box-shadow: 0 0 0 0 rgb(var(--accent) / 0);
+      box-shadow: 0 0 0 0 rgb(var(--success) / 0);
     }
   }
 
@@ -359,20 +359,20 @@
   }
 
   .mini-window-running {
-    border-color: rgb(var(--accent) / 0.34);
+    border-color: rgb(var(--success) / 0.34);
     box-shadow:
       0 1px 0 rgb(255 255 255 / 0.5) inset,
       0 18px 54px -34px rgb(15 23 42 / 0.5),
-      0 0 0 1px rgb(var(--accent) / 0.08),
-      0 16px 42px -38px rgb(var(--accent) / 0.88);
+      0 0 0 1px rgb(var(--success) / 0.08),
+      0 16px 42px -38px rgb(var(--success) / 0.88);
   }
 
   .mini-window-running::after {
     background: linear-gradient(
       90deg,
-      rgb(var(--accent) / 0.1),
-      rgb(var(--accent) / 0.82),
-      rgb(var(--accent) / 0.1)
+      rgb(var(--success) / 0.1),
+      rgb(var(--success) / 0.82),
+      rgb(var(--success) / 0.1)
     );
     opacity: 0.86;
   }
@@ -441,9 +441,9 @@
   }
 
   .mini-stat-card-primary {
-    border-color: rgb(var(--accent) / 0.22);
+    border-color: rgb(var(--success) / 0.22);
     background:
-      linear-gradient(180deg, rgb(var(--accent) / 0.095), rgb(var(--bg-subtle) / 0.36)),
+      linear-gradient(180deg, rgb(var(--success) / 0.095), rgb(var(--bg-subtle) / 0.36)),
       rgb(var(--bg-card) / 0.48);
   }
 
@@ -487,8 +487,8 @@
 
   .focus-glow {
     box-shadow:
-      0 0 0 1px rgb(var(--accent) / 0.18),
-      0 18px 48px -40px rgb(var(--accent) / 0.48),
+      0 0 0 1px rgb(var(--success) / 0.18),
+      0 18px 48px -40px rgb(var(--success) / 0.48),
       var(--shadow-md);
   }
 
@@ -523,11 +523,64 @@
   }
 
   .brand-mark {
-    border: 1px solid rgb(var(--accent) / 0.2);
+    border: 1px solid rgb(var(--border) / 0.92);
     background:
-      linear-gradient(180deg, rgb(var(--accent) / 0.12), rgb(var(--accent) / 0.06)),
+      linear-gradient(180deg, rgb(255 255 255 / 0.98), rgb(var(--bg-subtle) / 0.82)),
       rgb(var(--bg-card));
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.45);
+  }
+
+  .brand-mark::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 6px;
+    width: 9px;
+    height: 4px;
+    border-radius: 999px;
+    background: #62aef0;
+    box-shadow: 11px 0 0 rgb(255 100 200 / 0.82);
+  }
+
+  .brand-mark-ring {
+    position: absolute;
+    inset: 9px;
+    border: 2px solid rgb(var(--accent));
+    border-radius: 999px;
+  }
+
+  .brand-mark-progress {
+    position: absolute;
+    inset: 8px;
+    border-radius: 999px;
+    border: 3px solid transparent;
+    border-top-color: rgb(var(--success));
+    border-right-color: rgb(var(--success));
+    transform: rotate(24deg);
+  }
+
+  .brand-mark-core {
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: rgb(var(--fg-default));
+  }
+
+  .brand-mark-node {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: #2a9d99;
+  }
+
+  .brand-mark-status {
+    height: 3px;
+    width: 12px;
+    background: rgb(var(--success));
   }
 
   .segmented-nav {

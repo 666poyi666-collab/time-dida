@@ -47,7 +47,7 @@ const STATE_DOT: Record<string, string> = {
 
 const STATE_TEXT: Record<string, string> = {
   idle: 'text-fg-muted',
-  running: 'text-accent',
+  running: 'text-success',
   paused: 'text-warning',
   finished: 'text-success',
   stopping: 'text-fg-muted',
@@ -178,7 +178,7 @@ export function MiniWindow() {
   const cumulativeMs = isPaused ? cumulativePauseMs : cumulativeActiveMs;
   const primaryLabel = isPaused ? '当前暂停' : isIdle ? '待开始' : '当前专注';
   const cumulativeLabel = isPaused ? '累计暂停' : '累计专注';
-  const activeTone = isPaused ? 'text-warning' : isRunning ? 'text-accent' : 'text-fg';
+  const activeTone = isPaused ? 'text-warning' : isRunning ? 'text-success' : 'text-fg';
 
   // ─── 事件处理 ────────────────────────────────────────────────
   const handleToggle = useCallback(async (e: React.MouseEvent) => {
@@ -360,7 +360,7 @@ function MiniStat({
   className?: string;
 }) {
   const toneClass =
-    tone === 'focus' ? 'text-accent' : tone === 'pause' ? 'text-warning' : 'text-fg-muted';
+    tone === 'focus' ? 'text-success' : tone === 'pause' ? 'text-warning' : 'text-fg-muted';
   return (
     <div className={`mini-stat-card motion-state-transition min-w-0 px-2 py-1.5 ${className}`}>
       <div className={`truncate text-[9px] font-semibold ${toneClass}`}>{label}</div>

@@ -13,7 +13,6 @@ import {
   Settings as SettingsIcon,
   Minus,
   X,
-  Activity,
 } from 'lucide-react';
 import type { AppSettings } from '@shared/types';
 import {
@@ -330,13 +329,16 @@ function BrandMark({ state }: { state: string }) {
   const running = state === 'running';
   return (
     <div
-      className={`brand-mark relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-2xl text-accent transition-all duration-[var(--motion-slow)] ease-[var(--ease-in-out)] ${
+      className={`brand-mark relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-2xl transition-all duration-[var(--motion-slow)] ease-[var(--ease-in-out)] ${
         running ? 'shadow-glow' : 'shadow-soft'
       }`}
     >
-      <Activity size={16} className="relative z-10" />
+      <span className="brand-mark-ring" />
+      <span className="brand-mark-progress" />
+      <span className="brand-mark-core" />
+      <span className="brand-mark-node" />
       <span
-        className={`absolute bottom-1.5 h-1 w-3 rounded-full bg-accent transition-all duration-[var(--motion-slow)] ease-[var(--ease-in-out)] ${
+        className={`brand-mark-status absolute bottom-1.5 rounded-full transition-all duration-[var(--motion-slow)] ease-[var(--ease-in-out)] ${
           running ? 'w-4 opacity-95' : 'opacity-55'
         }`}
       />

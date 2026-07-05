@@ -68,8 +68,8 @@ function StateBadge({ state }: { state: string }) {
     },
     running: {
       label: '专注中',
-      dotCls: 'bg-accent',
-      pillCls: 'border-accent/20 bg-accent/10 text-accent',
+      dotCls: 'bg-success',
+      pillCls: 'border-success/25 bg-success/10 text-success',
       pulse: true,
     },
     paused: {
@@ -94,7 +94,7 @@ function StateBadge({ state }: { state: string }) {
     <span className={`status-chip ${c.pillCls}`}>
       <span className="relative flex h-1.5 w-1.5">
         {c.pulse && (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
         )}
         <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${c.dotCls}`} />
       </span>
@@ -108,7 +108,7 @@ function MinuteRhythmBar({ state, minuteRhythmSec }: { state: string; minuteRhyt
   const isPaused = state === 'paused';
   const isRunning = state === 'running';
   const pct = (minuteRhythmSec / 60) * 100;
-  const barCls = isPaused ? 'bg-warning' : 'bg-accent';
+  const barCls = isPaused ? 'bg-warning' : 'bg-success';
 
   return (
     <div className="w-full">
@@ -116,7 +116,7 @@ function MinuteRhythmBar({ state, minuteRhythmSec }: { state: string; minuteRhyt
         <div
           className={`motion-rhythm-fill h-full rounded-full ${barCls} ${
             isRunning
-              ? 'shadow-[0_0_10px_rgb(var(--app-accent)/0.45),0_0_3px_rgb(var(--app-accent)/0.6)]'
+              ? 'shadow-[0_0_10px_rgb(var(--app-success)/0.35),0_0_3px_rgb(var(--app-success)/0.5)]'
               : isPaused
                 ? 'shadow-[0_0_6px_rgb(var(--app-warning)/0.3)]'
                 : ''
@@ -144,10 +144,11 @@ function CumStat({
   label: string;
   value: string;
   icon: React.ReactNode;
-  tone?: 'accent' | 'warning' | 'info' | 'neutral' | 'danger';
+  tone?: 'accent' | 'success' | 'warning' | 'info' | 'neutral' | 'danger';
 }) {
   const toneCls = {
     accent: 'text-accent',
+    success: 'text-success',
     warning: 'text-warning',
     info: 'text-info',
     neutral: 'text-fg-subtle',
@@ -456,7 +457,7 @@ export function TimerPanel() {
               state === 'paused'
                 ? 'border-warning/25 bg-warning/10 text-warning'
                 : state === 'running'
-                  ? 'border-accent/20 bg-accent/10 text-accent'
+                  ? 'border-success/25 bg-success/10 text-success'
                   : 'border-border bg-bg-subtle text-fg-subtle'
             }`}
           >
@@ -483,7 +484,7 @@ export function TimerPanel() {
             label="累计专注"
             value={formatDuration(cumulativeActiveMs)}
             icon={<Activity size={11} />}
-            tone="accent"
+            tone="success"
           />
           <CumStat
             label="累计暂停"

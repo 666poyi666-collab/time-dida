@@ -1,8 +1,35 @@
-# 生成简约白色透明图标 v2
-# 设计理念：透明背景 + 纯白细圆环 + 12点小圆点（时钟/焦点暗示）
-# 应用图标：圆环 + 12点圆点 + 中心微点（精致焦点感）
-# 托盘图标：纯圆环 + 中心点（template 风格，极简）
+# Generate FocusLink product icons.
+# Design: Notion-inspired paper tile + FocusLink focus ring + task-link dots.
+# Outputs:
+# - build/icon.ico, build/icon.png
+# - build/tray.ico, build/tray.png
+# - public/favicon.png
 Add-Type -AssemblyName System.Drawing
+
+$Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$BuildDir = Join-Path $Root "build"
+$PublicDir = Join-Path $Root "public"
+New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
+New-Item -ItemType Directory -Force -Path $PublicDir | Out-Null
+
+function New-Color($hex, [int]$alpha = 255) {
+  $clean = $hex.TrimStart("#")
+  $r = [Convert]::ToInt32($clean.Substring(0, 2), 16)
+  $g = [Convert]::ToInt32($clean.Substring(2, 2), 16)
+  $b = [Convert]::ToInt32($clean.Substring(4, 2), 16)
+  return [System.Drawing.Color]::FromArgb($alpha, $r, $g, $b)
+}
+
+function New-RoundedRectPath([single]$x, [single]$y, [single]$w, [single]$h, [single]$r) {
+  $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $d = $r * 2
+  $path.AddArc($x, $y, $d, $d, 180, 90)
+  $path.AddArc($x + $w - $d, $y, $d, $d, 270, 90)
+  $path.AddArc($x + $w - $d, $y + $h - $d, $d, $d, 0, 90)
+  $path.AddArc($x, $y + $h - $d, $d, $d, 90, 90)
+  $path.CloseFigure()
+  return $path
+}
 
 function New-IconSizes($drawFn, $sizes) {
   $imgs = @()
@@ -52,84 +79,113 @@ function Save-AsIco($images, $path) {
   $ms.Close()
 }
 
-# 应用图标：白色细圆环 + 12点小圆点 + 中心微点
 function Draw-AppIcon($g, $size) {
-  $cx = [int]($size / 2)
-  $cy = [int]($size / 2)
-  $white = [System.Drawing.Color]::FromArgb(250, 255, 255, 255)
+  $s = [single]$size
+  $tile = $s * 0.08
+  $tileSize = $s - ($tile * 2)
+  $radius = $s * 0.21
+  $cx = $s / 2
+  $cy = $s / 2
 
-  # 主圆环（细而精致）
-  $ringR = [int]($size * 0.38)
-  $ringWidth = [single][int]($size * 0.055)
-  if ($ringWidth -lt 1.2) { $ringWidth = 1.2 }
-  $ringPen = New-Object System.Drawing.Pen $white, $ringWidth
-  $g.DrawEllipse($ringPen, $cx - $ringR, $cy - $ringR, $ringR * 2, $ringR * 2)
+  $shadowPath = New-RoundedRectPath ($tile + $s * 0.012) ($tile + $s * 0.018) $tileSize $tileSize $radius
+  $shadowBrush = New-Object System.Drawing.SolidBrush (New-Color "#000000" 34)
+  $g.FillPath($shadowBrush, $shadowPath)
 
-  # 12点位置小圆点（时钟刻度暗示）
-  $dotR = [int]($size * 0.085)
-  if ($dotR -lt 1) { $dotR = 1 }
-  $dotY = [int]($cy - $ringR + $ringWidth * 0.5 + $dotR * 0.6)
-  $dotBrush = New-Object System.Drawing.SolidBrush $white
-  $g.FillEllipse($dotBrush, $cx - $dotR, $dotY - $dotR, $dotR * 2, $dotR * 2)
+  $tilePath = New-RoundedRectPath $tile $tile $tileSize $tileSize $radius
+  $tileBrush = New-Object System.Drawing.SolidBrush (New-Color "#F6F5F4")
+  $g.FillPath($tileBrush, $tilePath)
+  $borderPen = New-Object System.Drawing.Pen (New-Color "#E6E6E6"), ([Math]::Max(1.2, $s * 0.018))
+  $g.DrawPath($borderPen, $tilePath)
 
-  # 中心微点（焦点核心）
-  $coreR = [int]($size * 0.06)
-  if ($coreR -lt 1) { $coreR = 1 }
-  $g.FillEllipse($dotBrush, $cx - $coreR, $cy - $coreR, $coreR * 2, $coreR * 2)
-}
+  # Small Notion-style color tabs: personality stays decorative, not structural.
+  $tab1 = New-RoundedRectPath ($s * 0.21) ($s * 0.18) ($s * 0.18) ($s * 0.08) ($s * 0.035)
+  $tab2 = New-RoundedRectPath ($s * 0.42) ($s * 0.18) ($s * 0.12) ($s * 0.08) ($s * 0.035)
+  $g.FillPath((New-Object System.Drawing.SolidBrush (New-Color "#62AEF0")), $tab1)
+  $g.FillPath((New-Object System.Drawing.SolidBrush (New-Color "#FF64C8" 235)), $tab2)
 
-# 托盘图标：纯白色圆环 + 中心点（极简 template 风格）
-function Draw-TrayIcon($g, $size) {
-  $cx = [int]($size / 2)
-  $cy = [int]($size / 2)
-  $white = [System.Drawing.Color]::FromArgb(245, 255, 255, 255)
+  # Main focus ring.
+  $ringR = $s * 0.255
+  $ringW = [Math]::Max(2.0, $s * 0.052)
+  $bluePen = New-Object System.Drawing.Pen (New-Color "#0075DE"), $ringW
+  $bluePen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $bluePen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $g.DrawEllipse($bluePen, $cx - $ringR, $cy - $ringR, $ringR * 2, $ringR * 2)
 
-  # 外环
-  $ringR = [int]($size * 0.40)
-  $ringWidth = [single][int]($size * 0.075)
-  if ($ringWidth -lt 1.2) { $ringWidth = 1.2 }
-  $ringPen = New-Object System.Drawing.Pen $white, $ringWidth
-  $g.DrawEllipse($ringPen, $cx - $ringR, $cy - $ringR, $ringR * 2, $ringR * 2)
+  # Active progress arc.
+  $arcPen = New-Object System.Drawing.Pen (New-Color "#1AAE39"), ([Math]::Max(2.0, $s * 0.063))
+  $arcPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $arcPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $arcR = $ringR + ($s * 0.005)
+  $g.DrawArc($arcPen, $cx - $arcR, $cy - $arcR, $arcR * 2, $arcR * 2, -95, 228)
 
-  # 中心圆点
-  $coreR = [int]($size * 0.13)
-  if ($coreR -lt 1) { $coreR = 1 }
-  $coreBrush = New-Object System.Drawing.SolidBrush $white
+  # Task-link line and nodes.
+  $linkPen = New-Object System.Drawing.Pen (New-Color "#A39E98" 170), ([Math]::Max(1.0, $s * 0.018))
+  $g.DrawLine($linkPen, $cx + $s * 0.09, $cy + $s * 0.12, $cx + $s * 0.24, $cy + $s * 0.24)
+  $nodeBrush = New-Object System.Drawing.SolidBrush (New-Color "#2A9D99")
+  $nodeR = $s * 0.046
+  $g.FillEllipse($nodeBrush, $cx + $s * 0.21 - $nodeR, $cy + $s * 0.22 - $nodeR, $nodeR * 2, $nodeR * 2)
+
+  # Pause marker.
+  $pauseBrush = New-Object System.Drawing.SolidBrush (New-Color "#DD5B00")
+  $pausePath = New-RoundedRectPath ($cx - $s * 0.045) ($cy - $ringR - $s * 0.02) ($s * 0.09) ($s * 0.16) ($s * 0.028)
+  $g.FillPath($pauseBrush, $pausePath)
+
+  # Center dot.
+  $coreBrush = New-Object System.Drawing.SolidBrush (New-Color "#31302E")
+  $coreR = $s * 0.064
   $g.FillEllipse($coreBrush, $cx - $coreR, $cy - $coreR, $coreR * 2, $coreR * 2)
 }
 
-# 生成 app icon
+function Draw-TrayIcon($g, $size) {
+  $s = [single]$size
+  $cx = $s / 2
+  $cy = $s / 2
+  $ringR = $s * 0.32
+  $ringW = [Math]::Max(1.6, $s * 0.115)
+  $ringPen = New-Object System.Drawing.Pen (New-Color "#31302E"), $ringW
+  $ringPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $ringPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $g.DrawEllipse($ringPen, $cx - $ringR, $cy - $ringR, $ringR * 2, $ringR * 2)
+
+  $arcPen = New-Object System.Drawing.Pen (New-Color "#1AAE39"), $ringW
+  $arcPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $arcPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $g.DrawArc($arcPen, $cx - $ringR, $cy - $ringR, $ringR * 2, $ringR * 2, -90, 210)
+
+  $coreR = $s * 0.105
+  $coreBrush = New-Object System.Drawing.SolidBrush (New-Color "#0075DE")
+  $g.FillEllipse($coreBrush, $cx - $coreR, $cy - $coreR, $coreR * 2, $coreR * 2)
+}
+
 $appSizes = @(16, 24, 32, 48, 64, 128, 256)
 $appImgs = New-IconSizes Draw-AppIcon $appSizes
-Save-AsIco $appImgs "c:\Users\poyi\Desktop\time1\build\icon.ico"
+Save-AsIco $appImgs (Join-Path $BuildDir "icon.ico")
 $bmp512 = New-Object System.Drawing.Bitmap 512, 512
 $g = [System.Drawing.Graphics]::FromImage($bmp512)
 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
 $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
 $g.Clear([System.Drawing.Color]::Transparent)
 Draw-AppIcon $g 512
-$bmp512.Save("c:\Users\poyi\Desktop\time1\build\icon.png", [System.Drawing.Imaging.ImageFormat]::Png)
+$bmp512.Save((Join-Path $BuildDir "icon.png"), [System.Drawing.Imaging.ImageFormat]::Png)
 Write-Output "Generated build/icon.ico and build/icon.png"
 
-# 生成 tray icon
 $traySizes = @(16, 20, 24, 32, 40, 48, 64, 128, 256)
 $trayImgs = New-IconSizes Draw-TrayIcon $traySizes
-Save-AsIco $trayImgs "c:\Users\poyi\Desktop\time1\build\tray.ico"
+Save-AsIco $trayImgs (Join-Path $BuildDir "tray.ico")
 $bmp256 = New-Object System.Drawing.Bitmap 256, 256
 $g = [System.Drawing.Graphics]::FromImage($bmp256)
 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
 $g.Clear([System.Drawing.Color]::Transparent)
 Draw-TrayIcon $g 256
-$bmp256.Save("c:\Users\poyi\Desktop\time1\build\tray.png", [System.Drawing.Imaging.ImageFormat]::Png)
+$bmp256.Save((Join-Path $BuildDir "tray.png"), [System.Drawing.Imaging.ImageFormat]::Png)
 Write-Output "Generated build/tray.ico and build/tray.png"
 
-# 更新 favicon.png
 $bmpFav = New-Object System.Drawing.Bitmap 512, 512
 $g = [System.Drawing.Graphics]::FromImage($bmpFav)
 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
 $g.Clear([System.Drawing.Color]::Transparent)
 Draw-AppIcon $g 512
-$bmpFav.Save("c:\Users\poyi\Desktop\time1\public\favicon.png", [System.Drawing.Imaging.ImageFormat]::Png)
+$bmpFav.Save((Join-Path $PublicDir "favicon.png"), [System.Drawing.Imaging.ImageFormat]::Png)
 Write-Output "Updated public/favicon.png"
 
 Write-Output "Done."
