@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.3.10 - 2026-07-06（极光剧场 · Step 11：超丝滑动效引擎 + 图标系统全面迁移）
+
+- **Motion Engine v2**：新增 15+ 动画工具类，覆盖数字翻转、磁吸悬停、光泽扫过、交错入场、文字渐显、状态点呼吸等高帧率微交互。
+- **性能隔离**：`contain: layout style paint` 应用于卡片/小窗/时间线卡片，`content-visibility: auto` 跳过离屏渲染。
+- **图标系统 v2**：Icon 组件新增 `hover` 和 `spin` 属性，支持悬停微动效和加载旋转；新增 20+ 图标（Loader、BarChart、LogOut、Stethoscope、ListChecks、ListTree、Layers3、Sparkles、Gauge、Lock、Unlock、Wifi、Bell、Power 等）；新增 Spinner 组件。
+- **全量图标迁移**：HistoryPanel、SettingsPanel、TaskPanel、TaskPicker、Toast 全部从 lucide-react 原始导入迁移到统一 Icon 系统，100% 覆盖。
+- **按钮光泽扫过**：主按钮/专注按钮/暂停按钮新增 `btn-shine` 光泽扫过效果，hover 时一道光从左到右流过。
+- **磁吸悬停**：计时器主按钮使用 `motion-magnetic`，hover 时 `scale(1.03)` + spring 曲线弹性放大。
+- **时间线增强**：卡片新增 `motion-hover-expand`（hover 放大 + 上浮）+ `scroll-snap-item`（滚动捕捉对齐）+ `perf-contain`（性能隔离）。
+- **主题平滑过渡**：根元素添加 `theme-transition`，深色/浅色切换时颜色交叉淡入而非突变。
+- **焦点环动画**：侧轨按钮新增 `motion-focus-ring`，键盘焦点时辉光环呼吸动画。
+- **小窗按钮增强**：mini-icon-button 新增 `scale(1.08)` hover + `scale(0.92)` active 弹性反馈。
+- **状态点呼吸**：计时器运行状态点使用 `motion-dot-breathe`，比 ping 更精致的呼吸效果。
+- **Toast 弹性入场**：toast 动画从线性过渡改为 spring 物理曲线（stiffness: 420, damping: 32）。
+- typecheck + 59 测试通过。
+
 ## v0.3.9 - 2026-07-06（极光剧场 · Step 10：组件精进 - Linear 级精致度）
 
 - **按钮系统精进**：阴影从 12px 降到 8px（更克制），hover 时阴影加深（有层次），按压 `scale(0.97)` 替代 `translateY`。

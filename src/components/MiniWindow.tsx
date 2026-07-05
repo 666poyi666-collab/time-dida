@@ -195,7 +195,7 @@ export function MiniWindow() {
     return (
       <div
         ref={containerRef}
-        className={`mini-window-shell mini-window-${state} mini-window-collapsed motion-base flex h-full w-full flex-col justify-between px-4 py-2.5 text-fg`}
+        className={`mini-window-shell mini-window-${state} mini-window-collapsed motion-base perf-contain flex h-full w-full flex-col justify-between px-4 py-2.5 text-fg`}
         onDoubleClick={handleExpand}
         title="双击展开"
       >
@@ -247,7 +247,7 @@ export function MiniWindow() {
   return (
     <div
       ref={containerRef}
-      className={`mini-window-shell mini-window-${state} motion-base flex h-full w-full flex-col px-4 py-3 text-fg`}
+      className={`mini-window-shell mini-window-${state} motion-base perf-contain flex h-full w-full flex-col px-4 py-3 text-fg`}
     >
       {/* 顶部：状态 + 任务 + 窗口控制 */}
       <div className="mini-top-row flex items-center justify-between gap-2">

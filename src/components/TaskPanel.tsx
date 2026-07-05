@@ -1,28 +1,7 @@
 // 右侧任务区 - 根据 settings.taskSource 选择任务来源（本地 / dida CLI / TickTick OAuth）
 // 任务树展示 + 默认隐藏已完成 + 折叠展开 + 搜索展开匹配父任务
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Search,
-  Plus,
-  Link2,
-  RefreshCw,
-  CloudOff,
-  Cloud,
-  CheckCircle2,
-  AlertCircle,
-  Terminal,
-  HardDrive,
-  ChevronRight,
-  ChevronDown,
-  Eye,
-  EyeOff,
-  Circle,
-  CheckCircle,
-  ListTree,
-  Star,
-  Layers3,
-  X,
-} from 'lucide-react';
+import { Icon } from './Icon';
 import { useStore } from '../store/useStore';
 import type { Task, Project, SyncQueueItem } from '@shared/types';
 
@@ -330,13 +309,13 @@ export function TaskPanel({ inDrawer = false }: { inDrawer?: boolean }) {
               }`}
             >
               {isLocal ? (
-                <HardDrive size={16} />
+                <Icon.HardDrive size="md" />
               ) : isCli ? (
-                <Terminal size={16} />
+                <Icon.Terminal size="md" />
               ) : remoteConnected ? (
-                <Cloud size={16} />
+                <Icon.Cloud size="md" />
               ) : (
-                <CloudOff size={16} />
+                <Icon.CloudOff size="md" />
               )}
             </div>
             <div>
@@ -363,13 +342,13 @@ export function TaskPanel({ inDrawer = false }: { inDrawer?: boolean }) {
             disabled={loadingTasks || (isOAuth && !ticktickConnected)}
             title="刷新任务列表"
           >
-            <RefreshCw size={15} className={loadingTasks ? 'animate-spin' : ''} />
+            <Icon.Refresh size="md" spin={loadingTasks} />
           </button>
         </div>
 
         {cliError && (
           <div className="motion-fade-in mt-3 flex items-start gap-2 rounded-xl border border-danger/15 bg-danger/10 px-3.5 py-2.5">
-            <AlertCircle size={14} className="mt-0.5 flex-shrink-0 text-danger/70" />
+            <Icon.AlertCircle size="sm" className="mt-0.5 flex-shrink-0 text-danger/70" />
             <p className="text-xs leading-relaxed text-danger/80">{cliError}</p>
           </div>
         )}
@@ -396,14 +375,14 @@ export function TaskPanel({ inDrawer = false }: { inDrawer?: boolean }) {
       </div>
 
       <div className="grid grid-cols-3 gap-2">
-        <TaskMetric icon={<Layers3 size={13} />} label="总任务" value={String(totalTaskCount)} />
+        <TaskMetric icon={<Icon.Layers3 size="sm" />} label="总任务" value={String(totalTaskCount)} />
         <TaskMetric
-          icon={<ListTree size={13} />}
+          icon={<Icon.ListTree size="sm" />}
           label="当前可见"
           value={String(visibleTaskCount)}
         />
         <TaskMetric
-          icon={<Link2 size={13} />}
+          icon={<Icon.Link size="sm" />}
           label="专注关联"
           value={activeTaskTitle ? '已定位' : '未关联'}
           tone={activeTaskTitle ? 'accent' : 'muted'}
@@ -415,9 +394,10 @@ export function TaskPanel({ inDrawer = false }: { inDrawer?: boolean }) {
       <div className="space-y-2.5">
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <Search
-              size={15}
-              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-subtle"
+            <Icon.Search
+              size="md"
+              tone="subtle"
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2"
             />
             <input
               className="input !pl-10 !pr-9"
@@ -432,7 +412,7 @@ export function TaskPanel({ inDrawer = false }: { inDrawer?: boolean }) {
                 onClick={() => setQuery('')}
                 title="清除搜索"
               >
-                <X size={13} />
+                <Icon.X size="sm" />
               </button>
             )}
           </div>
@@ -443,7 +423,7 @@ export function TaskPanel({ inDrawer = false }: { inDrawer?: boolean }) {
               disabled={loadingTasks || !query.trim()}
               title="按 Enter 也可搜索"
             >
-              <Search size={14} />
+              <Icon.Search size="sm" />
               搜索
             </button>
           )}
@@ -455,7 +435,7 @@ export function TaskPanel({ inDrawer = false }: { inDrawer?: boolean }) {
             onClick={() => setShowCompleted((v) => !v)}
             title="默认隐藏已完成任务"
           >
-            {showCompleted ? <Eye size={12} /> : <EyeOff size={12} />}
+            {showCompleted ? <Icon.Eye size="xs" /> : <Icon.EyeOff size="xs" />}
             {showCompleted ? '已显示已完成任务' : '已隐藏已完成任务'}
           </button>
           {completedHidden > 0 && !showCompleted && (
@@ -480,7 +460,7 @@ export function TaskPanel({ inDrawer = false }: { inDrawer?: boolean }) {
               title="新建本地任务"
               disabled={!creating.trim()}
             >
-              <Plus size={15} />
+              <Icon.Plus size="md" />
               新建
             </button>
           </div>
@@ -492,7 +472,7 @@ export function TaskPanel({ inDrawer = false }: { inDrawer?: boolean }) {
         {filteredTree.length === 0 ? (
           <div className="motion-fade-in flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-bg-card/55 py-12 text-center">
             <div className="motion-breathe flex h-12 w-12 items-center justify-center rounded-xl bg-bg-subtle text-fg-subtle">
-              <ListTree size={24} />
+              <Icon.ListTree size="xl" />
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-fg-muted">
@@ -754,7 +734,7 @@ function TaskTreeItem({
             onClick={() => onToggleCollapse(task.id)}
             title={isCollapsed ? '展开子任务' : '收起子任务'}
           >
-            {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+            {isCollapsed ? <Icon.ChevronRight size="sm" /> : <Icon.ChevronDown size="sm" />}
           </button>
         ) : (
           <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center">
@@ -766,7 +746,7 @@ function TaskTreeItem({
           className={`motion-state-bg flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/60 text-fg-subtle'}`}
         >
           {hasChildren ? (
-            <ListTree size={13} />
+            <Icon.ListTree size="sm" />
           ) : (
             <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
           )}
@@ -783,9 +763,9 @@ function TaskTreeItem({
           title={isCompleted ? '已完成' : '完成任务并同步到任务来源'}
         >
           {isCompleted ? (
-            <CheckCircle size={14} className="text-success/75" />
+            <Icon.CheckCircle size="sm" className="text-success/75" />
           ) : (
-            <Circle size={14} className="text-fg-subtle/50" />
+            <Icon.Circle size="sm" className="text-fg-subtle/50" />
           )}
         </button>
 
@@ -832,12 +812,12 @@ function TaskTreeItem({
           <div className="motion-fade-in flex flex-shrink-0 items-center gap-1">
             {isCurrentSegmentTask && (
               <span className="inline-flex items-center gap-1 rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent shadow-[0_0_8px_rgb(var(--app-accent)/0.18)]">
-                <Link2 size={10} /> 当前片段
+                <Icon.Link size="xs" /> 当前片段
               </span>
             )}
             {isSessionDefaultTask && !isCurrentSegmentTask && (
               <span className="inline-flex items-center gap-1 rounded-full border border-success/20 bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
-                <Star size={10} /> 本次默认
+                <Icon.Star size="xs" /> 本次默认
               </span>
             )}
           </div>
@@ -851,7 +831,7 @@ function TaskTreeItem({
             title="关联到当前片段"
             disabled={!currentSegmentId}
           >
-            <Link2 size={12} />
+            <Icon.Link size="xs" />
             片段
           </button>
           <button
@@ -859,7 +839,7 @@ function TaskTreeItem({
             onClick={() => onLinkSession(task)}
             title="设为会话默认任务"
           >
-            <Star size={12} />
+            <Icon.Star size="xs" />
             默认
           </button>
         </div>
@@ -976,11 +956,11 @@ function SyncStatus() {
           }`}
         >
           {hasProblem ? (
-            <AlertCircle size={15} />
+            <Icon.AlertCircle size="md" />
           ) : hasPending ? (
-            <RefreshCw size={15} />
+            <Icon.Refresh size="md" />
           ) : (
-            <CheckCircle2 size={15} />
+            <Icon.CheckCircleFilled size="md" />
           )}
         </div>
         <div className="min-w-0">
@@ -995,7 +975,7 @@ function SyncStatus() {
         onClick={handleSync}
         disabled={syncing || (!hasPending && !hasProblem)}
       >
-        <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+        <Icon.Refresh size="sm" spin={syncing} />
         {hasProblem && !hasPending ? '重试' : '同步'}
       </button>
     </div>

@@ -3,22 +3,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import type { AppSettings } from '@shared/types';
 import { APP_VERSION, APP_COMMIT, APP_BUILD_TIME } from '@shared/version';
-import {
-  LogOut,
-  Loader2,
-  Search,
-  Stethoscope,
-  Copy,
-  ChevronDown,
-  ChevronRight,
-  Palette,
-  Keyboard,
-  ListChecks,
-  Monitor,
-  RefreshCw,
-  CheckCircle2,
-  AlertCircle,
-} from 'lucide-react';
+import { Icon } from './Icon';
 
 const HOTKEY_LABELS: Record<keyof AppSettings['hotkeys'], string> = {
   toggleTimer: '开始 / 暂停 / 继续',
@@ -38,12 +23,12 @@ const ACCENTS = [
 ];
 
 const TABS = [
-  { id: 'appearance', label: '外观', icon: Palette },
-  { id: 'tasks', label: '任务', icon: ListChecks },
-  { id: 'hotkeys', label: '快捷键', icon: Keyboard },
-  { id: 'mini', label: '小窗', icon: Monitor },
-  { id: 'sync', label: '同步', icon: RefreshCw },
-  { id: 'about', label: '关于', icon: Stethoscope },
+  { id: 'appearance', label: '外观', icon: Icon.Palette },
+  { id: 'tasks', label: '任务', icon: Icon.ListChecks },
+  { id: 'hotkeys', label: '快捷键', icon: Icon.Keyboard },
+  { id: 'mini', label: '小窗', icon: Icon.Monitor },
+  { id: 'sync', label: '同步', icon: Icon.Refresh },
+  { id: 'about', label: '关于', icon: Icon.Stethoscope },
 ] as const;
 
 type HotkeyKey = keyof AppSettings['hotkeys'];
@@ -293,7 +278,7 @@ export function SettingsPanel() {
                       : 'text-fg-muted hover:bg-bg-subtle hover:text-fg'
                   }`}
                 >
-                  <Icon size={13} />
+                  <Icon size="sm" />
                   {tab.label}
                 </button>
               );
@@ -572,9 +557,9 @@ export function SettingsPanel() {
                       disabled={cliDetecting}
                     >
                       {cliDetecting ? (
-                        <Loader2 size={11} className="animate-spin" />
+                        <Icon.Loader size="xs" spin />
                       ) : (
-                        <Search size={11} />
+                        <Icon.Search size="xs" />
                       )}
                       重新探测
                     </button>
@@ -845,7 +830,7 @@ export function SettingsPanel() {
                       />
                     </Row>
                     <button className="btn-primary" onClick={handleLogin} disabled={loginLoading}>
-                      {loginLoading ? <Loader2 size={15} className="animate-spin" /> : null}
+                      {loginLoading ? <Icon.Loader size="sm" spin /> : null}
                       连接滴答清单
                     </button>
                   </>
@@ -853,7 +838,7 @@ export function SettingsPanel() {
                   <div className="flex items-center justify-between rounded-lg border border-emerald-500/15 bg-emerald-500/10 px-4 py-3">
                     <span className="text-sm text-emerald-400">已连接（{region}）</span>
                     <button className="btn-ghost text-xs" onClick={handleLogout}>
-                      <LogOut size={13} />
+                      <Icon.LogOut size="sm" />
                       断开
                     </button>
                   </div>
@@ -946,7 +931,7 @@ function HotkeyStatusBadge({ state }: { state: HotkeyBadgeState }) {
       className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[10px] font-medium ${cls}`}
       title={state.title}
     >
-      {state.tone === 'ok' ? <CheckCircle2 size={11} /> : <AlertCircle size={11} />}
+      {state.tone === 'ok' ? <Icon.CheckCircleFilled size="xs" /> : <Icon.AlertCircle size="xs" />}
       {state.label}
     </span>
   );
@@ -1210,7 +1195,7 @@ function CliDiagnosticPanel() {
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h3 className="flex items-center gap-2 text-sm font-semibold">
-            <Stethoscope size={14} />
+            <Icon.Stethoscope size="sm" />
             CLI 诊断面板
           </h3>
           <p className="mt-0.5 text-xs text-fg-subtle">
@@ -1221,7 +1206,7 @@ function CliDiagnosticPanel() {
 
       <div className="mb-3 flex flex-wrap gap-2">
         <button className="btn-primary text-xs" onClick={runDiagnose} disabled={running}>
-          {running ? <Loader2 size={12} className="animate-spin" /> : <Stethoscope size={12} />}
+          {running ? <Icon.Loader size="xs" spin /> : <Icon.Stethoscope size="xs" />}
           完整诊断
         </button>
         <button className="btn-outline text-xs" onClick={testProjectList} disabled={running}>
@@ -1234,7 +1219,7 @@ function CliDiagnosticPanel() {
           测试搜索
         </button>
         <button className="btn-ghost text-xs" onClick={copyDiagnose} disabled={!diagnose}>
-          <Copy size={11} />
+          <Icon.Copy size="xs" />
           复制诊断信息
         </button>
       </div>
@@ -1276,7 +1261,7 @@ function CliDiagnosticPanel() {
                     onClick={() => setExpandedStep(expanded ? null : step.name)}
                   >
                     <div className="flex items-center gap-2">
-                      {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                      {expanded ? <Icon.ChevronDown size="xs" /> : <Icon.ChevronRight size="xs" />}
                       <span
                         className={`inline-block h-2 w-2 rounded-full ${
                           step.ok ? 'bg-emerald-400' : 'bg-rose-400'
@@ -1361,7 +1346,7 @@ function CliDiagnosticPanel() {
               className="flex w-full items-center gap-2 px-1 py-1 text-left text-xs text-fg-muted hover:text-fg"
               onClick={() => setShowRaw(!showRaw)}
             >
-              {showRaw ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+              {showRaw ? <Icon.ChevronDown size="xs" /> : <Icon.ChevronRight size="xs" />}
               原始输出（stdout / stderr）
             </button>
             {showRaw && (

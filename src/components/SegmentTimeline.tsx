@@ -114,7 +114,7 @@ export function SegmentTimeline() {
       {/* 水平时间线 */}
       <div
         ref={scrollRef}
-        className="relative flex items-stretch gap-2 overflow-x-auto px-4 py-3"
+        className="scroll-snap-x relative flex items-stretch gap-2 overflow-x-auto px-4 py-3"
         style={{ scrollbarWidth: 'thin' }}
       >
         {/* 水平连接线 */}
@@ -162,7 +162,7 @@ export function SegmentTimeline() {
                 animate={{ opacity: 1, scale: 1, x: 0 }}
                 exit={{ opacity: 0, scale: 0.9, x: -12 }}
                 transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                className={`motion-base relative flex w-[150px] flex-shrink-0 cursor-pointer flex-col rounded-xl border p-2.5 ${chipBorderCls}`}
+                className={`motion-base motion-hover-expand scroll-snap-item perf-contain relative flex w-[150px] flex-shrink-0 cursor-pointer flex-col rounded-xl border p-2.5 ${chipBorderCls}`}
                 onClick={() => {
                   if (isFocus) toggleSelect(item.id);
                 }}

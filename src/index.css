@@ -500,11 +500,20 @@
     border: 1px solid rgb(var(--border) / 0.5);
     background: rgb(var(--app-surface) / 0.5);
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+    transition:
+      border-color var(--motion-fast) var(--ease-out-quart),
+      background-color var(--motion-fast) var(--ease-out-quart),
+      color var(--motion-fast) var(--ease-out-quart),
+      transform var(--motion-instant) var(--ease-spring);
+    will-change: transform;
   }
-
   .mini-icon-button:hover {
     border-color: rgb(var(--border-strong) / 0.6);
     background: rgb(var(--app-elevated) / 0.8);
+    transform: scale(1.08);
+  }
+  .mini-icon-button:active {
+    transform: scale(0.92);
   }
 
   .mini-stat-card {
@@ -904,7 +913,7 @@
     transform: scale(0.97);
   }
   .btn-primary {
-    @apply btn rounded-xl px-5 py-2.5 text-sm bg-accent text-accent-fg;
+    @apply btn btn-shine rounded-xl px-5 py-2.5 text-sm bg-accent text-accent-fg;
     min-height: 40px;
     box-shadow:
       0 8px 20px -16px rgb(var(--accent) / 0.8),
@@ -917,7 +926,7 @@
       inset 0 1px 0 rgb(255 255 255 / 0.18);
   }
   .btn-focus-action {
-    @apply btn rounded-xl px-5 py-2.5 text-sm text-white;
+    @apply btn btn-shine rounded-xl px-5 py-2.5 text-sm text-white;
     min-height: 40px;
     background: linear-gradient(180deg, rgb(var(--success) / 0.96), rgb(16 137 92 / 0.96));
     box-shadow:
@@ -931,7 +940,7 @@
       inset 0 1px 0 rgb(255 255 255 / 0.22);
   }
   .btn-pause-action {
-    @apply btn rounded-xl px-5 py-2.5 text-sm text-white;
+    @apply btn btn-shine rounded-xl px-5 py-2.5 text-sm text-white;
     min-height: 40px;
     background: linear-gradient(180deg, rgb(var(--warning) / 0.94), rgb(181 74 8 / 0.96));
     box-shadow:
@@ -968,6 +977,7 @@
     box-shadow:
       0 1px 0 rgb(255 255 255 / 0.04) inset,
       var(--shadow-md);
+    contain: layout style paint;
     transition:
       border-color var(--motion-normal) var(--ease-out-quart),
       box-shadow var(--motion-normal) var(--ease-out-quart);
@@ -1319,6 +1329,268 @@
     }
   }
 
+  /* ── v0.3.10 超丝滑动效引擎：高帧率 + 精致微交互 ──
+     核心原则：
+     1. 只用 transform/opacity（合成器属性），绝不触发 layout/paint
+     2. contain 隔离重绘范围，content-visibility 跳过离屏渲染
+     3. will-change 仅在动画期间设置，避免常驻内存开销
+     4. 所有曲线使用 spring/expo 物理，杜绝 linear/ease 笨重感 */
+
+  /* 性能隔离：contain 让浏览器跳过子树重排 */
+  .perf-contain {
+    contain: layout style paint;
+  }
+  .perf-contain-content {
+    contain: content;
+  }
+  .perf-strict {
+    contain: strict;
+  }
+
+  /* 离屏渲染跳过：长列表/历史面板性能优化 */
+  .perf-auto-vis {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 60px;
+  }
+
+  /* ── 数字翻转动画：计时器数字切换时的丝滑过渡 ── */
+  .motion-digit-flip {
+    display: inline-block;
+    transition:
+      transform var(--motion-fast) var(--ease-spring),
+      opacity var(--motion-instant) var(--ease-out-quart);
+    will-change: transform, opacity;
+    transform-origin: center;
+  }
+  .motion-digit-flip[data-changed='true'] {
+    animation: digit-flip var(--motion-normal) var(--ease-spring);
+  }
+  @keyframes digit-flip {
+    0% {
+      opacity: 0.3;
+      transform: translateY(-4px) scale(0.96);
+      filter: blur(1px);
+    }
+    50% {
+      opacity: 1;
+      filter: blur(0);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  /* ── 交错动画延迟：列表/网格依次入场 ── */
+  .motion-stagger-1 { animation-delay: 40ms; }
+  .motion-stagger-2 { animation-delay: 80ms; }
+  .motion-stagger-3 { animation-delay: 120ms; }
+  .motion-stagger-4 { animation-delay: 160ms; }
+  .motion-stagger-5 { animation-delay: 200ms; }
+  .motion-stagger-6 { animation-delay: 240ms; }
+  .motion-stagger-7 { animation-delay: 280ms; }
+  .motion-stagger-8 { animation-delay: 320ms; }
+
+  /* ── 磁吸悬停：按钮在鼠标靠近时微微偏移 ── */
+  .motion-magnetic {
+    transition:
+      transform var(--motion-instant) var(--ease-spring),
+      box-shadow var(--motion-normal) var(--ease-out-quart),
+      filter var(--motion-fast) var(--ease-out-quart);
+    will-change: transform;
+  }
+  .motion-magnetic:hover {
+    transform: scale(1.03);
+  }
+  .motion-magnetic:active {
+    transform: scale(0.96);
+  }
+
+  /* ── 图标悬停微动效：scale + 轻微旋转 ── */
+  .icon-hover {
+    transition:
+      transform var(--motion-fast) var(--ease-spring),
+      color var(--motion-fast) var(--ease-out-quart);
+    will-change: transform;
+    display: inline-flex;
+  }
+  .icon-hover:hover {
+    transform: scale(1.12);
+  }
+  .icon-hover:active {
+    transform: scale(0.92);
+  }
+
+  /* 图标旋转：刷新/设置类图标悬停时旋转 */
+  .icon-spin-hover {
+    transition: transform var(--motion-normal) var(--ease-spring);
+  }
+  .icon-spin-hover:hover {
+    transform: rotate(180deg);
+  }
+
+  /* ── 按钮光泽扫过：hover 时一道光从左到右扫过 ── */
+  .btn-shine {
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-shine::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      rgb(255 255 255 / 0.12) 50%,
+      transparent 70%
+    );
+    transform: translateX(-120%);
+    transition: transform var(--motion-slow) var(--ease-out-expo);
+    pointer-events: none;
+  }
+  .btn-shine:hover::before {
+    transform: translateX(120%);
+  }
+
+  /* ── 卡片悬停辉光：accent 色微辉光 ── */
+  .card-hover-glow {
+    transition:
+      transform var(--motion-normal) var(--ease-spring),
+      box-shadow var(--motion-normal) var(--ease-out-quart),
+      border-color var(--motion-fast) var(--ease-out-quart);
+    will-change: transform;
+  }
+  .card-hover-glow:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 0 0 1px rgb(var(--app-accent) / 0.1),
+      0 12px 32px -16px rgb(var(--app-accent) / 0.2),
+      var(--shadow-md);
+  }
+
+  /* ── 主题平滑过渡：dark/light 切换时颜色交叉淡入 ── */
+  .theme-transition,
+  .theme-transition *,
+  .theme-transition *::before,
+  .theme-transition *::after {
+    transition:
+      background-color var(--motion-slow) var(--ease-in-out-quart),
+      border-color var(--motion-slow) var(--ease-in-out-quart),
+      color var(--motion-slow) var(--ease-in-out-quart),
+      box-shadow var(--motion-slow) var(--ease-in-out-quart) !important;
+  }
+
+  /* ── 增强焦点环：动画辉光环 ── */
+  .motion-focus-ring {
+    position: relative;
+  }
+  .motion-focus-ring:focus-visible {
+    outline: none;
+  }
+  .motion-focus-ring:focus-visible::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: inherit;
+    border: 2px solid rgb(var(--app-accent) / 0.5);
+    box-shadow: 0 0 0 4px rgb(var(--app-accent) / 0.1);
+    animation: focus-ring-pulse var(--motion-slow) var(--ease-in-out) infinite;
+    pointer-events: none;
+  }
+  @keyframes focus-ring-pulse {
+    0%, 100% {
+      opacity: 0.6;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  /* ── 滚动捕捉：时间线码头水平滑动 ── */
+  .scroll-snap-x {
+    scroll-snap-type: x proximity;
+    scroll-behavior: smooth;
+  }
+  .scroll-snap-item {
+    scroll-snap-align: start;
+  }
+
+  /* ── 加载旋转：spinner 专用 ── */
+  .motion-spin {
+    animation: motion-spin 0.8s linear infinite;
+    will-change: transform;
+  }
+  @keyframes motion-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* ── 选中态弹性反馈：checkbox/radio 选中时的弹跳 ── */
+  .motion-check-bounce {
+    animation: check-bounce var(--motion-normal) var(--ease-spring);
+  }
+  @keyframes check-bounce {
+    0% {
+      transform: scale(0.5);
+      opacity: 0;
+    }
+    60% {
+      transform: scale(1.15);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  /* ── 悬停展开：时间线卡片 hover 时微微放大 ── */
+  .motion-hover-expand {
+    transition:
+      transform var(--motion-normal) var(--ease-spring),
+      box-shadow var(--motion-normal) var(--ease-out-quart),
+      border-color var(--motion-fast) var(--ease-out-quart);
+    will-change: transform;
+  }
+  .motion-hover-expand:hover {
+    transform: scale(1.04) translateY(-2px);
+    z-index: 10;
+  }
+
+  /* ── 文字渐显：适合标题/标签的优雅入场 ── */
+  .motion-text-reveal {
+    animation: text-reveal var(--motion-slow) var(--ease-out-expo) both;
+    will-change: transform, opacity;
+  }
+  @keyframes text-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+      filter: blur(2px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+      filter: blur(0);
+    }
+  }
+
+  /* ── 状态点呼吸：比 state-pulse 更精致的呼吸效果 ── */
+  .motion-dot-breathe {
+    animation: dot-breathe 2.4s var(--ease-in-out-quart) infinite;
+    will-change: transform, opacity;
+  }
+  @keyframes dot-breathe {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 0.9;
+    }
+    50% {
+      transform: scale(1.2);
+      opacity: 1;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .motion-base,
     .motion-smooth,
@@ -1344,7 +1616,12 @@
     .motion-stagger-child,
     .motion-idle-pulse,
     .motion-spring-in,
-    .arc-rotate {
+    .arc-rotate,
+    .motion-digit-flip,
+    .motion-check-bounce,
+    .motion-text-reveal,
+    .motion-dot-breathe,
+    .motion-spin {
       animation: none !important;
     }
     .motion-shimmer::after {
@@ -1359,6 +1636,33 @@
     .motion-hover-glow:hover {
       transform: none !important;
       filter: none !important;
+    }
+    .motion-magnetic:hover {
+      transform: none !important;
+    }
+    .motion-hover-expand:hover {
+      transform: none !important;
+    }
+    .icon-hover:hover {
+      transform: none !important;
+    }
+    .icon-spin-hover:hover {
+      transform: none !important;
+    }
+    .card-hover-glow:hover {
+      transform: none !important;
+    }
+    .btn-shine::before {
+      display: none !important;
+    }
+    .motion-focus-ring:focus-visible::after {
+      display: none !important;
+    }
+    .theme-transition,
+    .theme-transition *,
+    .theme-transition *::before,
+    .theme-transition *::after {
+      transition: none !important;
     }
     .motion-gpu {
       will-change: auto !important;

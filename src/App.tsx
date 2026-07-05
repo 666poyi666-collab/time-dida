@@ -100,7 +100,7 @@ export default function App() {
         : 'aurora-canvas';
 
   return (
-    <div className="app-shell flex h-screen w-screen overflow-hidden text-fg antialiased">
+    <div className="app-shell theme-transition flex h-screen w-screen overflow-hidden text-fg antialiased">
       {/* ── 侧轨：v0.3 全新导航 ── */}
       <aside className="side-rail relative z-20 flex w-14 flex-col items-center gap-1.5 py-4">
         <BrandMark state={timerState} />
@@ -158,7 +158,7 @@ export default function App() {
       </aside>
 
       {/* ── 主舞台：极光画布 ── */}
-      <main className={`relative flex-1 overflow-hidden ${canvasCls}`}>
+      <main className={`perf-contain-content relative flex-1 overflow-hidden ${canvasCls}`}>
         <AnimatePresence mode="wait">
           {view === 'timer' && (
             <motion.div
@@ -295,7 +295,7 @@ function RailBtn({
   ghost?: boolean;
   danger?: boolean;
 }) {
-  const base = 'rail-btn relative group';
+  const base = 'rail-btn motion-focus-ring relative group';
   const stateCls = active
     ? accent
       ? 'bg-accent/14 text-accent shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.22),0_4px_14px_-6px_rgb(var(--accent)/0.4)]'

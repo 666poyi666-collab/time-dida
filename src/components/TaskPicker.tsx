@@ -4,20 +4,7 @@
 // 规则：父任务默认折叠；搜索命中子任务时自动展开父任务；清空搜索后恢复默认折叠
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Search,
-  X,
-  CheckCircle,
-  Circle,
-  ChevronRight,
-  ChevronDown,
-  Loader2,
-  HardDrive,
-  Terminal,
-  Cloud,
-  ListTree,
-  Check,
-} from 'lucide-react';
+import { Icon } from './Icon';
 import { useStore } from '../store/useStore';
 import type { Task } from '@shared/types';
 
@@ -201,7 +188,7 @@ export function TaskPicker({
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-accent">
-              <ListTree size={15} />
+              <Icon.ListTree size="sm" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -218,16 +205,17 @@ export function TaskPicker({
             onClick={handleCancel}
             title="关闭"
           >
-            <X size={16} />
+            <Icon.X size="md" />
           </button>
         </div>
 
         {/* 搜索 + 清单选择 */}
         <div className="space-y-2.5 border-b border-border px-5 py-3">
           <div className="relative">
-            <Search
-              size={15}
-              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-subtle"
+            <Icon.Search
+              size="sm"
+              tone="subtle"
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2"
             />
             <input
               className="input !pl-10 !pr-9"
@@ -242,7 +230,7 @@ export function TaskPicker({
                 onClick={() => setQuery('')}
                 title="清除搜索"
               >
-                <X size={13} />
+                <Icon.X size="sm" />
               </button>
             )}
           </div>
@@ -266,12 +254,12 @@ export function TaskPicker({
         <div className="flex-1 space-y-1.5 overflow-y-auto p-4">
           {loading ? (
             <div className="flex h-full items-center justify-center text-fg-subtle">
-              <Loader2 size={20} className="animate-spin" />
+              <Icon.Loader size="lg" spin />
             </div>
           ) : filteredTree.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-bg-card/50 text-fg-subtle">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-bg-subtle">
-                <Search size={20} />
+                <Icon.Search size="lg" />
               </div>
               <p className="text-sm font-medium text-fg-muted">
                 {sourceTasks.length === 0 ? '暂无任务' : '没有匹配的任务'}
@@ -305,7 +293,7 @@ export function TaskPicker({
           <span className="min-w-0 text-xs text-fg-subtle">
             {pickedTask ? (
               <span className="inline-flex max-w-[360px] items-center gap-1 rounded-full border border-accent/20 bg-accent/10 px-2.5 py-1 text-accent">
-                <Check size={11} />
+                <Icon.Check size="xs" />
                 <span className="truncate">{pickedTask.title}</span>
               </span>
             ) : (
@@ -390,9 +378,9 @@ function PickerItem({
         >
           {hasChildren ? (
             isCollapsed ? (
-              <ChevronRight size={14} />
+              <Icon.ChevronRight size="sm" />
             ) : (
-              <ChevronDown size={14} />
+              <Icon.ChevronDown size="sm" />
             )
           ) : (
             <span className="block h-1 w-1 rounded-full bg-fg-subtle/30" />
@@ -402,11 +390,11 @@ function PickerItem({
           className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${hasChildren ? 'bg-accent/10 text-accent' : 'bg-bg-subtle/70 text-fg-subtle'}`}
         >
           {hasChildren ? (
-            <ListTree size={13} />
+            <Icon.ListTree size="sm" />
           ) : isCompleted ? (
-            <CheckCircle size={14} className="text-success/80" />
+            <Icon.CheckCircle size="sm" tone="success" className="opacity-80" />
           ) : (
-            <Circle size={14} className="text-fg-subtle/50" />
+            <Icon.Circle size="sm" tone="subtle" className="opacity-50" />
           )}
         </span>
         <div className="min-w-0 flex-1">
@@ -426,7 +414,7 @@ function PickerItem({
           )}
           {isPicked && (
             <span className="inline-flex items-center gap-1 rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
-              <Check size={10} /> 已选
+              <Icon.Check size="xs" /> 已选
             </span>
           )}
         </div>
@@ -456,7 +444,7 @@ function PickerItem({
 function SourceBadge({ isLocal, isCli }: { isLocal: boolean; isCli: boolean }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-border bg-bg-subtle px-2 py-0.5 text-[10px] font-semibold text-fg-muted">
-      {isLocal ? <HardDrive size={10} /> : isCli ? <Terminal size={10} /> : <Cloud size={10} />}
+      {isLocal ? <Icon.HardDrive size="xs" /> : isCli ? <Icon.Terminal size="xs" /> : <Icon.Cloud size="xs" />}
       {isLocal ? '本地' : isCli ? 'dida CLI' : 'TickTick'}
     </span>
   );

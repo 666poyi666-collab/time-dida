@@ -183,7 +183,7 @@ function StateBadge({ state }: { state: string }) {
         {c.pulse && (
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
         )}
-        <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${c.dotCls}`} />
+        <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${c.dotCls} ${c.pulse ? 'motion-dot-breathe' : ''}`} />
       </span>
       {c.label}
     </span>
@@ -212,7 +212,7 @@ function StatPill({
     danger: 'text-danger',
   }[tone];
   return (
-    <div className="flex items-center gap-2 rounded-2xl border border-border/50 bg-bg-card/60 px-3.5 py-2 backdrop-blur-sm">
+    <div className="card-hover-glow flex items-center gap-2 rounded-2xl border border-border/50 bg-bg-card/60 px-3.5 py-2 backdrop-blur-sm">
       <span className={`flex h-6 w-6 items-center justify-center rounded-lg bg-bg-subtle/60 ${toneCls}`}>
         {icon}
       </span>
@@ -683,18 +683,18 @@ export function TimerPanel() {
       {/* 控制按钮 */}
       <div className="mt-6 flex items-center justify-center gap-3">
         <button
-          className={`${mainActionClass} motion-press flex min-w-[172px] items-center justify-center gap-2`}
+          className={`${mainActionClass} btn-shine motion-magnetic flex min-w-[172px] items-center justify-center gap-2`}
           onClick={handleToggle}
         >
-          {state === 'running' ? <Icon.Pause size="md" /> : <Icon.Play size="md" />}
+          {state === 'running' ? <Icon.Pause size="md" hover /> : <Icon.Play size="md" hover />}
           {toggleLabel}
         </button>
         <button
-          className="btn-outline motion-press flex items-center gap-2"
+          className="btn-outline btn-shine motion-press flex items-center gap-2"
           onClick={handleStop}
           disabled={isIdle || isFinished}
         >
-          <Icon.Square size="sm" />
+          <Icon.Square size="sm" hover />
           结束专注
         </button>
       </div>

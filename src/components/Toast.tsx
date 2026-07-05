@@ -1,31 +1,38 @@
 // Toast 提示容器：轻量反馈 + 自动消失进度条
+// v0.3.10: 迁移到 Icon 系统 + spring 入场动画
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { Icon } from './Icon';
+import type { IconTone } from './Icon';
 import { useStore } from '../store/useStore';
 import { useEffect } from 'react';
 
 const TOAST_DURATION = 3200;
 
-const typeConfig = {
+const typeConfig: Record<string, {
+  icon: keyof typeof Icon;
+  tone: IconTone;
+  border: string;
+  progressBg: string;
+}> = {
   success: {
-    Icon: CheckCircle2,
-    iconColor: 'text-success',
+    icon: 'CheckCircleFilled',
+    tone: 'success',
     border: 'border-l-success',
     progressBg: 'bg-success',
   },
   error: {
-    Icon: AlertCircle,
-    iconColor: 'text-danger',
+    icon: 'AlertCircle',
+    tone: 'danger',
     border: 'border-l-danger',
     progressBg: 'bg-danger',
   },
   info: {
-    Icon: Info,
-    iconColor: 'text-accent',
+    icon: 'Info',
+    tone: 'accent',
     border: 'border-l-accent',
     progressBg: 'bg-accent',
   },
-} as const;
+};
 
 function ToastItem({
   id,
@@ -45,20 +52,21 @@ function ToastItem({
     };
   }, [id, onRemove]);
 
-  const cfg = typeConfig[type as keyof typeof typeConfig] ?? typeConfig.info;
+  const cfg = typeConfig[type] ?? typeConfig.info;
+  const IconComp = Icon[cfg.icon] as React.ComponentType<{ size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'; tone?: IconTone; hover?: boolean }>;
 
   return (
     <motion.div
       key={id}
       layout
-      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      initial={{ opacity: 0, y: 12, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -6, scale: 0.98 }}
-      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      exit={{ opacity: 0, y: -8, scale: 0.96 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
       className={`glass motion-base pointer-events-auto flex items-center gap-2.5 rounded-xl border border-border border-l-[3px] ${cfg.border} cursor-pointer select-none overflow-hidden px-4 py-2.5 shadow-soft`}
       onClick={() => onRemove(id)}
     >
-      <cfg.Icon size={15} className={`shrink-0 ${cfg.iconColor}`} />
+      <IconComp size="sm" tone={cfg.tone} />
       <span className="text-[13px] leading-snug text-fg">{message}</span>
       {/* 自动消失进度条 */}
       <div className="absolute bottom-0 left-0 right-0 h-[2px] overflow-hidden rounded-b-xl bg-bg-subtle/40">
