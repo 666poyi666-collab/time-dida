@@ -1240,45 +1240,418 @@
     padding: 5px;
   }
 
-  .task-row {
-    @apply relative flex items-center gap-2 px-2.5 py-1.5;
-    border-radius: var(--radius-md);
-    transition:
-      border-color var(--motion-fast) var(--ease-out),
-      background-color var(--motion-fast) var(--ease-out),
-      transform var(--motion-instant) var(--ease-out);
+  /* ── Linear 风格任务行 v0.4.4 ── */
+
+  /* 紧凑头部 */
+  .task-header {
+    border-bottom: 1px solid rgb(var(--app-border) / 0.35);
   }
-  .task-row-parent {
-    border: 1px solid rgb(var(--border) / 0.35);
-    background: rgb(var(--app-surface) / 0.5);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  .task-source-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgb(var(--app-fg-subtle));
+    flex-shrink: 0;
   }
-  .task-row-parent:hover {
-    border-color: rgb(var(--border-strong) / 0.45);
-    background: rgb(var(--app-surface-3) / 0.5);
+  .task-source-dot.connected {
+    background: rgb(var(--app-success));
+    box-shadow: 0 0 6px rgb(var(--app-success) / 0.4);
   }
-  .task-row-child {
-    border: 1px solid transparent;
-    background: rgb(var(--app-surface) / 0.12);
+  .task-count-pill {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgb(var(--app-fg-subtle));
+    background: rgb(var(--app-surface-2) / 0.6);
+    padding: 1px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
   }
-  .task-row-child:hover {
-    border-color: rgb(var(--border) / 0.3);
-    background: rgb(var(--app-surface-2) / 0.3);
+  .task-refresh-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 5px;
+    color: rgb(var(--app-fg-subtle));
+    transition: all var(--motion-fast) var(--ease-out);
+  }
+  .task-refresh-btn:hover {
+    background: rgb(var(--app-surface-2) / 0.6);
+    color: rgb(var(--app-fg));
+  }
+  .task-refresh-btn:disabled {
+    opacity: 0.4;
+    pointer-events: none;
   }
 
-  .task-tree-children {
+  /* 搜索行 */
+  .task-search-row {
     position: relative;
-    margin-left: 5px;
-    padding-left: 7px;
+    display: flex;
+    align-items: center;
+    height: 30px;
   }
-  .task-tree-children::before {
-    content: '';
+  .task-search-input {
+    flex: 1;
+    height: 30px;
+    padding: 0 28px 0 28px;
+    font-size: 12.5px;
+    font-weight: 400;
+    color: rgb(var(--app-fg));
+    background: rgb(var(--app-surface) / 0.5);
+    border: 1px solid rgb(var(--app-border) / 0.35);
+    border-radius: 6px;
+    outline: none;
+    transition: border-color var(--motion-fast) var(--ease-out),
+                background-color var(--motion-fast) var(--ease-out);
+  }
+  .task-search-input::placeholder {
+    color: rgb(var(--app-fg-subtle) / 0.6);
+  }
+  .task-search-input:focus {
+    border-color: rgb(var(--app-accent) / 0.5);
+    background: rgb(var(--app-surface-2) / 0.5);
+  }
+  .task-search-clear {
     position: absolute;
-    left: 0;
-    top: 3px;
-    bottom: 3px;
-    width: 1px;
-    background: rgb(var(--border) / 0.4);
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    color: rgb(var(--app-fg-subtle));
+  }
+  .task-search-clear:hover {
+    background: rgb(var(--app-surface-3) / 0.6);
+    color: rgb(var(--app-fg));
+  }
+  .task-project-select {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 22px;
+    font-size: 11px;
+    font-weight: 500;
+    color: rgb(var(--app-fg-muted));
+    background: rgb(var(--app-surface-2) / 0.7);
+    border: 1px solid rgb(var(--app-border) / 0.3);
+    border-radius: 4px;
+    padding: 0 4px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  /* 过滤切换 */
+  .task-toggle-completed {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10.5px;
+    font-weight: 500;
+    color: rgb(var(--app-fg-subtle));
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all var(--motion-fast) var(--ease-out);
+  }
+  .task-toggle-completed:hover {
+    background: rgb(var(--app-surface-2) / 0.5);
+    color: rgb(var(--app-fg-muted));
+  }
+  .task-hidden-count {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: rgb(var(--app-warning));
+    background: rgb(var(--app-warning) / 0.1);
+    padding: 0 4px;
+    border-radius: 3px;
+  }
+  .task-active-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 500;
+    color: rgb(var(--app-accent));
+    max-width: 140px;
+  }
+
+  /* 新建任务行 */
+  .task-create-row {
+    display: flex;
+    gap: 4px;
+  }
+  .task-create-input {
+    flex: 1;
+    height: 28px;
+    padding: 0 8px;
+    font-size: 12px;
+    color: rgb(var(--app-fg));
+    background: rgb(var(--app-surface) / 0.5);
+    border: 1px solid rgb(var(--app-border) / 0.35);
+    border-radius: 5px;
+    outline: none;
+    transition: border-color var(--motion-fast) var(--ease-out);
+  }
+  .task-create-input::placeholder {
+    color: rgb(var(--app-fg-subtle) / 0.6);
+  }
+  .task-create-input:focus {
+    border-color: rgb(var(--app-accent) / 0.4);
+  }
+  .task-create-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 5px;
+    background: rgb(var(--app-accent) / 0.12);
+    color: rgb(var(--app-accent));
+    transition: all var(--motion-fast) var(--ease-out);
+  }
+  .task-create-btn:hover {
+    background: rgb(var(--app-accent) / 0.2);
+  }
+  .task-create-btn:disabled {
+    opacity: 0.3;
+    pointer-events: none;
+  }
+
+  /* ── 任务列表滚动区 ── */
+  .task-list-scroll {
+    mask-image: linear-gradient(to bottom, transparent 0, black 4px, black calc(100% - 4px), transparent 100%);
+  }
+  .task-tree {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Linear 风格任务行 ── */
+  .task-row-linear {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding-right: 8px;
+    border-radius: 5px;
+    cursor: default;
+    transition:
+      background-color var(--motion-fast) var(--ease-out);
+    will-change: background-color;
+  }
+  .task-row-linear:hover {
+    background: rgb(var(--app-surface-2) / 0.5);
+  }
+  .task-row-highlighted {
+    background: rgb(var(--app-accent) / 0.06) !important;
+    box-shadow: inset 2px 0 0 rgb(var(--app-accent));
+  }
+  .task-row-done {
+    opacity: 0.45;
+  }
+
+  /* 折叠箭头 */
+  .task-chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    border-radius: 3px;
+    color: rgb(var(--app-fg-subtle));
+    transition: all var(--motion-fast) var(--ease-out);
+  }
+  .task-chevron:hover {
+    background: rgb(var(--app-surface-3) / 0.6);
+    color: rgb(var(--app-fg));
+  }
+
+  /* 叶子节点连接点 */
+  .task-leaf-dot {
+    position: absolute;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: rgb(var(--app-fg-subtle) / 0.25);
+    flex-shrink: 0;
+  }
+
+  /* 复选框 — Linear 16px 1.5px stroke */
+  .task-checkbox {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    border: 1.5px solid rgb(var(--app-border-strong) / 0.6);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--motion-fast) var(--ease-out);
+    cursor: pointer;
+  }
+  .task-row-linear:hover .task-checkbox {
+    border-color: rgb(var(--app-accent) / 0.6);
+  }
+  .task-checkbox.checked {
+    background: rgb(var(--app-accent));
+    border-color: rgb(var(--app-accent));
+    color: white;
+  }
+  .task-checkbox.checked svg {
+    color: white;
+  }
+
+  /* 优先级色点 */
+  .task-priority-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* 标题 */
+  .task-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 400;
+    color: rgb(var(--app-fg));
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .task-title.parent {
+    font-weight: 500;
+  }
+  .task-title.done {
+    text-decoration: line-through;
+    text-decoration-color: rgb(var(--app-fg-subtle) / 0.5);
+    color: rgb(var(--app-fg-subtle));
+  }
+
+  /* 元信息内联 */
+  .task-meta-inline {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .task-child-count {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgb(var(--app-fg-subtle));
+    background: rgb(var(--app-surface-3) / 0.5);
+    padding: 0 5px;
+    border-radius: 3px;
+    min-width: 16px;
+    text-align: center;
+  }
+  .task-due-mini {
+    font-size: 10px;
+    font-weight: 500;
+    color: rgb(var(--app-fg-subtle));
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 关联标记 */
+  .task-link-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    border-radius: 3px;
+  }
+  .task-link-badge.segment {
+    color: rgb(var(--app-accent));
+  }
+  .task-link-badge.session {
+    color: rgb(var(--app-success));
+  }
+
+  /* hover 操作 */
+  .task-actions {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity var(--motion-fast) var(--ease-out);
+  }
+  .task-row-linear:hover .task-actions {
+    opacity: 1;
+  }
+  .task-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    color: rgb(var(--app-fg-subtle));
+    transition: all var(--motion-fast) var(--ease-out);
+  }
+  .task-action-btn:hover {
+    background: rgb(var(--app-accent) / 0.1);
+    color: rgb(var(--app-accent));
+  }
+  .task-action-btn:disabled {
+    opacity: 0.3;
+    pointer-events: none;
+  }
+
+  /* 子任务容器 */
+  .task-children-wrap {
+    /* 高度过渡由 framer-motion 控制 */
+  }
+
+  /* 同步状态栏 */
+  .sync-bar {
+    border-top: 1px solid rgb(var(--app-border) / 0.3);
+  }
+  .sync-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .sync-status-dot.success {
+    background: rgb(var(--app-success));
+  }
+  .sync-status-dot.warning {
+    background: rgb(var(--app-warning));
+  }
+  .sync-status-dot.danger {
+    background: rgb(var(--app-danger));
+  }
+  .sync-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10.5px;
+    font-weight: 500;
+    color: rgb(var(--app-fg-subtle));
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all var(--motion-fast) var(--ease-out);
+  }
+  .sync-action-btn:hover {
+    background: rgb(var(--app-surface-2) / 0.5);
+    color: rgb(var(--app-fg));
+  }
+  .sync-action-btn:disabled {
+    opacity: 0.4;
+    pointer-events: none;
   }
 
   /* Toggle 开关 */
