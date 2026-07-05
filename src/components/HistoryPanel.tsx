@@ -28,6 +28,7 @@ import {
 } from '../lib/syncStatus';
 import type { FocusSession, FocusSegment, PauseEvent, SyncQueueItem, Task } from '@shared/types';
 import { TaskPicker } from './TaskPicker';
+import { DailyBarChart, FocusHeatmap, TaskDistribution, TrendCard } from './HistoryViz';
 
 interface SessionDetail {
   session: FocusSession;
@@ -76,6 +77,14 @@ export function HistoryPanel() {
     [sessions, range.start, range.end],
   );
   const rangeStats = useMemo(() => summarizeSessions(filteredSessions), [filteredSessions]);
+  // 上一周期统计（用于趋势对比）
+  const prevRangeStats = useMemo(() => {
+    const duration = range.end - range.start + 1;
+    const prevStart = range.start - duration;
+    const prevEnd = range.start - 1;
+    const prevSessions = filterSessionsByRange(sessions, { start: prevStart, end: prevEnd });
+    return summarizeSessions(prevSessions);
+  }, [sessions, range.start, range.end]);
   const dailyStats = useMemo(
     () => groupByDay(filteredSessions, range),
     [filteredSessions, range.start, range.end],
@@ -704,6 +713,29 @@ export function HistoryPanel() {
           <div className="grid gap-2.5 lg:grid-cols-2">
             <SummaryPanel title="按天" icon={<Icon.BarChart size="sm" />} items={dailyStats} />
             <SummaryPanel title="按周" icon={<Icon.Calendar size="sm" />} items={weeklyStats} />
+          </div>
+        </div>
+
+        {/* ── 可视化区域 ── */}
+        <div className="mb-3 grid gap-2.5 lg:grid-cols-2">
+          <DailyBarChart dailyStats={dailyStats} range={range} />
+          <FocusHeatmap sessions={filteredSessions} range={range} />
+          <TaskDistribution sessionSegments={sessionSegmentsById} />
+          {/* 趋势对比 */}
+          <div className="viz-card rounded-lg border border-border/60 bg-bg-card/50 p-3">
+            <div className="mb-3 flex items-center gap-1.5">
+              <span className="flex h-5 w-5 items-center justify-center rounded-md bg-warning/10 text-warning">
+                <Icon.TrendingUp size="xs" tone="warning" />
+              </span>
+              <span className="text-[12px] font-semibold text-fg">趋势对比</span>
+              <span className="text-[10.5px] text-fg-subtle">vs 上一周期</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <TrendCard current={rangeStats.active} previous={prevRangeStats.active} label="专注时长" />
+              <TrendCard current={rangeStats.count} previous={prevRangeStats.count} label="次数" format="number" />
+              <TrendCard current={rangeStats.pause} previous={prevRangeStats.pause} label="暂停时长" />
+              <TrendCard current={rangeStats.active / Math.max(rangeStats.count, 1)} previous={prevRangeStats.active / Math.max(prevRangeStats.count, 1)} label="平均/次" />
+            </div>
           </div>
         </div>
 

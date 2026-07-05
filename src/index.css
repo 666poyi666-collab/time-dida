@@ -59,6 +59,11 @@
     --app-accent-soft: 129 140 248 / 0.12;
     --app-accent-fg: 255 255 255;
 
+    /* ── fg 别名（CSS 中大量使用 --app-fg* 但之前未定义）── */
+    --app-fg: var(--app-text);
+    --app-fg-muted: var(--app-muted);
+    --app-fg-subtle: var(--app-subtle);
+
     /* ── 间距：4px基准网格 ── */
 
     /* ── 浅色模式：Vercel/Linear 风冷白 ── */

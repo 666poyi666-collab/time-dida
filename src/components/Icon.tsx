@@ -171,6 +171,7 @@ import {
   VolumeX,
   Power,
   Menu,
+  PieChart,
 } from 'lucide-react';
 
 // 导出统一包装的图标集
@@ -243,6 +244,7 @@ export const Icon = {
   Settings: createIcon(Settings),
   Calendar: createIcon(CalendarDays),
   BarChart: createIcon(BarChart3),
+  PieChart: createIcon(PieChart),
   PanelClose: createIcon(PanelRightClose),
   Maximize: createIcon(Maximize2),
 
