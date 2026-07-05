@@ -1,6 +1,6 @@
 {
   "name": "focuslink",
-  "version": "0.2.29",
+  "version": "0.3.0",
   "description": "FocusLink - 全局快捷键驱动的专注时间记录器 + 滴答清单任务关联器",
   "author": "FocusLink",
   "main": "dist-electron/main.js",
@@ -22,6 +22,9 @@
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
     "@fontsource/inter-tight": "^5.2.7",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/manrope": "^5.2.8",
+    "@fontsource/sora": "^5.2.8",
     "better-sqlite3": "^11.3.0",
     "framer-motion": "^11.3.0",
     "lucide-react": "^0.412.0",

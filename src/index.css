@@ -1,8 +1,12 @@
-@import '@fontsource/inter/400.css';
-@import '@fontsource/inter/500.css';
-@import '@fontsource/inter/600.css';
-@import '@fontsource/inter-tight/600.css';
-@import '@fontsource/inter-tight/700.css';
+@import '@fontsource/sora/600.css';
+@import '@fontsource/sora/700.css';
+@import '@fontsource/manrope/400.css';
+@import '@fontsource/manrope/500.css';
+@import '@fontsource/manrope/600.css';
+@import '@fontsource/manrope/700.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/600.css';
+@import '@fontsource/jetbrains-mono/700.css';
 
 @tailwind base;
 @tailwind components;
@@ -10,25 +14,11 @@
 
 @layer base {
   :root {
-    /* FocusLink product tokens: Notion-inspired paper chrome + blue structure + green focus semantics. */
-    --background: #f6f5f4;
-    --foreground: #31302e;
-    --card: #ffffff;
-    --card-foreground: #31302e;
-    --muted: #f1f0ee;
-    --muted-foreground: #615d59;
-    --border-token: #e6e6e6;
-    --input-token: #ddd9d4;
-    --primary: #0075de;
-    --primary-foreground: #ffffff;
-    --primary-soft: #e8f2ff;
-    --accent-token: #e8f2ff;
-    --accent-foreground-token: #005bab;
-    --ring-token: #0075de;
-    --radius: 16px;
+    /* ── FocusLink v0.3「极光剧场」设计令牌 ────────────────────
+       核心转变：从 Notion 纸面 → 深邃画布 + 极光辉光。
+       深色为签名外观；浅色保持冷调克制。 */
 
-    /* Motion tokens — 统一节奏，禁止组件各自乱写 transition。
-       原则：轻、稳、顺；优先 transform/opacity；禁止 bounce；最长 260ms。 */
+    /* 动效节奏（沿用 v0.2，已验证体感良好） */
     --motion-fast: 120ms;
     --motion-normal: 180ms;
     --motion-slow: 260ms;
@@ -38,37 +28,48 @@
     --scale-hover: 1.02;
     --scale-active: 0.98;
 
-    --app-bg: 246 245 244;
-    --app-surface: 255 255 255;
-    --app-surface-2: 241 240 238;
-    --app-elevated: 250 249 247;
-    --app-overlay: 15 23 42 / 0.34;
-    --app-text: 49 48 46;
-    --app-muted: 97 93 89;
-    --app-subtle: 163 158 152;
-    --app-inverse: 255 255 255;
-    --app-border: 230 230 230;
-    --app-border-strong: 202 199 194;
-    --app-border-subtle: 238 237 235;
-    --app-accent: 0 117 222;
-    --app-accent-hover: 0 91 171;
-    --app-accent-soft: 0 117 222 / 0.1;
-    --app-accent-fg: 255 255 255;
-    --app-success: 26 174 57;
-    --app-warning: 221 91 0;
-    --app-danger: 239 68 68;
-    --app-info: 98 174 240;
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 16px;
-    --radius-xl: 18px;
-    --shadow-sm: 0 1px 2px rgb(49 48 46 / 0.035);
-    --shadow-md: 0 14px 34px -32px rgb(49 48 46 / 0.34);
-    --shadow-lg: 0 24px 64px -50px rgb(49 48 46 / 0.38);
-    --shadow-glow:
-      0 0 0 1px rgb(var(--success) / 0.18), 0 18px 44px -30px rgb(var(--success) / 0.48);
+    /* 圆角加大，更柔软悬浮 */
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 18px;
+    --radius-xl: 22px;
+    --radius-2xl: 28px;
 
-    /* Backward-compatible aliases used by the current Tailwind config. */
+    /* ── 浅色模式（冷调纸面，非 v0.2 暖纸） ── */
+    --app-bg: 244 245 247;
+    --app-surface: 255 255 255;
+    --app-surface-2: 238 240 244;
+    --app-elevated: 248 250 252;
+    --app-overlay: 15 23 42 / 0.34;
+    --app-text: 30 34 42;
+    --app-muted: 90 98 112;
+    --app-subtle: 152 160 174;
+    --app-border: 226 230 238;
+    --app-border-strong: 198 204 216;
+    --app-border-subtle: 238 240 244;
+    --app-accent: 99 102 241;
+    --app-accent-hover: 79 70 229;
+    --app-accent-soft: 99 102 241 / 0.1;
+    --app-accent-fg: 255 255 255;
+    --app-success: 16 152 116;
+    --app-warning: 217 119 6;
+    --app-danger: 220 38 38;
+    --app-info: 59 130 246;
+
+    /* 极光环境光层（浅色：极淡冷彩雾） */
+    --aurora-1: 99 102 241 / 0.06;
+    --aurora-2: 16 152 116 / 0.05;
+    --aurora-3: 217 119 6 / 0.04;
+
+    /* 阴影：浅色用柔和投影 */
+    --shadow-sm: 0 1px 2px rgb(30 34 42 / 0.04);
+    --shadow-md: 0 12px 32px -28px rgb(30 34 42 / 0.22);
+    --shadow-lg: 0 24px 56px -44px rgb(30 34 42 / 0.28);
+    --shadow-glow:
+      0 0 0 1px rgb(var(--app-accent) / 0.16),
+      0 18px 48px -32px rgb(var(--app-accent) / 0.42);
+
+    /* 旧别名（向后兼容 tailwind 配置） */
     --bg-base: var(--app-bg);
     --bg-card: var(--app-surface);
     --bg-subtle: var(--app-surface-2);
@@ -80,143 +81,159 @@
     --border-strong: var(--app-border-strong);
     --accent: var(--app-accent);
     --accent-fg: var(--app-accent-fg);
-    --accent-muted: 232 242 255;
+    --accent-muted: 238 240 252;
     --success: var(--app-success);
     --warning: var(--app-warning);
     --danger: var(--app-danger);
     --info: var(--app-info);
+    --background: rgb(var(--app-bg));
+    --foreground: rgb(var(--app-text));
+    --card: rgb(var(--app-surface));
+    --card-foreground: rgb(var(--app-text));
+    --muted: rgb(var(--app-surface-2));
+    --muted-foreground: rgb(var(--app-muted));
+    --border-token: rgb(var(--app-border));
+    --input-token: rgb(var(--app-border-strong));
+    --primary: rgb(var(--app-accent));
+    --primary-foreground: rgb(var(--app-accent-fg));
+    --primary-soft: rgb(var(--app-accent) / 0.1);
+    --accent-token: rgb(var(--app-accent) / 0.1);
+    --accent-foreground-token: rgb(var(--app-accent-hover));
+    --ring-token: rgb(var(--app-accent));
+    --radius: 18px;
   }
 
   .light {
-    --background: #f6f5f4;
-    --foreground: #31302e;
-    --card: #ffffff;
-    --card-foreground: #31302e;
-    --muted: #f1f0ee;
-    --muted-foreground: #615d59;
-    --border-token: #e6e6e6;
-    --input-token: #ddd9d4;
-    --primary: #0075de;
-    --primary-foreground: #ffffff;
-    --primary-soft: #e8f2ff;
-    --accent-token: #e8f2ff;
-    --accent-foreground-token: #005bab;
-    --ring-token: #0075de;
-
-    --app-bg: 246 245 244;
+    --app-bg: 244 245 247;
     --app-surface: 255 255 255;
-    --app-surface-2: 241 240 238;
-    --app-elevated: 250 249 247;
+    --app-surface-2: 238 240 244;
+    --app-elevated: 248 250 252;
     --app-overlay: 15 23 42 / 0.36;
-    --app-text: 49 48 46;
-    --app-muted: 97 93 89;
-    --app-subtle: 163 158 152;
-    --app-border: 230 230 230;
-    --app-border-strong: 202 199 194;
-    --app-border-subtle: 238 237 235;
-    --app-accent: 0 117 222;
-    --app-accent-hover: 0 91 171;
-    --app-accent-soft: 0 117 222 / 0.1;
+    --app-text: 30 34 42;
+    --app-muted: 90 98 112;
+    --app-subtle: 152 160 174;
+    --app-border: 226 230 238;
+    --app-border-strong: 198 204 216;
+    --app-border-subtle: 238 240 244;
+    --app-accent: 99 102 241;
+    --app-accent-hover: 79 70 229;
+    --app-accent-soft: 99 102 241 / 0.1;
     --app-accent-fg: 255 255 255;
-    --accent-muted: 232 242 255;
+    --app-success: 16 152 116;
+    --app-warning: 217 119 6;
+    --app-danger: 220 38 38;
+    --app-info: 59 130 246;
+    --aurora-1: 99 102 241 / 0.06;
+    --aurora-2: 16 152 116 / 0.05;
+    --aurora-3: 217 119 6 / 0.04;
+    --shadow-sm: 0 1px 2px rgb(30 34 42 / 0.04);
+    --shadow-md: 0 12px 32px -28px rgb(30 34 42 / 0.22);
+    --shadow-lg: 0 24px 56px -44px rgb(30 34 42 / 0.28);
+    --shadow-glow:
+      0 0 0 1px rgb(var(--app-accent) / 0.16),
+      0 18px 48px -32px rgb(var(--app-accent) / 0.42);
+    --accent-muted: 238 240 252;
   }
 
   .dark {
-    --background: #0e1115;
-    --foreground: #eff1f4;
-    --card: #12171d;
-    --card-foreground: #eff1f4;
-    --muted: #1c232b;
-    --muted-foreground: #a9b6c7;
-    --border-token: #2c3642;
-    --input-token: #333f4c;
-    --primary: #34d399;
-    --primary-foreground: #052e20;
-    --primary-soft: #063f2e;
-    --accent-token: #073f2f;
-    --accent-foreground-token: #a7f3d0;
-    --ring-token: #10b981;
+    /* ── 深色模式：极光剧场签名外观 ── */
+    --app-bg: 9 11 16;
+    --app-surface: 16 20 28;
+    --app-surface-2: 24 30 40;
+    --app-elevated: 32 40 52;
+    --app-overlay: 0 0 0 / 0.6;
+    --app-text: 236 240 248;
+    --app-muted: 156 168 188;
+    --app-subtle: 104 116 136;
+    --app-border: 38 46 60;
+    --app-border-strong: 56 66 84;
+    --app-border-subtle: 28 34 44;
+    --app-accent: 129 140 248;
+    --app-accent-hover: 165 180 252;
+    --app-accent-soft: 129 140 248 / 0.14;
+    --app-accent-fg: 14 16 22;
+    --app-success: 52 211 153;
+    --app-warning: 251 146 60;
+    --app-danger: 248 113 113;
+    --app-info: 96 165 250;
 
-    --app-bg: 14 17 21;
-    --app-surface: 18 23 29;
-    --app-surface-2: 28 35 43;
-    --app-elevated: 35 43 52;
-    --app-overlay: 0 0 0 / 0.54;
-    --app-text: 239 241 244;
-    --app-muted: 169 182 199;
-    --app-subtle: 119 132 150;
-    --app-border: 44 54 66;
-    --app-border-strong: 67 80 96;
-    --app-border-subtle: 31 39 48;
-    --app-accent: 52 211 153;
-    --app-accent-hover: 110 231 183;
-    --app-accent-soft: 52 211 153 / 0.13;
-    --app-accent-fg: 5 46 32;
-    --accent-muted: 6 78 59;
+    /* 极光环境光：深色画布上的冷彩辉光 */
+    --aurora-1: 129 140 248 / 0.14;
+    --aurora-2: 52 211 153 / 0.1;
+    --aurora-3: 251 146 60 / 0.08;
+
     --shadow-sm: 0 1px 0 rgb(255 255 255 / 0.03);
-    --shadow-md: 0 12px 30px -24px rgb(0 0 0 / 0.75);
-    --shadow-lg: 0 22px 60px -34px rgb(0 0 0 / 0.85);
+    --shadow-md: 0 16px 40px -28px rgb(0 0 0 / 0.7);
+    --shadow-lg: 0 28px 72px -40px rgb(0 0 0 / 0.82);
     --shadow-glow:
-      0 0 0 1px rgb(var(--app-accent) / 0.12), 0 20px 54px -34px rgb(var(--app-accent) / 0.5);
+      0 0 0 1px rgb(var(--app-accent) / 0.14),
+      0 24px 64px -36px rgb(var(--app-accent) / 0.5);
+    --accent-muted: 30 34 52;
   }
 
-  /* 主题色变体 */
+  /* 主题色变体：全部调整为深色画布上的辉光色 */
   .accent-indigo {
-    --app-accent: 0 117 222;
-    --app-accent-hover: 0 91 171;
+    --app-accent: 129 140 248;
+    --app-accent-hover: 165 180 252;
     --accent: var(--app-accent);
-    --accent-muted: 232 242 255;
+    --accent-muted: 30 34 52;
+    --aurora-1: 129 140 248 / 0.14;
   }
   .accent-violet {
-    --app-accent: 139 92 246;
-    --app-accent-hover: 167 139 250;
+    --app-accent: 167 139 250;
+    --app-accent-hover: 196 181 253;
     --accent: var(--app-accent);
-    --accent-muted: 76 29 149;
+    --accent-muted: 36 24 56;
+    --aurora-1: 167 139 250 / 0.14;
   }
   .accent-emerald {
-    --app-accent: 26 174 57;
-    --app-accent-hover: 16 137 46;
+    --app-accent: 52 211 153;
+    --app-accent-hover: 110 231 183;
     --accent: var(--app-accent);
-    --accent-muted: 221 246 226;
+    --accent-muted: 12 40 32;
+    --aurora-1: 52 211 153 / 0.14;
   }
   .accent-rose {
-    --app-accent: 244 63 94;
-    --app-accent-hover: 251 113 133;
+    --app-accent: 251 113 133;
+    --app-accent-hover: 253 164 175;
     --accent: var(--app-accent);
-    --accent-muted: 159 18 57;
+    --accent-muted: 48 16 28;
+    --aurora-1: 251 113 133 / 0.14;
   }
   .accent-amber {
-    --app-accent: 245 158 11;
-    --app-accent-hover: 251 191 36;
+    --app-accent: 251 191 36;
+    --app-accent-hover: 253 224 71;
     --accent: var(--app-accent);
-    --accent-muted: 120 53 15;
+    --accent-muted: 44 32 8;
+    --aurora-1: 251 191 36 / 0.14;
   }
   .accent-sky {
-    --app-accent: 14 165 233;
-    --app-accent-hover: 56 189 248;
+    --app-accent: 56 189 248;
+    --app-accent-hover: 125 211 252;
     --accent: var(--app-accent);
-    --accent-muted: 12 74 110;
+    --accent-muted: 12 36 52;
+    --aurora-1: 56 189 248 / 0.14;
   }
 
   .nav-active {
-    background: rgb(var(--accent) / 0.12);
+    background: rgb(var(--accent) / 0.14);
     color: rgb(var(--accent));
     box-shadow:
-      inset 0 0 0 1px rgb(var(--accent) / 0.18),
-      0 1px 2px rgb(var(--accent) / 0.08);
+      inset 0 0 0 1px rgb(var(--accent) / 0.22),
+      0 4px 14px -6px rgb(var(--accent) / 0.4);
   }
 
   .progress-bar {
-    background: rgb(var(--accent) / 0.12);
+    background: rgb(var(--accent) / 0.14);
   }
   .progress-bar-fill {
     background: rgb(var(--accent));
-    box-shadow: 0 0 6px rgb(var(--accent) / 0.4);
+    box-shadow: 0 0 8px rgb(var(--accent) / 0.5);
   }
 
   .selected-accent {
     border-color: rgb(var(--accent) / 0.5);
-    background-color: rgb(var(--accent) / 0.06);
+    background-color: rgb(var(--accent) / 0.08);
   }
 
   .state-dot-running {
@@ -250,8 +267,8 @@
 
   body {
     font-family:
+      'Manrope',
       'Microsoft YaHei UI',
-      'Inter',
       'Segoe UI',
       'HarmonyOS Sans SC',
       'PingFang SC',
@@ -262,12 +279,7 @@
     -moz-osx-font-smoothing: grayscale;
     user-select: none;
     overflow: hidden;
-    background: linear-gradient(
-      180deg,
-      rgb(var(--app-bg)) 0%,
-      rgb(var(--app-surface-2) / 0.72) 100%
-    );
-    letter-spacing: 0;
+    letter-spacing: -0.01em;
   }
 
   html.mini-window-page,
@@ -276,7 +288,7 @@
     background: transparent !important;
   }
 
-  /* 滚动条 */
+  /* 滚动条：更细更隐形 */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -285,49 +297,112 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgb(var(--border));
+    background: rgb(var(--border-strong) / 0.6);
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgb(var(--fg-subtle));
+    background: rgb(var(--app-muted) / 0.5);
   }
 
-  /* focus-visible */
   :focus-visible {
-    outline: 2px solid rgb(var(--accent) / 0.42);
+    outline: 2px solid rgb(var(--accent) / 0.5);
     outline-offset: 2px;
   }
 }
 
 @layer components {
+  /* ── 极光画布背景：多层径向渐变模拟环境光 ── */
+  .aurora-canvas {
+    position: relative;
+    background:
+      radial-gradient(
+        ellipse 80% 60% at 50% 0%,
+        rgb(var(--aurora-1)),
+        transparent 70%
+      ),
+      radial-gradient(
+        ellipse 60% 50% at 100% 100%,
+        rgb(var(--aurora-2)),
+        transparent 65%
+      ),
+      radial-gradient(
+        ellipse 50% 40% at 0% 80%,
+        rgb(var(--aurora-3)),
+        transparent 60%
+      ),
+      rgb(var(--app-bg));
+  }
+
+  /* 专注态画布辉光：running 时画布泛起冷绿 */
+  .aurora-canvas-focus {
+    background:
+      radial-gradient(
+        ellipse 70% 50% at 50% 30%,
+        rgb(var(--success) / 0.08),
+        transparent 70%
+      ),
+      radial-gradient(
+        ellipse 80% 60% at 50% 0%,
+        rgb(var(--aurora-1)),
+        transparent 70%
+      ),
+      radial-gradient(
+        ellipse 60% 50% at 100% 100%,
+        rgb(var(--aurora-2)),
+        transparent 65%
+      ),
+      rgb(var(--app-bg));
+  }
+
+  /* 暂停态画布辉光：paused 时画布泛起暖橙 */
+  .aurora-canvas-pause {
+    background:
+      radial-gradient(
+        ellipse 70% 50% at 50% 30%,
+        rgb(var(--warning) / 0.07),
+        transparent 70%
+      ),
+      radial-gradient(
+        ellipse 80% 60% at 50% 0%,
+        rgb(var(--aurora-1)),
+        transparent 70%
+      ),
+      radial-gradient(
+        ellipse 60% 50% at 100% 100%,
+        rgb(var(--aurora-2)),
+        transparent 65%
+      ),
+      rgb(var(--app-bg));
+  }
+
   .glass {
-    background: rgb(var(--bg-card) / 0.97);
-    backdrop-filter: blur(14px) saturate(1.04);
-    -webkit-backdrop-filter: blur(14px) saturate(1.04);
+    background: rgb(var(--app-surface) / 0.72);
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.58) inset,
-      0 1px 0 rgb(255 255 255 / 0.06),
+      0 1px 0 rgb(255 255 255 / 0.06) inset,
       var(--shadow-md);
   }
 
+  /* ── 小窗外壳：v0.3 玻璃浮窗 ── */
   .mini-window-shell {
     position: relative;
     isolation: isolate;
     overflow: hidden;
     contain: paint;
-    border-radius: 30px;
-    clip-path: inset(0 round 30px);
-    border: 1px solid rgb(var(--border) / 0.76);
+    border-radius: 24px;
+    clip-path: inset(0 round 24px);
+    border: 1px solid rgb(var(--border) / 0.7);
     background-clip: padding-box;
     background:
-      linear-gradient(150deg, rgb(var(--bg-card) / 0.99), rgb(var(--bg-subtle) / 0.95)),
-      rgb(var(--bg-card));
-    backdrop-filter: blur(20px) saturate(1.08);
-    -webkit-backdrop-filter: blur(20px) saturate(1.08);
+      linear-gradient(150deg, rgb(var(--app-surface) / 0.96), rgb(var(--app-surface-2) / 0.88)),
+      rgb(var(--app-bg));
+    backdrop-filter: blur(24px) saturate(1.5);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.62) inset,
-      0 22px 58px -36px rgb(15 23 42 / 0.5),
-      0 8px 20px -18px rgb(15 23 42 / 0.26);
+      0 1px 0 rgb(255 255 255 / 0.08) inset,
+      0 28px 64px -36px rgb(0 0 0 / 0.6),
+      0 10px 24px -18px rgb(0 0 0 / 0.3);
   }
 
   .mini-window-shell::before {
@@ -338,43 +413,43 @@
     border-radius: inherit;
     pointer-events: none;
     background:
-      linear-gradient(180deg, rgb(255 255 255 / 0.12), transparent 46%),
-      linear-gradient(120deg, rgb(var(--accent) / 0.08), transparent 34%);
+      linear-gradient(180deg, rgb(255 255 255 / 0.08), transparent 46%),
+      radial-gradient(ellipse 70% 50% at 50% 0%, rgb(var(--accent) / 0.1), transparent 60%);
   }
 
   .mini-window-shell::after {
     content: '';
     position: absolute;
-    inset: 0 18px auto;
+    inset: 0 20px auto;
     height: 3px;
     border-radius: 999px;
     pointer-events: none;
-    background: rgb(var(--border) / 0.72);
-    opacity: 0.56;
+    background: rgb(var(--border) / 0.6);
+    opacity: 0.5;
   }
 
   .mini-window-collapsed {
-    border-radius: 28px;
-    clip-path: inset(0 round 28px);
+    border-radius: 22px;
+    clip-path: inset(0 round 22px);
   }
 
   .mini-window-running {
-    border-color: rgb(var(--success) / 0.34);
+    border-color: rgb(var(--success) / 0.32);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.5) inset,
-      0 18px 54px -34px rgb(15 23 42 / 0.5),
-      0 0 0 1px rgb(var(--success) / 0.08),
-      0 16px 42px -38px rgb(var(--success) / 0.88);
+      0 1px 0 rgb(255 255 255 / 0.08) inset,
+      0 28px 64px -36px rgb(0 0 0 / 0.6),
+      0 0 0 1px rgb(var(--success) / 0.1),
+      0 20px 48px -40px rgb(var(--success) / 0.9);
   }
 
   .mini-window-running::after {
     background: linear-gradient(
       90deg,
       rgb(var(--success) / 0.1),
-      rgb(var(--success) / 0.82),
+      rgb(var(--success) / 0.85),
       rgb(var(--success) / 0.1)
     );
-    opacity: 0.86;
+    opacity: 0.88;
   }
 
   .mini-window-paused {
@@ -388,7 +463,7 @@
       rgb(var(--warning) / 0.82),
       rgb(var(--warning) / 0.1)
     );
-    opacity: 0.82;
+    opacity: 0.84;
   }
 
   .mini-window-collapsed::after {
@@ -401,50 +476,50 @@
   }
 
   .mini-time-block {
-    border-radius: 20px;
-    border: 1px solid rgb(var(--border) / 0.56);
+    border-radius: 18px;
+    border: 1px solid rgb(var(--border) / 0.5);
     background:
-      linear-gradient(180deg, rgb(var(--bg-card) / 0.74), rgb(var(--bg-subtle) / 0.4)),
-      rgb(var(--bg-card) / 0.5);
+      linear-gradient(180deg, rgb(var(--app-surface) / 0.6), rgb(var(--app-surface-2) / 0.3)),
+      rgb(var(--app-surface) / 0.4);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.3),
-      0 1px 2px rgb(15 23 42 / 0.03);
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      0 1px 2px rgb(0 0 0 / 0.04);
   }
 
   .mini-icon-button {
     @apply flex items-center justify-center rounded-full text-fg-subtle hover:text-fg;
     width: 26px;
     height: 26px;
-    border: 1px solid rgb(var(--border) / 0.56);
-    background: rgb(var(--bg-card) / 0.56);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.34);
+    border: 1px solid rgb(var(--border) / 0.5);
+    background: rgb(var(--app-surface) / 0.5);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
   }
 
   .mini-icon-button:hover {
-    border-color: rgb(var(--border-strong) / 0.68);
-    background: rgb(var(--bg-elevated) / 0.82);
+    border-color: rgb(var(--border-strong) / 0.6);
+    background: rgb(var(--app-elevated) / 0.8);
   }
 
   .mini-stat-card {
-    border-radius: 16px;
-    border: 1px solid rgb(var(--border) / 0.62);
+    border-radius: 14px;
+    border: 1px solid rgb(var(--border) / 0.5);
     background:
-      linear-gradient(180deg, rgb(var(--bg-card) / 0.52), rgb(var(--bg-subtle) / 0.38)),
-      rgb(var(--bg-subtle) / 0.3);
+      linear-gradient(180deg, rgb(var(--app-surface) / 0.4), rgb(var(--app-surface-2) / 0.28)),
+      rgb(var(--app-surface-2) / 0.22);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.24),
-      0 1px 2px rgb(15 23 42 / 0.035);
+      inset 0 1px 0 rgb(255 255 255 / 0.05),
+      0 1px 2px rgb(0 0 0 / 0.04);
   }
 
   .mini-stat-compact {
-    border-radius: 17px;
+    border-radius: 15px;
   }
 
   .mini-stat-card-primary {
-    border-color: rgb(var(--success) / 0.22);
+    border-color: rgb(var(--success) / 0.2);
     background:
-      linear-gradient(180deg, rgb(var(--success) / 0.095), rgb(var(--bg-subtle) / 0.36)),
-      rgb(var(--bg-card) / 0.48);
+      linear-gradient(180deg, rgb(var(--success) / 0.08), rgb(var(--app-surface-2) / 0.26)),
+      rgb(var(--app-surface) / 0.4);
   }
 
   .mini-primary-button {
@@ -452,88 +527,123 @@
     color: #fff;
     box-shadow:
       inset 0 1px 0 rgb(255 255 255 / 0.2),
-      0 12px 24px -18px rgb(var(--success) / 0.8);
+      0 12px 28px -18px rgb(var(--success) / 0.8);
   }
 
   .mini-action-focus {
-    background: linear-gradient(180deg, rgb(var(--success) / 0.98), rgb(16 137 46 / 0.98));
+    background: linear-gradient(180deg, rgb(var(--success) / 0.98), rgb(16 137 92 / 0.98));
   }
 
   .mini-action-pause {
-    background: linear-gradient(180deg, rgb(var(--warning) / 0.96), rgb(181 74 0 / 0.98));
+    background: linear-gradient(180deg, rgb(var(--warning) / 0.96), rgb(181 74 8 / 0.98));
     box-shadow:
       inset 0 1px 0 rgb(255 255 255 / 0.2),
-      0 12px 24px -18px rgb(var(--warning) / 0.82);
+      0 12px 28px -18px rgb(var(--warning) / 0.82);
   }
 
   .mini-primary-button:hover {
-    filter: brightness(1.06);
+    filter: brightness(1.08);
   }
 
   .mini-secondary-button {
     border-radius: 999px;
-    border: 1px solid rgb(var(--border) / 0.68);
+    border: 1px solid rgb(var(--border) / 0.6);
     color: rgb(var(--fg-muted));
-    background: rgb(var(--bg-card) / 0.58);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.28);
+    background: rgb(var(--app-surface) / 0.5);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
   }
 
   .mini-secondary-button:hover {
     color: rgb(var(--fg-default));
-    background: rgb(var(--bg-elevated) / 0.82);
+    background: rgb(var(--app-elevated) / 0.8);
+  }
+
+  /* ── 字体工具类 ── */
+  .font-display {
+    font-family: 'Sora', 'Microsoft YaHei UI', system-ui, sans-serif;
+    letter-spacing: -0.02em;
   }
 
   .timer-digit {
     font-family:
-      'Inter Tight', 'Microsoft YaHei UI', 'Inter', ui-monospace, 'SFMono-Regular', monospace;
+      'JetBrains Mono', 'Microsoft YaHei UI', ui-monospace, 'SFMono-Regular', monospace;
     font-variant-numeric: tabular-nums;
-    font-feature-settings: 'tnum';
-    letter-spacing: 0;
+    font-feature-settings: 'tnum', 'zero';
+    letter-spacing: -0.02em;
   }
 
   .focus-glow {
     box-shadow:
-      0 0 0 1px rgb(var(--success) / 0.18),
-      0 18px 48px -40px rgb(var(--success) / 0.48),
+      0 0 0 1px rgb(var(--success) / 0.16),
+      0 24px 56px -44px rgb(var(--success) / 0.5),
       var(--shadow-md);
   }
 
   .pause-glow {
     box-shadow:
-      0 0 0 1px rgb(var(--warning) / 0.2),
-      0 18px 48px -40px rgb(var(--warning) / 0.42),
+      0 0 0 1px rgb(var(--warning) / 0.18),
+      0 24px 56px -44px rgb(var(--warning) / 0.44),
       var(--shadow-md);
   }
 
   .surface-grid {
     background-image:
-      linear-gradient(rgb(var(--app-border-subtle) / 0.42) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(var(--app-border-subtle) / 0.32) 1px, transparent 1px);
+      linear-gradient(rgb(var(--app-border-subtle) / 0.4) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(var(--app-border-subtle) / 0.3) 1px, transparent 1px);
     background-size: 44px 44px;
-    mask-image: linear-gradient(180deg, rgb(0 0 0 / 0.55), transparent 82%);
+    mask-image: linear-gradient(180deg, rgb(0 0 0 / 0.5), transparent 82%);
   }
 
+  /* ── v0.3 主壳层：极光画布 ── */
   .app-shell {
-    background:
-      linear-gradient(180deg, rgb(var(--app-elevated) / 0.96) 0%, rgb(var(--app-bg)) 24%),
-      rgb(var(--app-bg));
+    background: rgb(var(--app-bg));
+    position: relative;
   }
 
+  /* ── 侧轨（v0.3 新增） ── */
+  .side-rail {
+    background: rgb(var(--app-surface) / 0.6);
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    border-right: 1px solid rgb(var(--border) / 0.5);
+  }
+
+  .rail-btn {
+    @apply flex items-center justify-center;
+    width: 40px;
+    height: 40px;
+    border-radius: 14px;
+    transition:
+      background-color var(--motion-fast) var(--ease-out),
+      color var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-normal) var(--ease-out),
+      transform var(--motion-fast) var(--ease-out);
+  }
+  .rail-btn:hover {
+    background: rgb(var(--app-surface-2) / 0.8);
+    color: rgb(var(--fg-default));
+    transform: translateX(2px);
+  }
+  .rail-btn:active {
+    transform: translateX(0) scale(0.96);
+  }
+
+  /* 旧 topbar/workspace 类保留向后兼容，逐步移除 */
   .topbar-shell {
     min-height: 56px;
-    border-bottom: 1px solid rgb(var(--border) / 0.82);
-    background: rgb(var(--app-surface) / 0.96);
-    box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.6) inset,
-      0 10px 28px -28px rgb(15 23 42 / 0.5);
+    border-bottom: 1px solid rgb(var(--border) / 0.6);
+    background: rgb(var(--app-surface) / 0.8);
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    box-shadow: 0 10px 28px -28px rgb(0 0 0 / 0.4);
   }
 
   .brand-mark {
-    border: 1px solid rgb(var(--border) / 0.92);
+    border: 1px solid rgb(var(--border) / 0.7);
     background:
-      linear-gradient(180deg, rgb(255 255 255 / 0.98), rgb(var(--bg-subtle) / 0.82)),
-      rgb(var(--bg-card));
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.45);
+      linear-gradient(180deg, rgb(var(--app-elevated) / 0.9), rgb(var(--app-surface-2) / 0.7)),
+      rgb(var(--app-surface));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
   }
 
   .brand-mark::before {
@@ -544,8 +654,8 @@
     width: 9px;
     height: 4px;
     border-radius: 999px;
-    background: #62aef0;
-    box-shadow: 11px 0 0 rgb(255 100 200 / 0.82);
+    background: rgb(var(--accent));
+    box-shadow: 11px 0 0 rgb(var(--success) / 0.8);
   }
 
   .brand-mark-ring {
@@ -580,7 +690,7 @@
     width: 4px;
     height: 4px;
     border-radius: 999px;
-    background: #2a9d99;
+    background: rgb(var(--info));
   }
 
   .brand-mark-status {
@@ -590,11 +700,11 @@
   }
 
   .segmented-nav {
-    border: 1px solid rgb(var(--border) / 0.78);
-    background: rgb(var(--bg-subtle) / 0.78);
+    border: 1px solid rgb(var(--border) / 0.6);
+    background: rgb(var(--app-surface-2) / 0.6);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.46),
-      0 1px 2px rgb(16 24 40 / 0.035);
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      0 1px 2px rgb(0 0 0 / 0.04);
   }
 
   .window-icon-button {
@@ -605,7 +715,7 @@
       transform var(--motion-fast) var(--ease-out);
   }
   .window-icon-button:hover {
-    background: rgb(var(--bg-subtle) / 0.88);
+    background: rgb(var(--app-surface-2) / 0.8);
     color: rgb(var(--fg-default));
   }
   .window-icon-button:active {
@@ -622,16 +732,12 @@
   }
 
   .workspace-pane-timer {
-    background: linear-gradient(
-      180deg,
-      rgb(var(--app-bg) / 0.94),
-      rgb(var(--app-surface-2) / 0.58)
-    );
+    background: transparent;
   }
 
   .workspace-pane-task {
-    border-left: 1px solid rgb(var(--border) / 0.58);
-    background: linear-gradient(180deg, rgb(var(--app-elevated) / 0.68), rgb(var(--app-bg) / 0.98));
+    border-left: 1px solid rgb(var(--border) / 0.4);
+    background: transparent;
   }
 
   .pane-divider {
@@ -643,7 +749,7 @@
   }
   .pane-divider:hover,
   .pane-divider[data-dragging='true'] {
-    background: rgb(var(--accent) / 0.055);
+    background: rgb(var(--accent) / 0.05);
   }
   .pane-divider::before {
     content: '';
@@ -653,7 +759,7 @@
     width: 1px;
     transform: translateX(-50%);
     border-radius: 999px;
-    background: rgb(var(--border) / 0.88);
+    background: rgb(var(--border) / 0.7);
   }
   .pane-divider::after {
     content: '';
@@ -664,8 +770,8 @@
     height: 42px;
     transform: translate(-50%, -50%);
     border-radius: 999px;
-    background: rgb(var(--bg-card));
-    border: 1px solid rgb(var(--border) / 0.9);
+    background: rgb(var(--app-surface));
+    border: 1px solid rgb(var(--border) / 0.7);
     box-shadow: var(--shadow-sm);
     transition:
       border-color var(--motion-fast) var(--ease-out),
@@ -682,29 +788,29 @@
 
   .timer-hero {
     background:
-      linear-gradient(180deg, rgb(var(--app-surface) / 0.98), rgb(var(--app-elevated) / 0.92)),
+      linear-gradient(180deg, rgb(var(--app-surface) / 0.9), rgb(var(--app-elevated) / 0.7)),
       rgb(var(--app-surface));
   }
 
   .timer-context-strip {
-    border-top: 1px solid rgb(var(--border) / 0.62);
-    border-bottom: 1px solid rgb(var(--border) / 0.5);
+    border-top: 1px solid rgb(var(--border) / 0.5);
+    border-bottom: 1px solid rgb(var(--border) / 0.4);
     padding-block: 10px;
   }
 
   .timer-plan-strip {
     border-radius: var(--radius-lg);
-    border: 1px solid rgb(var(--border) / 0.72);
+    border: 1px solid rgb(var(--border) / 0.5);
     background:
-      linear-gradient(180deg, rgb(var(--app-surface) / 0.72), rgb(var(--app-surface-2) / 0.34)),
-      rgb(var(--app-surface) / 0.72);
+      linear-gradient(180deg, rgb(var(--app-surface) / 0.6), rgb(var(--app-surface-2) / 0.3)),
+      rgb(var(--app-surface) / 0.6);
     padding: 8px;
   }
 
   .task-metric {
-    border: 1px solid rgb(var(--border) / 0.82);
+    border: 1px solid rgb(var(--border) / 0.6);
     border-radius: 16px;
-    background: rgb(var(--bg-card) / 0.9);
+    background: rgb(var(--app-surface) / 0.8);
     box-shadow: var(--shadow-sm);
   }
 
@@ -718,21 +824,21 @@
   }
 
   .task-row-parent {
-    border: 1px solid rgb(var(--border) / 0.86);
-    background: rgb(var(--bg-card) / 0.95);
+    border: 1px solid rgb(var(--border) / 0.6);
+    background: rgb(var(--app-surface) / 0.8);
     box-shadow: var(--shadow-sm);
   }
   .task-row-parent:hover {
-    border-color: rgb(var(--border-strong) / 0.78);
-    background: rgb(var(--app-elevated) / 0.92);
+    border-color: rgb(var(--border-strong) / 0.6);
+    background: rgb(var(--app-elevated) / 0.8);
   }
   .task-row-child {
     border: 1px solid transparent;
-    background: rgb(var(--bg-card) / 0.34);
+    background: rgb(var(--app-surface) / 0.3);
   }
   .task-row-child:hover {
-    border-color: rgb(var(--border) / 0.74);
-    background: rgb(var(--bg-subtle) / 0.58);
+    border-color: rgb(var(--border) / 0.5);
+    background: rgb(var(--app-surface-2) / 0.5);
   }
 
   .task-tree-children {
@@ -747,9 +853,10 @@
     top: 4px;
     bottom: 4px;
     width: 1px;
-    background: rgb(var(--border) / 0.72);
+    background: rgb(var(--border) / 0.6);
   }
 
+  /* ── 按钮系统：v0.3 圆角加大 ── */
   .btn {
     @apply inline-flex items-center justify-center gap-2 font-semibold;
     transition:
@@ -769,30 +876,30 @@
     @apply hover:brightness-110;
     min-height: 40px;
     box-shadow:
-      0 12px 24px -20px rgb(var(--accent) / 0.9),
+      0 12px 28px -20px rgb(var(--accent) / 0.9),
       inset 0 1px 0 rgb(255 255 255 / 0.18);
   }
   .btn-focus-action {
     @apply btn rounded-xl px-5 py-2.5 text-sm text-white;
     min-height: 40px;
-    background: linear-gradient(180deg, rgb(var(--success) / 0.98), rgb(16 137 46 / 0.98));
+    background: linear-gradient(180deg, rgb(var(--success) / 0.98), rgb(16 137 92 / 0.98));
     box-shadow:
-      0 12px 24px -20px rgb(var(--success) / 0.84),
+      0 12px 28px -20px rgb(var(--success) / 0.84),
       inset 0 1px 0 rgb(255 255 255 / 0.22);
   }
   .btn-focus-action:hover {
-    filter: brightness(1.05);
+    filter: brightness(1.08);
   }
   .btn-pause-action {
     @apply btn rounded-xl px-5 py-2.5 text-sm text-white;
     min-height: 40px;
-    background: linear-gradient(180deg, rgb(var(--warning) / 0.96), rgb(181 74 0 / 0.98));
+    background: linear-gradient(180deg, rgb(var(--warning) / 0.96), rgb(181 74 8 / 0.98));
     box-shadow:
-      0 12px 24px -20px rgb(var(--warning) / 0.82),
+      0 12px 28px -20px rgb(var(--warning) / 0.82),
       inset 0 1px 0 rgb(255 255 255 / 0.22);
   }
   .btn-pause-action:hover {
-    filter: brightness(1.05);
+    filter: brightness(1.08);
   }
   .btn-ghost {
     @apply btn rounded-xl px-3.5 py-2 text-sm text-fg-muted;
@@ -802,16 +909,18 @@
     @apply btn rounded-xl border border-border px-3.5 py-2 text-sm text-fg;
     @apply hover:bg-bg-subtle;
     min-height: 40px;
-    background: rgb(var(--app-surface) / 0.82);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5);
+    background: rgb(var(--app-surface) / 0.7);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
   }
 
   .card {
     @apply border border-border;
     border-radius: var(--radius-xl);
-    background: rgb(var(--app-surface) / 0.97);
+    background: rgb(var(--app-surface) / 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.58) inset,
+      0 1px 0 rgb(255 255 255 / 0.06) inset,
       var(--shadow-md);
     transition:
       border-color var(--motion-normal) var(--ease-out),
@@ -827,12 +936,12 @@
       box-shadow var(--motion-normal) var(--ease-out),
       background-color var(--motion-fast) var(--ease-out);
     min-height: 40px;
-    background: rgb(var(--app-surface) / 0.94);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.52);
+    background: rgb(var(--app-surface) / 0.8);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
   }
 
   .app-section {
-    @apply rounded-xl border border-border bg-bg-card/90;
+    @apply rounded-xl border border-border bg-bg-card/80;
     box-shadow: var(--shadow-sm);
     transition:
       border-color var(--motion-fast) var(--ease-out),
@@ -847,13 +956,7 @@
     @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold;
   }
 
-  /* ── 动效工具类：统一节奏，轻量反馈 ────────────────
-     统一节奏：fast=120ms / normal=180ms / slow=260ms
-     统一 easing：ease-out（默认）/ ease-in-out / ease-soft
-     原则：优先 transform/opacity，禁止 layout thrashing，禁止 bounce。
-  ─────────────────────────────────────────────────────────── */
-
-  /* 基础过渡：颜色 + 边框 + 阴影 + transform，覆盖大多数交互反馈 */
+  /* ── 动效工具类（沿用 v0.2 节奏） ── */
   .motion-base {
     transition:
       background-color var(--motion-fast) var(--ease-out),
@@ -863,7 +966,6 @@
       transform var(--motion-fast) var(--ease-out);
   }
 
-  /* 慢过渡：用于展开/收起、状态切换背景渐变 */
   .motion-smooth {
     transition:
       background-color var(--motion-normal) var(--ease-in-out),
@@ -874,7 +976,6 @@
       transform var(--motion-normal) var(--ease-out);
   }
 
-  /* hover 微抬起：卡片、列表项 */
   .motion-lift {
     transition:
       transform var(--motion-normal) var(--ease-out),
@@ -885,7 +986,6 @@
     transform: translateY(-2px);
   }
 
-  /* hover 微放大：小窗、按钮、图标按钮 */
   .motion-scale {
     transition:
       transform var(--motion-fast) var(--ease-out),
@@ -899,7 +999,6 @@
     transform: scale(var(--scale-active));
   }
 
-  /* 按钮按下反馈：轻微下沉，替代粗暴的 scale */
   .motion-press {
     transition:
       transform var(--motion-fast) var(--ease-out),
@@ -910,14 +1009,12 @@
     transform: translateY(1px);
   }
 
-  /* 数字稳定：tabular-nums + 极弱 opacity pulse，禁止闪跳 */
   .motion-digit {
     font-variant-numeric: tabular-nums;
     font-feature-settings: 'tnum';
     transition: opacity var(--motion-fast) var(--ease-out);
   }
 
-  /* 淡入淡出 + 轻微上移：用于状态文字、空状态、toast */
   .motion-fade-up {
     animation: motion-fade-up var(--motion-normal) var(--ease-out) both;
   }
@@ -932,7 +1029,6 @@
     }
   }
 
-  /* 纯淡入：用于列表项、面板切换 */
   .motion-fade-in {
     animation: motion-fade-in var(--motion-normal) var(--ease-out) both;
   }
@@ -945,7 +1041,6 @@
     }
   }
 
-  /* 极弱呼吸：用于空状态 icon、专注中的状态点辉光 */
   .motion-breathe {
     animation: motion-breathe 3.2s var(--ease-in-out) infinite;
   }
@@ -961,12 +1056,10 @@
     }
   }
 
-  /* 节奏条线性流动：60s 循环，专注态用 */
   .motion-rhythm-fill {
     transition: width 1s linear;
   }
 
-  /* 状态色渐变：用于背景色在专注↔暂停间平滑切换 */
   .motion-state-bg {
     transition:
       background-color var(--motion-slow) var(--ease-in-out),
@@ -974,7 +1067,6 @@
       border-color var(--motion-normal) var(--ease-in-out);
   }
 
-  /* accordion 展开：height + opacity，用于暂停记录折叠 */
   .motion-accordion {
     overflow: hidden;
     transition:
@@ -982,7 +1074,6 @@
       opacity var(--motion-normal) var(--ease-out);
   }
 
-  /* 专注辉光脉冲：running 状态卡片外圈光晕呼吸 */
   .motion-glow-pulse {
     animation: motion-glow-pulse 3s var(--ease-in-out) infinite;
   }
@@ -996,7 +1087,6 @@
     }
   }
 
-  /* 微光扫过：用于空状态图标、加载占位 */
   .motion-shimmer {
     position: relative;
     overflow: hidden;
@@ -1008,7 +1098,7 @@
     background: linear-gradient(
       105deg,
       transparent 40%,
-      rgb(255 255 255 / 0.12) 50%,
+      rgb(255 255 255 / 0.1) 50%,
       transparent 60%
     );
     animation: motion-shimmer 2.8s var(--ease-in-out) infinite;
@@ -1023,7 +1113,6 @@
     }
   }
 
-  /* 页面切入：从右侧滑入 + 淡入，用于 view 切换 */
   .motion-page-in {
     animation: motion-page-in var(--motion-slow) var(--ease-out) both;
   }
@@ -1038,7 +1127,6 @@
     }
   }
 
-  /* 列表项滑入：从下方轻微滑入，带交错延迟支持 */
   .motion-slide-up {
     animation: motion-slide-up var(--motion-normal) var(--ease-out) both;
   }
@@ -1053,14 +1141,12 @@
     }
   }
 
-  /* 数字 tick 效果：数字变化时轻微 Y 偏移 + 淡入淡出 */
   .motion-number-tick {
     transition:
       transform var(--motion-fast) var(--ease-out),
       opacity var(--motion-fast) var(--ease-out);
   }
 
-  /* 按钮涟漪反馈：点击时从中心扩散的半透明圆环 */
   .motion-ripple {
     position: relative;
     overflow: hidden;
@@ -1082,7 +1168,6 @@
     opacity: 1;
   }
 
-  /* 状态过渡增强：专注↔暂停时卡片背景色平滑渐变 */
   .motion-state-transition {
     transition:
       background-color var(--motion-slow) var(--ease-in-out),
@@ -1091,13 +1176,11 @@
       color var(--motion-normal) var(--ease-in-out);
   }
 
-  /* 交错子元素入场：配合 JS 设置 --stagger-index 使用 */
   .motion-stagger-child {
     animation: motion-slide-up var(--motion-normal) var(--ease-out) both;
     animation-delay: calc(var(--stagger-index, 0) * 60ms);
   }
 
-  /* 悬停光晕：用于重要操作按钮的悬停外发光 */
   .motion-hover-glow {
     transition:
       transform var(--motion-fast) var(--ease-out),
@@ -1112,7 +1195,6 @@
       0 8px 24px -8px rgb(var(--app-accent) / 0.3);
   }
 
-  /* 缩小态微动画：idle 状态的呼吸感，比 breathe 更轻 */
   .motion-idle-pulse {
     animation: motion-idle-pulse 4s var(--ease-in-out) infinite;
   }
@@ -1128,7 +1210,20 @@
     }
   }
 
-  /* reduced-motion 适配：尊重系统设置，关闭所有动画 */
+  /* ── v0.3 弧光环旋转动画 ── */
+  .arc-rotate {
+    animation: arc-rotate 60s linear infinite;
+    transform-origin: center;
+  }
+  @keyframes arc-rotate {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .motion-base,
     .motion-smooth,
@@ -1152,7 +1247,8 @@
     .motion-page-in,
     .motion-slide-up,
     .motion-stagger-child,
-    .motion-idle-pulse {
+    .motion-idle-pulse,
+    .arc-rotate {
       animation: none !important;
     }
     .motion-shimmer::after {

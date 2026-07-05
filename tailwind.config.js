@@ -42,14 +42,16 @@ export default {
         info: 'rgb(var(--info) / <alpha-value>)',
       },
       fontFamily: {
-        sans: ['Microsoft YaHei UI', 'Inter', 'Segoe UI', 'HarmonyOS Sans SC', 'PingFang SC', 'system-ui', 'sans-serif'],
-        mono: ['"Inter Tight"', 'Microsoft YaHei UI', 'Inter', 'JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        sans: ['Manrope', 'Microsoft YaHei UI', 'Segoe UI', 'HarmonyOS Sans SC', 'PingFang SC', 'system-ui', 'sans-serif'],
+        display: ['Sora', 'Microsoft YaHei UI', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'Microsoft YaHei UI', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       borderRadius: {
         sm: 'var(--radius-sm)',
         md: 'var(--radius-md)',
         lg: 'var(--radius-lg)',
         xl: 'var(--radius-xl)',
+        '2xl': 'var(--radius-2xl)',
       },
       boxShadow: {
         soft: 'var(--shadow-sm)',

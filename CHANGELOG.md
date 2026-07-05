@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.3.0 - 2026-07-05（极光剧场 · Step 1：设计系统地基）
+
+> 本版本开启 v0.3「极光剧场」深度重构系列，目标是建立与 v0.2 完全不同的视觉语言。
+
+- 新增设计语言文档 `frontend-design/AURORA_THEATER_DESIGN.md`，定义舞台式布局、深邃画布、极光辉光三大方向。
+- 字体系统全面替换：Inter → Manrope（正文）+ Sora（展示标题）+ JetBrains Mono（计时数字），禁用通用字体。
+- 色彩令牌重写：深色模式从「Notion 暖纸面」转为「近黑深蓝画布」(#090b10)，主色改为靛蓝辉光 (#818cf8)。
+- 新增「极光环境光」三层径向渐变系统（`--aurora-1/2/3`），专注态泛冷绿、暂停态泛暖橙。
+- 圆角加大：卡片 22px、按钮 14px、小窗 24px，营造更柔软悬浮感。
+- 主题色变体全部调整为高饱和度辉光色，深色画布上具备发光感。
+- 新增 `.aurora-canvas` / `.side-rail` / `.rail-btn` / `.font-display` / `.arc-rotate` 等 v0.3 布局基础类。
+- 沿用 v0.2 动效节奏（120/180/260ms）与 reduced-motion 降级，保证体感一致。
+
 ## v0.2.29 - 2026-07-05
 
 - 执行 `npx getdesign@latest add notion`，保留 `notion/DESIGN.md` 作为原始 Notion 设计参考。
