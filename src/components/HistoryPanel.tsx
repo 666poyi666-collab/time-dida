@@ -1,10 +1,10 @@
 // 历史记录 - Session 列表 + 详情 + 导出 + 删除 + Segment 任务关联/后补/批量
-// v0.2.0 信息密度优化：
-//   - Session 总览：总历时 / 累计专注 / 累计暂停 / 片段数 / 关联数 / 未关联数
-//   - 本地 / 云端状态：明确区分本地关联、滴答评论同步、云端专注记录
-//   - 批量关联区域：批量补关联 / 全部改为同一任务 / 只显示未关联 / 只显示已关联
-//   - 专注片段：紧凑单行 + 小按钮，未关联高亮
-//   - 暂停记录：默认折叠，展开后紧凑红色列表，三点菜单
+// v0.4.0 Calm Studio 重设计：
+//   - 发丝边框、surface 阶梯分层、8px 卡片圆角、6px 小元素圆角
+//   - 克制的文字层级：heading 15px / body 13px / meta 11px / eyebrow 10.5px
+//   - 统一按钮系统 btn / btn-primary / btn-outline / btn-ghost
+//   - status-chip 状态徽章、kbd-chip 键位、eyebrow 分类标签
+//   - 动效更克制：移除 lift/shimmer/card-float 等装饰性动效
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icon } from './Icon';
@@ -618,36 +618,39 @@ export function HistoryPanel() {
   if (sessions.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 text-fg-subtle">
-        <div className="motion-shimmer flex h-16 w-16 items-center justify-center rounded-lg bg-bg-subtle/60">
+        <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-bg-subtle/60">
           <Icon.Inbox size="xl" className="opacity-50" />
         </div>
         <div className="text-center">
-          <p className="text-sm font-medium text-fg-muted">还没有专注记录</p>
-          <p className="mt-1 text-xs text-fg-subtle">开始第一次专注后会出现在这里</p>
+          <p className="text-[13px] font-medium text-fg-muted">还没有专注记录</p>
+          <p className="mt-1 text-[11px] text-fg-subtle">开始第一次专注后会出现在这里</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="h-full overflow-y-auto p-5">
       <div className="mx-auto max-w-4xl">
-        <div className="mb-5 flex items-end justify-between gap-4">
+        {/* 页头 */}
+        <div className="mb-4 flex items-end justify-between gap-4">
           <div>
-            <h2 className="font-display text-xl font-bold text-fg">历史记录</h2>
-            <p className="mt-1 text-xs text-fg-subtle">
-              按日期和周期查看专注时间，以及每个 Segment 花在哪个任务上。
+            <h2 className="text-[15px] font-semibold text-fg">历史记录</h2>
+            <p className="mt-0.5 text-[11px] text-fg-subtle">
+              按日期和周期查看专注时间，以及每个片段花在哪个任务上。
             </p>
           </div>
-          <span className="rounded-lg border border-border bg-bg-card/60 px-2.5 py-1 text-xs font-medium text-fg-muted backdrop-blur-sm">
+          <span className="rounded-md border border-border/60 bg-bg-card/50 px-2 py-0.5 text-[11px] font-medium text-fg-muted">
             {filteredSessions.length} / {sessions.length} 条记录
           </span>
         </div>
 
-        <div className="mb-4 space-y-3">
-          <div className="card motion-lift p-3.5">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+        {/* 筛选与统计 */}
+        <div className="mb-3 space-y-2.5">
+          {/* 时间筛选卡片 */}
+          <div className="rounded-lg border border-border/70 bg-bg-card/60 p-3">
+            <div className="mb-2.5 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-1.5 text-[13px] font-medium text-fg">
                 <Icon.Calendar size="sm" tone="accent" />
                 时间筛选
               </div>
@@ -655,14 +658,14 @@ export function HistoryPanel() {
                 {formatShortDate(range.start)} - {formatShortDate(range.end)}
               </span>
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1">
               {RANGE_PRESETS.map((item) => (
                 <button
                   key={item.id}
-                  className={`motion-press rounded-lg px-3 py-1.5 text-xs font-medium ${
+                  className={`motion-press rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
                     rangePreset === item.id
                       ? 'bg-accent text-accent-fg'
-                      : 'border border-border bg-bg-subtle text-fg-muted hover:text-fg'
+                      : 'border border-border/60 bg-bg-subtle/50 text-fg-muted hover:bg-bg-subtle hover:text-fg'
                   }`}
                   onClick={() => setRangePreset(item.id)}
                 >
@@ -671,17 +674,17 @@ export function HistoryPanel() {
               ))}
             </div>
             {rangePreset === 'custom' && (
-              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+              <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-border/50 pt-2.5">
                 <input
                   type="date"
-                  className="input !w-auto !py-1.5 text-xs"
+                  className="input !w-auto !py-1.5 text-[12px]"
                   value={customStart}
                   onChange={(e) => setCustomStart(e.target.value)}
                 />
-                <span className="text-xs text-fg-subtle">至</span>
+                <span className="text-[12px] text-fg-subtle">至</span>
                 <input
                   type="date"
-                  className="input !w-auto !py-1.5 text-xs"
+                  className="input !w-auto !py-1.5 text-[12px]"
                   value={customEnd}
                   onChange={(e) => setCustomEnd(e.target.value)}
                 />
@@ -689,35 +692,42 @@ export function HistoryPanel() {
             )}
           </div>
 
+          {/* 四项统计 */}
           <div className="grid gap-2 md:grid-cols-4">
             <DetailStat label="筛选专注" value={formatDuration(rangeStats.active)} />
-            <DetailStat label="暂停" value={formatDuration(rangeStats.pause)} />
+            <DetailStat label="暂停" value={formatDuration(rangeStats.pause)} tone="warn" />
             <DetailStat label="总历时" value={formatDuration(rangeStats.wall)} />
             <DetailStat label="Session" value={String(rangeStats.count)} />
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-2">
+          {/* 按天/按周 */}
+          <div className="grid gap-2.5 lg:grid-cols-2">
             <SummaryPanel title="按天" icon={<Icon.BarChart size="sm" />} items={dailyStats} />
             <SummaryPanel title="按周" icon={<Icon.Calendar size="sm" />} items={weeklyStats} />
           </div>
         </div>
 
+        {/* Session 列表 */}
         {filteredSessions.length === 0 ? (
-          <div className="motion-fade-in rounded-lg border border-dashed border-border bg-bg-card/40 py-12 text-center">
-            <div className="motion-shimmer motion-breathe mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-bg-subtle text-fg-subtle">
+          <div className="rounded-lg border border-dashed border-border/60 bg-bg-subtle/20 py-10 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-bg-subtle/60 text-fg-subtle">
               <Icon.Inbox size="xl" />
             </div>
-            <p className="text-sm font-medium text-fg-muted">当前时间范围没有专注记录</p>
-            <p className="mt-1 text-xs text-fg-subtle">换一个筛选范围，或者开始一次新的专注。</p>
+            <p className="text-[13px] font-medium text-fg-muted">当前时间范围没有专注记录</p>
+            <p className="mt-1 text-[11px] text-fg-subtle">换一个筛选范围，或者开始一次新的专注。</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {filteredSessions.map((session) => {
               const syncState = getDisplayedSyncState(session.id);
               return (
-                <motion.div key={session.id} layout className="card motion-lift overflow-hidden">
+                <motion.div
+                  key={session.id}
+                  layout
+                  className="rounded-lg border border-border/70 bg-bg-card/60 overflow-hidden transition-colors hover:border-border"
+                >
                   <button
-                    className="motion-base flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-bg-subtle/40"
+                    className="motion-base flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-bg-subtle/50"
                     onClick={() => toggleExpand(session.id)}
                   >
                     <Icon.ChevronRight
@@ -729,35 +739,35 @@ export function HistoryPanel() {
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
-                        <span className="timer-digit text-sm font-semibold text-fg">
+                        <span className="timer-digit text-[13px] font-semibold text-fg">
                           {formatMinutes(session.activeElapsedMs)}
                         </span>
-                        <span className="text-xs text-fg-subtle">
+                        <span className="text-[11px] text-fg-subtle">
                           {formatRelative(session.startedAt)}
                         </span>
                       </div>
                       {session.endedAt &&
                       session.wallElapsedMs > session.activeElapsedMs + 60000 ? (
                         /* 总历时远大于专注时长（含大量暂停）：避免 "开始→结束" 时间段误导 */
-                        <div className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
+                        <div className="mt-0.5 text-[11px] leading-relaxed text-fg-subtle">
                           {formatDateTime(session.startedAt)} 开始 · 专注{' '}
                           {formatDuration(session.activeElapsedMs)}
                         </div>
                       ) : (
-                        <div className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
+                        <div className="mt-0.5 text-[11px] leading-relaxed text-fg-subtle">
                           {formatDateTime(session.startedAt)}
                           {session.endedAt && ` → ${formatDateTime(session.endedAt)}`}
                         </div>
                       )}
                       {/* 默认任务标题预览 */}
                       {session.defaultTaskTitle && (
-                        <div className="mt-1 flex items-center gap-1 text-[11px] text-emerald-400/80">
+                        <div className="mt-0.5 flex items-center gap-1 text-[11px] text-emerald-400/80">
                           <Icon.Star size="xs" />
                           <span className="truncate">{session.defaultTaskTitle}</span>
                         </div>
                       )}
                     </div>
-                    <div className="hidden items-center gap-3 text-[11px] text-fg-muted sm:flex">
+                    <div className="hidden items-center gap-2 text-[11px] text-fg-muted sm:flex">
                       <SessionLinkPreview
                         session={session}
                         segments={
@@ -781,9 +791,9 @@ export function HistoryPanel() {
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                        className="border-t border-border"
+                        className="border-t border-border/60"
                       >
-                        <div className="space-y-3.5 p-4">
+                        <div className="space-y-3 p-4">
                           <SessionDetailHeader
                             detail={detail}
                             syncState={syncState}
@@ -847,10 +857,10 @@ export function HistoryPanel() {
                             />
                           </div>
 
-                          {/* 操作 */}
-                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                          {/* 操作栏 */}
+                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                             <button
-                              className="btn-primary motion-press text-xs"
+                              className="btn-primary motion-press !text-[12px] !min-h-[30px] !py-1.5 !px-3"
                               disabled={linking || syncingSessionId === session.id}
                               onClick={() => handleSyncSession(session.id)}
                               title="把本次已关联滴答任务的专注时间同步到滴答云端；已存在的会跳过"
@@ -862,7 +872,7 @@ export function HistoryPanel() {
                               {syncingSessionId === session.id ? '同步中' : '同步到滴答清单'}
                             </button>
                             <button
-                              className="btn-outline motion-press text-xs border-accent/30 text-accent hover:bg-accent/10"
+                              className="btn-outline motion-press !text-[12px] !min-h-[30px] !py-1.5 !px-3 border-accent/30 text-accent hover:bg-accent/10"
                               disabled={linking || syncingSessionId === session.id}
                               onClick={() => handleResyncSession(session.id)}
                               title="删除云端专注记录并以正确的专注时长重新上传（修复云端时间偏大等错误）"
@@ -874,30 +884,32 @@ export function HistoryPanel() {
                               重新同步
                             </button>
                             <SessionSyncBadge state={syncState} />
-                            <button
-                              className="btn-outline motion-press text-xs"
-                              onClick={() => handleExport(session.id, 'markdown')}
-                            >
-                              <Icon.Download size="xs" /> Markdown
-                            </button>
-                            <button
-                              className="btn-outline motion-press text-xs"
-                              onClick={() => handleExport(session.id, 'csv')}
-                            >
-                              <Icon.Download size="xs" /> CSV
-                            </button>
-                            <button
-                              className="btn-outline motion-press text-xs"
-                              onClick={() => handleExport(session.id, 'json')}
-                            >
-                              <Icon.Download size="xs" /> JSON
-                            </button>
-                            <button
-                              className="btn-ghost motion-press ml-auto text-xs text-rose-400 hover:bg-rose-500/10"
-                              onClick={() => handleDelete(session.id)}
-                            >
-                              <Icon.Trash size="xs" /> 删除
-                            </button>
+                            <div className="ml-auto flex items-center gap-1">
+                              <button
+                                className="btn-ghost motion-press !text-[11px] !min-h-[28px] !py-1 !px-2"
+                                onClick={() => handleExport(session.id, 'markdown')}
+                              >
+                                <Icon.Download size="xs" /> MD
+                              </button>
+                              <button
+                                className="btn-ghost motion-press !text-[11px] !min-h-[28px] !py-1 !px-2"
+                                onClick={() => handleExport(session.id, 'csv')}
+                              >
+                                <Icon.Download size="xs" /> CSV
+                              </button>
+                              <button
+                                className="btn-ghost motion-press !text-[11px] !min-h-[28px] !py-1 !px-2"
+                                onClick={() => handleExport(session.id, 'json')}
+                              >
+                                <Icon.Download size="xs" /> JSON
+                              </button>
+                              <button
+                                className="btn-ghost motion-press !text-[11px] !min-h-[28px] !py-1 !px-2 text-rose-400 hover:bg-rose-500/10"
+                                onClick={() => handleDelete(session.id)}
+                              >
+                                <Icon.Trash size="xs" /> 删除
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </motion.div>
@@ -927,6 +939,8 @@ const RANGE_PRESETS: Array<{ id: RangePreset; label: string }> = [
   { id: 'custom', label: '自定义' },
 ];
 
+/* ─── 子组件 ─── */
+
 function SessionLinkPreview({
   session,
   segments,
@@ -939,40 +953,40 @@ function SessionLinkPreview({
     const ticktick = linked.filter((seg) => seg.taskSource === 'ticktick');
     if (ticktick.length > 0) {
       return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-success/20 bg-success/10 px-2 py-1 text-success">
+        <span className="status-chip border-success/25 bg-success/10 text-success">
           <Icon.CheckCircleFilled size="xs" /> 已关联滴答 {ticktick.length} 段
         </span>
       );
     }
     if (linked.length > 0) {
       return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-subtle px-2 py-1 text-fg-subtle">
+        <span className="status-chip border-border/60 bg-bg-subtle/60 text-fg-subtle">
           <Icon.Link size="xs" /> 已关联本地 {linked.length} 段
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-warning/20 bg-warning/10 px-2 py-1 text-warning">
+      <span className="status-chip border-warning/25 bg-warning/10 text-warning">
         <Icon.Link size="xs" /> 片段未关联
       </span>
     );
   }
   if (session.defaultTaskSource === 'local') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-subtle px-2 py-1 text-fg-subtle">
+      <span className="status-chip border-border/60 bg-bg-subtle/60 text-fg-subtle">
         <Icon.Link size="xs" /> 本地记录
       </span>
     );
   }
   if (session.defaultTaskSource === 'ticktick') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-success/20 bg-success/10 px-2 py-1 text-success">
+      <span className="status-chip border-success/25 bg-success/10 text-success">
         <Icon.CheckCircleFilled size="xs" /> 默认任务已关联
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-subtle px-2 py-1 text-fg-subtle">
+    <span className="status-chip border-border/60 bg-bg-subtle/60 text-fg-subtle">
       <Icon.Link size="xs" /> 展开查看片段
     </span>
   );
@@ -986,7 +1000,7 @@ function SessionSyncBadge({ state }: { state: SessionSyncState }) {
         ? 'border-danger/25 bg-danger/10 text-danger'
         : state.tone === 'warn'
           ? 'border-warning/25 bg-warning/10 text-warning'
-          : 'border-border bg-bg-subtle text-fg-subtle';
+          : 'border-border/60 bg-bg-subtle/60 text-fg-subtle';
   const StateIcon =
     state.tone === 'ok'
       ? Icon.CheckCircleFilled
@@ -999,7 +1013,7 @@ function SessionSyncBadge({ state }: { state: SessionSyncState }) {
   return (
     <span
       title={state.title}
-      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] ${cls}`}
+      className={`status-chip ${cls}`}
     >
       <StateIcon size="xs" />
       {state.label}
@@ -1023,27 +1037,27 @@ function SessionDetailHeader({
   const ticktickMs = ticktick.reduce((sum, seg) => sum + seg.activeElapsedMs, 0);
 
   return (
-    <div className="motion-card-float rounded-2xl border border-border bg-bg-subtle/35 px-3.5 py-3">
+    <div className="rounded-lg border border-border/60 bg-bg-subtle/30 p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="timer-digit text-sm font-bold text-fg">
+            <p className="timer-digit text-[15px] font-semibold text-fg">
               {formatDuration(session.activeElapsedMs)}
             </p>
             {session.endedAt && session.wallElapsedMs > session.activeElapsedMs + 60000 ? (
-              <span className="text-xs text-fg-subtle">
+              <span className="text-[11px] text-fg-subtle">
                 {formatDateTime(session.startedAt)} 开始 · 专注{' '}
                 {formatDuration(session.activeElapsedMs)} · 总历时{' '}
                 {formatDuration(session.wallElapsedMs)}
               </span>
             ) : (
-              <span className="text-xs text-fg-subtle">
+              <span className="text-[11px] text-fg-subtle">
                 {formatDateTime(session.startedAt)}
                 {session.endedAt && ` - ${formatDateTime(session.endedAt)}`}
               </span>
             )}
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <div className="mt-2 flex flex-wrap items-center gap-1">
             <SessionSyncBadge
               state={
                 syncing ? { label: '同步中', tone: 'warn', title: '正在处理同步队列' } : syncState
@@ -1080,7 +1094,7 @@ function SessionDetailHeader({
             />
           </div>
         </div>
-        <div className="grid min-w-[260px] flex-1 grid-cols-3 gap-2 sm:flex-none">
+        <div className="grid min-w-[240px] flex-1 grid-cols-3 gap-1.5 sm:flex-none">
           <TinyStat label="总历时" value={formatDuration(session.wallElapsedMs)} />
           <TinyStat label="暂停" value={formatDuration(session.pauseElapsedMs)} tone="warning" />
           <TinyStat label="片段" value={`${segments.length}+${pauses.length}`} />
@@ -1106,11 +1120,11 @@ function TinyStatusChip({
       ? 'border-success/20 bg-success/10 text-success'
       : tone === 'warn'
         ? 'border-warning/25 bg-warning/10 text-warning'
-        : 'border-border bg-bg-card/70 text-fg-subtle';
+        : 'border-border/60 bg-bg-card/50 text-fg-subtle';
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium ${cls}`}
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium ${cls}`}
     >
       {icon}
       {text}
@@ -1129,18 +1143,18 @@ function TinyStat({
 }) {
   return (
     <div
-      className={`rounded-xl border px-2.5 py-2 ${
-        tone === 'warning' ? 'border-warning/25 bg-warning/10' : 'border-border bg-bg-card/75'
+      className={`rounded-md border px-2 py-1.5 ${
+        tone === 'warning' ? 'border-warning/25 bg-warning/10' : 'border-border/60 bg-bg-card/50'
       }`}
     >
       <div
-        className={`timer-digit text-xs font-bold ${
+        className={`timer-digit text-[12px] font-semibold ${
           tone === 'warning' ? 'text-warning' : 'text-fg'
         }`}
       >
         {value}
       </div>
-      <div className="mt-0.5 text-[10px] font-medium text-fg-subtle">{label}</div>
+      <div className="mt-0.5 text-[10.5px] font-medium text-fg-subtle">{label}</div>
     </div>
   );
 }
@@ -1157,23 +1171,23 @@ function SessionDefaultTaskCard({
   onClear: () => void;
 }) {
   return (
-    <div className="motion-card-float rounded-2xl border border-border bg-bg-card/82 p-3">
-      <div className="flex h-full flex-col justify-between gap-3">
+    <div className="rounded-lg border border-border/60 bg-bg-card/50 p-3">
+      <div className="flex h-full flex-col justify-between gap-2.5">
         <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-fg-subtle">
+          <p className="eyebrow flex items-center gap-1">
             <Icon.Star size="xs" tone="accent" />
             本次默认任务
           </p>
-          <p className="mt-2 truncate text-sm font-semibold text-fg">
+          <p className="mt-1.5 truncate text-[13px] font-medium text-fg">
             {detail.session.defaultTaskTitle ?? '未设置'}
           </p>
-          <p className="mt-1 text-[11px] leading-relaxed text-fg-subtle">
+          <p className="mt-0.5 text-[11px] leading-relaxed text-fg-subtle">
             继续专注时，新专注片段会沿用这个任务。
           </p>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <button
-            className="btn-outline motion-press text-[11px]"
+            className="btn-outline motion-press !text-[11px] !min-h-[28px] !py-1 !px-2.5"
             disabled={linking}
             onClick={onSet}
           >
@@ -1182,7 +1196,7 @@ function SessionDefaultTaskCard({
           </button>
           {detail.session.defaultTaskTitle && (
             <button
-              className="btn-ghost motion-press text-[11px] text-rose-400 hover:bg-rose-500/10"
+              className="btn-ghost motion-press !text-[11px] !min-h-[28px] !py-1 !px-2 text-rose-400 hover:bg-rose-500/10"
               disabled={linking}
               onClick={onClear}
               title="清除默认任务"
@@ -1246,34 +1260,32 @@ function HistoryTimelineList({
   const items = [...segmentItems, ...pauseItems].sort((a, b) => a.startedAt - b.startedAt);
 
   return (
-    <div className="motion-card-float rounded-2xl border border-border bg-bg-card/90 p-3">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <div className="rounded-lg border border-border/60 bg-bg-card/50 p-3">
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Icon.Activity size="sm" tone="accent" />
-          <p className="text-[11px] font-bold uppercase tracking-widest text-fg-muted">
-            片段时间线
-          </p>
-          <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+          <p className="eyebrow">片段时间线</p>
+          <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-[10.5px] font-medium text-accent">
             专注 {segments.length}
           </span>
           {pauses.length > 0 && (
-            <span className="rounded-md bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+            <span className="rounded-md bg-warning/10 px-1.5 py-0.5 text-[10.5px] font-medium text-warning">
               暂停 {pauses.length}
             </span>
           )}
         </div>
         {filter !== 'all' && (
-          <span className="text-[10px] text-fg-subtle">暂停片段仅在“全部”视图展示</span>
+          <span className="text-[10.5px] text-fg-subtle">暂停片段仅在"全部"视图展示</span>
         )}
       </div>
 
       {items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-bg-subtle/35 py-5 text-center text-[11px] text-fg-subtle">
+        <div className="rounded-md border border-dashed border-border/60 bg-bg-subtle/20 py-4 text-center text-[11px] text-fg-subtle">
           当前筛选条件下没有片段
         </div>
       ) : (
-        <div className="relative space-y-1.5">
-          <div className="absolute bottom-2 left-[17px] top-2 w-px bg-border" />
+        <div className="relative space-y-1">
+          <div className="absolute bottom-2 left-[15px] top-2 w-px bg-border/60" />
           {items.map((item) =>
             item.type === 'focus' ? (
               <HistoryFocusTimelineRow
@@ -1320,17 +1332,17 @@ function HistoryFocusTimelineRow({
   const isSynced = !!seg.cloudFocusId;
   return (
     <div
-      className={`relative flex gap-3 rounded-xl border px-3 py-2.5 ${
-        hasTask ? 'border-border bg-bg-subtle/35' : 'border-warning/35 bg-warning/5'
+      className={`relative flex gap-2.5 rounded-md border px-2.5 py-2 ${
+        hasTask ? 'border-border/50 bg-bg-subtle/20' : 'border-warning/30 bg-warning/5'
       }`}
     >
-      <div className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-accent">
+      <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-accent/20 bg-accent/10 text-accent">
         <Icon.Activity size="sm" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-fg">专注片段 {index + 1}</span>
-          <span className="timer-digit text-xs font-semibold text-accent">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[12px] font-semibold text-fg">专注片段 {index + 1}</span>
+          <span className="timer-digit text-[12px] font-semibold text-accent">
             {formatDuration(seg.activeElapsedMs)}
           </span>
           <span className="truncate text-[11px] text-fg-subtle">
@@ -1339,22 +1351,22 @@ function HistoryFocusTimelineRow({
           </span>
           {isSynced && (
             <span
-              className="rounded-md bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent"
+              className="rounded-md bg-accent/10 px-1.5 py-0.5 text-[10.5px] text-accent"
               title="已同步到滴答云端"
             >
               已同步
             </span>
           )}
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <div className="mt-1 flex flex-wrap items-center gap-1">
           {hasTask ? (
             <>
               <Icon.Link size="xs" tone="accent" />
-              <span className="max-w-[360px] truncate text-[12px] font-medium text-fg">
+              <span className="max-w-[320px] truncate text-[12px] font-medium text-fg">
                 {seg.title}
               </span>
               {seg.taskSource === 'ticktick' && (
-                <span className="rounded-md bg-success/10 px-1.5 py-0.5 text-[10px] text-success">
+                <span className="rounded-md bg-success/10 px-1 py-0.5 text-[10px] text-success">
                   滴答
                 </span>
               )}
@@ -1366,7 +1378,7 @@ function HistoryFocusTimelineRow({
       </div>
       <div className="flex shrink-0 items-center gap-1 self-center">
         <button
-          className="motion-press rounded-lg border border-border bg-bg-card/70 px-2 py-1 text-[10px] text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:opacity-40"
+          className="motion-press rounded-md border border-border/50 bg-bg-card/50 px-1.5 py-1 text-[10.5px] text-fg-muted hover:bg-bg-subtle hover:text-fg disabled:opacity-40"
           disabled={linking}
           onClick={onLink}
         >
@@ -1375,14 +1387,14 @@ function HistoryFocusTimelineRow({
         {hasTask && (
           <>
             <button
-              className="motion-press rounded-lg border border-border bg-bg-card/70 px-2 py-1 text-[10px] text-rose-400 hover:bg-rose-500/10 disabled:opacity-40"
+              className="motion-press rounded-md border border-border/50 bg-bg-card/50 px-1.5 py-1 text-[10.5px] text-rose-400 hover:bg-rose-500/10 disabled:opacity-40"
               disabled={linking}
               onClick={onClear}
             >
               清除
             </button>
             <button
-              className="motion-press rounded-lg border border-success/20 bg-success/10 px-2 py-1 text-[10px] text-success hover:bg-success/15 disabled:opacity-40"
+              className="motion-press rounded-md border border-success/20 bg-success/10 px-1.5 py-1 text-[10.5px] text-success hover:bg-success/15 disabled:opacity-40"
               disabled={linking || isTaskCompleted}
               onClick={onComplete}
               title="在任务来源中完成该任务"
@@ -1390,7 +1402,7 @@ function HistoryFocusTimelineRow({
               {isTaskCompleted ? '已完成' : '完成'}
             </button>
             <button
-              className="motion-press rounded-lg border border-accent/20 bg-accent/5 px-2 py-1 text-[10px] text-accent hover:bg-accent/10 disabled:opacity-40"
+              className="motion-press rounded-md border border-accent/20 bg-accent/5 px-1.5 py-1 text-[10.5px] text-accent hover:bg-accent/10 disabled:opacity-40"
               disabled={linking}
               onClick={onResync}
               title="删除云端专注记录并以当前任务重新同步"
@@ -1406,14 +1418,14 @@ function HistoryFocusTimelineRow({
 
 function HistoryPauseTimelineRow({ pause, index }: { pause: PauseEvent; index: number }) {
   return (
-    <div className="relative flex gap-3 rounded-xl border border-warning/20 bg-warning/5 px-3 py-2.5">
-      <div className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-warning/25 bg-warning/10 text-warning">
+    <div className="relative flex gap-2.5 rounded-md border border-warning/15 bg-warning/5 px-2.5 py-2">
+      <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-warning/20 bg-warning/10 text-warning">
         <Icon.Coffee size="sm" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-warning">暂停片段 {index + 1}</span>
-          <span className="timer-digit text-xs font-semibold text-warning">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[12px] font-semibold text-warning">暂停片段 {index + 1}</span>
+          <span className="timer-digit text-[12px] font-semibold text-warning">
             {formatDuration(pause.durationMs)}
           </span>
           <span className="truncate text-[11px] text-fg-subtle">
@@ -1421,7 +1433,7 @@ function HistoryPauseTimelineRow({ pause, index }: { pause: PauseEvent; index: n
             {pause.pauseEndedAt ? ` - ${formatDateTime(pause.pauseEndedAt)}` : ' - 进行中'}
           </span>
         </div>
-        <p className="mt-1.5 text-[11px] text-fg-subtle">
+        <p className="mt-1 text-[11px] text-fg-subtle">
           暂停记录只计入休息时间，不参与任务同步。
         </p>
       </div>
@@ -1429,16 +1441,16 @@ function HistoryPauseTimelineRow({ pause, index }: { pause: PauseEvent; index: n
   );
 }
 
-// ─── A. Session 总览：6 项统计 ───────────────────────────────────
+// ─── A. Session 总览（备用组件，保留以备扩展） ────────────────────
 function SessionOverview({ detail }: { detail: SessionDetail }) {
   const { session, segments, pauses } = detail;
   const linkedCount = segments.filter((s) => s.taskId && s.title).length;
   const unlinkedCount = segments.length - linkedCount;
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
       <DetailStat label="总历时" value={formatDuration(session.wallElapsedMs)} />
       <DetailStat label="累计专注" value={formatDuration(session.activeElapsedMs)} />
-      <DetailStat label="累计暂停" value={formatDuration(session.pauseElapsedMs)} />
+      <DetailStat label="累计暂停" value={formatDuration(session.pauseElapsedMs)} tone="warn" />
       <DetailStat label="专注片段" value={String(segments.length)} />
       <DetailStat label="暂停片段" value={String(pauses.length)} />
       <DetailStat
@@ -1450,8 +1462,7 @@ function SessionOverview({ detail }: { detail: SessionDetail }) {
   );
 }
 
-// ─── B. 本地 / 云端状态 ──────────────────────────────────────────
-// 明确区分：本地记录已保存 / 本地任务关联状态 / 滴答评论同步 / 云端专注记录
+// ─── B. 本地 / 云端状态（备用组件） ──────────────────────────────
 function LocalCloudStatePanel({ detail }: { detail: SessionDetail }) {
   const { segments } = detail;
   const linked = segments.filter((seg) => seg.taskId && seg.taskSource);
@@ -1460,14 +1471,14 @@ function LocalCloudStatePanel({ detail }: { detail: SessionDetail }) {
   const ticktickMs = ticktick.reduce((sum, seg) => sum + seg.activeElapsedMs, 0);
 
   return (
-    <div className="rounded-lg border border-border bg-bg-subtle/25 p-3">
+    <div className="rounded-lg border border-border/60 bg-bg-subtle/20 p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-xs font-semibold text-fg-muted">
+          <div className="flex items-center gap-1.5 text-[12px] font-medium text-fg-muted">
             <Icon.Cloud size="sm" tone="subtle" />
             本地 / 云端状态
           </div>
-          <div className="mt-2 space-y-1 text-[11px] leading-relaxed">
+          <div className="mt-2 space-y-0.5 text-[11px] leading-relaxed">
             <div className="flex items-center gap-1.5">
               <Icon.CheckCircleFilled size="xs" tone="success" />
               <span className="text-fg-muted">本地记录：已保存</span>
@@ -1525,23 +1536,23 @@ function BatchLinkPanel({
 }) {
   const unlinkedCount = segments.filter((s) => !s.taskId || !s.title).length;
   return (
-    <div className="rounded-lg border border-border bg-bg-subtle/30 p-3">
-      <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-fg-subtle">
+    <div className="rounded-lg border border-border/60 bg-bg-subtle/20 p-3">
+      <div className="mb-2 flex items-center gap-1.5">
         <Icon.Filter size="xs" />
-        批量任务关联
+        <p className="eyebrow">批量任务关联</p>
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1">
         <button
-          className="btn-outline motion-press text-[11px]"
+          className="btn-outline motion-press !text-[11px] !min-h-[28px] !py-1 !px-2.5"
           disabled={linking || unlinkedCount === 0}
           onClick={onBatchUnlinked}
           title={unlinkedCount === 0 ? '没有未关联片段' : '只更新未关联任务的 segment'}
         >
           <Icon.Refresh size="xs" />
-          批量关联未关联片段{unlinkedCount > 0 ? `（${unlinkedCount}）` : ''}
+          批量关联未关联{unlinkedCount > 0 ? `（${unlinkedCount}）` : ''}
         </button>
         <button
-          className="btn-ghost motion-press text-[11px]"
+          className="btn-ghost motion-press !text-[11px] !min-h-[28px] !py-1 !px-2.5"
           disabled={linking || segments.length === 0}
           onClick={onBatchAll}
           title="覆盖所有 segment（含已关联），需确认"
@@ -1549,7 +1560,7 @@ function BatchLinkPanel({
           <Icon.Link size="xs" />
           全部设为同一任务
         </button>
-        <div className="ml-auto flex items-center gap-1 rounded-lg border border-border bg-bg-card/50 p-0.5">
+        <div className="ml-auto flex items-center gap-0.5 rounded-md border border-border/50 bg-bg-card/40 p-0.5">
           <FilterChip
             active={filter === 'all'}
             onClick={() => onFilterChange('all')}
@@ -1558,12 +1569,12 @@ function BatchLinkPanel({
           <FilterChip
             active={filter === 'unlinked'}
             onClick={() => onFilterChange('unlinked')}
-            label="只看未关联"
+            label="未关联"
           />
           <FilterChip
             active={filter === 'linked'}
             onClick={() => onFilterChange('linked')}
-            label="只看已关联"
+            label="已关联"
           />
         </div>
       </div>
@@ -1582,7 +1593,7 @@ function FilterChip({
 }) {
   return (
     <button
-      className={`motion-base rounded-md px-2 py-1 text-[10px] font-medium ${
+      className={`motion-base rounded px-2 py-0.5 text-[10.5px] font-medium transition-colors ${
         active ? 'bg-accent text-accent-fg' : 'text-fg-muted hover:text-fg'
       }`}
       onClick={onClick}
@@ -1592,7 +1603,7 @@ function FilterChip({
   );
 }
 
-// ─── D. 专注片段列表（紧凑单行 + 小按钮） ────────────────────────
+// ─── D. 紧凑专注片段列表（备用组件） ────────────────────────────
 function CompactSegmentList({
   segments,
   filter,
@@ -1620,28 +1631,25 @@ function CompactSegmentList({
 
   return (
     <div>
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-2 flex items-center gap-1.5">
         <Icon.Activity size="sm" tone="accent" />
-        <p className="text-[11px] font-bold uppercase tracking-widest text-accent">
-          专注片段 ({segments.length})
-        </p>
+        <p className="eyebrow text-accent">专注片段 ({segments.length})</p>
         {unlinkedCount > 0 && (
-          <span className="rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+          <span className="rounded-md bg-warning/10 px-1.5 py-0.5 text-[10.5px] font-medium text-warning">
             {unlinkedCount} 个未关联
           </span>
         )}
         {filter !== 'all' && (
-          <span className="text-[10px] text-fg-subtle">· 筛选显示 {filtered.length} 条</span>
+          <span className="text-[10.5px] text-fg-subtle">· 筛选显示 {filtered.length} 条</span>
         )}
       </div>
       <div className="space-y-1">
         {filtered.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-bg-card/30 py-4 text-center text-[11px] text-fg-subtle">
+          <div className="rounded-md border border-dashed border-border/60 bg-bg-card/20 py-3 text-center text-[11px] text-fg-subtle">
             当前筛选条件下没有片段
           </div>
         ) : (
           filtered.map((seg) => {
-            // 显示原始 index（在 segments 数组中的位置）
             const originalIndex = segments.indexOf(seg);
             return (
               <CompactSegmentRow
@@ -1662,7 +1670,7 @@ function CompactSegmentList({
   );
 }
 
-/** 紧凑专注片段行：单行 + 小按钮，未关联高亮 */
+/** 紧凑专注片段行（备用） */
 function CompactSegmentRow({
   seg,
   index,
@@ -1684,22 +1692,22 @@ function CompactSegmentRow({
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div
-      className={`motion-base rounded-md border px-2.5 py-1.5 text-xs ${
-        hasTask ? 'border-border bg-bg-subtle/30' : 'border-dashed border-warning/40 bg-warning/5'
+      className={`motion-base rounded-md border px-2 py-1.5 text-[12px] ${
+        hasTask ? 'border-border/50 bg-bg-subtle/20' : 'border-dashed border-warning/30 bg-warning/5'
       }`}
     >
       <div className="flex items-center gap-2">
-        <span className="shrink-0 text-[10px] font-semibold text-fg-subtle">#{index + 1}</span>
-        <span className="shrink-0 text-[10px] text-fg-subtle">专注片段</span>
+        <span className="shrink-0 text-[10.5px] font-semibold text-fg-subtle">#{index + 1}</span>
+        <span className="shrink-0 text-[10.5px] text-fg-subtle">专注片段</span>
         <span className="truncate text-[11px] text-fg-muted">
           {formatDateTime(seg.startedAt)}
           {seg.endedAt && ` → ${formatDateTime(seg.endedAt)}`}
         </span>
-        <span className="timer-digit motion-digit ml-auto shrink-0 text-[11px] font-semibold text-fg">
+        <span className="timer-digit ml-auto shrink-0 text-[11px] font-semibold text-fg">
           {formatDuration(seg.activeElapsedMs)}
         </span>
       </div>
-      <div className="mt-1 flex items-center gap-1.5">
+      <div className="mt-1 flex items-center gap-1">
         {hasTask ? (
           <>
             <Icon.Link size="xs" tone="accent" className="shrink-0 text-accent" />
@@ -1708,11 +1716,11 @@ function CompactSegmentRow({
         ) : (
           <span className="text-[11px] text-warning">任务：未关联</span>
         )}
-        <div className="ml-auto flex shrink-0 items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {hasTask ? (
             <>
               <button
-                className="motion-press rounded border border-border bg-bg-card/50 px-1.5 py-0.5 text-[10px] text-fg-muted hover:bg-bg-elevated hover:text-fg disabled:opacity-40"
+                className="motion-press rounded border border-border/50 bg-bg-card/40 px-1.5 py-0.5 text-[10px] text-fg-muted hover:bg-bg-subtle hover:text-fg disabled:opacity-40"
                 disabled={linking}
                 onClick={onLink}
                 title="更换任务"
@@ -1720,7 +1728,7 @@ function CompactSegmentRow({
                 更换
               </button>
               <button
-                className="motion-press rounded border border-border bg-bg-card/50 px-1.5 py-0.5 text-[10px] text-rose-400 hover:bg-rose-500/10 disabled:opacity-40"
+                className="motion-press rounded border border-border/50 bg-bg-card/40 px-1.5 py-0.5 text-[10px] text-rose-400 hover:bg-rose-500/10 disabled:opacity-40"
                 disabled={linking}
                 onClick={onClear}
                 title="清除关联"
@@ -1729,7 +1737,7 @@ function CompactSegmentRow({
               </button>
               <div className="relative">
                 <button
-                  className="motion-base rounded p-0.5 text-fg-subtle hover:bg-bg-elevated hover:text-fg"
+                  className="motion-base rounded p-0.5 text-fg-subtle hover:bg-bg-subtle hover:text-fg"
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenuOpen((v) => !v);
@@ -1741,9 +1749,9 @@ function CompactSegmentRow({
                 {menuOpen && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                    <div className="motion-fade-in absolute right-0 top-6 z-20 w-36 rounded-lg border border-border bg-bg-card py-1 shadow-lg">
+                    <div className="motion-fade-in absolute right-0 top-5 z-20 w-32 rounded-md border border-border/60 bg-bg-card py-0.5 shadow-sm">
                       <button
-                        className="motion-base flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[10px] text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                        className="motion-base flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[11px] text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
                         disabled={linking || isTaskCompleted}
                         onClick={() => {
                           setMenuOpen(false);
@@ -1760,7 +1768,7 @@ function CompactSegmentRow({
             </>
           ) : (
             <button
-              className="motion-press rounded border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent hover:bg-accent/20 disabled:opacity-40"
+              className="motion-press rounded border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent hover:bg-accent/15 disabled:opacity-40"
               disabled={linking}
               onClick={onLink}
               title="关联任务"
@@ -1774,7 +1782,7 @@ function CompactSegmentRow({
   );
 }
 
-// ─── E. 暂停记录（默认折叠） ─────────────────────────────────────
+// ─── E. 暂停记录折叠（备用组件） ─────────────────────────────────
 function CollapsiblePauseList({
   pauses,
   expanded,
@@ -1790,14 +1798,12 @@ function CollapsiblePauseList({
   return (
     <div className="opacity-80">
       <button
-        className="motion-base flex w-full items-center gap-2 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2 text-left hover:bg-danger/10"
+        className="motion-base flex w-full items-center gap-2 rounded-md border border-danger/15 bg-danger/5 px-2.5 py-2 text-left hover:bg-danger/10"
         onClick={onToggle}
       >
         <Icon.Coffee size="xs" className="text-danger/70" />
-        <span className="text-[11px] font-semibold uppercase tracking-widest text-danger/80">
-          暂停记录 ({pauses.length})
-        </span>
-        <span className="text-[10px] text-fg-subtle">· 总暂停 {formatDuration(totalPauseMs)}</span>
+        <span className="eyebrow text-danger/80">暂停记录 ({pauses.length})</span>
+        <span className="text-[10.5px] text-fg-subtle">· 总暂停 {formatDuration(totalPauseMs)}</span>
         <Icon.ChevronDown
           size="sm"
           tone="subtle"
@@ -1825,7 +1831,7 @@ function CollapsiblePauseList({
   );
 }
 
-/** 暂停记录行 - 红色弱化显示，三点菜单提供可选关联入口 */
+/** 暂停记录行（备用） */
 function PauseRow({
   pause,
   index,
@@ -1837,16 +1843,16 @@ function PauseRow({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
-    <div className="relative flex items-center justify-between rounded-md border border-danger/15 bg-danger/5 px-2.5 py-1 text-xs">
-      <div className="flex min-w-0 items-center gap-2">
+    <div className="relative flex items-center justify-between rounded-md border border-danger/15 bg-danger/5 px-2 py-1 text-[12px]">
+      <div className="flex min-w-0 items-center gap-1.5">
         <Icon.Coffee size="xs" className="shrink-0 text-danger/70" />
-        <span className="text-[10px] text-fg-muted">
+        <span className="text-[10.5px] text-fg-muted">
           暂停 {index + 1} · {formatDateTime(pause.pauseStartedAt)}
           {pause.pauseEndedAt ? ` → ${formatDateTime(pause.pauseEndedAt)}` : ' → 进行中'}
         </span>
       </div>
-      <div className="flex items-center gap-1.5">
-        <span className="timer-digit motion-digit shrink-0 text-[10px] text-danger/80">
+      <div className="flex items-center gap-1">
+        <span className="timer-digit shrink-0 text-[10.5px] text-danger/80">
           {formatDuration(pause.durationMs)}
         </span>
         <button
@@ -1862,9 +1868,9 @@ function PauseRow({
         {menuOpen && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-            <div className="motion-fade-in absolute right-0 top-6 z-20 w-40 rounded-lg border border-border bg-bg-card py-1 shadow-lg">
+            <div className="motion-fade-in absolute right-0 top-5 z-20 w-36 rounded-md border border-border/60 bg-bg-card py-0.5 shadow-sm">
               <button
-                className="motion-base flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-fg-muted hover:bg-danger/10 hover:text-danger"
+                className="motion-base flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-[11px] text-fg-muted hover:bg-danger/10 hover:text-danger"
                 onClick={() => {
                   setMenuOpen(false);
                   onLinkPause();
@@ -1874,7 +1880,7 @@ function PauseRow({
                 关联到任务
               </button>
               <button
-                className="motion-base flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-fg-muted hover:bg-bg-subtle hover:text-fg"
+                className="motion-base flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-[11px] text-fg-muted hover:bg-bg-subtle hover:text-fg"
                 onClick={() => setMenuOpen(false)}
               >
                 <Icon.Clock size="xs" />
@@ -1888,6 +1894,8 @@ function PauseRow({
   );
 }
 
+/* ─── 通用统计组件 ─── */
+
 function DetailStat({
   label,
   value,
@@ -1897,12 +1905,12 @@ function DetailStat({
   value: string;
   tone?: 'muted' | 'warn';
 }) {
-  const cls = tone === 'warn' ? 'border-warning/30 bg-warning/10' : 'border-border bg-bg-subtle/40';
+  const cls = tone === 'warn' ? 'border-warning/25 bg-warning/10' : 'border-border/60 bg-bg-subtle/30';
   const textCls = tone === 'warn' ? 'text-warning' : 'text-fg';
   return (
-    <div className={`motion-base rounded-lg border px-3 py-2.5 text-left ${cls}`}>
-      <div className={`timer-digit motion-digit text-sm font-semibold ${textCls}`}>{value}</div>
-      <div className="mt-0.5 text-[10px] font-medium text-fg-subtle">{label}</div>
+    <div className={`motion-base rounded-md border px-2.5 py-2 text-left ${cls}`}>
+      <div className={`timer-digit text-[13px] font-semibold ${textCls}`}>{value}</div>
+      <div className="mt-0.5 text-[10.5px] font-medium text-fg-subtle">{label}</div>
     </div>
   );
 }
@@ -1917,29 +1925,31 @@ function SummaryPanel({
   items: PeriodSummary[];
 }) {
   return (
-    <div className="card motion-lift p-3.5">
-      <div className="mb-3 flex items-center justify-between gap-2 text-xs font-semibold text-fg-muted">
-        <span className="flex items-center gap-2">
+    <div className="rounded-lg border border-border/70 bg-bg-card/60 p-3">
+      <div className="mb-2.5 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-[12px] font-medium text-fg-muted">
           {icon}
           {title}
         </span>
-        <span className="text-[10px] font-normal text-fg-subtle">{items.length} 项</span>
+        <span className="text-[10.5px] font-normal text-fg-subtle">{items.length} 项</span>
       </div>
       {items.length === 0 ? (
-        <p className="text-xs text-fg-subtle">暂无数据</p>
+        <p className="text-[11px] text-fg-subtle">暂无数据</p>
       ) : (
-        <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+        <div className="max-h-60 space-y-0.5 overflow-y-auto pr-1">
           {items.map((item) => (
             <div
               key={item.label}
-              className={`motion-base flex items-center justify-between rounded-lg px-3 py-2 ${
-                item.count > 0 ? 'bg-bg-subtle/45 text-fg-muted' : 'bg-bg-card/25 text-fg-subtle'
+              className={`motion-base flex items-center justify-between rounded-md px-2.5 py-1.5 transition-colors ${
+                item.count > 0
+                  ? 'bg-bg-subtle/30 text-fg-muted hover:bg-bg-subtle/50'
+                  : 'bg-bg-card/20 text-fg-subtle'
               }`}
             >
-              <span className="truncate text-xs text-fg-muted">{item.label}</span>
-              <span className="timer-digit text-xs font-semibold text-fg">
+              <span className="truncate text-[12px] text-fg-muted">{item.label}</span>
+              <span className="timer-digit text-[12px] font-semibold text-fg">
                 {formatDuration(item.active)}
-                <span className="ml-2 font-sans text-[10px] font-normal text-fg-subtle">
+                <span className="ml-1.5 font-sans text-[10.5px] font-normal text-fg-subtle">
                   {item.count} 次
                 </span>
               </span>

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import type { AppSettings } from '@shared/types';
-import { APP_VERSION, APP_COMMIT, APP_BUILD_TIME } from '@shared/version';
+import { APP_VERSION } from '@shared/version';
 import { Icon } from './Icon';
 
 const HOTKEY_LABELS: Record<keyof AppSettings['hotkeys'], string> = {
@@ -14,12 +14,12 @@ const HOTKEY_LABELS: Record<keyof AppSettings['hotkeys'], string> = {
 };
 
 const ACCENTS = [
-  { id: 'indigo', label: '薄荷绿', color: '#10b981' },
-  { id: 'violet', label: '紫', color: '#8b5cf6' },
-  { id: 'emerald', label: '深绿', color: '#059669' },
-  { id: 'rose', label: '玫瑰', color: '#f43f5e' },
-  { id: 'amber', label: '琥珀', color: '#f59e0b' },
-  { id: 'sky', label: '天蓝', color: '#0ea5e9' },
+  { id: 'indigo', label: '靛蓝', color: '#818cf8' },
+  { id: 'violet', label: '紫罗兰', color: '#a78bfa' },
+  { id: 'emerald', label: '翠绿', color: '#34d399' },
+  { id: 'rose', label: '玫瑰', color: '#fb7185' },
+  { id: 'amber', label: '琥珀', color: '#fbbf24' },
+  { id: 'sky', label: '天蓝', color: '#38bdf8' },
 ];
 
 const TABS = [
@@ -28,7 +28,8 @@ const TABS = [
   { id: 'hotkeys', label: '快捷键', icon: Icon.Keyboard },
   { id: 'mini', label: '小窗', icon: Icon.Monitor },
   { id: 'sync', label: '同步', icon: Icon.Refresh },
-  { id: 'about', label: '关于', icon: Icon.Stethoscope },
+  { id: 'general', label: '通用', icon: Icon.Settings },
+  { id: 'about', label: '关于', icon: Icon.Info },
 ] as const;
 
 type HotkeyKey = keyof AppSettings['hotkeys'];
@@ -150,19 +151,6 @@ export function SettingsPanel() {
     }
   };
 
-  const testCliList = async () => {
-    try {
-      const res = await window.focuslink.cli.listTasks();
-      if (res.ok) {
-        addToast(`CLI 读取成功，共 ${res.data.length} 个任务`, 'success');
-      } else {
-        addToast('CLI 读取失败：' + res.error, 'error');
-      }
-    } catch (e) {
-      addToast('CLI 测试异常：' + (e as Error).message, 'error');
-    }
-  };
-
   if (!settings) return null;
 
   const update = async (partial: Partial<AppSettings>) => {
@@ -214,14 +202,6 @@ export function SettingsPanel() {
     }
   };
 
-  const testHotkey = async (accelerator: string) => {
-    const ok = await window.focuslink.hotkey.test(accelerator);
-    if (ok) addToast(`测试通过：${accelerator} 可注册`, 'success');
-    else addToast(`测试失败：${accelerator} 无法注册（冲突）`, 'error');
-    await refreshHotkeyStatus();
-    return ok;
-  };
-
   const resetHotkeys = async () => {
     const next = await window.focuslink.hotkey.resetDefaults();
     setSettings(next);
@@ -264,21 +244,21 @@ export function SettingsPanel() {
       <div className="shrink-0 border-b border-border/60 px-6 pb-4 pt-6">
         <div className="mx-auto max-w-2xl">
           <h2 className="font-display mb-4 text-xl font-bold text-fg">设置</h2>
-          <div className="flex flex-wrap gap-1 rounded-xl border border-border/60 bg-bg-subtle/40 p-1">
+          <div className="flex flex-wrap gap-0.5 rounded-lg border border-border/50 bg-bg-subtle/30 p-0.5">
             {TABS.map((tab) => {
-              const Icon = tab.icon;
+              const TabIcon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`motion-press flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium ${
+                  className={`motion-press flex items-center gap-1 rounded-md px-2.5 py-1 text-[11.5px] font-medium transition-all duration-[var(--motion-fast)] ${
                     isActive
-                      ? 'nav-active bg-accent text-white shadow-sm'
-                      : 'text-fg-muted hover:bg-bg-subtle hover:text-fg'
+                      ? 'bg-accent/12 text-accent shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.2)]'
+                      : 'text-fg-muted hover:bg-bg-subtle/70 hover:text-fg'
                   }`}
                 >
-                  <Icon size="sm" />
+                  <TabIcon size="sm" />
                   {tab.label}
                 </button>
               );
@@ -316,10 +296,10 @@ export function SettingsPanel() {
                       <button
                         key={a.id}
                         onClick={() => update({ accentColor: a.id })}
-                        className={`motion-base h-7 w-7 rounded-full border-2 ${
+                        className={`motion-press h-6 w-6 rounded-full transition-transform ${
                           settings.accentColor === a.id
-                            ? 'scale-110 border-fg shadow-soft'
-                            : 'border-transparent'
+                            ? 'scale-110 ring-2 ring-fg/10'
+                            : 'hover:scale-105'
                         }`}
                         style={{ backgroundColor: a.color }}
                         title={a.label}
@@ -383,13 +363,7 @@ export function SettingsPanel() {
                     window.focuslink.mini.setOpacity(v);
                     update({ miniWindow: { ...settings.miniWindow, opacity: v } });
                   }}
-                  className="w-48"
-                />
-              </Row>
-              <Row label="贴边自动收纳" desc="当前保持关闭，避免窗口贴边时跳动或误收起">
-                <Toggle
-                  checked={false}
-                  onChange={() => addToast('贴边自动收纳当前保持关闭，可使用手动收起模式', 'info')}
+                  className="w-40"
                 />
               </Row>
               <Row
@@ -480,13 +454,6 @@ export function SettingsPanel() {
                             )}
                           </button>
                           <HotkeyStatusBadge state={status} />
-                          <button
-                            className="rounded-md border border-border px-2 py-1 text-[10px] text-fg-muted hover:text-fg"
-                            onClick={() => testHotkey(settings.hotkeys[key])}
-                            title="测试该快捷键能否注册"
-                          >
-                            测试
-                          </button>
                         </div>
                         <p
                           className={`max-w-[360px] text-right text-[10px] ${
@@ -640,7 +607,7 @@ export function SettingsPanel() {
                   </div>
                   <Row label="可执行文件路径">
                     <input
-                      className="input min-w-[220px] font-mono text-xs"
+                      className="input min-w-[200px] font-mono text-xs"
                       value={settings.ticktickCli.executable}
                       onChange={(e) =>
                         update({
@@ -653,7 +620,7 @@ export function SettingsPanel() {
                   <div className="mt-2 space-y-1.5">
                     <Row label="列出任务命令">
                       <input
-                        className="input min-w-[220px] font-mono text-xs"
+                        className="input min-w-[200px] font-mono text-xs"
                         value={settings.ticktickCli.listTasksCommand}
                         onChange={(e) =>
                           update({
@@ -667,7 +634,7 @@ export function SettingsPanel() {
                     </Row>
                     <Row label="搜索任务命令">
                       <input
-                        className="input min-w-[220px] font-mono text-xs"
+                        className="input min-w-[200px] font-mono text-xs"
                         value={settings.ticktickCli.searchTasksCommand}
                         onChange={(e) =>
                           update({
@@ -681,7 +648,7 @@ export function SettingsPanel() {
                     </Row>
                     <Row label="追加备注命令">
                       <input
-                        className="input min-w-[220px] font-mono text-xs"
+                        className="input min-w-[200px] font-mono text-xs"
                         value={settings.ticktickCli.appendNoteCommand}
                         onChange={(e) =>
                           update({
@@ -709,19 +676,9 @@ export function SettingsPanel() {
                       />
                     </Row>
                   </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <button className="btn-outline text-xs" onClick={testCliList}>
-                      测试读取任务
-                    </button>
-                    <span className="text-[10px] text-fg-subtle">
-                      支持占位符：{'{{projectId}} {{query}} {{taskId}} {{content}}'}
-                    </span>
-                  </div>
                 </div>
               </Section>
 
-              {/* CLI 诊断面板 */}
-              <CliDiagnosticPanel />
             </>
           )}
 
@@ -770,28 +727,6 @@ export function SettingsPanel() {
                       仅本地
                     </ChoiceBtn>
                   </div>
-                </Row>
-              </Section>
-            </>
-          )}
-
-          {activeTab === 'about' && (
-            <>
-              <Section title="FocusLink" desc="全局快捷键驱动的专注计时器 + 滴答清单任务关联工具">
-                <Row label="当前版本">
-                  <span className="rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs font-mono text-fg-muted">
-                    v{APP_VERSION}
-                  </span>
-                </Row>
-                <Row label="Build">
-                  <span className="rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs font-mono text-fg-muted">
-                    {APP_COMMIT}
-                  </span>
-                </Row>
-                <Row label="Build Time">
-                  <span className="rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs font-mono text-fg-muted">
-                    {APP_BUILD_TIME}
-                  </span>
                 </Row>
               </Section>
 
@@ -850,8 +785,12 @@ export function SettingsPanel() {
                   </code>
                 </p>
               </Section>
+            </>
+          )}
 
-              {/* 系统 */}
+          {activeTab === 'general' && (
+            <>
+              {/* 系统与后台运行 */}
               <Section title="系统与后台运行">
                 <Row label="最小化到托盘">
                   <Toggle
@@ -879,6 +818,18 @@ export function SettingsPanel() {
                 </Row>
                 <Row label="开机自启动" desc="系统登录时带隐藏参数启动，不弹出主界面">
                   <Toggle checked={settings.autoStart} onChange={(v) => update({ autoStart: v })} />
+                </Row>
+              </Section>
+            </>
+          )}
+
+          {activeTab === 'about' && (
+            <>
+              <Section title="FocusLink" desc="全局快捷键驱动的专注计时器 + 滴答清单任务关联工具">
+                <Row label="当前版本">
+                  <span className="rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs font-mono text-fg-muted">
+                    v{APP_VERSION}
+                  </span>
                 </Row>
               </Section>
             </>
@@ -928,7 +879,7 @@ function HotkeyStatusBadge({ state }: { state: HotkeyBadgeState }) {
           : 'border-border bg-bg-subtle text-fg-subtle';
   return (
     <span
-      className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[10px] font-medium ${cls}`}
+      className={`inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[10.5px] font-medium ${cls}`}
       title={state.title}
     >
       {state.tone === 'ok' ? <Icon.CheckCircleFilled size="xs" /> : <Icon.AlertCircle size="xs" />}
@@ -947,12 +898,12 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="card p-5">
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold">{title}</h3>
-        {desc && <p className="mt-0.5 text-xs text-fg-subtle">{desc}</p>}
+    <div className="rounded-lg border border-border/60 bg-bg-card/70 p-4" style={{ boxShadow: 'var(--shadow-sm)' }}>
+      <div className="mb-3">
+        <h3 className="text-[13px] font-semibold text-fg">{title}</h3>
+        {desc && <p className="mt-0.5 text-[11.5px] text-fg-subtle">{desc}</p>}
       </div>
-      <div className="space-y-3">{children}</div>
+      <div className="space-y-2.5">{children}</div>
     </div>
   );
 }
@@ -967,9 +918,9 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex items-center justify-between gap-3">
       <div className="min-w-0">
-        <span className="block text-sm text-fg-muted">{label}</span>
+        <span className="block text-[13px] text-fg">{label}</span>
         {desc && <span className="block text-[11px] text-fg-subtle">{desc}</span>}
       </div>
       {children}
@@ -989,8 +940,8 @@ function ChoiceBtn({
   return (
     <button
       onClick={onClick}
-      className={`motion-press rounded-lg px-3 py-1.5 text-xs font-medium ${
-        active ? 'bg-accent text-accent-fg' : 'bg-bg-subtle text-fg-muted hover:text-fg'
+      className={`motion-press choice-btn ${
+        active ? 'bg-accent text-accent-fg shadow-sm' : 'bg-bg-subtle/60 text-fg-muted hover:bg-bg-subtle hover:text-fg'
       }`}
     >
       {children}
@@ -1002,14 +953,14 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   return (
     <button
       onClick={() => onChange(!checked)}
-      className={`motion-base relative h-6 w-11 rounded-full ${
-        checked ? 'bg-accent' : 'bg-bg-subtle'
+      className={`motion-press toggle-track ${
+        checked ? 'bg-accent' : 'bg-bg-subtle border border-border/50'
       }`}
+      style={{ boxShadow: checked ? 'inset 0 1px 0 rgb(255 255 255 / 0.12)' : 'none' }}
     >
       <span
-        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-[var(--motion-normal)] ease-[var(--ease-out)] ${
-          checked ? 'translate-x-5' : 'translate-x-0.5'
-        }`}
+        className={`toggle-thumb ${checked ? 'translate-x-4' : 'translate-x-0.5'}`}
+        style={{ boxShadow: '0 1px 3px rgb(0 0 0 / 0.15), 0 0 0 0.5px rgb(0 0 0 / 0.05)' }}
       />
     </button>
   );
@@ -1038,340 +989,4 @@ function formatHotkey(accelerator: string | null): string {
     .join(' + ');
 }
 
-// ============ CLI 诊断面板 ============
-interface CliDiagnoseStep {
-  name: string;
-  ok: boolean;
-  summary: string;
-  record?: {
-    command: string;
-    cwd: string;
-    timeoutMs: number;
-    exitCode: number | null;
-    stdout: string;
-    stderr: string;
-    durationMs: number;
-    status: string;
-    parseResult: string;
-    error?: string;
-  };
-}
-interface CliDiagnoseResult {
-  provider: string;
-  executable: string;
-  executablePath: string;
-  cwd: string;
-  version: string;
-  loggedIn: boolean | null;
-  loginStatusText: string;
-  steps: CliDiagnoseStep[];
-  lastError: string | null;
-  lastStdout: string;
-  lastStderr: string;
-  templates: AppSettings['ticktickCli'];
-}
 
-function CliDiagnosticPanel() {
-  const { addToast } = useStore();
-  const [diagnose, setDiagnose] = useState<CliDiagnoseResult | null>(null);
-  const [running, setRunning] = useState(false);
-  const [expandedStep, setExpandedStep] = useState<string | null>(null);
-  const [showRaw, setShowRaw] = useState(false);
-
-  const runDiagnose = async () => {
-    setRunning(true);
-    try {
-      const res = await window.focuslink.cli.diagnose();
-      if (res.ok) {
-        setDiagnose(res.data);
-        const failed = res.data.steps.filter((s: CliDiagnoseStep) => !s.ok).length;
-        if (failed === 0) {
-          addToast('诊断完成：所有步骤通过', 'success');
-        } else {
-          addToast(`诊断完成：${failed} 项失败`, 'error');
-        }
-      } else {
-        addToast('诊断失败：' + res.error, 'error');
-      }
-    } catch (e) {
-      addToast('诊断异常：' + (e as Error).message, 'error');
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  const testProjectList = async () => {
-    setRunning(true);
-    try {
-      const res = await window.focuslink.cli.listProjects();
-      if (res.ok) {
-        addToast(`项目列表测试成功：${res.data.length} 个项目`, 'success');
-      } else {
-        addToast('项目列表测试失败：' + res.error, 'error');
-      }
-    } catch (e) {
-      addToast('测试异常：' + (e as Error).message, 'error');
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  const testTaskList = async () => {
-    setRunning(true);
-    try {
-      const res = await window.focuslink.cli.listTasks();
-      if (res.ok) {
-        addToast(`任务列表测试成功：${res.data.length} 个任务`, 'success');
-      } else {
-        addToast('任务列表测试失败：' + res.error, 'error');
-      }
-    } catch (e) {
-      addToast('测试异常：' + (e as Error).message, 'error');
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  const testSearch = async () => {
-    setRunning(true);
-    try {
-      const res = await window.focuslink.cli.searchTasks('test');
-      if (res.ok) {
-        addToast(`搜索测试成功：${res.data.length} 个结果`, 'success');
-      } else {
-        addToast('搜索测试失败：' + res.error, 'error');
-      }
-    } catch (e) {
-      addToast('测试异常：' + (e as Error).message, 'error');
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  const copyDiagnose = async () => {
-    if (!diagnose) return;
-    const text = [
-      '=== FocusLink CLI 诊断报告 ===',
-      `时间：${new Date().toLocaleString('zh-CN')}`,
-      `Provider: ${diagnose.provider}`,
-      `Executable: ${diagnose.executable}`,
-      `ExecutablePath: ${diagnose.executablePath}`,
-      `CWD: ${diagnose.cwd}`,
-      `Version: ${diagnose.version}`,
-      `LoggedIn: ${diagnose.loggedIn}`,
-      `LoginStatusText: ${diagnose.loginStatusText}`,
-      `LastError: ${diagnose.lastError ?? '(无)'}`,
-      '',
-      '=== Steps ===',
-      ...diagnose.steps.map(
-        (s: CliDiagnoseStep, i: number) =>
-          `[${i + 1}] ${s.name}: ${s.ok ? 'OK' : 'FAIL'} - ${s.summary}`,
-      ),
-      '',
-      '=== Templates ===',
-      `listProjectsCommand: ${diagnose.templates.listProjectsCommand}`,
-      `listTasksCommand: ${diagnose.templates.listTasksCommand}`,
-      `searchTasksCommand: ${diagnose.templates.searchTasksCommand}`,
-      `getTaskCommand: ${diagnose.templates.getTaskCommand}`,
-      `appendNoteCommand: ${diagnose.templates.appendNoteCommand}`,
-      `timeoutMs: ${diagnose.templates.timeoutMs}`,
-      '',
-      '=== Last stdout (前 2000) ===',
-      diagnose.lastStdout,
-      '',
-      '=== Last stderr (前 2000) ===',
-      diagnose.lastStderr,
-    ].join('\n');
-    try {
-      await navigator.clipboard.writeText(text);
-      addToast('诊断信息已复制到剪贴板', 'success');
-    } catch {
-      addToast('复制失败，请手动选择文本', 'error');
-    }
-  };
-
-  return (
-    <div className="card p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h3 className="flex items-center gap-2 text-sm font-semibold">
-            <Icon.Stethoscope size="sm" />
-            CLI 诊断面板
-          </h3>
-          <p className="mt-0.5 text-xs text-fg-subtle">
-            一键检测 CLI 路径、版本、登录、项目、任务、搜索，便于定位读取失败原因
-          </p>
-        </div>
-      </div>
-
-      <div className="mb-3 flex flex-wrap gap-2">
-        <button className="btn-primary text-xs" onClick={runDiagnose} disabled={running}>
-          {running ? <Icon.Loader size="xs" spin /> : <Icon.Stethoscope size="xs" />}
-          完整诊断
-        </button>
-        <button className="btn-outline text-xs" onClick={testProjectList} disabled={running}>
-          测试项目列表
-        </button>
-        <button className="btn-outline text-xs" onClick={testTaskList} disabled={running}>
-          测试任务列表
-        </button>
-        <button className="btn-outline text-xs" onClick={testSearch} disabled={running}>
-          测试搜索
-        </button>
-        <button className="btn-ghost text-xs" onClick={copyDiagnose} disabled={!diagnose}>
-          <Icon.Copy size="xs" />
-          复制诊断信息
-        </button>
-      </div>
-
-      {diagnose ? (
-        <div className="space-y-3">
-          {/* 基础信息 */}
-          <div className="grid grid-cols-2 gap-2 rounded-lg bg-bg-subtle/40 p-3 text-xs">
-            <div>
-              <span className="text-fg-subtle">CLI 路径：</span>
-              <code className="font-mono text-fg">
-                {diagnose.executablePath || diagnose.executable || '(未检测)'}
-              </code>
-            </div>
-            <div>
-              <span className="text-fg-subtle">版本：</span>
-              <code className="font-mono text-fg">{diagnose.version || '(未知)'}</code>
-            </div>
-            <div>
-              <span className="text-fg-subtle">登录状态：</span>
-              <span className={diagnose.loggedIn ? 'text-emerald-400' : 'text-rose-400'}>
-                {diagnose.loggedIn === null ? '未知' : diagnose.loggedIn ? '已登录' : '未登录'}
-              </span>
-            </div>
-            <div>
-              <span className="text-fg-subtle">CWD：</span>
-              <code className="font-mono text-fg">{diagnose.cwd}</code>
-            </div>
-          </div>
-
-          {/* 步骤列表 */}
-          <div className="space-y-1.5">
-            {diagnose.steps.map((step, idx) => {
-              const expanded = expandedStep === step.name;
-              return (
-                <div key={idx} className="rounded-lg border border-border bg-bg-card">
-                  <button
-                    className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-bg-subtle/30"
-                    onClick={() => setExpandedStep(expanded ? null : step.name)}
-                  >
-                    <div className="flex items-center gap-2">
-                      {expanded ? <Icon.ChevronDown size="xs" /> : <Icon.ChevronRight size="xs" />}
-                      <span
-                        className={`inline-block h-2 w-2 rounded-full ${
-                          step.ok ? 'bg-emerald-400' : 'bg-rose-400'
-                        }`}
-                      />
-                      <span className="font-medium">{step.name}</span>
-                    </div>
-                    <span
-                      className={`truncate text-[11px] ${step.ok ? 'text-fg-muted' : 'text-rose-400'}`}
-                    >
-                      {step.summary}
-                    </span>
-                  </button>
-                  {expanded && step.record && (
-                    <div className="border-t border-border bg-bg-subtle/20 px-3 py-2 text-[11px]">
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                        <div>
-                          <span className="text-fg-subtle">命令：</span>
-                          <code className="font-mono break-all">{step.record.command}</code>
-                        </div>
-                        <div>
-                          <span className="text-fg-subtle">exitCode：</span>
-                          <code className="font-mono">{String(step.record.exitCode)}</code>
-                        </div>
-                        <div>
-                          <span className="text-fg-subtle">status：</span>
-                          <code className="font-mono">{step.record.status}</code>
-                        </div>
-                        <div>
-                          <span className="text-fg-subtle">parseResult：</span>
-                          <code className="font-mono">{step.record.parseResult}</code>
-                        </div>
-                        <div>
-                          <span className="text-fg-subtle">耗时：</span>
-                          <code className="font-mono">{step.record.durationMs}ms</code>
-                        </div>
-                        <div>
-                          <span className="text-fg-subtle">超时：</span>
-                          <code className="font-mono">{step.record.timeoutMs}ms</code>
-                        </div>
-                      </div>
-                      {step.record.error && (
-                        <div className="mt-2 text-rose-400">
-                          <span className="text-fg-subtle">error：</span>
-                          {step.record.error}
-                        </div>
-                      )}
-                      {step.record.stderr && (
-                        <div className="mt-2">
-                          <div className="text-fg-subtle">stderr：</div>
-                          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-rose-500/5 p-2 font-mono text-[10px] text-rose-300">
-                            {step.record.stderr.slice(0, 1000)}
-                          </pre>
-                        </div>
-                      )}
-                      {step.record.stdout && (
-                        <div className="mt-2">
-                          <div className="text-fg-subtle">stdout（前 1000 字符）：</div>
-                          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-bg-subtle/40 p-2 font-mono text-[10px] text-fg-muted">
-                            {step.record.stdout.slice(0, 1000)}
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* 最近一次错误 */}
-          {diagnose.lastError && (
-            <div className="rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-400">
-              <span className="font-semibold">最近一次错误：</span>
-              {diagnose.lastError}
-            </div>
-          )}
-
-          {/* 原始 stdout/stderr 折叠 */}
-          <div>
-            <button
-              className="flex w-full items-center gap-2 px-1 py-1 text-left text-xs text-fg-muted hover:text-fg"
-              onClick={() => setShowRaw(!showRaw)}
-            >
-              {showRaw ? <Icon.ChevronDown size="xs" /> : <Icon.ChevronRight size="xs" />}
-              原始输出（stdout / stderr）
-            </button>
-            {showRaw && (
-              <div className="mt-1 space-y-2">
-                <div>
-                  <div className="text-[11px] text-fg-subtle">原始 stdout：</div>
-                  <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-bg-subtle/40 p-2 font-mono text-[10px] text-fg-muted">
-                    {diagnose.lastStdout || '(空)'}
-                  </pre>
-                </div>
-                <div>
-                  <div className="text-[11px] text-fg-subtle">原始 stderr：</div>
-                  <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-bg-subtle/40 p-2 font-mono text-[10px] text-rose-300">
-                    {diagnose.lastStderr || '(空)'}
-                  </pre>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-fg-subtle">
-          点击上方"完整诊断"开始检测
-        </div>
-      )}
-    </div>
-  );
-}

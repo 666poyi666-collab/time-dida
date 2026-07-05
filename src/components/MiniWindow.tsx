@@ -1,6 +1,6 @@
-// 专注小窗 v0.3 - 极光剧场浮窗
+// 专注小窗 v0.4 - Calm Studio 浮窗
 // 两种模式：EXPANDED（420×184 详情卡）、COLLAPSED（260×88 缩小卡）
-// 时间即主角：巨型数字 + 状态辉光边框，独立于主窗的浮窗语言
+// 时间即主角：克制字号 + 柔和辉光，Calm Studio 精致密度
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { FlipDigits } from './FlipDigits';
@@ -76,7 +76,7 @@ function applyThemeClass(s: AppSettings): void {
 }
 
 function StateDot({ state, size = 'sm' }: { state: string; size?: 'sm' | 'xs' }) {
-  const sizeClass = size === 'xs' ? 'h-1.5 w-1.5' : 'h-2 w-2';
+  const sizeClass = size === 'xs' ? 'h-1 w-1' : 'h-1.5 w-1.5';
   const dotCls = STATE_DOT[state] ?? STATE_DOT.idle;
   return (
     <motion.span
@@ -84,7 +84,7 @@ function StateDot({ state, size = 'sm' }: { state: string; size?: 'sm' | 'xs' })
       className={`inline-block flex-shrink-0 rounded-full ${sizeClass} ${dotCls}`}
       initial={{ scale: 0.6, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
     />
   );
 }
@@ -196,15 +196,15 @@ export function MiniWindow() {
     return (
       <div
         ref={containerRef}
-        className={`mini-window-shell mini-window-${state} mini-window-collapsed motion-base perf-contain flex h-full w-full flex-col justify-between px-4 py-2.5 text-fg`}
+        className={`mini-window-shell mini-window-${state} mini-window-collapsed motion-base perf-contain flex h-full w-full flex-col justify-between px-3 py-2 text-fg`}
         onDoubleClick={handleExpand}
         title="双击展开"
       >
         {/* 顶部：状态 + 展开 */}
         <div className="flex items-center justify-between">
           <div className="flex min-w-0 items-center gap-1.5">
-            <StateDot state={state} size="xs" />
-            <span className={`truncate text-[10px] font-bold ${STATE_TEXT[state]}`}>
+            <StateDot state={state} />
+            <span className={`truncate text-[9.5px] font-semibold ${STATE_TEXT[state]}`}>
               {STATE_LABEL[state]}
             </span>
           </div>
@@ -213,19 +213,19 @@ export function MiniWindow() {
             onClick={handleExpand}
             title="展开"
           >
-            <Icon.ChevronUp size="sm" />
+            <Icon.ChevronUp size="xs" />
           </button>
         </div>
 
         {/* 中央：巨型时间 - 主角 */}
         <div className="flex items-baseline justify-center gap-2">
           <span
-            className={`timer-digit text-[26px] font-bold leading-none ${activeTone}`}
+            className={`timer-digit text-[22px] font-bold leading-none ${activeTone}`}
             style={{
               textShadow: isRunning
-                ? '0 0 18px rgb(var(--app-success) / 0.45)'
+                ? '0 0 12px rgb(var(--app-success) / 0.35)'
                 : isPaused
-                  ? '0 0 18px rgb(var(--app-warning) / 0.4)'
+                  ? '0 0 12px rgb(var(--app-warning) / 0.35)'
                   : 'none',
             }}
           >
@@ -235,8 +235,8 @@ export function MiniWindow() {
 
         {/* 底部：累计 */}
         <div className="flex items-center justify-center gap-1.5">
-          <span className="text-[9px] font-medium text-fg-subtle">{cumulativeLabel}</span>
-          <span className="timer-digit motion-digit text-[11px] font-bold text-fg-muted">
+          <span className="text-[8.5px] font-medium text-fg-subtle">{cumulativeLabel}</span>
+          <span className="timer-digit motion-digit text-[10px] font-bold text-fg-muted">
             {formatDuration(cumulativeMs)}
           </span>
         </div>
@@ -248,18 +248,18 @@ export function MiniWindow() {
   return (
     <div
       ref={containerRef}
-      className={`mini-window-shell mini-window-${state} motion-base perf-contain flex h-full w-full flex-col px-4 py-3 text-fg`}
+      className={`mini-window-shell mini-window-${state} motion-base perf-contain flex h-full w-full flex-col px-3 py-2.5 text-fg`}
     >
       {/* 顶部：状态 + 任务 + 窗口控制 */}
-      <div className="mini-top-row flex items-center justify-between gap-2">
+      <div className="mini-top-row flex items-center justify-between gap-1.5">
         <div className="flex min-w-0 items-center gap-1.5">
           <StateDot state={state} size="xs" />
-          <span className={`shrink-0 text-[10px] font-bold ${STATE_TEXT[state]}`}>
+          <span className={`shrink-0 text-[9.5px] font-semibold ${STATE_TEXT[state]}`}>
             {STATE_LABEL[state]}
           </span>
           <span className="h-3 w-px bg-border/80" />
           <Icon.Link size="xs" tone="accent" />
-          <span className="truncate text-[11px] font-medium text-fg-muted">
+          <span className="truncate text-[10.5px] font-medium text-fg-muted">
             {currentTaskTitle ?? (state === 'idle' ? '点击开始专注' : '未关联任务')}
           </span>
         </div>
@@ -282,18 +282,18 @@ export function MiniWindow() {
       </div>
 
       {/* 中部：巨型时间 + 累计统计 */}
-      <div className="mt-2 flex items-center justify-between gap-3">
+      <div className="mt-1.5 flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="text-[9px] font-bold uppercase tracking-wide text-fg-subtle">
             {isPaused ? '当前暂停片段' : isRunning ? '当前专注片段' : '准备开始'}
           </div>
           <div
-            className={`timer-digit mt-0.5 text-[38px] font-bold leading-none ${activeTone}`}
+            className={`timer-digit mt-0.5 text-[32px] font-bold leading-none ${activeTone}`}
             style={{
               textShadow: isRunning
-                ? '0 0 28px rgb(var(--app-success) / 0.35)'
+                ? '0 0 20px rgb(var(--app-success) / 0.25)'
                 : isPaused
-                  ? '0 0 28px rgb(var(--app-warning) / 0.3)'
+                  ? '0 0 20px rgb(var(--app-warning) / 0.25)'
                   : 'none',
             }}
           >
@@ -307,23 +307,23 @@ export function MiniWindow() {
       </div>
 
       {/* 底部：控制 + 总历时 */}
-      <div className="mt-auto flex items-center justify-between gap-2 pt-2">
+      <div className="mt-auto flex items-center justify-between gap-2 pt-1.5">
         <div className="flex items-center gap-1.5">
-          <span className="text-[9px] font-medium text-fg-subtle">总历时</span>
-          <span className="timer-digit motion-digit text-[11px] font-bold text-fg-muted">
+          <span className="text-[8.5px] font-medium text-fg-subtle">总历时</span>
+          <span className="timer-digit motion-digit text-[10px] font-bold text-fg-muted">
             {formatDuration(wallElapsedMs)}
           </span>
         </div>
         <div className="flex items-center gap-2">
           <button
-            className={`mini-primary-button ${primaryButtonClass} no-drag motion-press inline-flex h-7 items-center gap-1.5 px-4 text-[11px] font-semibold`}
+            className={`mini-primary-button ${primaryButtonClass} no-drag motion-press inline-flex h-6 items-center gap-1.5 px-3 text-[10.5px] font-semibold`}
             onClick={handleToggle}
           >
             {state === 'running' ? <Icon.Pause size="xs" /> : <Icon.Play size="xs" />}
             {state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始'}
           </button>
           <button
-            className="mini-secondary-button no-drag motion-press inline-flex h-7 items-center gap-1.5 px-3.5 text-[11px] font-medium disabled:pointer-events-none disabled:opacity-30"
+            className="mini-secondary-button no-drag motion-press inline-flex h-6 items-center gap-1.5 px-2.5 text-[10.5px] font-medium disabled:pointer-events-none disabled:opacity-30"
             onClick={handleStop}
             disabled={state === 'idle' || state === 'finished'}
           >
@@ -350,9 +350,9 @@ function MiniStat({
   const toneClass =
     tone === 'focus' ? 'text-success' : tone === 'pause' ? 'text-warning' : 'text-fg-muted';
   return (
-    <div className={`mini-stat-card motion-state-transition min-w-0 px-2.5 py-1 ${className}`}>
-      <div className={`truncate text-[9px] font-bold ${toneClass}`}>{label}</div>
-      <div className="timer-digit motion-digit mt-0.5 truncate text-[12px] font-bold leading-none text-fg">
+    <div className={`mini-stat-card min-w-0 px-2 py-1 ${className}`}>
+      <div className={`truncate text-[8.5px] font-semibold ${toneClass}`}>{label}</div>
+      <div className="timer-digit mt-0.5 truncate text-[11px] font-bold leading-none text-fg">
         {value}
       </div>
     </div>

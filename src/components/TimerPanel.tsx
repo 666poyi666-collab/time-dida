@@ -1,4 +1,4 @@
-// 计时舞台 - v0.3 极光剧场核心：巨型弧光环 + 中央时间 + 控制区
+// 计时舞台 - v0.4.1 Raycast Studio：极致克制的弧环 + 中央时间 + 控制区
 import { useEffect, useState, useMemo } from 'react';
 import { Icon } from './Icon';
 import { FlipDigits } from './FlipDigits';
@@ -13,8 +13,6 @@ import {
 } from '../lib/timerSelectors';
 import type { TimerSnapshot, Task } from '@shared/types';
 import { TaskPicker } from './TaskPicker';
-
-// ─── useDisplayValues hook ────────────────────────────────────
 
 function useDisplayValues(snapshot: TimerSnapshot | null) {
   const [now, setNow] = useState(Date.now());
@@ -38,7 +36,7 @@ function useDisplayValues(snapshot: TimerSnapshot | null) {
   );
 }
 
-// ─── 弧光环：v0.3 核心视觉 ────────────────────────────────────
+// ─── 弧光环：Raycast 级极简弧环 ─────────────────────────
 
 function ArcRing({
   progress,
@@ -49,9 +47,9 @@ function ArcRing({
   state: string;
   children: React.ReactNode;
 }) {
-  const size = 280;
-  const stroke = 8;
-  const r = (size - stroke) / 2 - 14;
+  const size = 220;
+  const stroke = 5;
+  const r = (size - stroke) / 2 - 16;
   const c = 2 * Math.PI * r;
   const offset = c * (1 - Math.max(0, Math.min(1, progress)));
 
@@ -74,14 +72,14 @@ function ArcRing({
       >
         <defs>
           <filter id="arc-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feGaussianBlur stdDeviation="2.5" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
           <linearGradient id="arc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor={arcColor} stopOpacity="0.6" />
+            <stop offset="0%" stopColor={arcColor} stopOpacity="0.5" />
             <stop offset="100%" stopColor={arcColor} stopOpacity="1" />
           </linearGradient>
         </defs>
@@ -91,7 +89,7 @@ function ArcRing({
           cy={size / 2}
           r={r}
           fill="none"
-          stroke="rgb(var(--app-border) / 0.5)"
+          stroke="rgb(var(--app-border) / 0.4)"
           strokeWidth={stroke}
         />
         {/* 进度弧 */}
@@ -112,32 +110,11 @@ function ArcRing({
             }}
           />
         )}
-        {/* 装饰刻度环 - 极弱 */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r - 14}
-          fill="none"
-          stroke="rgb(var(--app-border-subtle) / 0.4)"
-          strokeWidth={1}
-          strokeDasharray="2 6"
-        />
       </svg>
 
-      {/* 中央内容 */}
       <div className="relative z-10 flex flex-col items-center justify-center text-center">
         {children}
       </div>
-
-      {/* running 时的外圈呼吸辉光 */}
-      {isRunning && (
-        <div
-          className="pointer-events-none absolute inset-0 rounded-full motion-glow-pulse"
-          style={{
-            background: `radial-gradient(circle, rgb(var(--app-success) / 0.06) 0%, transparent 70%)`,
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -152,39 +129,38 @@ function StateBadge({ state }: { state: string }) {
     idle: {
       label: '未开始',
       dotCls: 'bg-fg-subtle',
-      pillCls: 'border-border bg-bg-subtle/60 text-fg-muted',
+      pillCls: 'border-border bg-bg-subtle/50 text-fg-muted',
     },
     running: {
       label: '专注中',
       dotCls: 'bg-success',
-      pillCls: 'border-success/25 bg-success/10 text-success',
+      pillCls: 'border-success/20 bg-success/8 text-success',
       pulse: true,
     },
     paused: {
       label: '已暂停',
       dotCls: 'bg-warning',
-      pillCls: 'border-warning/25 bg-warning/10 text-warning',
+      pillCls: 'border-warning/20 bg-warning/8 text-warning',
     },
     finished: {
       label: '已结束',
       dotCls: 'bg-success',
-      pillCls: 'border-success/25 bg-success/10 text-success',
+      pillCls: 'border-success/20 bg-success/8 text-success',
     },
     stopping: {
       label: '结束中',
       dotCls: 'bg-fg-subtle',
-      pillCls: 'border-accent/20 bg-accent/10 text-accent',
+      pillCls: 'border-accent/15 bg-accent/8 text-accent',
     },
   };
   const c = config[state] ?? config.idle;
 
   return (
-    <span className={`status-chip ${c.pillCls}`}>
+    <span className={`status-chip px-2 py-0.5 text-[10.5px] ${c.pillCls}`}>
       <span className="relative flex h-1.5 w-1.5">
-        {c.pulse && (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
-        )}
-        <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${c.dotCls} ${c.pulse ? 'motion-dot-breathe' : ''}`} />
+        <span
+          className={`relative inline-flex h-1.5 w-1.5 rounded-full ${c.dotCls} ${c.pulse ? 'motion-dot-breathe' : ''}`}
+        />
       </span>
       {c.label}
     </span>
@@ -213,15 +189,17 @@ function StatPill({
     danger: 'text-danger',
   }[tone];
   return (
-    <div className="card-hover-glow flex items-center gap-2 rounded-2xl border border-border/50 bg-bg-card/60 px-3.5 py-2 backdrop-blur-sm">
-      <span className={`flex h-6 w-6 items-center justify-center rounded-lg bg-bg-subtle/60 ${toneCls}`}>
+    <div className="flex items-center gap-1.5 rounded-lg border border-border/45 bg-bg-card/50 px-2.5 py-1.5 backdrop-blur-sm" style={{ boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.03)' }}>
+      <span
+        className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-bg-subtle/50 ${toneCls}`}
+      >
         {icon}
       </span>
       <div className="flex flex-col leading-tight">
-        <span className="text-[9px] font-semibold uppercase tracking-wide text-fg-subtle">
+        <span className="text-[8.5px] font-semibold uppercase tracking-wider text-fg-subtle">
           {label}
         </span>
-        <span className="timer-digit motion-digit text-[13px] font-bold text-fg">{value}</span>
+        <span className="timer-digit motion-digit text-[12px] font-bold text-fg">{value}</span>
       </div>
     </div>
   );
@@ -238,17 +216,17 @@ function formatAccelerator(accelerator: string): string {
 
 function TaskCard({ label, title, onClear }: { label: string; title: string; onClear?: () => void }) {
   return (
-    <div className="app-section flex items-start gap-2.5 px-3.5 py-3">
-      <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+    <div className="app-section flex items-start gap-2 rounded-lg px-2.5 py-2">
+      <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-accent/8 text-accent">
         <Icon.Link size="xs" tone="accent" />
       </span>
       <div className="min-w-0 flex-1">
-        <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">{label}</span>
-        <p className="mt-0.5 truncate text-sm font-medium text-fg">{title}</p>
+        <span className="text-[9.5px] font-bold uppercase tracking-wider text-fg-subtle">{label}</span>
+        <p className="mt-0 truncate text-[13px] font-medium text-fg">{title}</p>
       </div>
       {onClear && (
         <button
-          className="motion-press rounded-lg p-1.5 text-fg-subtle hover:bg-danger/10 hover:text-danger"
+          className="motion-press rounded-md p-1 text-fg-subtle hover:bg-danger/8 hover:text-danger"
           onClick={onClear}
           title="清除关联"
         >
@@ -270,15 +248,15 @@ function UnlinkedTaskCard({
 }) {
   return (
     <button
-      className="motion-base flex w-full items-center gap-2.5 rounded-xl border border-dashed border-border bg-bg-card/50 px-3.5 py-3 text-left hover:border-accent/45 hover:bg-accent/5"
+      className="motion-base flex w-full items-center gap-2 rounded-lg border border-dashed border-border/50 bg-bg-card/40 px-2.5 py-2 text-left hover:border-accent/40 hover:bg-accent/4"
       onClick={onPick}
     >
-      <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-bg-subtle text-fg-subtle">
+      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-bg-subtle/50 text-fg-subtle">
         <Icon.Link size="xs" />
       </span>
       <div className="min-w-0 flex-1">
-        <span className="text-[10px] font-bold uppercase tracking-wide text-fg-subtle">{label}</span>
-        <p className="mt-0.5 text-sm text-fg-subtle">{emptyText}</p>
+        <span className="text-[9.5px] font-bold uppercase tracking-wider text-fg-subtle">{label}</span>
+        <p className="mt-0 text-[13px] text-fg-subtle">{emptyText}</p>
       </div>
       <Icon.Search size="xs" tone="subtle" />
     </button>
@@ -453,14 +431,11 @@ export function TimerPanel() {
     ? `${formatAccelerator(settings.hotkeys.toggleTimer)} 开始 / 暂停 · ${formatAccelerator(settings.hotkeys.stopTimer)} 结束`
     : '快捷键加载中';
 
-  // 弧光环进度：分钟节奏 (0-60s) 映射到 0-1
   const arcProgress = (state === 'running' || state === 'paused') ? minuteRhythmSec / 60 : 0;
 
-  // 中央时间颜色
   const timeColorCls =
     state === 'paused' ? 'text-warning' : state === 'running' ? 'text-fg' : 'text-fg-muted';
 
-  // 状态图标
   const stateIcon =
     state === 'paused' ? (
       <Icon.Coffee size="sm" tone="warning" />
@@ -469,14 +444,7 @@ export function TimerPanel() {
     ) : (
       <Icon.Clock size="sm" tone="subtle" />
     );
-  const stateIconTone =
-    state === 'paused'
-      ? 'text-warning'
-      : state === 'running'
-        ? 'text-success'
-        : 'text-fg-subtle';
 
-  // 副标题
   const subtitle =
     state === 'running'
       ? '当前专注片段'
@@ -486,7 +454,6 @@ export function TimerPanel() {
           ? '本次专注已结束'
           : '尚未开始';
 
-  // 任务上下文
   const contextTitle = isRunning
     ? (currentSegmentTaskId?.title ?? sessionDefaultTitle)
     : (preSelectedTask?.title ?? null);
@@ -506,11 +473,11 @@ export function TimerPanel() {
         : 'btn-primary';
 
   return (
-    <div className="mx-auto flex w-full max-w-[560px] flex-col">
+    <div className="mx-auto flex w-full max-w-[480px] flex-col">
       {/* 顶部状态行 */}
-      <div className="mb-6 flex items-center justify-between gap-3">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <StateBadge state={state} />
-        <span key={`hint-${state}`} className="motion-fade-up text-xs font-medium text-fg-subtle">
+        <span key={`hint-${state}`} className="motion-fade-up text-[11px] font-medium text-fg-subtle">
           {state === 'idle'
             ? preSelectedTask
               ? '已选择即将专注任务'
@@ -530,46 +497,38 @@ export function TimerPanel() {
       {/* ── 弧光环舞台 ── */}
       <div className="flex flex-col items-center">
         <ArcRing progress={arcProgress} state={state}>
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-fg-subtle">
+          <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-fg-subtle">
             当前片段
           </span>
-          <div
-            className={`timer-digit mt-2 text-[60px] font-bold leading-none ${timeColorCls}`}
-            style={{ textShadow: state === 'running' ? '0 0 32px rgb(var(--app-success) / 0.25)' : 'none' }}
-          >
+          <div className={`timer-digit mt-1.5 text-[48px] font-bold leading-none ${timeColorCls}`}>
             <FlipDigits value={formatDurationPadded(currentSegmentMs)} />
           </div>
-          <div className="mt-3 flex items-center gap-1.5">
+          <div className="mt-2.5 flex items-center gap-1.5">
             {stateIcon}
             <span
               key={`sub-${state}`}
-              className="motion-fade-up text-xs font-medium text-fg-subtle"
+              className="motion-fade-up text-[11px] font-medium text-fg-subtle"
             >
               {subtitle}
             </span>
           </div>
-          {/* 分钟节奏数字 */}
-          {(state === 'running' || state === 'paused') && (
-            <div className="mt-1 timer-digit motion-digit text-[11px] font-semibold text-fg-subtle">
-              {String(minuteRhythmSec).padStart(2, '0')}s / 60s
-            </div>
-          )}
         </ArcRing>
       </div>
 
       {/* 任务上下文条 */}
-      <div className="timer-context-strip relative mt-6 flex items-center gap-3">
+      <div className="timer-context-strip relative mt-4 flex items-center gap-2.5 py-2">
         <span
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
-            contextTitle ? 'bg-accent/10 text-accent' : 'bg-bg-subtle text-fg-subtle'
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
+            contextTitle ? 'bg-accent/8 text-accent' : 'bg-bg-subtle/50 text-fg-subtle'
           }`}
+          style={{ boxShadow: contextTitle ? 'inset 0 1px 0 rgb(255 255 255 / 0.04)' : undefined }}
         >
           <Icon.Link size="sm" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[10px] font-semibold text-fg-subtle">{contextSourceLabel}</div>
+          <div className="text-[9.5px] font-semibold text-fg-subtle">{contextSourceLabel}</div>
           <div
-            className={`truncate text-sm font-semibold ${
+            className={`truncate text-[13px] font-semibold ${
               state === 'paused'
                 ? 'text-warning'
                 : state === 'running'
@@ -583,7 +542,7 @@ export function TimerPanel() {
           </div>
         </div>
         <button
-          className="btn-ghost shrink-0 !px-2.5 !py-1.5 text-[11px]"
+          className="btn-ghost motion-press shrink-0 !px-2 !py-1 text-[11px]"
           onClick={() => setPickerMode(isRunning ? 'segment' : 'preselect')}
         >
           <Icon.Search size="xs" />
@@ -592,7 +551,7 @@ export function TimerPanel() {
       </div>
 
       {/* 累计统计胶囊行 */}
-      <div className="mt-4 flex items-center justify-center gap-2">
+      <div className="mt-2.5 flex items-center justify-center gap-1.5">
         <StatPill
           label="累计专注"
           value={formatDuration(cumulativeActiveMs)}
@@ -615,7 +574,7 @@ export function TimerPanel() {
 
       {/* 任务关联区 - 仅在专注进行中显示 */}
       {isRunning && (
-        <div className="mt-4 w-full space-y-2">
+        <div className="mt-3 w-full space-y-1.5">
           {currentSegmentTaskId?.title ? (
             <TaskCard
               label="当前片段任务"
@@ -639,7 +598,10 @@ export function TimerPanel() {
           )}
 
           {currentSegmentTaskId?.title && !sessionDefaultTitle && (
-            <button className="btn-ghost w-full text-xs" onClick={() => setPickerMode('session')}>
+            <button
+              className="btn-ghost motion-press w-full text-[11px]"
+              onClick={() => setPickerMode('session')}
+            >
               <Icon.Star size="xs" />
               设为本次专注默认任务
             </button>
@@ -649,12 +611,12 @@ export function TimerPanel() {
 
       {/* idle/finished 预选任务区 */}
       {(isIdle || isFinished) && (
-        <div className="mt-4 w-full space-y-2">
+        <div className="mt-3 w-full space-y-1.5">
           {preSelectedTask ? (
-            <div className="timer-plan-strip">
-              <div className="flex items-center gap-2">
+            <div className="timer-plan-strip rounded-lg px-2.5 py-1.5">
+              <div className="flex items-center gap-1.5">
                 <button
-                  className="btn-ghost flex-1 text-xs"
+                  className="btn-ghost motion-press flex-1 text-[11px]"
                   onClick={() => setPickerMode('preselect')}
                   title="更换即将专注的任务"
                 >
@@ -662,7 +624,7 @@ export function TimerPanel() {
                   更换任务
                 </button>
                 <button
-                  className="btn-ghost flex-1 text-xs"
+                  className="btn-ghost motion-press flex-1 text-[11px]"
                   onClick={handleClearPreselect}
                   title="清除预选任务"
                 >
@@ -682,26 +644,26 @@ export function TimerPanel() {
       )}
 
       {/* 控制按钮 */}
-      <div className="mt-6 flex items-center justify-center gap-3">
+      <div className="mt-5 flex items-center justify-center gap-2.5">
         <button
-          className={`${mainActionClass} btn-shine motion-magnetic flex min-w-[172px] items-center justify-center gap-2`}
+          className={`${mainActionClass} motion-press flex min-w-[136px] items-center justify-center gap-1.5`}
           onClick={handleToggle}
         >
-          {state === 'running' ? <Icon.Pause size="md" hover /> : <Icon.Play size="md" hover />}
+          {state === 'running' ? <Icon.Pause size="sm" /> : <Icon.Play size="sm" />}
           {toggleLabel}
         </button>
         <button
-          className="btn-outline btn-shine motion-press flex items-center gap-2"
+          className="btn-outline motion-press flex items-center gap-1.5"
           onClick={handleStop}
           disabled={isIdle || isFinished}
         >
-          <Icon.Square size="sm" hover />
+          <Icon.Square size="xs" />
           结束专注
         </button>
       </div>
 
       {/* 快捷键提示 */}
-      <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5 text-[11px] text-fg-subtle">
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-1 text-[10px] text-fg-subtle">
         <span className="font-medium text-fg-muted">快捷键</span>
         {hotkeyHint.split(' · ').map((part) => (
           <span key={part} className="kbd-chip">
@@ -710,7 +672,6 @@ export function TimerPanel() {
         ))}
       </div>
 
-      {/* TaskPicker 弹窗 */}
       {pickerMode && pickerConfig && (
         <TaskPicker
           onPick={pickerConfig.onPick}

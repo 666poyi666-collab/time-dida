@@ -25,32 +25,25 @@ export default function App() {
     addToast,
   } = useStore();
 
-  // 任务抽屉：v0.3 核心变化——任务不再常驻右栏，改为召唤式滑出抽屉
   const [taskDrawerOpen, setTaskDrawerOpen] = useState(false);
 
-  // 初始化
   useEffect(() => {
     const unsubs: Array<() => void> = [];
 
     (async () => {
-      // 加载设置
       const s = (await window.focuslink.settings.get()) as AppSettings;
       setSettings(s);
       applyTheme(s);
 
-      // 加载本地任务
       const tasks = await window.focuslink.tasks.listLocal();
       setLocalTasks(tasks);
 
-      // TickTick 状态
       const st = await window.focuslink.ticktick.status();
       setTicktickStatus(st.connected, st.region);
 
-      // 初始快照
       const snap = await window.focuslink.timer.getSnapshot();
       setSnapshot(snap);
 
-      // 订阅 timer 事件
       unsubs.push(window.focuslink.on('tick', (snap) => setSnapshot(snap as any)));
       unsubs.push(window.focuslink.on('timer:state-changed', (snap) => setSnapshot(snap as any)));
       unsubs.push(
@@ -83,26 +76,23 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 主题随设置变化
   useEffect(() => {
     if (settings) applyTheme(settings);
   }, [settings]);
 
-  // v0.3.11: 页面过渡升级——spring 物理 + 交错入场
   const pageTransition = {
     type: 'spring' as const,
-    stiffness: 380,
+    stiffness: 480,
     damping: 38,
-    mass: 0.9,
+    mass: 0.7,
   };
   const pageVariants = {
-    initial: { opacity: 0, y: 8, scale: 0.99 },
-    animate: { opacity: 1, y: 0, scale: 1 },
-    exit: { opacity: 0, y: -6, scale: 0.99 },
+    initial: { opacity: 0, x: 5, scale: 0.997 },
+    animate: { opacity: 1, x: 0, scale: 1 },
+    exit: { opacity: 0, x: -3, scale: 0.997 },
   };
 
   const timerState = snapshot?.state ?? 'idle';
-  // 画布环境光：根据计时状态切换极光层
   const canvasCls =
     timerState === 'running'
       ? 'aurora-canvas aurora-canvas-focus'
@@ -112,55 +102,53 @@ export default function App() {
 
   return (
     <div className="app-shell theme-transition flex h-screen w-screen overflow-hidden text-fg antialiased">
-      {/* ── 侧轨：v0.3 全新导航 ── */}
-      <aside className="side-rail relative z-20 flex w-14 flex-col items-center gap-1.5 py-4">
+      {/* ── 侧轨：Raycast 风紧凑导航 ── */}
+      <aside className="side-rail relative z-20 flex w-[52px] flex-col items-center gap-0.5 py-2.5">
         <BrandMark state={timerState} />
 
-        <div className="mt-5 flex flex-col items-center gap-1.5">
+        <div className="mt-3 flex flex-col items-center gap-0.5">
           <RailBtn
             active={view === 'timer'}
             onClick={() => setView('timer')}
-            icon={<Icon.Timer size="lg" />}
+            icon={<Icon.Timer size="md" />}
             label="计时"
           />
           <RailBtn
             active={view === 'history'}
             onClick={() => setView('history')}
-            icon={<Icon.History size="lg" />}
+            icon={<Icon.History size="md" />}
             label="历史"
           />
           <RailBtn
             active={view === 'settings'}
             onClick={() => setView('settings')}
-            icon={<Icon.Settings size="lg" />}
+            icon={<Icon.Settings size="md" />}
             label="设置"
           />
         </div>
 
-        {/* 任务抽屉召唤按钮：仅在计时视图显示 */}
-        <div className="mt-3 flex flex-col items-center gap-1.5">
+        <div className="mt-1.5 flex flex-col items-center gap-0.5">
           {view === 'timer' && (
             <RailBtn
               active={taskDrawerOpen}
               onClick={() => setTaskDrawerOpen((v) => !v)}
-              icon={<Icon.ListTodo size="lg" />}
+              icon={<Icon.ListTodo size="md" />}
               label="任务"
               accent
             />
           )}
         </div>
 
-        {/* 窗口控制：贴底 */}
-        <div className="mt-auto flex flex-col items-center gap-1.5">
+        <div className="mt-auto flex flex-col items-center gap-0.5">
           <RailBtn
             onClick={() => window.focuslink.window.minimizeToTray()}
-            icon={<Icon.Minus size="md" />}
+            icon={<Icon.Minus size="sm" />}
             label="最小化"
             ghost
           />
           <RailBtn
             onClick={() => window.focuslink.window.minimizeToTray()}
-            icon={<Icon.X size="md" />}
+            icon={<Icon.X size="sm" />}
             label="关闭"
             ghost
             danger
@@ -168,7 +156,7 @@ export default function App() {
         </div>
       </aside>
 
-      {/* ── 主舞台：极光画布 ── */}
+      {/* ── 主舞台 ── */}
       <main className={`perf-contain-content relative flex-1 overflow-hidden ${canvasCls}`}>
         <AnimatePresence mode="wait">
           {view === 'timer' && (
@@ -221,8 +209,6 @@ export default function App() {
   );
 }
 
-// ── 计时舞台：中央计时 + 底部时间线 + 任务抽屉 ──────────────
-
 function TimerStage({
   taskDrawerOpen,
   onToggleDrawer,
@@ -232,18 +218,15 @@ function TimerStage({
 }) {
   return (
     <div className="flex h-full w-full">
-      {/* 中央舞台区 */}
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[640px] flex-1 flex-col justify-center px-6 py-6">
+        <div className="mx-auto flex w-full max-w-[580px] flex-1 flex-col justify-center px-6 py-5">
           <TimerPanel />
         </div>
-        {/* 底部片段时间线 */}
-        <div className="shrink-0 px-6 pb-5">
+        <div className="shrink-0 px-6 pb-4">
           <SegmentTimeline />
         </div>
       </div>
 
-      {/* 任务抽屉：从右侧滑入 */}
       <AnimatePresence>
         {taskDrawerOpen && (
           <>
@@ -252,34 +235,33 @@ function TimerStage({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
               onClick={onToggleDrawer}
-              className="absolute inset-0 z-30 bg-black/30 backdrop-blur-[2px]"
+              className="absolute inset-0 z-30 bg-black/35 backdrop-blur-[2px]"
             />
             <motion.div
               key="drawer-panel"
-              initial={{ x: '100%', opacity: 0.6 }}
+              initial={{ x: '100%', opacity: 0.7 }}
               animate={{ x: 0, opacity: 1 }}
-              exit={{ x: '100%', opacity: 0.6 }}
-              transition={{ type: 'spring', stiffness: 460, damping: 42, mass: 0.85 }}
-              className="motion-gpu absolute bottom-0 right-0 top-0 z-40 flex w-[380px] max-w-[88vw] flex-col border-l border-border/50 bg-bg-card/95 backdrop-blur-xl"
+              exit={{ x: '100%', opacity: 0.7 }}
+              transition={{ type: 'spring', stiffness: 550, damping: 40, mass: 0.7 }}
+              className="motion-gpu absolute bottom-0 right-0 top-0 z-40 flex w-[320px] max-w-[88vw] flex-col border-l border-border/50 glass"
+              style={{ borderTopLeftRadius: 12, borderBottomLeftRadius: 12 }}
             >
-              {/* 抽屉头 */}
-              <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
+              <div className="flex items-center justify-between border-b border-border/45 px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <Icon.ListTodo size="sm" tone="accent" />
-                  <span className="font-display text-sm font-semibold">任务</span>
+                  <span className="font-display text-[13px] font-semibold">任务</span>
                 </div>
                 <button
-                  className="window-icon-button"
+                  className="window-icon-button !h-7 !w-7"
                   onClick={onToggleDrawer}
                   title="关闭任务面板"
                 >
                   <Icon.PanelClose size="sm" />
                 </button>
               </div>
-              {/* 抽屉内容 */}
-              <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
                 <TaskPanel inDrawer />
               </div>
             </motion.div>
@@ -289,8 +271,6 @@ function TimerStage({
     </div>
   );
 }
-
-// ── 侧轨按钮 ──────────────────────────────────────────────
 
 function RailBtn({
   active,
@@ -312,50 +292,58 @@ function RailBtn({
   const base = 'rail-btn motion-focus-ring relative group';
   const stateCls = active
     ? accent
-      ? 'bg-accent/14 text-accent shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.22),0_4px_14px_-6px_rgb(var(--accent)/0.4)]'
+      ? 'bg-accent/12 text-accent'
       : 'nav-active'
     : ghost
       ? 'text-fg-subtle'
       : 'text-fg-muted';
   const dangerHover = danger ? 'hover:!bg-danger/10 hover:!text-danger' : '';
+  const activeStyle = active && !accent && !ghost
+    ? { boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.05), 0 1px 2px rgb(0 0 0 / 0.08)' }
+    : active && accent
+      ? { boxShadow: 'inset 0 0 0 1px rgb(var(--accent) / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.06)' }
+      : undefined;
   return (
     <button
       onClick={onClick}
       className={`${base} ${stateCls} ${dangerHover}`}
+      style={activeStyle}
       title={label}
       aria-label={label}
     >
       {icon}
-      {/* 悬停标签：v0.3.11 spring 过渡 + 精致入场 */}
-      <span className="pointer-events-none absolute left-[52px] z-50 whitespace-nowrap rounded-lg border border-border/60 bg-bg-card/95 px-2 py-1 text-[11px] font-medium text-fg opacity-0 shadow-md backdrop-blur-md transition-all duration-[var(--motion-fast)] ease-[var(--ease-spring)] group-hover:opacity-100 group-hover:left-[56px]">
+      <span className="pointer-events-none absolute left-[42px] z-50 whitespace-nowrap rounded-lg border border-border/60 bg-elevated/98 px-2 py-1 text-[11px] font-medium text-fg shadow-lg backdrop-blur-xl opacity-0 transition-[opacity,transform] duration-[var(--motion-fast)] ease-[var(--ease-spring)] translate-x-[-2px] group-hover:opacity-100 group-hover:translate-x-0">
         {label}
       </span>
-      {/* 激活指示条 */}
       {active && (
-        <span className="absolute -left-2 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_8px_rgb(var(--accent)/0.6)]" />
+        <motion.span
+          layoutId="rail-active-indicator"
+          className="absolute -left-1 top-1/2 h-1 w-1 -translate-y-1/2 rounded-full bg-accent"
+          style={{ boxShadow: '0 0 5px 1px rgb(var(--accent) / 0.5)' }}
+          transition={{ type: 'spring', stiffness: 550, damping: 38 }}
+        />
       )}
     </button>
   );
 }
 
-// ── 品牌标识 ──────────────────────────────────────────────
-
 function BrandMark({ state }: { state: string }) {
   const running = state === 'running';
   return (
     <div
-      className={`brand-mark relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-2xl transition-all duration-[var(--motion-slow)] ease-[var(--ease-in-out)] ${
-        running ? 'shadow-glow' : 'shadow-soft'
+      className={`brand-mark relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl transition-all duration-[var(--motion-normal)] ease-[var(--ease-in-out)] ${
+        running ? 'border-success/25' : ''
       }`}
+      style={running ? { boxShadow: '0 0 0 1px rgb(var(--success) / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.06)' } : undefined}
       title="FocusLink"
     >
-      <span className="brand-mark-ring" />
-      <span className="brand-mark-progress" />
+      <span className="brand-mark-ring" style={running ? { borderColor: 'rgb(var(--success) / 0.5)' } : undefined} />
+      {running && <span className="brand-mark-progress" />}
       <span className="brand-mark-core" />
       <span className="brand-mark-node" />
       <span
-        className={`brand-mark-status absolute bottom-1.5 rounded-full transition-all duration-[var(--motion-slow)] ease-[var(--ease-in-out)] ${
-          running ? 'w-4 opacity-95' : 'opacity-55'
+        className={`brand-mark-status absolute bottom-[5px] rounded-full transition-all duration-[var(--motion-normal)] ease-[var(--ease-in-out)] ${
+          running ? 'w-[12px] opacity-100' : 'opacity-50'
         }`}
       />
     </div>
@@ -366,7 +354,6 @@ function applyTheme(settings: AppSettings): void {
   const root = document.documentElement;
   root.classList.toggle('dark', settings.theme === 'dark');
   root.classList.toggle('light', settings.theme === 'light');
-  // 主题色
   const accents = ['indigo', 'violet', 'emerald', 'rose', 'amber', 'sky'];
   accents.forEach((a) => root.classList.remove(`accent-${a}`));
   if (accents.includes(settings.accentColor)) {
