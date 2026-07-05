@@ -144,8 +144,8 @@ function ArcRing({
             strokeDashoffset={offset}
             filter="url(#arc-glow-v2)"
             style={{
-              transition: 'stroke-dashoffset 1s linear',
-            }}
+                      transition: 'stroke-dashoffset 0.8s cubic-bezier(0.22, 1, 0.36, 1)',
+                    }}
           />
         )}
 

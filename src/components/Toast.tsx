@@ -61,7 +61,7 @@ function ToastItem({
       initial={{ opacity: 0, y: 12, scale: 0.95, x: 8 }}
       animate={{ opacity: 1, y: 0, scale: 1, x: 0 }}
       exit={{ opacity: 0, x: 20, scale: 0.95 }}
-      transition={{ type: 'spring', stiffness: 520, damping: 36, mass: 0.7 }}
+      transition={{ type: 'spring', stiffness: 380, damping: 32, mass: 0.8 }}
       className="pointer-events-auto toast-shell relative flex cursor-pointer items-center gap-2.5 overflow-hidden rounded-lg border border-border/60 px-3 py-2.5 glass-toast select-none"
       onClick={() => onRemove(id)}
     >

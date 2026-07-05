@@ -84,7 +84,7 @@ function StateDot({ state, size = 'sm' }: { state: string; size?: 'sm' | 'xs' })
       className={`inline-block flex-shrink-0 rounded-full ${sizeClass} ${dotCls}`}
       initial={{ scale: 0.6, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
     />
   );
 }

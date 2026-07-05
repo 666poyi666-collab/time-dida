@@ -21,13 +21,13 @@
        - 主色: Linear 紫 #5E6AD2 / 翠绿 #34D399 双主题
        - 噪点纹理: 0.5% opacity SVG noise 模拟材质感 */
 
-    /* ── 动效节奏：Apex 级极速响应 ── */
-    --motion-instant: 50ms;
-    --motion-fast: 80ms;
-    --motion-normal: 130ms;
-    --motion-slow: 180ms;
-    --motion-spring: 280ms;
-    /* 物理曲线：更跟手的spring */
+    /* ── 动效节奏：Apex 级极速响应 + 丝滑过渡 ── */
+    --motion-instant: 40ms;
+    --motion-fast: 70ms;
+    --motion-normal: 120ms;
+    --motion-slow: 200ms;
+    --motion-spring: 320ms;
+    /* 物理曲线：丝滑spring — 入场柔顺，出场快速 */
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
     --ease-soft: cubic-bezier(0.32, 0.72, 0, 1);
@@ -35,8 +35,11 @@
     --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
     --ease-linear: linear;
-    --scale-hover: 1.01;
-    --scale-active: 0.96;
+    /* 丝滑spring: 入场更柔、回弹更自然 */
+    --ease-silk: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-velvet: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --scale-hover: 1.015;
+    --scale-active: 0.97;
 
     /* ── 圆角：同心圆角系统 ──
        window=14 | card=10 | button=8 | input=8 | chip=6 | kbd=4
@@ -945,18 +948,21 @@
     will-change: transform, opacity;
     transform: translateZ(0);
     backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    perspective: 1000px;
   }
 
   .motion-press {
     transition:
-      transform var(--motion-instant) var(--ease-bounce),
+      transform var(--motion-instant) var(--ease-silk),
       background-color var(--motion-fast) var(--ease-out),
       box-shadow var(--motion-fast) var(--ease-out),
       filter var(--motion-fast) var(--ease-out),
       border-color var(--motion-fast) var(--ease-out);
     will-change: transform;
+    transform: translateZ(0);
   }
-  .motion-press:active { transform: scale(0.95); }
+  .motion-press:active { transform: scale(0.97) translateZ(0); }
 
   .motion-digit {
     font-variant-numeric: tabular-nums;
@@ -1115,6 +1121,11 @@
     border: 2px solid rgb(var(--app-accent) / 0.4);
     box-shadow: 0 0 0 3px rgb(var(--app-accent) / 0.07);
     pointer-events: none;
+    animation: focus-ring-in var(--motion-fast) var(--ease-silk);
+  }
+  @keyframes focus-ring-in {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
   }
 
   .motion-spin {

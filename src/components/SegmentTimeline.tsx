@@ -106,7 +106,7 @@ export function SegmentTimeline() {
                 initial={{ opacity: 0, scale: 0.9, x: 4 }}
                 animate={{ opacity: 1, scale: 1, x: 0 }}
                 exit={{ opacity: 0, scale: 0.9, x: 4 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 30 }}
                 className="btn-ghost !h-6 !px-2 !py-0 text-[11px] selected-accent"
                 onClick={handleMerge}
               >
@@ -149,8 +149,8 @@ export function SegmentTimeline() {
                 initial={{ opacity: 0, scale: 0.9, y: 6 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: -4 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 34, mass: 0.7 }}
-                whileHover={{ y: -2, transition: { duration: 0.1 } }}
+                transition={{ type: 'spring', stiffness: 380, damping: 30, mass: 0.8 }}
+                whileHover={{ y: -2, transition: { duration: 0.12, ease: [0.22, 1, 0.36, 1] } }}
                 whileTap={{ scale: 0.97 }}
                 className={`segment-chip motion-press scroll-snap-item relative flex w-[136px] flex-shrink-0 cursor-pointer flex-col rounded-lg border p-2 ${chipBorderCls}`}
                 onClick={() => {
@@ -220,7 +220,7 @@ export function SegmentTimeline() {
                       initial={{ scale: 0, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       exit={{ scale: 0, opacity: 0 }}
-                      transition={{ type: 'spring', stiffness: 600, damping: 30 }}
+                      transition={{ type: 'spring', stiffness: 450, damping: 28 }}
                       className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-success text-white shadow-sm"
                       style={{ boxShadow: '0 2px 6px -2px rgb(var(--app-success) / 0.5)' }}
                     >

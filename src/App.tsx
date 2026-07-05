@@ -82,14 +82,14 @@ export default function App() {
 
   const pageTransition = {
     type: 'spring' as const,
-    stiffness: 520,
-    damping: 36,
-    mass: 0.6,
+    stiffness: 380,
+    damping: 32,
+    mass: 0.8,
   };
   const pageVariants = {
-    initial: { opacity: 0, x: 4, scale: 0.998 },
+    initial: { opacity: 0, x: 6, scale: 0.997 },
     animate: { opacity: 1, x: 0, scale: 1 },
-    exit: { opacity: 0, x: -2, scale: 0.998 },
+    exit: { opacity: 0, x: -3, scale: 0.997 },
   };
 
   const timerState = snapshot?.state ?? 'idle';
@@ -244,7 +244,7 @@ function TimerStage({
               initial={{ x: '100%', opacity: 0.6 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: '100%', opacity: 0.6 }}
-              transition={{ type: 'spring', stiffness: 600, damping: 38, mass: 0.6 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 36, mass: 0.7 }}
               className="motion-gpu absolute bottom-0 right-0 top-0 z-40 flex w-[320px] max-w-[88vw] flex-col border-l border-border/40 glass-elevated"
               style={{ borderTopLeftRadius: 14, borderBottomLeftRadius: 14 }}
             >
@@ -322,7 +322,7 @@ function RailBtn({
           layoutId="rail-active-indicator"
           className="absolute -left-[3px] top-1/2 h-[18px] w-[2.5px] -translate-y-1/2 rounded-full bg-accent"
           style={{ boxShadow: '0 0 6px rgb(var(--accent) / 0.45)' }}
-          transition={{ type: 'spring', stiffness: 600, damping: 38 }}
+          transition={{ type: 'spring', stiffness: 420, damping: 32 }}
         />
       )}
     </button>

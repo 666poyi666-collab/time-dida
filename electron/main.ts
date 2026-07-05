@@ -1,6 +1,6 @@
 // Electron 主进程入口
 // 单实例锁、主窗口+专注小窗、托盘、快捷键、IPC、崩溃恢复、snapshot 推送
-import { app, BrowserWindow, shell, powerMonitor, Tray, ipcMain, screen, nativeImage } from 'electron';
+import { app, BrowserWindow, shell, powerMonitor, Tray, ipcMain, screen, nativeImage, Menu } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from './logger.js';
@@ -85,6 +85,7 @@ function createMainWindow(): BrowserWindow {
     show: false,
     frame: true,
     titleBarStyle: 'default',
+    autoHideMenuBar: true,
     backgroundColor: '#0b0e14',
     title: 'FocusLink',
     icon: getAppIcon(),
@@ -525,6 +526,8 @@ function ensureTrayAndHotkeys(): void {
 
 app.whenReady().then(() => {
   logger.init();
+  // 移除默认菜单栏（File/Edit/View/Window/Help）— 专业应用不显示默认菜单
+  Menu.setApplicationMenu(null);
   // 版本标识：启动时输出完整版本信息，避免用户打开旧版
   logger.info('main', `FocusLink version: ${APP_VERSION}`, {
     commit: APP_COMMIT,
