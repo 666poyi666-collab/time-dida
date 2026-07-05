@@ -1023,7 +1023,7 @@ function SessionDetailHeader({
   const ticktickMs = ticktick.reduce((sum, seg) => sum + seg.activeElapsedMs, 0);
 
   return (
-    <div className="rounded-2xl border border-border bg-bg-subtle/35 px-3.5 py-3">
+    <div className="motion-card-float rounded-2xl border border-border bg-bg-subtle/35 px-3.5 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -1157,7 +1157,7 @@ function SessionDefaultTaskCard({
   onClear: () => void;
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-bg-card/82 p-3">
+    <div className="motion-card-float rounded-2xl border border-border bg-bg-card/82 p-3">
       <div className="flex h-full flex-col justify-between gap-3">
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-fg-subtle">
@@ -1246,7 +1246,7 @@ function HistoryTimelineList({
   const items = [...segmentItems, ...pauseItems].sort((a, b) => a.startedAt - b.startedAt);
 
   return (
-    <div className="rounded-2xl border border-border bg-bg-card/90 p-3">
+    <div className="motion-card-float rounded-2xl border border-border bg-bg-card/90 p-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Icon.Activity size="sm" tone="accent" />

@@ -3,6 +3,7 @@
 // 时间即主角：巨型数字 + 状态辉光边框，独立于主窗的浮窗语言
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { FlipDigits } from './FlipDigits';
 import type { TimerSnapshot, AppSettings } from '@shared/types';
 import { formatDuration } from '../lib/time';
 import {
@@ -219,7 +220,7 @@ export function MiniWindow() {
         {/* 中央：巨型时间 - 主角 */}
         <div className="flex items-baseline justify-center gap-2">
           <span
-            className={`timer-digit motion-digit text-[26px] font-bold leading-none ${activeTone}`}
+            className={`timer-digit text-[26px] font-bold leading-none ${activeTone}`}
             style={{
               textShadow: isRunning
                 ? '0 0 18px rgb(var(--app-success) / 0.45)'
@@ -228,7 +229,7 @@ export function MiniWindow() {
                   : 'none',
             }}
           >
-            {formatDuration(isIdle ? 0 : primaryMs)}
+            <FlipDigits value={formatDuration(isIdle ? 0 : primaryMs)} />
           </span>
         </div>
 
@@ -287,7 +288,7 @@ export function MiniWindow() {
             {isPaused ? '当前暂停片段' : isRunning ? '当前专注片段' : '准备开始'}
           </div>
           <div
-            className={`timer-digit motion-digit mt-0.5 text-[38px] font-bold leading-none ${activeTone}`}
+            className={`timer-digit mt-0.5 text-[38px] font-bold leading-none ${activeTone}`}
             style={{
               textShadow: isRunning
                 ? '0 0 28px rgb(var(--app-success) / 0.35)'
@@ -296,7 +297,7 @@ export function MiniWindow() {
                   : 'none',
             }}
           >
-            {formatDuration(isIdle ? 0 : displayActive)}
+            <FlipDigits value={formatDuration(isIdle ? 0 : displayActive)} />
           </div>
         </div>
         <div className="flex flex-col gap-1.5">

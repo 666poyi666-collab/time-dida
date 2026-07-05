@@ -1,6 +1,7 @@
 // 计时舞台 - v0.3 极光剧场核心：巨型弧光环 + 中央时间 + 控制区
 import { useEffect, useState, useMemo } from 'react';
 import { Icon } from './Icon';
+import { FlipDigits } from './FlipDigits';
 import { useStore } from '../store/useStore';
 import { formatDuration, formatDurationPadded } from '../lib/time';
 import {
@@ -533,10 +534,10 @@ export function TimerPanel() {
             当前片段
           </span>
           <div
-            className={`timer-digit motion-digit mt-2 text-[60px] font-bold leading-none ${timeColorCls}`}
+            className={`timer-digit mt-2 text-[60px] font-bold leading-none ${timeColorCls}`}
             style={{ textShadow: state === 'running' ? '0 0 32px rgb(var(--app-success) / 0.25)' : 'none' }}
           >
-            {formatDurationPadded(currentSegmentMs)}
+            <FlipDigits value={formatDurationPadded(currentSegmentMs)} />
           </div>
           <div className="mt-3 flex items-center gap-1.5">
             {stateIcon}

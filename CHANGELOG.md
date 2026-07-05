@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.3.11 - 2026-07-06（极光剧场 · Step 12：数字翻转 + 丝滑页面过渡 + 卡片悬浮）
+
+- **FlipDigits 数字翻转组件**：每位数字独立追踪变化，仅变化的位触发 scale + opacity + blur 微翻转动画，60fps 合成器属性，不触发 layout。
+- **计时器数字翻转**：主计时器 60px 巨型数字集成 FlipDigits，秒数变化时仅最后一位翻转。
+- **小窗数字翻转**：折叠模式 26px + 展开模式 38px 时间显示均集成 FlipDigits。
+- **页面过渡升级**：从线性 duration 过渡改为 spring 物理曲线（stiffness: 380, damping: 38, mass: 0.9），加入 scale 微变化营造深度感。
+- **任务抽屉精进**：spring 参数调优（stiffness: 460, damping: 42），加入 opacity 过渡 + GPU 加速。
+- **动效令牌扩展**：新增 `--motion-instant`(80ms)、`--motion-spring`(460ms)、`--ease-spring`、`--ease-out-quart`、`--ease-out-expo`、`--ease-in-out-quart` 6 个物理曲线变量。
+- **列表交错入场**：新增 `motion-list-enter` 动画类，任务/历史记录依次滑入。
+- **卡片悬浮微动**：新增 `motion-card-float` 类，历史面板 3 处卡片 hover 时上浮 2px + accent 辉光。
+- **侧轨标签过渡**：hover 标签从 duration-150 改为 `--motion-fast` + `--ease-spring` spring 曲线。
+- **reduced-motion 完整支持**：所有新增动画类均加入 `prefers-reduced-motion` 守卫。
+- typecheck + 59 测试通过。
+
 ## v0.3.10 - 2026-07-06（极光剧场 · Step 11：超丝滑动效引擎 + 图标系统全面迁移）
 
 - **Motion Engine v2**：新增 15+ 动画工具类，覆盖数字翻转、磁吸悬停、光泽扫过、交错入场、文字渐显、状态点呼吸等高帧率微交互。

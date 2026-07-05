@@ -88,7 +88,18 @@ export default function App() {
     if (settings) applyTheme(settings);
   }, [settings]);
 
-  const pageTransition = { duration: 0.28, ease: [0.16, 1, 0.3, 1] as const };
+  // v0.3.11: 页面过渡升级——spring 物理 + 交错入场
+  const pageTransition = {
+    type: 'spring' as const,
+    stiffness: 380,
+    damping: 38,
+    mass: 0.9,
+  };
+  const pageVariants = {
+    initial: { opacity: 0, y: 8, scale: 0.99 },
+    animate: { opacity: 1, y: 0, scale: 1 },
+    exit: { opacity: 0, y: -6, scale: 0.99 },
+  };
 
   const timerState = snapshot?.state ?? 'idle';
   // 画布环境光：根据计时状态切换极光层
@@ -163,9 +174,10 @@ export default function App() {
           {view === 'timer' && (
             <motion.div
               key="view-timer"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
               transition={pageTransition}
               className="absolute inset-0"
             >
@@ -178,9 +190,10 @@ export default function App() {
           {view === 'history' && (
             <motion.div
               key="view-history"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
               transition={pageTransition}
               className="absolute inset-0"
             >
@@ -190,9 +203,10 @@ export default function App() {
           {view === 'settings' && (
             <motion.div
               key="view-settings"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
               transition={pageTransition}
               className="absolute inset-0"
             >
@@ -244,11 +258,11 @@ function TimerStage({
             />
             <motion.div
               key="drawer-panel"
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', stiffness: 420, damping: 40, mass: 0.9 }}
-              className="absolute bottom-0 right-0 top-0 z-40 flex w-[380px] max-w-[88vw] flex-col border-l border-border/50 bg-bg-card/95 backdrop-blur-xl"
+              initial={{ x: '100%', opacity: 0.6 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: '100%', opacity: 0.6 }}
+              transition={{ type: 'spring', stiffness: 460, damping: 42, mass: 0.85 }}
+              className="motion-gpu absolute bottom-0 right-0 top-0 z-40 flex w-[380px] max-w-[88vw] flex-col border-l border-border/50 bg-bg-card/95 backdrop-blur-xl"
             >
               {/* 抽屉头 */}
               <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
@@ -312,8 +326,8 @@ function RailBtn({
       aria-label={label}
     >
       {icon}
-      {/* 悬停标签 */}
-      <span className="pointer-events-none absolute left-[52px] z-50 whitespace-nowrap rounded-lg border border-border/60 bg-bg-card/95 px-2 py-1 text-[11px] font-medium text-fg opacity-0 shadow-md backdrop-blur-md transition-all duration-150 group-hover:opacity-100 group-hover:left-[56px]">
+      {/* 悬停标签：v0.3.11 spring 过渡 + 精致入场 */}
+      <span className="pointer-events-none absolute left-[52px] z-50 whitespace-nowrap rounded-lg border border-border/60 bg-bg-card/95 px-2 py-1 text-[11px] font-medium text-fg opacity-0 shadow-md backdrop-blur-md transition-all duration-[var(--motion-fast)] ease-[var(--ease-spring)] group-hover:opacity-100 group-hover:left-[56px]">
         {label}
       </span>
       {/* 激活指示条 */}
