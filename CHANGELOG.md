@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.3.6 - 2026-07-06（极光剧场 · Step 7：设计令牌精进 - 融合 Linear/VoltAgent）
+
+> 参考 [awesome-design-md](https://github.com/VoltAgent/awesome-design-md) 中 Linear 与 VoltAgent 的设计文档，将令牌精度提升到工业级。
+
+- **深色画布加深**：`--app-bg` 从 `#090b10` 加深到 `#060810`（近纯黑，带极淡蓝调），更接近 Linear 的 `#010102` 近黑画布。
+- **表面阶梯精修**：四步表面阶梯（canvas→surface→surface-2→elevated）层级更均匀，靠表面提升而非阴影分层（Linear 风格）。
+- **发丝边框系统**：边框色降低对比度（`#20262e`→`#1a1f28`），更接近 Linear 的 hairline 边框，精密克制。
+- **极光环境光降强**：三层径向渐变透明度降低（0.14→0.1），更克制不喧宾夺主。
+- **阴影系统精简**：深色画布上几乎不用投影，阴影强度降低，靠表面阶梯 + 发丝边框分层。
+- **浅色模式同步精修**：背景更冷调（#f6f7f9），文字更黑（#1c2028），边框更细。
+- **字体特性增强**：Manrope 启用 `cv11`/`ss01` OpenType 特性，`text-rendering: optimizeLegibility`。
+- **新增 eyebrow 工具类**：`.eyebrow`（Linear 风格大写正字距）+ `.eyebrow-mono`（VoltAgent 风格等宽大写）。
+- typecheck + 59 测试通过。
+
 ## v0.3.5 - 2026-07-05（极光剧场 · Step 6：历史 + 设置面板适配）
 
 - **历史面板标题**：`历史记录` 标题改用 `font-display`（Sora）+ text-xl font-bold，与新设计语言一致。
