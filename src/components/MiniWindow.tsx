@@ -1,7 +1,6 @@
-// 专注小窗 - FocusLink 核心交互入口
+// 专注小窗 v0.3 - 极光剧场浮窗
 // 两种模式：EXPANDED（420×184 详情卡）、COLLAPSED（260×88 缩小卡）
-// 透明无边框窗口，始终置顶，支持拖拽和主题同步
-// 暂停态统一使用橙色（warning），专注态使用绿色（success）
+// 时间即主角：巨型数字 + 状态辉光边框，独立于主窗的浮窗语言
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import type { TimerSnapshot, AppSettings } from '@shared/types';
@@ -16,8 +15,6 @@ import {
   getCurrentTaskTitle,
 } from '../lib/timerSelectors';
 import { Play, Pause, Square, ChevronDown, ChevronUp, Maximize2, Link2 } from 'lucide-react';
-
-// ─── 常量 ───────────────────────────────────────────────────────
 
 const ACCENT_CLASS: Record<string, string> = {
   indigo: 'accent-indigo',
@@ -36,7 +33,6 @@ const STATE_LABEL: Record<string, string> = {
   stopping: '结束中',
 };
 
-// 暂停态统一橙色（warning），专注态绿色（success）
 const STATE_DOT: Record<string, string> = {
   idle: 'bg-fg-subtle',
   running: 'state-dot-running',
@@ -53,12 +49,8 @@ const STATE_TEXT: Record<string, string> = {
   stopping: 'text-fg-muted',
 };
 
-// ─── 主题应用 ───────────────────────────────────────────────────
-
-/** 根据 settings 应用主题 class 到 document.documentElement */
 function applyThemeClass(s: AppSettings): void {
   const root = document.documentElement;
-
   let effectiveTheme: 'dark' | 'light' = 'dark';
   if (s.miniWindow.followMainTheme) {
     effectiveTheme = s.theme;
@@ -70,7 +62,6 @@ function applyThemeClass(s: AppSettings): void {
   if (!s.miniWindow.followMainTheme && s.miniWindow.themeMode === 'system') {
     effectiveTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   }
-
   if (effectiveTheme === 'light') {
     root.classList.add('light');
     root.classList.remove('dark');
@@ -78,16 +69,10 @@ function applyThemeClass(s: AppSettings): void {
     root.classList.add('dark');
     root.classList.remove('light');
   }
-
-  // 主题色
   Object.values(ACCENT_CLASS).forEach((cls) => root.classList.remove(cls));
   const accentClass = ACCENT_CLASS[s.accentColor];
-  if (accentClass) {
-    root.classList.add(accentClass);
-  }
+  if (accentClass) root.classList.add(accentClass);
 }
-
-// ─── 状态点组件 ──────────────────────────────────────────────────
 
 function StateDot({ state, size = 'sm' }: { state: string; size?: 'sm' | 'xs' }) {
   const sizeClass = size === 'xs' ? 'h-1.5 w-1.5' : 'h-2 w-2';
@@ -103,15 +88,12 @@ function StateDot({ state, size = 'sm' }: { state: string; size?: 'sm' | 'xs' })
   );
 }
 
-// ─── MiniWindow 主组件 ──────────────────────────────────────────
-
 export function MiniWindow() {
   const [snapshot, setSnapshot] = useState<TimerSnapshot | null>(null);
   const [, setNow] = useState(Date.now());
   const [collapsed, setCollapsed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // ─── 初始化设置 ──────────────────────────────────────────────
   useEffect(() => {
     (async () => {
       try {
@@ -119,12 +101,11 @@ export function MiniWindow() {
         setCollapsed(s.miniWindow.collapsed);
         applyThemeClass(s);
       } catch {
-        // 静默失败，用默认深色
+        // 静默失败
       }
     })();
   }, []);
 
-  // ─── 订阅 tick 事件 ───────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -140,7 +121,6 @@ export function MiniWindow() {
     };
   }, []);
 
-  // ─── 监听设置变更（同步主题 + 收起状态） ───────────────────
   useEffect(() => {
     const unsub = window.focuslink.on('settings:changed', (...args: unknown[]) => {
       const s = args[0] as AppSettings;
@@ -152,24 +132,20 @@ export function MiniWindow() {
     return () => unsub();
   }, []);
 
-  // ─── running / paused 时本地每秒刷新显示 ─────────────────────
-  // 小窗大时间统一显示"当前片段时间"（专注片段或暂停片段），不再显示累计 activeElapsedMs
   useEffect(() => {
     if (snapshot?.state !== 'running' && snapshot?.state !== 'paused') return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [snapshot?.state, snapshot?.lastTick, snapshot?.currentPauseStartedAt]);
 
-  // ─── 派生状态 ────────────────────────────────────────────────
   const state = snapshot?.state ?? 'idle';
   const nowMs = Date.now();
-  // 6 项核心信息，全部走统一 selector
-  const displayActive = getMainDisplayMs(snapshot, nowMs); // 大时间（当前片段）
-  const currentFocusMs = getCurrentSegmentDisplayMs(snapshot, nowMs); // 当前专注片段
-  const currentPauseMs = getCurrentPauseDisplayMs(snapshot, nowMs); // 当前暂停片段
-  const cumulativeActiveMs = getCumulativeActiveMs(snapshot, nowMs); // 累计专注
-  const cumulativePauseMs = getCumulativePauseMs(snapshot, nowMs); // 累计暂停
-  const wallElapsedMs = getWallElapsedMs(snapshot); // 总历时
+  const displayActive = getMainDisplayMs(snapshot, nowMs);
+  const currentFocusMs = getCurrentSegmentDisplayMs(snapshot, nowMs);
+  const currentPauseMs = getCurrentPauseDisplayMs(snapshot, nowMs);
+  const cumulativeActiveMs = getCumulativeActiveMs(snapshot, nowMs);
+  const cumulativePauseMs = getCumulativePauseMs(snapshot, nowMs);
+  const wallElapsedMs = getWallElapsedMs(snapshot);
   const currentTaskTitle = getCurrentTaskTitle(snapshot);
   const isRunning = state === 'running';
   const isPaused = state === 'paused';
@@ -181,13 +157,10 @@ export function MiniWindow() {
   const activeTone = isPaused ? 'text-warning' : isRunning ? 'text-success' : 'text-fg';
   const primaryButtonClass = isRunning ? 'mini-action-pause' : 'mini-action-focus';
 
-  // ─── 事件处理 ────────────────────────────────────────────────
   const handleToggle = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (state === 'finished') {
-        await window.focuslink.timer.reset();
-      }
+      if (state === 'finished') await window.focuslink.timer.reset();
       const snap = await window.focuslink.timer.toggle();
       setSnapshot(snap);
     },
@@ -217,20 +190,20 @@ export function MiniWindow() {
     window.focuslink.window.show();
   }, []);
 
-  // ─── COLLAPSED 模式（260×88 缩小卡） ───────────────────────
-  // 缩小态只展示当前 + 累计，避免信息挤在一起。
+  // ─── COLLAPSED 模式（260×88）- 时间胶囊 ───
   if (collapsed) {
     return (
       <div
         ref={containerRef}
-        className={`mini-window-shell mini-window-${state} mini-window-collapsed motion-base flex h-full w-full flex-col px-3.5 py-2.5 text-fg`}
+        className={`mini-window-shell mini-window-${state} mini-window-collapsed motion-base flex h-full w-full flex-col justify-between px-4 py-2.5 text-fg`}
         onDoubleClick={handleExpand}
         title="双击展开"
       >
-        <div className="flex items-center justify-between gap-2">
+        {/* 顶部：状态 + 展开 */}
+        <div className="flex items-center justify-between">
           <div className="flex min-w-0 items-center gap-1.5">
             <StateDot state={state} size="xs" />
-            <span className={`truncate text-[10px] font-semibold ${STATE_TEXT[state]}`}>
+            <span className={`truncate text-[10px] font-bold ${STATE_TEXT[state]}`}>
               {STATE_LABEL[state]}
             </span>
           </div>
@@ -243,38 +216,44 @@ export function MiniWindow() {
           </button>
         </div>
 
-        <div className="mt-2 grid min-h-0 flex-1 grid-cols-2 gap-2">
-          <div className="mini-stat-card mini-stat-card-primary mini-stat-compact min-w-0 px-2.5 py-1.5">
-            <div className="truncate text-[9px] font-semibold text-fg-subtle">{primaryLabel}</div>
-            <div
-              className={`timer-digit motion-digit mt-0.5 text-[18px] font-bold leading-none ${activeTone}`}
-            >
-              {formatDuration(isIdle ? 0 : primaryMs)}
-            </div>
-          </div>
-          <div className="mini-stat-card mini-stat-compact min-w-0 px-2.5 py-1.5">
-            <div className="truncate text-[9px] font-semibold text-fg-subtle">
-              {cumulativeLabel}
-            </div>
-            <div className="timer-digit motion-digit mt-0.5 text-[18px] font-bold leading-none text-fg">
-              {formatDuration(cumulativeMs)}
-            </div>
-          </div>
+        {/* 中央：巨型时间 - 主角 */}
+        <div className="flex items-baseline justify-center gap-2">
+          <span
+            className={`timer-digit motion-digit text-[26px] font-bold leading-none ${activeTone}`}
+            style={{
+              textShadow: isRunning
+                ? '0 0 18px rgb(var(--app-success) / 0.45)'
+                : isPaused
+                  ? '0 0 18px rgb(var(--app-warning) / 0.4)'
+                  : 'none',
+            }}
+          >
+            {formatDuration(isIdle ? 0 : primaryMs)}
+          </span>
+        </div>
+
+        {/* 底部：累计 */}
+        <div className="flex items-center justify-center gap-1.5">
+          <span className="text-[9px] font-medium text-fg-subtle">{cumulativeLabel}</span>
+          <span className="timer-digit motion-digit text-[11px] font-bold text-fg-muted">
+            {formatDuration(cumulativeMs)}
+          </span>
         </div>
       </div>
     );
   }
 
-  // ─── EXPANDED 模式（420×184 详情卡） ───────
+  // ─── EXPANDED 模式（420×184）- 专注甲板 ───
   return (
     <div
       ref={containerRef}
       className={`mini-window-shell mini-window-${state} motion-base flex h-full w-full flex-col px-4 py-3 text-fg`}
     >
-      <div className="mini-top-row flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
+      {/* 顶部：状态 + 任务 + 窗口控制 */}
+      <div className="mini-top-row flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
           <StateDot state={state} size="xs" />
-          <span className={`shrink-0 text-[10px] font-semibold ${STATE_TEXT[state]}`}>
+          <span className={`shrink-0 text-[10px] font-bold ${STATE_TEXT[state]}`}>
             {STATE_LABEL[state]}
           </span>
           <span className="h-3 w-px bg-border/80" />
@@ -301,55 +280,56 @@ export function MiniWindow() {
         </div>
       </div>
 
-      <div className="mt-2 flex items-stretch justify-between gap-3">
-        <div className="mini-time-block min-w-0 flex-1 px-3 py-2">
-          <div className="text-[9px] font-semibold text-fg-subtle">
+      {/* 中部：巨型时间 + 累计统计 */}
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-[9px] font-bold uppercase tracking-wide text-fg-subtle">
             {isPaused ? '当前暂停片段' : isRunning ? '当前专注片段' : '准备开始'}
           </div>
           <div
-            className={`timer-digit motion-digit mt-0.5 text-[34px] font-bold leading-none ${activeTone}`}
+            className={`timer-digit motion-digit mt-0.5 text-[38px] font-bold leading-none ${activeTone}`}
+            style={{
+              textShadow: isRunning
+                ? '0 0 28px rgb(var(--app-success) / 0.35)'
+                : isPaused
+                  ? '0 0 28px rgb(var(--app-warning) / 0.3)'
+                  : 'none',
+            }}
           >
             {formatDuration(isIdle ? 0 : displayActive)}
           </div>
         </div>
-        <div className="grid w-[148px] grid-cols-2 gap-1.5">
+        <div className="flex flex-col gap-1.5">
           <MiniStat label="累计专注" value={formatDuration(cumulativeActiveMs)} tone="focus" />
           <MiniStat label="累计暂停" value={formatDuration(cumulativePauseMs)} tone="pause" />
         </div>
       </div>
 
-      <div className="mt-2 grid grid-cols-5 gap-1.5">
-        <MiniStat
-          label="当前专注"
-          value={formatDuration(isRunning ? currentFocusMs : 0)}
-          tone="focus"
-          className="col-span-2"
-        />
-        <MiniStat
-          label="当前暂停"
-          value={formatDuration(isPaused ? currentPauseMs : 0)}
-          tone="pause"
-          className="col-span-2"
-        />
-        <MiniStat label="总历时" value={formatDuration(wallElapsedMs)} className="col-span-1" />
-      </div>
-
-      <div className="mt-auto flex items-center justify-center gap-2 pt-1.5">
-        <button
-          className={`mini-primary-button ${primaryButtonClass} no-drag motion-press inline-flex h-7 items-center gap-1.5 px-4 text-[11px] font-semibold`}
-          onClick={handleToggle}
-        >
-          {state === 'running' ? <Pause size={12} /> : <Play size={12} />}
-          {state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始'}
-        </button>
-        <button
-          className="mini-secondary-button no-drag motion-press inline-flex h-7 items-center gap-1.5 px-3.5 text-[11px] font-medium disabled:pointer-events-none disabled:opacity-30"
-          onClick={handleStop}
-          disabled={state === 'idle' || state === 'finished'}
-        >
-          <Square size={11} />
-          结束
-        </button>
+      {/* 底部：控制 + 总历时 */}
+      <div className="mt-auto flex items-center justify-between gap-2 pt-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] font-medium text-fg-subtle">总历时</span>
+          <span className="timer-digit motion-digit text-[11px] font-bold text-fg-muted">
+            {formatDuration(wallElapsedMs)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            className={`mini-primary-button ${primaryButtonClass} no-drag motion-press inline-flex h-7 items-center gap-1.5 px-4 text-[11px] font-semibold`}
+            onClick={handleToggle}
+          >
+            {state === 'running' ? <Pause size={12} /> : <Play size={12} />}
+            {state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始'}
+          </button>
+          <button
+            className="mini-secondary-button no-drag motion-press inline-flex h-7 items-center gap-1.5 px-3.5 text-[11px] font-medium disabled:pointer-events-none disabled:opacity-30"
+            onClick={handleStop}
+            disabled={state === 'idle' || state === 'finished'}
+          >
+            <Square size={11} />
+            结束
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -369,8 +349,8 @@ function MiniStat({
   const toneClass =
     tone === 'focus' ? 'text-success' : tone === 'pause' ? 'text-warning' : 'text-fg-muted';
   return (
-    <div className={`mini-stat-card motion-state-transition min-w-0 px-2 py-1.5 ${className}`}>
-      <div className={`truncate text-[9px] font-semibold ${toneClass}`}>{label}</div>
+    <div className={`mini-stat-card motion-state-transition min-w-0 px-2.5 py-1 ${className}`}>
+      <div className={`truncate text-[9px] font-bold ${toneClass}`}>{label}</div>
       <div className="timer-digit motion-digit mt-0.5 truncate text-[12px] font-bold leading-none text-fg">
         {value}
       </div>
