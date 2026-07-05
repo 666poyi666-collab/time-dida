@@ -1,4 +1,4 @@
-// 计时舞台 - v0.4.1 Raycast Studio：极致克制的弧环 + 中央时间 + 控制区
+// 计时舞台 - v0.4.2 Apex Studio：精致弧环 + 中央时间 + 控制区
 import { useEffect, useState, useMemo } from 'react';
 import { Icon } from './Icon';
 import { FlipDigits } from './FlipDigits';
@@ -36,7 +36,7 @@ function useDisplayValues(snapshot: TimerSnapshot | null) {
   );
 }
 
-// ─── 弧光环：Raycast 级极简弧环 ─────────────────────────
+// ─── 弧光环：Apex 精致双环 ─────────────────────────
 
 function ArcRing({
   progress,
@@ -47,14 +47,15 @@ function ArcRing({
   state: string;
   children: React.ReactNode;
 }) {
-  const size = 220;
-  const stroke = 5;
-  const r = (size - stroke) / 2 - 16;
+  const size = 216;
+  const stroke = 4.5;
+  const r = (size - stroke) / 2 - 18;
   const c = 2 * Math.PI * r;
   const offset = c * (1 - Math.max(0, Math.min(1, progress)));
 
   const isRunning = state === 'running';
   const isPaused = state === 'paused';
+  const isIdle = state === 'idle' || state === 'finished';
 
   const arcColor = isPaused
     ? 'rgb(var(--app-warning))'
@@ -62,8 +63,14 @@ function ArcRing({
       ? 'rgb(var(--app-success))'
       : 'rgb(var(--app-accent))';
 
+  const glowClass = isPaused
+    ? 'arc-ring-glow-warning'
+    : isRunning
+      ? 'arc-ring-glow'
+      : 'arc-ring-glow-accent';
+
   return (
-    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+    <div className={`relative flex items-center justify-center ${glowClass}`} style={{ width: size, height: size }}>
       <svg
         width={size}
         height={size}
@@ -71,27 +78,58 @@ function ArcRing({
         style={{ transform: 'rotate(-90deg)' }}
       >
         <defs>
-          <filter id="arc-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="2.5" result="blur" />
+          <filter id="arc-glow-v2" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
-          <linearGradient id="arc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor={arcColor} stopOpacity="0.5" />
+          <linearGradient id="arc-grad-v2" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor={arcColor} stopOpacity="0.4" />
+            <stop offset="50%" stopColor={arcColor} stopOpacity="0.9" />
             <stop offset="100%" stopColor={arcColor} stopOpacity="1" />
           </linearGradient>
+          {/* 内圈轨道柔光 */}
+          <radialGradient id="track-inner-glow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={arcColor} stopOpacity={isRunning || isPaused ? '0.03' : '0.015'} />
+            <stop offset="100%" stopColor={arcColor} stopOpacity="0" />
+          </radialGradient>
         </defs>
+
+        {/* 内圈柔光 */}
+        {(isRunning || isPaused) && (
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r + 8}
+            fill="url(#track-inner-glow)"
+          />
+        )}
+
         {/* 背景轨道 */}
         <circle
           cx={size / 2}
           cy={size / 2}
           r={r}
           fill="none"
-          stroke="rgb(var(--app-border) / 0.4)"
+          stroke="rgb(var(--app-border) / 0.3)"
           strokeWidth={stroke}
         />
+        {/* 轨道高光（12点位置微亮） */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="rgb(255 255 255 / 0.03)"
+          strokeWidth={stroke}
+          strokeDasharray={`${c * 0.15} ${c}`}
+          strokeDashoffset={0}
+          transform="rotate(90deg)"
+          style={{ transformOrigin: 'center' }}
+        />
+
         {/* 进度弧 */}
         {(isRunning || isPaused) && (
           <circle
@@ -99,15 +137,30 @@ function ArcRing({
             cy={size / 2}
             r={r}
             fill="none"
-            stroke="url(#arc-grad)"
+            stroke="url(#arc-grad-v2)"
             strokeWidth={stroke}
             strokeLinecap="round"
             strokeDasharray={c}
             strokeDashoffset={offset}
-            filter="url(#arc-glow)"
+            filter="url(#arc-glow-v2)"
             style={{
               transition: 'stroke-dashoffset 1s linear',
             }}
+          />
+        )}
+
+        {/* idle态装饰弧 */}
+        {isIdle && (
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke="rgb(var(--app-accent) / 0.12)"
+            strokeWidth={stroke}
+            strokeDasharray={`${c * 0.2} ${c * 0.8}`}
+            strokeLinecap="round"
+            className="arc-rotate"
           />
         )}
       </svg>
@@ -129,34 +182,34 @@ function StateBadge({ state }: { state: string }) {
     idle: {
       label: '未开始',
       dotCls: 'bg-fg-subtle',
-      pillCls: 'border-border bg-bg-subtle/50 text-fg-muted',
+      pillCls: 'border-border/50 bg-bg-subtle/40 text-fg-muted',
     },
     running: {
       label: '专注中',
       dotCls: 'bg-success',
-      pillCls: 'border-success/20 bg-success/8 text-success',
+      pillCls: 'border-success/18 bg-success/7 text-success',
       pulse: true,
     },
     paused: {
       label: '已暂停',
       dotCls: 'bg-warning',
-      pillCls: 'border-warning/20 bg-warning/8 text-warning',
+      pillCls: 'border-warning/18 bg-warning/7 text-warning',
     },
     finished: {
       label: '已结束',
       dotCls: 'bg-success',
-      pillCls: 'border-success/20 bg-success/8 text-success',
+      pillCls: 'border-success/18 bg-success/7 text-success',
     },
     stopping: {
       label: '结束中',
       dotCls: 'bg-fg-subtle',
-      pillCls: 'border-accent/15 bg-accent/8 text-accent',
+      pillCls: 'border-accent/12 bg-accent/7 text-accent',
     },
   };
   const c = config[state] ?? config.idle;
 
   return (
-    <span className={`status-chip px-2 py-0.5 text-[10.5px] ${c.pillCls}`}>
+    <span className={`status-chip px-2 py-0.5 text-[10px] ${c.pillCls}`}>
       <span className="relative flex h-1.5 w-1.5">
         <span
           className={`relative inline-flex h-1.5 w-1.5 rounded-full ${c.dotCls} ${c.pulse ? 'motion-dot-breathe' : ''}`}
@@ -189,9 +242,9 @@ function StatPill({
     danger: 'text-danger',
   }[tone];
   return (
-    <div className="flex items-center gap-1.5 rounded-lg border border-border/45 bg-bg-card/50 px-2.5 py-1.5 backdrop-blur-sm" style={{ boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.03)' }}>
+    <div className="stat-pill flex items-center gap-1.5 rounded-lg border border-border/40 bg-bg-card/45 px-2.5 py-1.5 backdrop-blur-sm" style={{ boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.04)' }}>
       <span
-        className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-bg-subtle/50 ${toneCls}`}
+        className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-bg-subtle/45 ${toneCls}`}
       >
         {icon}
       </span>
@@ -248,10 +301,10 @@ function UnlinkedTaskCard({
 }) {
   return (
     <button
-      className="motion-base flex w-full items-center gap-2 rounded-lg border border-dashed border-border/50 bg-bg-card/40 px-2.5 py-2 text-left hover:border-accent/40 hover:bg-accent/4"
+      className="motion-base flex w-full items-center gap-2 rounded-lg border border-dashed border-border/45 bg-bg-card/35 px-2.5 py-2 text-left hover:border-accent/35 hover:bg-accent/3"
       onClick={onPick}
     >
-      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-bg-subtle/50 text-fg-subtle">
+      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-bg-subtle/45 text-fg-subtle">
         <Icon.Link size="xs" />
       </span>
       <div className="min-w-0 flex-1">
@@ -497,13 +550,13 @@ export function TimerPanel() {
       {/* ── 弧光环舞台 ── */}
       <div className="flex flex-col items-center">
         <ArcRing progress={arcProgress} state={state}>
-          <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-fg-subtle">
+          <span className="text-[9px] font-bold uppercase tracking-[0.25em] text-fg-subtle">
             当前片段
           </span>
-          <div className={`timer-digit mt-1.5 text-[48px] font-bold leading-none ${timeColorCls}`}>
+          <div className={`timer-digit mt-1 text-[46px] font-bold leading-none ${timeColorCls}`}>
             <FlipDigits value={formatDurationPadded(currentSegmentMs)} />
           </div>
-          <div className="mt-2.5 flex items-center gap-1.5">
+          <div className="mt-2 flex items-center gap-1.5">
             {stateIcon}
             <span
               key={`sub-${state}`}
@@ -519,14 +572,14 @@ export function TimerPanel() {
       <div className="timer-context-strip relative mt-4 flex items-center gap-2.5 py-2">
         <span
           className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
-            contextTitle ? 'bg-accent/8 text-accent' : 'bg-bg-subtle/50 text-fg-subtle'
+            contextTitle ? 'bg-accent/8 text-accent' : 'bg-bg-subtle/45 text-fg-subtle'
           }`}
-          style={{ boxShadow: contextTitle ? 'inset 0 1px 0 rgb(255 255 255 / 0.04)' : undefined }}
+          style={{ boxShadow: contextTitle ? 'inset 0 1px 0 rgb(255 255 255 / 0.05)' : undefined }}
         >
           <Icon.Link size="sm" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[9.5px] font-semibold text-fg-subtle">{contextSourceLabel}</div>
+          <div className="text-[9px] font-semibold text-fg-subtle">{contextSourceLabel}</div>
           <div
             className={`truncate text-[13px] font-semibold ${
               state === 'paused'
@@ -646,7 +699,7 @@ export function TimerPanel() {
       {/* 控制按钮 */}
       <div className="mt-5 flex items-center justify-center gap-2.5">
         <button
-          className={`${mainActionClass} motion-press flex min-w-[136px] items-center justify-center gap-1.5`}
+          className={`${mainActionClass} motion-press flex min-w-[140px] items-center justify-center gap-1.5`}
           onClick={handleToggle}
         >
           {state === 'running' ? <Icon.Pause size="sm" /> : <Icon.Play size="sm" />}
@@ -663,7 +716,7 @@ export function TimerPanel() {
       </div>
 
       {/* 快捷键提示 */}
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-1 text-[10px] text-fg-subtle">
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-1 text-[9.5px] text-fg-subtle">
         <span className="font-medium text-fg-muted">快捷键</span>
         {hotkeyHint.split(' · ').map((part) => (
           <span key={part} className="kbd-chip">

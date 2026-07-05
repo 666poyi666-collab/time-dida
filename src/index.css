@@ -10,59 +10,60 @@
 
 @layer base {
   :root {
-    /* ── FocusLink v0.4.1「Raycast Studio」设计令牌 ────────────────────
-       设计哲学：Raycast × Linear × shadcn/ui New York——
-       - 画布: #07080a（Raycast 签名近纯黑）
-       - 5级表面阶梯 + 毛玻璃层级
-       - 发丝边框 + 精确inset高光（Raycast 标志细节）
-       - 圆角: 按钮8px 输入框8px 卡片10px 弹窗12px（New York 紧凑）
-       - Inter Display 600字重 + -0.022em 负字距
-       - 动效: 100-200ms，出场快于入场，spring物理
-       - 主色: Linear 紫 #5E6AD2 / 翠绿 #34D399 双主题 */
+    /* ── FocusLink v0.4.2「Apex Studio」设计令牌 ────────────────────
+       设计哲学：Raycast × Linear × Apple Liquid Glass × shadcn/ui v2
+       - 画布: #07080a + 微噪点纹理（Apple 级质感）
+       - 6级表面阶梯 + Liquid Glass 毛玻璃层级
+       - 发丝边框 + 精确inset高光 + 色彩溢出（color spill）
+       - 同心圆角系统：容器与内容圆角差=padding
+       - Inter 600字重 + 完整OpenType特性
+       - 动效: 50-180ms 极速响应，spring物理，出场快于入场
+       - 主色: Linear 紫 #5E6AD2 / 翠绿 #34D399 双主题
+       - 噪点纹理: 0.5% opacity SVG noise 模拟材质感 */
 
-    /* ── 动效节奏：Raycast 级快速响应 ── */
-    --motion-instant: 60ms;
-    --motion-fast: 90ms;
-    --motion-normal: 140ms;
-    --motion-slow: 200ms;
-    --motion-spring: 320ms;
-    /* 物理曲线：更sharp的spring */
+    /* ── 动效节奏：Apex 级极速响应 ── */
+    --motion-instant: 50ms;
+    --motion-fast: 80ms;
+    --motion-normal: 130ms;
+    --motion-slow: 180ms;
+    --motion-spring: 280ms;
+    /* 物理曲线：更跟手的spring */
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
     --ease-soft: cubic-bezier(0.32, 0.72, 0, 1);
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
     --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
-    --scale-hover: 1.012;
-    --scale-active: 0.965;
+    --ease-linear: linear;
+    --scale-hover: 1.01;
+    --scale-active: 0.96;
 
-    /* ── 圆角：New York 尺度 ──
-       xs=3  sm=5  md=8  lg=10  xl=14  pill=9999
-       按钮: 8px | 输入框: 8px | 卡片: 10px | 弹窗: 12px */
+    /* ── 圆角：同心圆角系统 ──
+       window=14 | card=10 | button=8 | input=8 | chip=6 | kbd=4
+       差值等于padding，保证圆角同心 */
     --radius-xs: 3px;
     --radius-sm: 5px;
     --radius-md: 8px;
     --radius-lg: 10px;
     --radius-xl: 14px;
     --radius-2xl: 18px;
+    --radius-pill: 9999px;
 
-    /* ── 间距：4px 基准网格，更紧凑 ── */
+    /* ── 间距：4px基准网格 ── */
 
     /* ── 浅色模式：Vercel/Linear 风冷白 ── */
     --app-bg: 252 252 253;
-    --app-surface: 255 255 255;        /* L1 */
-    --app-surface-2: 247 248 250;      /* L2: hover */
-    --app-surface-3: 242 244 247;      /* L3: active/pressed */
-    --app-elevated: 255 255 255;       /* L4: 弹窗 */
+    --app-surface: 255 255 255;
+    --app-surface-2: 247 248 250;
+    --app-surface-3: 242 244 247;
+    --app-elevated: 255 255 255;
     --app-overlay: 10 12 16 / 0.5;
     --app-text: 11 13 17;
     --app-muted: 88 96 111;
     --app-subtle: 138 146 160;
-    /* 发丝边框 */
     --app-border: 229 231 235;
     --app-border-strong: 209 213 219;
     --app-border-subtle: 239 241 244;
-    /* Linear 紫作为默认accent */
     --app-accent: 94 106 210;
     --app-accent-hover: 80 91 190;
     --app-accent-soft: 94 106 210 / 0.08;
@@ -72,12 +73,15 @@
     --app-danger: 220 38 38;
     --app-info: 37 99 235;
 
-    /* 画布环境光：极淡紫雾 */
-    --aurora-1: 94 106 210 / 0.025;
-    --aurora-2: 52 211 153 / 0.02;
-    --aurora-3: 251 146 60 / 0.015;
+    --aurora-1: 94 106 210 / 0.02;
+    --aurora-2: 52 211 153 / 0.015;
+    --aurora-3: 251 146 60 / 0.01;
 
-    /* 阴影：Vercel 风三层精确微阴影 */
+    /* 噪点纹理：极淡SVG noise */
+    --noise-texture: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+
+    /* 阴影：Vercel 三层精确微阴影 */
+    --shadow-xs: 0 1px 1px rgb(11 13 17 / 0.02);
     --shadow-sm:
       0 1px 1px rgb(11 13 17 / 0.025),
       0 1px 2px rgb(11 13 17 / 0.03);
@@ -92,7 +96,6 @@
     --shadow-glow:
       0 0 0 1px rgb(var(--app-accent) / 0.12),
       0 6px 20px -10px rgb(var(--app-accent) / 0.25);
-    /* Raycast 弹窗阴影 */
     --shadow-modal:
       0 0 0 1px rgb(11 13 17 / 0.04),
       0 2px 4px rgb(11 13 17 / 0.02),
@@ -154,9 +157,11 @@
     --app-warning: 217 119 6;
     --app-danger: 220 38 38;
     --app-info: 37 99 235;
-    --aurora-1: 94 106 210 / 0.025;
-    --aurora-2: 52 211 153 / 0.02;
-    --aurora-3: 251 146 60 / 0.015;
+    --aurora-1: 94 106 210 / 0.02;
+    --aurora-2: 52 211 153 / 0.015;
+    --aurora-3: 251 146 60 / 0.01;
+    --noise-texture: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+    --shadow-xs: 0 1px 1px rgb(11 13 17 / 0.02);
     --shadow-sm: 0 1px 1px rgb(11 13 17 / 0.025), 0 1px 2px rgb(11 13 17 / 0.03);
     --shadow-md: 0 1px 1px rgb(11 13 17 / 0.02), 0 4px 10px -4px rgb(11 13 17 / 0.06), 0 0 0 1px rgb(11 13 17 / 0.03);
     --shadow-lg: 0 1px 2px rgb(11 13 17 / 0.015), 0 8px 20px -8px rgb(11 13 17 / 0.1), 0 0 0 1px rgb(11 13 17 / 0.04);
@@ -166,58 +171,58 @@
   }
 
   .dark {
-    /* ── 深色模式：Raycast 签名近纯黑 ──
+    /* ── 深色模式：Apex 近纯黑 ──
        画布: #07080a
-       5级表面阶梯，层级靠表面亮度提升
-       边框: rgba(255,255,255,0.06-0.10) 发丝级
-       所有卡片/按钮都有顶部1px inset高光（Raycast 灵魂细节） */
+       6级表面阶梯，层级靠表面亮度提升
+       边框: rgba(255,255,255,0.05-0.10) 发丝级
+       所有卡片/按钮都有顶部1px inset高光 */
     --app-bg: 7 8 10;
-    --app-surface: 14 15 18;           /* L1: 卡片背景 */
-    --app-surface-2: 20 22 26;         /* L2: hover/elevated */
-    --app-surface-3: 27 29 34;         /* L3: active/selected/pressed */
-    --app-elevated: 22 24 28;          /* L4: 弹窗浮层 */
-    --app-overlay: 0 0 0 / 0.75;
-    --app-text: 236 238 241;
+    --app-surface: 13 14 17;
+    --app-surface-2: 19 21 25;
+    --app-surface-3: 26 28 33;
+    --app-elevated: 21 23 27;
+    --app-overlay: 0 0 0 / 0.72;
+    --app-text: 237 239 242;
     --app-muted: 148 155 167;
-    --app-subtle: 92 99 112;
-    /* 发丝边框：精确的透明度梯度 */
-    --app-border: 38 41 48;
-    --app-border-strong: 56 60 69;
-    --app-border-subtle: 27 29 34;
-    /* Linear 紫 - 深色模式下更亮 */
+    --app-subtle: 88 95 108;
+    --app-border: 36 39 46;
+    --app-border-strong: 54 58 67;
+    --app-border-subtle: 25 27 32;
     --app-accent: 129 140 248;
     --app-accent-hover: 157 169 252;
     --app-accent-soft: 129 140 248 / 0.12;
-    --app-accent-fg: 10 10 12;
+    --app-accent-fg: 8 9 11;
     --app-success: 52 211 153;
     --app-warning: 251 146 60;
     --app-danger: 248 113 113;
     --app-info: 96 165 250;
 
-    /* 画布环境光：Raycast 式极淡顶部辉光 */
-    --aurora-1: 129 140 248 / 0.035;
-    --aurora-2: 52 211 153 / 0.025;
-    --aurora-3: 251 146 60 / 0.02;
+    --aurora-1: 129 140 248 / 0.03;
+    --aurora-2: 52 211 153 / 0.022;
+    --aurora-3: 251 146 60 / 0.015;
 
-    /* 阴影：深色靠多层柔和阴影+边框分层，不依赖投影 */
-    --shadow-sm: 0 1px 0 rgb(255 255 255 / 0.025) inset;
+    /* 噪点纹理：深色模式稍强 */
+    --noise-texture: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+
+    /* 阴影：深色靠inset高光+多层柔光 */
+    --shadow-xs: 0 1px 0 rgb(255 255 255 / 0.02) inset;
+    --shadow-sm: 0 1px 0 rgb(255 255 255 / 0.03) inset;
     --shadow-md:
-      0 1px 0 rgb(255 255 255 / 0.03) inset,
-      0 8px 20px -20px rgb(0 0 0 / 0.6);
-    --shadow-lg:
       0 1px 0 rgb(255 255 255 / 0.035) inset,
-      0 16px 36px -24px rgb(0 0 0 / 0.7);
-    --shadow-glow:
-      0 0 0 1px rgb(var(--app-accent) / 0.15),
+      0 8px 20px -20px rgb(0 0 0 / 0.5);
+    --shadow-lg:
       0 1px 0 rgb(255 255 255 / 0.04) inset,
-      0 10px 28px -18px rgb(var(--app-accent) / 0.35);
-    /* Raycast 弹窗阴影 */
+      0 16px 36px -24px rgb(0 0 0 / 0.6);
+    --shadow-glow:
+      0 0 0 1px rgb(var(--app-accent) / 0.14),
+      0 1px 0 rgb(255 255 255 / 0.05) inset,
+      0 10px 28px -18px rgb(var(--app-accent) / 0.32);
     --shadow-modal:
       0 0 0 1px rgb(255 255 255 / 0.06),
-      0 1px 0 rgb(255 255 255 / 0.04) inset,
-      0 4px 8px rgb(0 0 0 / 0.1),
-      0 16px 40px -12px rgb(0 0 0 / 0.5),
-      0 40px 80px -32px rgb(0 0 0 / 0.55);
+      0 1px 0 rgb(255 255 255 / 0.05) inset,
+      0 4px 8px rgb(0 0 0 / 0.08),
+      0 16px 40px -12px rgb(0 0 0 / 0.45),
+      0 40px 80px -32px rgb(0 0 0 / 0.5);
     --accent-muted: 24 28 46;
   }
 
@@ -227,42 +232,42 @@
     --app-accent-hover: 157 169 252;
     --accent: var(--app-accent);
     --accent-muted: 24 28 46;
-    --aurora-1: 129 140 248 / 0.04;
+    --aurora-1: 129 140 248 / 0.035;
   }
   .accent-violet {
     --app-accent: 167 139 250;
     --app-accent-hover: 196 181 253;
     --accent: var(--app-accent);
     --accent-muted: 32 22 52;
-    --aurora-1: 167 139 250 / 0.04;
+    --aurora-1: 167 139 250 / 0.035;
   }
   .accent-emerald {
     --app-accent: 52 211 153;
     --app-accent-hover: 110 231 183;
     --accent: var(--app-accent);
     --accent-muted: 10 36 30;
-    --aurora-1: 52 211 153 / 0.04;
+    --aurora-1: 52 211 153 / 0.035;
   }
   .accent-rose {
     --app-accent: 251 113 133;
     --app-accent-hover: 253 164 175;
     --accent: var(--app-accent);
     --accent-muted: 44 14 26;
-    --aurora-1: 251 113 133 / 0.04;
+    --aurora-1: 251 113 133 / 0.035;
   }
   .accent-amber {
     --app-accent: 251 191 36;
     --app-accent-hover: 253 224 71;
     --accent: var(--app-accent);
     --accent-muted: 40 28 6;
-    --aurora-1: 251 191 36 / 0.04;
+    --aurora-1: 251 191 36 / 0.035;
   }
   .accent-sky {
     --app-accent: 56 189 248;
     --app-accent-hover: 125 211 252;
     --accent: var(--app-accent);
     --accent-muted: 10 32 48;
-    --aurora-1: 56 189 248 / 0.04;
+    --aurora-1: 56 189 248 / 0.035;
   }
 
   .nav-active {
@@ -273,12 +278,8 @@
       inset 0 1px 0 rgb(255 255 255 / 0.06);
   }
 
-  .progress-bar {
-    background: rgb(var(--accent) / 0.12);
-  }
-  .progress-bar-fill {
-    background: rgb(var(--accent));
-  }
+  .progress-bar { background: rgb(var(--accent) / 0.12); }
+  .progress-bar-fill { background: rgb(var(--accent)); }
 
   .selected-accent {
     border-color: rgb(var(--accent) / 0.35);
@@ -317,13 +318,13 @@
       system-ui,
       -apple-system,
       sans-serif;
-    font-feature-settings: 'ss03', 'cv11', 'liga', 'calt', 'kern';
+    font-feature-settings: 'ss01', 'ss03', 'cv11', 'liga', 'calt', 'kern', 'tnum';
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     user-select: none;
     overflow: hidden;
-    letter-spacing: -0.012em;
+    letter-spacing: -0.011em;
     font-size: 13px;
     background: rgb(var(--app-bg));
   }
@@ -335,19 +336,14 @@
   }
 
   /* 滚动条：Raycast 式极细隐形 */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: rgb(var(--border-strong) / 0.3);
-    border-radius: 999px;
+    background: rgb(var(--border-strong) / 0.25);
+    border-radius: var(--radius-pill);
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgb(var(--app-muted) / 0.45);
+    background: rgb(var(--app-muted) / 0.4);
   }
 
   :focus-visible {
@@ -356,54 +352,40 @@
     border-radius: var(--radius-md);
   }
 
-  /* 文本选择 */
-  ::selection {
-    background: rgb(var(--accent) / 0.22);
-  }
+  ::selection { background: rgb(var(--accent) / 0.22); }
 }
 
 @layer components {
-  /* ── Raycast 画布：顶部极淡环境光 ── */
+  /* ── Apex 画布：顶部极淡环境光 + 噪点纹理 ── */
   .aurora-canvas {
     position: relative;
     background:
-      radial-gradient(
-        ellipse 80% 40% at 50% 0%,
-        rgb(var(--aurora-1)),
-        transparent 70%
-      ),
+      radial-gradient(ellipse 80% 40% at 50% 0%, rgb(var(--aurora-1)), transparent 70%),
       rgb(var(--app-bg));
   }
+  .aurora-canvas::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: var(--noise-texture);
+    background-size: 256px 256px;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.6;
+  }
+  .aurora-canvas > * { position: relative; z-index: 1; }
 
-  /* 专注态：绿色氛围光 */
   .aurora-canvas-focus {
     background:
-      radial-gradient(
-        ellipse 60% 40% at 50% 30%,
-        rgb(var(--success) / 0.035),
-        transparent 65%
-      ),
-      radial-gradient(
-        ellipse 80% 40% at 50% 0%,
-        rgb(var(--aurora-1)),
-        transparent 70%
-      ),
+      radial-gradient(ellipse 60% 40% at 50% 30%, rgb(var(--success) / 0.03), transparent 65%),
+      radial-gradient(ellipse 80% 40% at 50% 0%, rgb(var(--aurora-1)), transparent 70%),
       rgb(var(--app-bg));
   }
 
-  /* 暂停态：暖色氛围 */
   .aurora-canvas-pause {
     background:
-      radial-gradient(
-        ellipse 60% 40% at 50% 30%,
-        rgb(var(--warning) / 0.03),
-        transparent 65%
-      ),
-      radial-gradient(
-        ellipse 80% 40% at 50% 0%,
-        rgb(var(--aurora-1)),
-        transparent 70%
-      ),
+      radial-gradient(ellipse 60% 40% at 50% 30%, rgb(var(--warning) / 0.025), transparent 65%),
+      radial-gradient(ellipse 80% 40% at 50% 0%, rgb(var(--aurora-1)), transparent 70%),
       rgb(var(--app-bg));
   }
 
@@ -411,66 +393,74 @@
   .font-display {
     font-family: 'Inter', 'Microsoft YaHei UI', system-ui, sans-serif;
     font-weight: 600;
-    letter-spacing: -0.024em;
+    letter-spacing: -0.025em;
+    font-feature-settings: 'ss01', 'ss03', 'cv11', 'liga', 'calt', 'kern';
   }
 
-  /* Eyebrow 标签 */
   .eyebrow {
     font-family: 'Inter', system-ui, sans-serif;
-    font-size: 10px;
+    font-size: 9.5px;
     font-weight: 600;
     line-height: 1.2;
-    letter-spacing: 0.07em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: rgb(var(--app-subtle));
   }
 
   .eyebrow-mono {
     font-family: 'JetBrains Mono', ui-monospace, monospace;
-    font-size: 10px;
+    font-size: 9.5px;
     font-weight: 500;
     line-height: 1.2;
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
 
-  /* 等宽数字 */
   .timer-digit {
     font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
     font-variant-numeric: tabular-nums;
-    font-feature-settings: 'tnum', 'zero';
-    letter-spacing: -0.03em;
+    font-feature-settings: 'tnum', 'zero', 'ss01';
+    letter-spacing: -0.035em;
   }
 
-  /* ── 玻璃面板：Raycast 级毛玻璃 ── */
+  /* ── Liquid Glass 面板 ── */
   .glass {
     background: rgb(var(--app-surface) / 0.72);
-    backdrop-filter: blur(24px) saturate(1.4);
-    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    backdrop-filter: blur(32px) saturate(1.5);
+    -webkit-backdrop-filter: blur(32px) saturate(1.5);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.05) inset,
+      0 1px 0 rgb(255 255 255 / 0.06) inset,
       var(--shadow-md);
   }
 
-  /* ── 小窗外壳：Raycast 浮窗精度 ── */
+  .glass-elevated {
+    background: rgb(var(--app-elevated) / 0.85);
+    backdrop-filter: blur(40px) saturate(1.8) contrast(1.02);
+    -webkit-backdrop-filter: blur(40px) saturate(1.8) contrast(1.02);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.08) inset,
+      var(--shadow-modal);
+  }
+
+  /* ── 小窗外壳：Apex 精度 ── */
   .mini-window-shell {
     position: relative;
     isolation: isolate;
     overflow: hidden;
     contain: paint;
-    border-radius: 12px;
-    clip-path: inset(0 round 12px);
-    border: 1px solid rgb(var(--border) / 0.55);
+    border-radius: 14px;
+    clip-path: inset(0 round 14px);
+    border: 1px solid rgb(var(--border) / 0.5);
     background-clip: padding-box;
     background:
-      linear-gradient(180deg, rgb(var(--app-surface) / 0.98), rgb(var(--app-surface-2) / 0.92)),
+      linear-gradient(180deg, rgb(var(--app-surface) / 0.97), rgb(var(--app-surface-2) / 0.9)),
       rgb(var(--app-surface));
-    backdrop-filter: blur(28px) saturate(1.5);
-    -webkit-backdrop-filter: blur(28px) saturate(1.5);
+    backdrop-filter: blur(36px) saturate(1.6) contrast(1.02);
+    -webkit-backdrop-filter: blur(36px) saturate(1.6) contrast(1.02);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.06) inset,
-      0 12px 32px -20px rgb(0 0 0 / 0.55),
-      0 4px 12px -8px rgb(0 0 0 / 0.3);
+      0 1px 0 rgb(255 255 255 / 0.08) inset,
+      0 12px 32px -20px rgb(0 0 0 / 0.5),
+      0 4px 12px -8px rgb(0 0 0 / 0.25);
   }
 
   .mini-window-shell::before {
@@ -480,90 +470,111 @@
     z-index: -1;
     border-radius: inherit;
     pointer-events: none;
-    background: linear-gradient(180deg, rgb(255 255 255 / 0.06), transparent 45%);
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.08), transparent 45%);
   }
 
-  /* 拖拽指示条 */
   .mini-window-shell::after {
     content: '';
     position: absolute;
     left: 50%;
     top: 5px;
-    width: 32px;
-    height: 3px;
-    border-radius: 999px;
+    width: 28px;
+    height: 2.5px;
+    border-radius: var(--radius-pill);
     transform: translateX(-50%);
     pointer-events: none;
-    background: rgb(var(--border-strong) / 0.5);
-    opacity: 0.55;
+    background: rgb(var(--border-strong) / 0.45);
+    opacity: 0.5;
   }
 
   .mini-window-collapsed {
-    border-radius: 10px;
-    clip-path: inset(0 round 10px);
+    border-radius: 12px;
+    clip-path: inset(0 round 12px);
   }
 
   .mini-window-running {
-    border-color: rgb(var(--success) / 0.22);
+    border-color: rgb(var(--success) / 0.2);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.06) inset,
-      0 12px 32px -20px rgb(0 0 0 / 0.55),
-      0 0 0 1px rgb(var(--success) / 0.08),
-      0 8px 28px -24px rgb(var(--success) / 0.45);
+      0 1px 0 rgb(255 255 255 / 0.08) inset,
+      0 12px 32px -20px rgb(0 0 0 / 0.5),
+      0 0 0 1px rgb(var(--success) / 0.06),
+      0 8px 28px -24px rgb(var(--success) / 0.4);
   }
   .mini-window-running::after {
-    background: linear-gradient(
-      90deg,
-      rgb(var(--success) / 0.05),
-      rgb(var(--success) / 0.6),
-      rgb(var(--success) / 0.05)
-    );
-    opacity: 0.75;
+    background: linear-gradient(90deg, rgb(var(--success) / 0.05), rgb(var(--success) / 0.55), rgb(var(--success) / 0.05));
+    opacity: 0.7;
   }
 
   .mini-window-paused {
-    border-color: rgb(var(--warning) / 0.22);
+    border-color: rgb(var(--warning) / 0.2);
   }
   .mini-window-paused::after {
-    background: linear-gradient(
-      90deg,
-      rgb(var(--warning) / 0.05),
-      rgb(var(--warning) / 0.55),
-      rgb(var(--warning) / 0.05)
-    );
-    opacity: 0.65;
+    background: linear-gradient(90deg, rgb(var(--warning) / 0.05), rgb(var(--warning) / 0.5), rgb(var(--warning) / 0.05));
+    opacity: 0.6;
   }
 
   .mini-window-collapsed::after {
-    width: 24px;
-    height: 2.5px;
+    width: 22px;
+    height: 2px;
     top: 4.5px;
   }
 
-  .mini-top-row {
-    min-height: 20px;
+  /* Mini 噪点纹理层 - Apple 级材质感 */
+  .mini-noise-overlay::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background-image: var(--noise-texture);
+    background-size: 200px 200px;
+    opacity: 0.5;
+    border-radius: inherit;
+    mix-blend-mode: overlay;
   }
 
+  /* 色彩溢出光晕 - Apple Liquid Glass 风格 */
+  .mini-color-spill {
+    position: absolute;
+    pointer-events: none;
+    z-index: 0;
+    border-radius: inherit;
+  }
+  .mini-color-spill-running {
+    inset: -20%;
+    background: radial-gradient(ellipse at 30% 20%, rgb(var(--success) / 0.12), transparent 55%);
+    filter: blur(24px);
+    opacity: 0.8;
+  }
+  .mini-color-spill-paused {
+    inset: -20%;
+    background: radial-gradient(ellipse at 30% 20%, rgb(var(--warning) / 0.1), transparent 55%);
+    filter: blur(24px);
+    opacity: 0.7;
+  }
+
+  .mini-top-row { min-height: 20px; }
+
   .mini-time-block {
-    border-radius: 9px;
-    border: 1px solid rgb(var(--border) / 0.4);
+    border-radius: 8px;
+    border: 1px solid rgb(var(--border) / 0.35);
     background:
-      linear-gradient(180deg, rgb(var(--app-surface) / 0.55), rgb(var(--app-surface-2) / 0.2)),
-      rgb(var(--app-surface) / 0.25);
+      linear-gradient(180deg, rgb(var(--app-surface) / 0.5), rgb(var(--app-surface-2) / 0.18)),
+      rgb(var(--app-surface) / 0.22);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.05),
-      inset 0 -1px 0 rgb(0 0 0 / 0.1);
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      inset 0 -1px 0 rgb(0 0 0 / 0.08);
   }
 
   .mini-icon-button {
     @apply flex items-center justify-center rounded-full text-fg-subtle hover:text-fg;
     width: 22px;
     height: 22px;
-    border: 1px solid rgb(var(--border) / 0.4);
-    background: rgb(var(--app-surface) / 0.35);
+    border: 1px solid rgb(var(--border) / 0.35);
+    background: rgb(var(--app-surface) / 0.3);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.05),
-      inset 0 -1px 0 rgb(0 0 0 / 0.08);
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      inset 0 -1px 0 rgb(0 0 0 / 0.06);
     transition:
       border-color var(--motion-fast) var(--ease-out),
       background-color var(--motion-fast) var(--ease-out),
@@ -572,72 +583,68 @@
     will-change: transform;
   }
   .mini-icon-button:hover {
-    border-color: rgb(var(--border-strong) / 0.5);
-    background: rgb(var(--app-surface-2) / 0.65);
-    transform: scale(1.07);
+    border-color: rgb(var(--border-strong) / 0.45);
+    background: rgb(var(--app-surface-2) / 0.6);
+    transform: scale(1.08);
   }
-  .mini-icon-button:active {
-    transform: scale(0.9);
-  }
+  .mini-icon-button:active { transform: scale(0.88); }
 
   .mini-stat-card {
     border-radius: 7px;
-    border: 1px solid rgb(var(--border) / 0.4);
+    border: 1px solid rgb(var(--border) / 0.35);
     background:
-      linear-gradient(180deg, rgb(var(--app-surface) / 0.3), rgb(var(--app-surface-2) / 0.15)),
-      rgb(var(--app-surface-2) / 0.15);
+      linear-gradient(180deg, rgb(var(--app-surface) / 0.28), rgb(var(--app-surface-2) / 0.12)),
+      rgb(var(--app-surface-2) / 0.12);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.04),
-      inset 0 -1px 0 rgb(0 0 0 / 0.08);
+      inset 0 1px 0 rgb(255 255 255 / 0.05),
+      inset 0 -1px 0 rgb(0 0 0 / 0.06);
   }
 
   .mini-stat-card-primary {
-    border-color: rgb(var(--success) / 0.16);
+    border-color: rgb(var(--success) / 0.14);
     background:
-      linear-gradient(180deg, rgb(var(--success) / 0.05), rgb(var(--app-surface-2) / 0.15)),
-      rgb(var(--app-surface) / 0.25);
+      linear-gradient(180deg, rgb(var(--success) / 0.045), rgb(var(--app-surface-2) / 0.12)),
+      rgb(var(--app-surface) / 0.22);
   }
 
   .mini-primary-button {
     border-radius: var(--radius-md);
     color: #fff;
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.18),
-      inset 0 -1px 0 rgb(0 0 0 / 0.12),
-      0 3px 10px -6px rgb(var(--success) / 0.55);
+      inset 0 1px 0 rgb(255 255 255 / 0.2),
+      inset 0 -1px 0 rgb(0 0 0 / 0.1),
+      0 3px 10px -6px rgb(var(--success) / 0.5);
     font-weight: 600;
   }
 
   .mini-action-focus {
-    background: linear-gradient(180deg, rgb(var(--success) / 0.95), rgb(16 137 92 / 0.96));
+    background: linear-gradient(180deg, rgb(var(--success) / 0.92), rgb(16 137 92 / 0.94));
   }
 
   .mini-action-pause {
-    background: linear-gradient(180deg, rgb(var(--warning) / 0.9), rgb(181 74 8 / 0.94));
+    background: linear-gradient(180deg, rgb(var(--warning) / 0.88), rgb(181 74 8 / 0.92));
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.18),
-      inset 0 -1px 0 rgb(0 0 0 / 0.12),
-      0 3px 10px -6px rgb(var(--warning) / 0.5);
+      inset 0 1px 0 rgb(255 255 255 / 0.2),
+      inset 0 -1px 0 rgb(0 0 0 / 0.1),
+      0 3px 10px -6px rgb(var(--warning) / 0.45);
   }
 
-  .mini-primary-button:hover {
-    filter: brightness(1.08);
-  }
+  .mini-primary-button:hover { filter: brightness(1.08); }
 
   .mini-secondary-button {
     border-radius: var(--radius-md);
-    border: 1px solid rgb(var(--border) / 0.45);
+    border: 1px solid rgb(var(--border) / 0.4);
     color: rgb(var(--fg-muted));
-    background: rgb(var(--app-surface) / 0.35);
+    background: rgb(var(--app-surface) / 0.3);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.05),
-      inset 0 -1px 0 rgb(0 0 0 / 0.08);
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      inset 0 -1px 0 rgb(0 0 0 / 0.06);
     font-weight: 500;
   }
   .mini-secondary-button:hover {
     color: rgb(var(--fg-default));
-    background: rgb(var(--app-surface-2) / 0.65);
-    border-color: rgb(var(--border-strong) / 0.4);
+    background: rgb(var(--app-surface-2) / 0.6);
+    border-color: rgb(var(--border-strong) / 0.35);
   }
 
   /* ── 主壳层 ── */
@@ -646,12 +653,12 @@
     position: relative;
   }
 
-  /* ── 侧轨：Raycast 风紧凑导航 ── */
+  /* ── 侧轨：Apex 紧凑导航 ── */
   .side-rail {
-    background: rgb(var(--app-surface) / 0.5);
-    backdrop-filter: blur(28px) saturate(1.4);
-    -webkit-backdrop-filter: blur(28px) saturate(1.4);
-    border-right: 1px solid rgb(var(--border) / 0.3);
+    background: rgb(var(--app-surface) / 0.45);
+    backdrop-filter: blur(32px) saturate(1.5);
+    -webkit-backdrop-filter: blur(32px) saturate(1.5);
+    border-right: 1px solid rgb(var(--border) / 0.25);
   }
 
   .rail-btn {
@@ -668,45 +675,45 @@
     will-change: transform;
   }
   .rail-btn:hover {
-    background: rgb(var(--app-surface-2) / 0.75);
+    background: rgb(var(--app-surface-2) / 0.7);
     color: rgb(var(--fg-default));
   }
   .rail-btn:active {
-    background: rgb(var(--app-surface-3) / 0.7);
-    transform: scale(0.94);
+    background: rgb(var(--app-surface-3) / 0.65);
+    transform: scale(0.93);
   }
 
   /* 品牌标识 */
   .brand-mark {
-    border: 1px solid rgb(var(--border) / 0.55);
+    border: 1px solid rgb(var(--border) / 0.5);
     background:
-      linear-gradient(180deg, rgb(var(--app-surface-3) / 0.85), rgb(var(--app-surface-2) / 0.55)),
+      linear-gradient(180deg, rgb(var(--app-surface-3) / 0.8), rgb(var(--app-surface-2) / 0.5)),
       rgb(var(--app-surface));
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.06),
-      inset 0 -1px 0 rgb(0 0 0 / 0.1);
+      inset 0 1px 0 rgb(255 255 255 / 0.07),
+      inset 0 -1px 0 rgb(0 0 0 / 0.08);
   }
   .brand-mark::before {
     content: '';
     position: absolute;
     left: 6px;
     top: 5.5px;
-    width: 6.5px;
+    width: 6px;
     height: 2px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: rgb(var(--accent));
-    box-shadow: 15px 0 0 rgb(var(--success) / 0.8);
+    box-shadow: 14.5px 0 0 rgb(var(--success) / 0.8);
   }
   .brand-mark-ring {
     position: absolute;
     inset: 6px;
     border: 1.5px solid rgb(var(--accent));
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
   }
   .brand-mark-progress {
     position: absolute;
     inset: 6px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     border: 2px solid transparent;
     border-top-color: rgb(var(--success));
     border-right-color: rgb(var(--success));
@@ -716,7 +723,7 @@
     position: absolute;
     width: 3px;
     height: 3px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: rgb(var(--fg-default));
   }
   .brand-mark-node {
@@ -725,14 +732,14 @@
     bottom: 6.5px;
     width: 2px;
     height: 2px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: rgb(var(--info));
   }
   .brand-mark-status {
     height: 2px;
     width: 8px;
     background: rgb(var(--success));
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
   }
 
   .window-icon-button {
@@ -743,23 +750,15 @@
       transform var(--motion-fast) var(--ease-out);
   }
   .window-icon-button:hover {
-    background: rgb(var(--app-surface-2) / 0.65);
+    background: rgb(var(--app-surface-2) / 0.6);
     color: rgb(var(--fg-default));
   }
-  .window-icon-button:active {
-    transform: scale(0.92);
-  }
+  .window-icon-button:active { transform: scale(0.9); }
 
-  .workspace-shell {
-    background: rgb(var(--app-bg));
-  }
+  .workspace-shell { background: rgb(var(--app-bg)); }
+  .workspace-pane { min-width: 0; scrollbar-gutter: stable; }
 
-  .workspace-pane {
-    min-width: 0;
-    scrollbar-gutter: stable;
-  }
-
-  /* ── 按钮系统 v0.4.1：Raycast/shadcn 精确按钮 ── */
+  /* ── 按钮系统 v0.4.2：Apex 精确按钮 ── */
   .btn {
     @apply inline-flex items-center justify-center gap-1.5 font-medium;
     transition:
@@ -774,72 +773,87 @@
     font-size: 12.5px;
     letter-spacing: -0.01em;
   }
-  .btn:active {
-    transform: scale(var(--scale-active));
-  }
+  .btn:active { transform: scale(var(--scale-active)); }
 
   .btn-primary {
-    @apply btn rounded-lg px-3.5 py-2 text-[12.5px] font-medium bg-accent text-accent-fg;
+    @apply btn rounded-lg px-3.5 py-2 text-[12.5px] font-medium;
     min-height: 32px;
+    background: linear-gradient(180deg, rgb(var(--app-accent) / 0.95), rgb(var(--app-accent) / 0.88));
+    color: rgb(var(--app-accent-fg));
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.15),
-      inset 0 -1px 0 rgb(0 0 0 / 0.1);
+      inset 0 1px 0 rgb(255 255 255 / 0.18),
+      inset 0 -1px 0 rgb(0 0 0 / 0.08),
+      0 2px 6px -2px rgb(var(--app-accent) / 0.3);
   }
   .btn-primary:hover {
     filter: brightness(1.1);
-    background: rgb(var(--app-accent-hover));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.22),
+      inset 0 -1px 0 rgb(0 0 0 / 0.08),
+      0 4px 12px -4px rgb(var(--app-accent) / 0.35);
   }
 
   .btn-focus-action {
     @apply btn rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-white;
     min-height: 32px;
-    background: linear-gradient(180deg, rgb(var(--success) / 0.94), rgb(16 137 92 / 0.96));
+    background: linear-gradient(180deg, rgb(var(--success) / 0.92), rgb(16 137 92 / 0.94));
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.18),
-      inset 0 -1px 0 rgb(0 0 0 / 0.1);
+      inset 0 1px 0 rgb(255 255 255 / 0.2),
+      inset 0 -1px 0 rgb(0 0 0 / 0.08),
+      0 3px 10px -4px rgb(var(--success) / 0.35);
   }
   .btn-focus-action:hover {
-    filter: brightness(1.07);
+    filter: brightness(1.08);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.25),
+      inset 0 -1px 0 rgb(0 0 0 / 0.08),
+      0 5px 14px -6px rgb(var(--success) / 0.4);
   }
 
   .btn-pause-action {
     @apply btn rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-white;
     min-height: 32px;
-    background: linear-gradient(180deg, rgb(var(--warning) / 0.9), rgb(181 74 8 / 0.94));
+    background: linear-gradient(180deg, rgb(var(--warning) / 0.88), rgb(181 74 8 / 0.92));
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.18),
-      inset 0 -1px 0 rgb(0 0 0 / 0.1);
+      inset 0 1px 0 rgb(255 255 255 / 0.2),
+      inset 0 -1px 0 rgb(0 0 0 / 0.08),
+      0 3px 10px -4px rgb(var(--warning) / 0.35);
   }
   .btn-pause-action:hover {
-    filter: brightness(1.07);
+    filter: brightness(1.08);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.25),
+      inset 0 -1px 0 rgb(0 0 0 / 0.08),
+      0 5px 14px -6px rgb(var(--warning) / 0.4);
   }
 
   .btn-ghost {
     @apply btn rounded-md px-2.5 py-1.5 text-[12px] font-medium text-fg-muted;
-    @apply hover:bg-bg-subtle/70 hover:text-fg;
+    @apply hover:bg-bg-subtle/65 hover:text-fg;
     min-height: 28px;
   }
 
   .btn-outline {
-    @apply btn rounded-lg border border-border/55 px-3 py-2 text-[12.5px] font-medium text-fg;
+    @apply btn rounded-lg border px-3 py-2 text-[12.5px] font-medium text-fg;
     min-height: 32px;
-    background: rgb(var(--app-surface) / 0.4);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.04);
+    border-color: rgb(var(--app-border) / 0.5);
+    background: rgb(var(--app-surface) / 0.35);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
   }
   .btn-outline:hover {
-    background: rgb(var(--app-surface-2) / 0.75);
-    border-color: rgb(var(--border-strong) / 0.5);
+    background: rgb(var(--app-surface-2) / 0.7);
+    border-color: rgb(var(--border-strong) / 0.45);
   }
 
-  /* ── 卡片：10px 圆角，精确hairline+inset高光 ── */
+  /* ── 卡片：10px圆角，精确hairline+inset高光 ── */
   .card {
-    @apply border border-border/65;
+    @apply border;
+    border-color: rgb(var(--app-border) / 0.6);
     border-radius: var(--radius-lg);
-    background: rgb(var(--app-surface) / 0.7);
+    background: rgb(var(--app-surface) / 0.65);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.04) inset,
-      var(--shadow-sm);
+      0 1px 0 rgb(255 255 255 / 0.05) inset,
+      var(--shadow-xs);
     contain: layout style paint;
     transition:
       border-color var(--motion-normal) var(--ease-out),
@@ -847,62 +861,67 @@
       background-color var(--motion-fast) var(--ease-out);
   }
 
-  /* ── 输入框：8px 圆角，精确focus状态 ── */
+  /* ── 输入框 ── */
   .input {
     @apply w-full border px-3 py-1.5 text-[12.5px] text-fg;
     @apply placeholder:text-fg-subtle focus:outline-none;
     border-radius: var(--radius-md);
-    border-color: rgb(var(--app-border) / 0.55);
+    border-color: rgb(var(--app-border) / 0.5);
     transition:
       border-color var(--motion-fast) var(--ease-out),
       box-shadow var(--motion-normal) var(--ease-out),
       background-color var(--motion-fast) var(--ease-out);
     min-height: 32px;
-    background: rgb(var(--app-surface) / 0.5);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
+    background: rgb(var(--app-surface) / 0.45);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
     font-family: 'Inter', system-ui, sans-serif;
     letter-spacing: -0.01em;
   }
   .input:hover {
-    border-color: rgb(var(--border-strong) / 0.5);
-    background: rgb(var(--app-surface) / 0.7);
+    border-color: rgb(var(--border-strong) / 0.45);
+    background: rgb(var(--app-surface) / 0.65);
   }
   .input:focus {
     border-color: rgb(var(--app-accent) / 0.45);
     box-shadow:
-      0 0 0 3px rgb(var(--app-accent) / 0.09),
-      inset 0 1px 0 rgb(255 255 255 / 0.04);
+      0 0 0 3px rgb(var(--app-accent) / 0.08),
+      inset 0 1px 0 rgb(255 255 255 / 0.05);
     background: rgb(var(--app-surface));
   }
 
   .app-section {
-    @apply rounded-lg border border-border/55 bg-bg-card/65;
+    @apply rounded-lg border;
+    border-color: rgb(var(--app-border) / 0.5);
+    background: rgb(var(--app-surface) / 0.6);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.03) inset,
-      var(--shadow-sm);
+      0 1px 0 rgb(255 255 255 / 0.04) inset,
+      var(--shadow-xs);
     transition:
       border-color var(--motion-fast) var(--ease-out),
       box-shadow var(--motion-fast) var(--ease-out);
   }
 
-  /* Keycap: Raycast 风快捷键 */
+  /* Keycap: Raycast 风快捷键 - 4px圆角 */
   .kbd-chip {
-    @apply inline-flex items-center rounded border border-border/55 bg-bg-subtle/55 px-1.5 py-0.5 text-[10px] font-semibold text-fg-muted;
+    @apply inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold text-fg-muted;
+    border-color: rgb(var(--app-border) / 0.5);
+    background: rgb(var(--app-surface-2) / 0.5);
     font-family: 'JetBrains Mono', ui-monospace, monospace;
-    font-size: 10px;
-    min-height: 17px;
+    font-size: 9.5px;
+    min-height: 16px;
+    border-radius: 4px;
     box-shadow:
-      inset 0 -1px 0 rgb(0 0 0 / 0.04),
-      inset 0 1px 0 rgb(255 255 255 / 0.03);
+      inset 0 -1px 0 rgb(0 0 0 / 0.03),
+      inset 0 1px 0 rgb(255 255 255 / 0.04),
+      0 1px 1px rgb(0 0 0 / 0.04);
   }
 
   /* 状态徽章 */
   .status-chip {
-    @apply inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-semibold;
+    @apply inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold;
   }
 
-  /* ── 动效系统 v0.4.1：Raycast 级克制动效 ── */
-
+  /* ── 动效系统 v0.4.2 ── */
   .motion-base {
     transition:
       background-color var(--motion-fast) var(--ease-out),
@@ -937,9 +956,7 @@
       border-color var(--motion-fast) var(--ease-out);
     will-change: transform;
   }
-  .motion-press:active {
-    transform: scale(0.955);
-  }
+  .motion-press:active { transform: scale(0.95); }
 
   .motion-digit {
     font-variant-numeric: tabular-nums;
@@ -975,17 +992,15 @@
   }
 
   .motion-breathe {
-    animation: motion-breathe 3.2s var(--ease-in-out) infinite;
+    animation: motion-breathe 3s var(--ease-in-out) infinite;
     will-change: transform, opacity;
   }
   @keyframes motion-breathe {
-    0%, 100% { opacity: 0.88; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.003); }
+    0%, 100% { opacity: 0.9; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.002); }
   }
 
-  .motion-rhythm-fill {
-    transition: width 1s linear;
-  }
+  .motion-rhythm-fill { transition: width 1s linear; }
 
   .motion-state-bg {
     transition:
@@ -995,10 +1010,10 @@
   }
 
   .motion-glow-pulse {
-    animation: motion-glow-pulse 2.8s var(--ease-in-out) infinite;
+    animation: motion-glow-pulse 2.5s var(--ease-in-out) infinite;
   }
   @keyframes motion-glow-pulse {
-    0%, 100% { opacity: 0.55; }
+    0%, 100% { opacity: 0.5; }
     50% { opacity: 1; }
   }
 
@@ -1006,7 +1021,7 @@
     animation: motion-page-in var(--motion-slow) var(--ease-out) both;
   }
   @keyframes motion-page-in {
-    from { opacity: 0; transform: translateX(6px); }
+    from { opacity: 0; transform: translateX(5px); }
     to { opacity: 1; transform: translateX(0); }
   }
 
@@ -1014,7 +1029,7 @@
     animation: motion-slide-up var(--motion-normal) var(--ease-out) both;
   }
   @keyframes motion-slide-up {
-    from { opacity: 0; transform: translateY(5px); }
+    from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
   }
 
@@ -1030,17 +1045,17 @@
     animation: digit-flip var(--motion-normal) var(--ease-bounce);
   }
   @keyframes digit-flip {
-    0% { opacity: 0.25; transform: translateY(-2px) scale(0.95); }
+    0% { opacity: 0.2; transform: translateY(-2px) scale(0.94); }
     60% { opacity: 1; }
     100% { opacity: 1; transform: translateY(0) scale(1); }
   }
 
-  .motion-stagger-1 { animation-delay: 25ms; }
-  .motion-stagger-2 { animation-delay: 50ms; }
-  .motion-stagger-3 { animation-delay: 75ms; }
-  .motion-stagger-4 { animation-delay: 100ms; }
-  .motion-stagger-5 { animation-delay: 125ms; }
-  .motion-stagger-6 { animation-delay: 150ms; }
+  .motion-stagger-1 { animation-delay: 20ms; }
+  .motion-stagger-2 { animation-delay: 40ms; }
+  .motion-stagger-3 { animation-delay: 60ms; }
+  .motion-stagger-4 { animation-delay: 80ms; }
+  .motion-stagger-5 { animation-delay: 100ms; }
+  .motion-stagger-6 { animation-delay: 120ms; }
 
   .motion-magnetic {
     transition:
@@ -1049,12 +1064,8 @@
       filter var(--motion-fast) var(--ease-out);
     will-change: transform;
   }
-  .motion-magnetic:hover {
-    transform: scale(1.015);
-  }
-  .motion-magnetic:active {
-    transform: scale(0.95);
-  }
+  .motion-magnetic:hover { transform: scale(1.012); }
+  .motion-magnetic:active { transform: scale(0.95); }
 
   .icon-hover {
     transition:
@@ -1063,19 +1074,11 @@
     will-change: transform;
     display: inline-flex;
   }
-  .icon-hover:hover {
-    transform: scale(1.1);
-  }
-  .icon-hover:active {
-    transform: scale(0.9);
-  }
+  .icon-hover:hover { transform: scale(1.1); }
+  .icon-hover:active { transform: scale(0.88); }
 
-  .icon-spin-hover {
-    transition: transform var(--motion-normal) var(--ease-bounce);
-  }
-  .icon-spin-hover:hover {
-    transform: rotate(180deg);
-  }
+  .icon-spin-hover { transition: transform var(--motion-normal) var(--ease-bounce); }
+  .icon-spin-hover:hover { transform: rotate(180deg); }
 
   .card-hover-glow {
     transition:
@@ -1087,8 +1090,8 @@
   }
   .card-hover-glow:hover {
     transform: translateY(-1px);
-    border-color: rgb(var(--border-strong) / 0.5);
-    background: rgb(var(--app-surface-2) / 0.55);
+    border-color: rgb(var(--border-strong) / 0.45);
+    background: rgb(var(--app-surface-2) / 0.5);
   }
 
   .theme-transition,
@@ -1102,24 +1105,20 @@
       box-shadow var(--motion-slow) var(--ease-in-out) !important;
   }
 
-  .motion-focus-ring {
-    position: relative;
-  }
-  .motion-focus-ring:focus-visible {
-    outline: none;
-  }
+  .motion-focus-ring { position: relative; }
+  .motion-focus-ring:focus-visible { outline: none; }
   .motion-focus-ring:focus-visible::after {
     content: '';
     position: absolute;
     inset: -2px;
     border-radius: inherit;
-    border: 2px solid rgb(var(--app-accent) / 0.45);
-    box-shadow: 0 0 0 3px rgb(var(--app-accent) / 0.08);
+    border: 2px solid rgb(var(--app-accent) / 0.4);
+    box-shadow: 0 0 0 3px rgb(var(--app-accent) / 0.07);
     pointer-events: none;
   }
 
   .motion-spin {
-    animation: motion-spin 0.75s linear infinite;
+    animation: motion-spin 0.7s linear infinite;
     will-change: transform;
   }
   @keyframes motion-spin {
@@ -1133,13 +1132,12 @@
   }
   @keyframes dot-breathe {
     0%, 100% { transform: scale(1); opacity: 0.8; }
-    50% { transform: scale(1.2); opacity: 1; }
+    50% { transform: scale(1.25); opacity: 1; }
   }
 
   .perf-contain { contain: layout style paint; }
   .perf-contain-content { contain: content; }
   .perf-strict { contain: strict; }
-
   .perf-auto-vis {
     content-visibility: auto;
     contain-intrinsic-size: auto 52px;
@@ -1155,11 +1153,11 @@
   }
 
   .segmented-nav {
-    border: 1px solid rgb(var(--border) / 0.45);
-    background: rgb(var(--app-surface-2) / 0.45);
+    border: 1px solid rgb(var(--border) / 0.4);
+    background: rgb(var(--app-surface-2) / 0.4);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.04),
-      inset 0 -1px 0 rgb(0 0 0 / 0.06);
+      inset 0 1px 0 rgb(255 255 255 / 0.05),
+      inset 0 -1px 0 rgb(0 0 0 / 0.05);
     border-radius: var(--radius-md);
   }
 
@@ -1172,7 +1170,7 @@
   }
   .pane-divider:hover,
   .pane-divider[data-dragging='true'] {
-    background: rgb(var(--accent) / 0.035);
+    background: rgb(var(--accent) / 0.03);
   }
   .pane-divider::before {
     content: '';
@@ -1181,8 +1179,8 @@
     left: 50%;
     width: 1px;
     transform: translateX(-50%);
-    border-radius: 999px;
-    background: rgb(var(--border) / 0.55);
+    border-radius: var(--radius-pill);
+    background: rgb(var(--border) / 0.5);
   }
   .pane-divider::after {
     content: '';
@@ -1192,9 +1190,9 @@
     width: 3px;
     height: 28px;
     transform: translate(-50%, -50%);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: rgb(var(--app-surface));
-    border: 1px solid rgb(var(--border) / 0.55);
+    border: 1px solid rgb(var(--border) / 0.5);
     transition:
       border-color var(--motion-fast) var(--ease-out),
       background-color var(--motion-fast) var(--ease-out),
@@ -1203,31 +1201,31 @@
   .pane-divider:hover::after,
   .pane-divider[data-dragging='true']::after {
     width: 4px;
-    border-color: rgb(var(--accent) / 0.4);
-    background: rgb(var(--accent) / 0.1);
+    border-color: rgb(var(--accent) / 0.35);
+    background: rgb(var(--accent) / 0.08);
   }
 
   .timer-hero {
     background:
-      linear-gradient(180deg, rgb(var(--app-surface) / 0.75), rgb(var(--app-surface-3) / 0.4)),
+      linear-gradient(180deg, rgb(var(--app-surface) / 0.7), rgb(var(--app-surface-3) / 0.35)),
       rgb(var(--app-surface));
   }
 
   .timer-context-strip {
-    border-top: 1px solid rgb(var(--border) / 0.4);
-    border-bottom: 1px solid rgb(var(--border) / 0.3);
+    border-top: 1px solid rgb(var(--border) / 0.35);
+    border-bottom: 1px solid rgb(var(--border) / 0.25);
     padding-block: 7px;
   }
 
   .timer-plan-strip {
     border-radius: var(--radius-lg);
-    border: 1px solid rgb(var(--border) / 0.4);
+    border: 1px solid rgb(var(--border) / 0.35);
     background:
-      linear-gradient(180deg, rgb(var(--app-surface) / 0.45), rgb(var(--app-surface-2) / 0.2)),
-      rgb(var(--app-surface) / 0.45);
+      linear-gradient(180deg, rgb(var(--app-surface) / 0.4), rgb(var(--app-surface-2) / 0.18)),
+      rgb(var(--app-surface) / 0.4);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.04),
-      inset 0 -1px 0 rgb(0 0 0 / 0.06);
+      inset 0 1px 0 rgb(255 255 255 / 0.05),
+      inset 0 -1px 0 rgb(0 0 0 / 0.05);
     padding: 5px;
   }
 
@@ -1240,21 +1238,21 @@
       transform var(--motion-instant) var(--ease-out);
   }
   .task-row-parent {
-    border: 1px solid rgb(var(--border) / 0.4);
-    background: rgb(var(--app-surface) / 0.55);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
+    border: 1px solid rgb(var(--border) / 0.35);
+    background: rgb(var(--app-surface) / 0.5);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
   }
   .task-row-parent:hover {
-    border-color: rgb(var(--border-strong) / 0.5);
-    background: rgb(var(--app-surface-3) / 0.55);
+    border-color: rgb(var(--border-strong) / 0.45);
+    background: rgb(var(--app-surface-3) / 0.5);
   }
   .task-row-child {
     border: 1px solid transparent;
-    background: rgb(var(--app-surface) / 0.15);
+    background: rgb(var(--app-surface) / 0.12);
   }
   .task-row-child:hover {
-    border-color: rgb(var(--border) / 0.35);
-    background: rgb(var(--app-surface-2) / 0.35);
+    border-color: rgb(var(--border) / 0.3);
+    background: rgb(var(--app-surface-2) / 0.3);
   }
 
   .task-tree-children {
@@ -1269,15 +1267,15 @@
     top: 3px;
     bottom: 3px;
     width: 1px;
-    background: rgb(var(--border) / 0.45);
+    background: rgb(var(--border) / 0.4);
   }
 
-  /* Toggle 开关：Raycast 精确开关 */
+  /* Toggle 开关 */
   .toggle-track {
     position: relative;
     height: 18px;
     width: 32px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     transition: background-color var(--motion-fast) var(--ease-out);
     flex-shrink: 0;
   }
@@ -1286,11 +1284,11 @@
     top: 2px;
     height: 14px;
     width: 14px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: #fff;
     box-shadow:
-      0 1px 2px rgb(0 0 0 / 0.2),
-      0 0 0 0.5px rgb(0 0 0 / 0.08);
+      0 1px 2px rgb(0 0 0 / 0.18),
+      0 0 0 0.5px rgb(0 0 0 / 0.06);
     transition: transform var(--motion-normal) var(--ease-spring);
   }
 
@@ -1313,36 +1311,157 @@
   }
   input[type='range']::-webkit-slider-runnable-track {
     height: 3px;
-    border-radius: 999px;
-    background: rgb(var(--border) / 0.55);
+    border-radius: var(--radius-pill);
+    background: rgb(var(--border) / 0.5);
   }
   input[type='range']::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
     width: 13px;
     height: 13px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: rgb(var(--accent));
     margin-top: -5px;
     box-shadow:
-      0 0 0 3px rgb(var(--accent) / 0.1),
-      0 1px 2px rgb(0 0 0 / 0.1);
+      0 0 0 3px rgb(var(--accent) / 0.09),
+      0 1px 2px rgb(0 0 0 / 0.08);
     transition: box-shadow var(--motion-fast) var(--ease-out), transform var(--motion-instant) var(--ease-bounce);
   }
   input[type='range']::-webkit-slider-thumb:hover {
     box-shadow:
-      0 0 0 5px rgb(var(--accent) / 0.14),
-      0 1px 2px rgb(0 0 0 / 0.1);
-    transform: scale(1.12);
+      0 0 0 5px rgb(var(--accent) / 0.12),
+      0 1px 2px rgb(0 0 0 / 0.08);
+    transform: scale(1.1);
   }
-  input[type='range']::-webkit-slider-thumb:active {
-    transform: scale(0.93);
+  input[type='range']::-webkit-slider-thumb:active { transform: scale(0.92); }
+
+  /* Tooltip 精修 */
+  .tooltip-box {
+    pointer-events: none;
+    white-space: nowrap;
+    border-radius: 6px;
+    border: 1px solid rgb(var(--border) / 0.5);
+    background: rgb(var(--app-elevated) / 0.96);
+    backdrop-filter: blur(20px) saturate(1.5);
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    color: rgb(var(--fg-default));
+    box-shadow: var(--shadow-md);
+    z-index: 100;
+  }
+
+  /* 弧光环容器增强 */
+  .arc-ring-glow {
+    filter: drop-shadow(0 0 8px rgb(var(--app-success) / 0.15));
+  }
+  .arc-ring-glow-warning {
+    filter: drop-shadow(0 0 8px rgb(var(--app-warning) / 0.15));
+  }
+  .arc-ring-glow-accent {
+    filter: drop-shadow(0 0 8px rgb(var(--app-accent) / 0.12));
+  }
+
+  /* ── 时间线片段卡片：Apex 精致 ── */
+  .segment-chip {
+    background: rgb(var(--app-surface) / 0.5);
+    transition:
+      transform var(--motion-fast) var(--ease-bounce),
+      border-color var(--motion-fast) var(--ease-out),
+      background-color var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-normal) var(--ease-out);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.04),
+      0 1px 2px rgb(0 0 0 / 0.04);
+  }
+  .segment-chip-idle {
+    border-color: rgb(var(--app-border) / 0.45);
+  }
+  .segment-chip-idle:hover {
+    border-color: rgb(var(--app-border-strong) / 0.5);
+    background: rgb(var(--app-surface-2) / 0.6);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      0 4px 10px -6px rgb(0 0 0 / 0.1);
+  }
+  .segment-chip-active-focus {
+    border-color: rgb(var(--success) / 0.25);
+    background:
+      linear-gradient(180deg, rgb(var(--success) / 0.05), transparent 60%),
+      rgb(var(--app-surface) / 0.6);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.05),
+      0 0 0 1px rgb(var(--success) / 0.08),
+      0 4px 12px -8px rgb(var(--success) / 0.2);
+  }
+  .segment-chip-active-pause {
+    border-color: rgb(var(--warning) / 0.25);
+    background:
+      linear-gradient(180deg, rgb(var(--warning) / 0.04), transparent 60%),
+      rgb(var(--app-surface) / 0.6);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.05),
+      0 0 0 1px rgb(var(--warning) / 0.08),
+      0 4px 12px -8px rgb(var(--warning) / 0.18);
+  }
+  .segment-chip-selected {
+    border-color: rgb(var(--success) / 0.45);
+    background:
+      linear-gradient(180deg, rgb(var(--success) / 0.08), rgb(var(--success) / 0.03) 60%),
+      rgb(var(--app-surface-2) / 0.5);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      0 0 0 1px rgb(var(--success) / 0.15),
+      0 4px 14px -8px rgb(var(--success) / 0.25);
+  }
+  .timeline-container {
+    backdrop-filter: blur(8px);
+  }
+
+  /* ── Toast：Apex 玻璃质感 ── */
+  .glass-toast {
+    background: rgb(var(--app-elevated) / 0.88);
+    backdrop-filter: blur(36px) saturate(1.6) contrast(1.02);
+    -webkit-backdrop-filter: blur(36px) saturate(1.6) contrast(1.02);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.07) inset,
+      0 4px 12px -4px rgb(0 0 0 / 0.12),
+      0 12px 32px -16px rgb(0 0 0 / 0.25);
+  }
+  .toast-shell {
+    transition:
+      transform var(--motion-fast) var(--ease-bounce),
+      box-shadow var(--motion-normal) var(--ease-out);
+  }
+  .toast-shell:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.08) inset,
+      0 6px 16px -4px rgb(0 0 0 / 0.15),
+      0 16px 40px -16px rgb(0 0 0 / 0.28);
+  }
+  .toast-shell:active {
+    transform: scale(0.985);
+  }
+
+  /* 统计胶囊增强 */
+  .stat-pill {
+    transition:
+      border-color var(--motion-fast) var(--ease-out),
+      background-color var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-fast) var(--ease-out),
+      transform var(--motion-instant) var(--ease-bounce);
+  }
+  .stat-pill:hover {
+    border-color: rgb(var(--border-strong) / 0.5);
+    background: rgb(var(--app-surface-2) / 0.7);
+    transform: translateY(-0.5px);
   }
 
   @media (prefers-reduced-motion: reduce) {
     .motion-base, .motion-smooth, .motion-press, .motion-digit,
-    .motion-state-bg, .motion-rhythm-fill, .motion-state-transition,
-    .motion-number-tick, .motion-hover-glow, .motion-magnetic,
+    .motion-state-bg, .motion-rhythm-fill, .motion-magnetic,
     .card-hover-glow, .icon-hover, .icon-spin-hover {
       transition: none !important;
     }
@@ -1358,6 +1477,7 @@
     .card-hover-glow:hover { transform: none !important; }
     .icon-hover:hover { transform: none !important; }
     .icon-spin-hover:hover { transform: none !important; }
+    .stat-pill:hover { transform: none !important; }
     .theme-transition, .theme-transition *,
     .theme-transition *::before, .theme-transition *::after {
       transition: none !important;

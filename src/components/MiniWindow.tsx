@@ -1,6 +1,6 @@
-// 专注小窗 v0.4 - Calm Studio 浮窗
+// 专注小窗 v0.4.2「Apex Studio」浮窗
 // 两种模式：EXPANDED（420×184 详情卡）、COLLAPSED（260×88 缩小卡）
-// 时间即主角：克制字号 + 柔和辉光，Calm Studio 精致密度
+// Liquid Glass 毛玻璃 + 微噪点纹理 + Apple 级光晕
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { FlipDigits } from './FlipDigits';
@@ -196,12 +196,20 @@ export function MiniWindow() {
     return (
       <div
         ref={containerRef}
-        className={`mini-window-shell mini-window-${state} mini-window-collapsed motion-base perf-contain flex h-full w-full flex-col justify-between px-3 py-2 text-fg`}
+        className={`mini-window-shell mini-window-${state} mini-window-collapsed motion-base perf-contain mini-noise-overlay flex h-full w-full flex-col justify-between px-3 py-2 text-fg`}
         onDoubleClick={handleExpand}
         title="双击展开"
       >
+        {/* 状态色彩溢出光晕 */}
+        {isRunning && (
+          <div className="mini-color-spill mini-color-spill-running" />
+        )}
+        {isPaused && (
+          <div className="mini-color-spill mini-color-spill-paused" />
+        )}
+
         {/* 顶部：状态 + 展开 */}
-        <div className="flex items-center justify-between">
+        <div className="relative z-10 flex items-center justify-between">
           <div className="flex min-w-0 items-center gap-1.5">
             <StateDot state={state} />
             <span className={`truncate text-[9.5px] font-semibold ${STATE_TEXT[state]}`}>
@@ -218,14 +226,14 @@ export function MiniWindow() {
         </div>
 
         {/* 中央：巨型时间 - 主角 */}
-        <div className="flex items-baseline justify-center gap-2">
+        <div className="relative z-10 flex items-baseline justify-center gap-2">
           <span
             className={`timer-digit text-[22px] font-bold leading-none ${activeTone}`}
             style={{
               textShadow: isRunning
-                ? '0 0 12px rgb(var(--app-success) / 0.35)'
+                ? '0 0 16px rgb(var(--app-success) / 0.4), 0 0 32px rgb(var(--app-success) / 0.15)'
                 : isPaused
-                  ? '0 0 12px rgb(var(--app-warning) / 0.35)'
+                  ? '0 0 16px rgb(var(--app-warning) / 0.4), 0 0 32px rgb(var(--app-warning) / 0.15)'
                   : 'none',
             }}
           >
@@ -234,7 +242,7 @@ export function MiniWindow() {
         </div>
 
         {/* 底部：累计 */}
-        <div className="flex items-center justify-center gap-1.5">
+        <div className="relative z-10 flex items-center justify-center gap-1.5">
           <span className="text-[8.5px] font-medium text-fg-subtle">{cumulativeLabel}</span>
           <span className="timer-digit motion-digit text-[10px] font-bold text-fg-muted">
             {formatDuration(cumulativeMs)}
@@ -248,10 +256,18 @@ export function MiniWindow() {
   return (
     <div
       ref={containerRef}
-      className={`mini-window-shell mini-window-${state} motion-base perf-contain flex h-full w-full flex-col px-3 py-2.5 text-fg`}
+      className={`mini-window-shell mini-window-${state} motion-base perf-contain mini-noise-overlay flex h-full w-full flex-col px-3 py-2.5 text-fg`}
     >
+      {/* 状态色彩溢出光晕 */}
+      {isRunning && (
+        <div className="mini-color-spill mini-color-spill-running" />
+      )}
+      {isPaused && (
+        <div className="mini-color-spill mini-color-spill-paused" />
+      )}
+
       {/* 顶部：状态 + 任务 + 窗口控制 */}
-      <div className="mini-top-row flex items-center justify-between gap-1.5">
+      <div className="mini-top-row relative z-10 flex items-center justify-between gap-1.5">
         <div className="flex min-w-0 items-center gap-1.5">
           <StateDot state={state} size="xs" />
           <span className={`shrink-0 text-[9.5px] font-semibold ${STATE_TEXT[state]}`}>
@@ -282,7 +298,7 @@ export function MiniWindow() {
       </div>
 
       {/* 中部：巨型时间 + 累计统计 */}
-      <div className="mt-1.5 flex items-center justify-between gap-3">
+      <div className="relative z-10 mt-1.5 flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="text-[9px] font-bold uppercase tracking-wide text-fg-subtle">
             {isPaused ? '当前暂停片段' : isRunning ? '当前专注片段' : '准备开始'}
@@ -291,9 +307,9 @@ export function MiniWindow() {
             className={`timer-digit mt-0.5 text-[32px] font-bold leading-none ${activeTone}`}
             style={{
               textShadow: isRunning
-                ? '0 0 20px rgb(var(--app-success) / 0.25)'
+                ? '0 0 24px rgb(var(--app-success) / 0.3), 0 0 48px rgb(var(--app-success) / 0.1)'
                 : isPaused
-                  ? '0 0 20px rgb(var(--app-warning) / 0.25)'
+                  ? '0 0 24px rgb(var(--app-warning) / 0.3), 0 0 48px rgb(var(--app-warning) / 0.1)'
                   : 'none',
             }}
           >
@@ -307,7 +323,7 @@ export function MiniWindow() {
       </div>
 
       {/* 底部：控制 + 总历时 */}
-      <div className="mt-auto flex items-center justify-between gap-2 pt-1.5">
+      <div className="relative z-10 mt-auto flex items-center justify-between gap-2 pt-1.5">
         <div className="flex items-center gap-1.5">
           <span className="text-[8.5px] font-medium text-fg-subtle">总历时</span>
           <span className="timer-digit motion-digit text-[10px] font-bold text-fg-muted">
@@ -350,7 +366,7 @@ function MiniStat({
   const toneClass =
     tone === 'focus' ? 'text-success' : tone === 'pause' ? 'text-warning' : 'text-fg-muted';
   return (
-    <div className={`mini-stat-card min-w-0 px-2 py-1 ${className}`}>
+    <div className={`mini-stat-card motion-press min-w-0 px-2 py-1 ${className}`}>
       <div className={`truncate text-[8.5px] font-semibold ${toneClass}`}>{label}</div>
       <div className="timer-digit mt-0.5 truncate text-[11px] font-bold leading-none text-fg">
         {value}

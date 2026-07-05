@@ -82,14 +82,14 @@ export default function App() {
 
   const pageTransition = {
     type: 'spring' as const,
-    stiffness: 480,
-    damping: 38,
-    mass: 0.7,
+    stiffness: 520,
+    damping: 36,
+    mass: 0.6,
   };
   const pageVariants = {
-    initial: { opacity: 0, x: 5, scale: 0.997 },
+    initial: { opacity: 0, x: 4, scale: 0.998 },
     animate: { opacity: 1, x: 0, scale: 1 },
-    exit: { opacity: 0, x: -3, scale: 0.997 },
+    exit: { opacity: 0, x: -2, scale: 0.998 },
   };
 
   const timerState = snapshot?.state ?? 'idle';
@@ -102,7 +102,7 @@ export default function App() {
 
   return (
     <div className="app-shell theme-transition flex h-screen w-screen overflow-hidden text-fg antialiased">
-      {/* ── 侧轨：Raycast 风紧凑导航 ── */}
+      {/* ── 侧轨：Apex 紧凑导航 ── */}
       <aside className="side-rail relative z-20 flex w-[52px] flex-col items-center gap-0.5 py-2.5">
         <BrandMark state={timerState} />
 
@@ -235,20 +235,20 @@ function TimerStage({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: 0.1, ease: [0.16, 1, 0.3, 1] }}
               onClick={onToggleDrawer}
-              className="absolute inset-0 z-30 bg-black/35 backdrop-blur-[2px]"
+              className="absolute inset-0 z-30 bg-black/30 backdrop-blur-[2px]"
             />
             <motion.div
               key="drawer-panel"
-              initial={{ x: '100%', opacity: 0.7 }}
+              initial={{ x: '100%', opacity: 0.6 }}
               animate={{ x: 0, opacity: 1 }}
-              exit={{ x: '100%', opacity: 0.7 }}
-              transition={{ type: 'spring', stiffness: 550, damping: 40, mass: 0.7 }}
-              className="motion-gpu absolute bottom-0 right-0 top-0 z-40 flex w-[320px] max-w-[88vw] flex-col border-l border-border/50 glass"
-              style={{ borderTopLeftRadius: 12, borderBottomLeftRadius: 12 }}
+              exit={{ x: '100%', opacity: 0.6 }}
+              transition={{ type: 'spring', stiffness: 600, damping: 38, mass: 0.6 }}
+              className="motion-gpu absolute bottom-0 right-0 top-0 z-40 flex w-[320px] max-w-[88vw] flex-col border-l border-border/40 glass-elevated"
+              style={{ borderTopLeftRadius: 14, borderBottomLeftRadius: 14 }}
             >
-              <div className="flex items-center justify-between border-b border-border/45 px-4 py-2.5">
+              <div className="flex items-center justify-between border-b border-border/40 px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <Icon.ListTodo size="sm" tone="accent" />
                   <span className="font-display text-[13px] font-semibold">任务</span>
@@ -299,9 +299,9 @@ function RailBtn({
       : 'text-fg-muted';
   const dangerHover = danger ? 'hover:!bg-danger/10 hover:!text-danger' : '';
   const activeStyle = active && !accent && !ghost
-    ? { boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.05), 0 1px 2px rgb(0 0 0 / 0.08)' }
+    ? { boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.06), 0 1px 2px rgb(0 0 0 / 0.06)' }
     : active && accent
-      ? { boxShadow: 'inset 0 0 0 1px rgb(var(--accent) / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.06)' }
+      ? { boxShadow: 'inset 0 0 0 1px rgb(var(--accent) / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.07)' }
       : undefined;
   return (
     <button
@@ -312,15 +312,17 @@ function RailBtn({
       aria-label={label}
     >
       {icon}
-      <span className="pointer-events-none absolute left-[42px] z-50 whitespace-nowrap rounded-lg border border-border/60 bg-elevated/98 px-2 py-1 text-[11px] font-medium text-fg shadow-lg backdrop-blur-xl opacity-0 transition-[opacity,transform] duration-[var(--motion-fast)] ease-[var(--ease-spring)] translate-x-[-2px] group-hover:opacity-100 group-hover:translate-x-0">
+      {/* Apex Tooltip: 6px圆角 + backdrop-blur */}
+      <span className="pointer-events-none absolute left-[44px] z-50 whitespace-nowrap tooltip-box opacity-0 transition-[opacity,transform] duration-[var(--motion-fast)] ease-[var(--ease-spring)] translate-x-[-3px] group-hover:opacity-100 group-hover:translate-x-0">
         {label}
       </span>
+      {/* Linear风格激活指示条 */}
       {active && (
         <motion.span
           layoutId="rail-active-indicator"
-          className="absolute -left-1 top-1/2 h-1 w-1 -translate-y-1/2 rounded-full bg-accent"
-          style={{ boxShadow: '0 0 5px 1px rgb(var(--accent) / 0.5)' }}
-          transition={{ type: 'spring', stiffness: 550, damping: 38 }}
+          className="absolute -left-[3px] top-1/2 h-[18px] w-[2.5px] -translate-y-1/2 rounded-full bg-accent"
+          style={{ boxShadow: '0 0 6px rgb(var(--accent) / 0.45)' }}
+          transition={{ type: 'spring', stiffness: 600, damping: 38 }}
         />
       )}
     </button>
@@ -329,22 +331,40 @@ function RailBtn({
 
 function BrandMark({ state }: { state: string }) {
   const running = state === 'running';
+  const paused = state === 'paused';
+  const statusColor = running ? 'var(--app-success)' : paused ? 'var(--app-warning)' : 'var(--app-accent)';
   return (
     <div
       className={`brand-mark relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl transition-all duration-[var(--motion-normal)] ease-[var(--ease-in-out)] ${
-        running ? 'border-success/25' : ''
+        running ? 'border-success/20' : paused ? 'border-warning/20' : ''
       }`}
-      style={running ? { boxShadow: '0 0 0 1px rgb(var(--success) / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.06)' } : undefined}
+      style={
+        running
+          ? { boxShadow: '0 0 0 1px rgb(var(--success) / 0.06), inset 0 1px 0 rgb(255 255 255 / 0.07)' }
+          : paused
+            ? { boxShadow: '0 0 0 1px rgb(var(--warning) / 0.06), inset 0 1px 0 rgb(255 255 255 / 0.07)' }
+            : undefined
+      }
       title="FocusLink"
     >
-      <span className="brand-mark-ring" style={running ? { borderColor: 'rgb(var(--success) / 0.5)' } : undefined} />
+      <span
+        className="brand-mark-ring"
+        style={{
+          borderColor: running
+            ? 'rgb(var(--success) / 0.45)'
+            : paused
+              ? 'rgb(var(--warning) / 0.4)'
+              : 'rgb(var(--accent) / 0.5)',
+        }}
+      />
       {running && <span className="brand-mark-progress" />}
       <span className="brand-mark-core" />
       <span className="brand-mark-node" />
       <span
         className={`brand-mark-status absolute bottom-[5px] rounded-full transition-all duration-[var(--motion-normal)] ease-[var(--ease-in-out)] ${
-          running ? 'w-[12px] opacity-100' : 'opacity-50'
+          running || paused ? 'w-[12px] opacity-100' : 'opacity-40'
         }`}
+        style={{ background: statusColor }}
       />
     </div>
   );
