@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.2 - 2026-07-05（极光剧场 · Step 3：计时舞台重构）
+
+- **巨型弧光环**：新增 `ArcRing` 组件，280px SVG 圆环显示分钟节奏进度（0-60s），专注态绿色辉光弧、暂停态橙色辉光弧。
+- **中央时间舞台**：60px JetBrains Mono 巨型数字置于弧光环中央，running 时带 success 色文字辉光阴影。
+- **辉光滤镜**：弧光环使用 `feGaussianBlur` + `feMerge` 实现 SVG 辉光滤镜，外圈装饰刻度环增强精密感。
+- **呼吸辉光**：running 态弧光环外圈有 3s 循环的 radial-gradient 呼吸辉光。
+- **统计胶囊化**：累计专注/暂停/总历时从底部三栏 grid 改为水平胶囊行（`StatPill`），带图标 + 色调。
+- **状态徽章重设计**：`StateBadge` 改为 pill 样式，running 态有 ping 脉冲圆点。
+- **任务上下文条**：保持上下分离条样式，状态色随计时态切换（running=success、paused=warning）。
+- 保留全部计时逻辑（useDisplayValues、handleToggle、handleStop、关联/清除/预选等）不变。
+- typecheck + 59 测试通过。
+
 ## v0.3.1 - 2026-07-05（极光剧场 · Step 2：主窗口骨架重构）
 
 - **拆除左右分栏**：彻底移除 v0.2 的「左计时 + 分割线 + 右任务」三段式布局。
