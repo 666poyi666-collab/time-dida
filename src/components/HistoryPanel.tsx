@@ -653,14 +653,14 @@ export function HistoryPanel() {
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="mx-auto max-w-4xl">
-        <div className="mb-4 flex items-end justify-between gap-4">
+        <div className="mb-5 flex items-end justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-fg">历史记录</h2>
+            <h2 className="font-display text-xl font-bold text-fg">历史记录</h2>
             <p className="mt-1 text-xs text-fg-subtle">
               按日期和周期查看专注时间，以及每个 Segment 花在哪个任务上。
             </p>
           </div>
-          <span className="rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs text-fg-muted">
+          <span className="rounded-lg border border-border bg-bg-card/60 px-2.5 py-1 text-xs font-medium text-fg-muted backdrop-blur-sm">
             {filteredSessions.length} / {sessions.length} 条记录
           </span>
         </div>

@@ -276,10 +276,10 @@ export function SettingsPanel() {
   return (
     <div className="flex h-full flex-col">
       {/* 标题 + Tab 栏 */}
-      <div className="shrink-0 border-b border-border px-6 pb-4 pt-6">
+      <div className="shrink-0 border-b border-border/60 px-6 pb-4 pt-6">
         <div className="mx-auto max-w-2xl">
-          <h2 className="mb-4 text-lg font-semibold">设置</h2>
-          <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-bg-subtle/50 p-1">
+          <h2 className="font-display mb-4 text-xl font-bold text-fg">设置</h2>
+          <div className="flex flex-wrap gap-1 rounded-xl border border-border/60 bg-bg-subtle/40 p-1">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
