@@ -43,6 +43,11 @@ async function syncFocusRecordToCloud(taskId: string, record: FocusRecord): Prom
     ...record,
     taskId,
   };
+  const settings = getSettings();
+  if (settings.taskSource === 'ticktick-cli' && provider.appendFocusRecordsToTask) {
+    await provider.appendFocusRecordsToTask(taskId, [recordWithTask]);
+    return;
+  }
   if (provider.createFocusRecord) {
     await provider.createFocusRecord(recordWithTask);
     return;
@@ -135,7 +140,11 @@ export async function resyncSegment(segmentId: string): Promise<{ ok: boolean; e
     return { ok: false, error: '片段尚未结束' };
   }
   if (!seg.taskId || seg.taskSource !== 'ticktick') {
-    logger.warn('sync', 'resyncSegment: segment not linked to ticktick', { segmentId, taskId: seg.taskId, taskSource: seg.taskSource });
+    logger.warn('sync', 'resyncSegment: segment not linked to ticktick', {
+      segmentId,
+      taskId: seg.taskId,
+      taskSource: seg.taskSource,
+    });
     return { ok: false, error: '片段未关联滴答任务' };
   }
   // 1. 删除云端记录（若有 cloudFocusId，或通过 marker 反查）
@@ -145,7 +154,10 @@ export async function resyncSegment(segmentId: string): Promise<{ ok: boolean; e
     return { ok: false, error: '未配置可用的任务提供器' };
   }
   if (provider.deleteFocusRecord) {
-    logger.info('sync', 'resyncSegment: calling deleteFocusRecord', { segmentId, cloudFocusId: seg.cloudFocusId });
+    logger.info('sync', 'resyncSegment: calling deleteFocusRecord', {
+      segmentId,
+      cloudFocusId: seg.cloudFocusId,
+    });
     try {
       const deleteOk = await provider.deleteFocusRecord(segmentId);
       logger.info('sync', 'resyncSegment: deleteFocusRecord result', { segmentId, ok: deleteOk });
@@ -299,9 +311,14 @@ async function processItem(item: SyncQueueItem): Promise<{ ok: boolean; error?: 
       segmentIds = [payload.segmentId];
     } else if (payload.type === 'segment-comment' && payload.segmentId) {
       segmentIds = [payload.segmentId];
-    } else if ((payload.type === 'segment-focus' || payload.type === 'session-focus') && payload.sessionId) {
+    } else if (
+      (payload.type === 'segment-focus' || payload.type === 'session-focus') &&
+      payload.sessionId
+    ) {
       const segs = listSegments(payload.sessionId);
-      segmentIds = segs.filter((s) => s.taskId && s.taskSource === 'ticktick' && s.endedAt).map((s) => s.id);
+      segmentIds = segs
+        .filter((s) => s.taskId && s.taskSource === 'ticktick' && s.endedAt)
+        .map((s) => s.id);
     } else {
       return { ok: true };
     }

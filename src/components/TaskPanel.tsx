@@ -937,7 +937,7 @@ function SyncStatus() {
       } else if (res.processed > 0) {
         addToast(`同步完成：${res.succeeded} 项成功`, 'success');
       } else {
-        addToast('没有待同步的记录', 'info');
+        addToast('没有未同步的记录', 'info');
       }
     } catch (e) {
       addToast('同步失败：' + (e as Error).message, 'error');
@@ -951,14 +951,14 @@ function SyncStatus() {
   const statusTitle = hasProblem
     ? '同步队列有失败记录'
     : hasPending
-      ? '有记录等待同步'
+      ? '未同步记录等待处理'
       : '同步队列空';
   const statusSub = stats
     ? `本次处理 ${stats.processed} 项，成功 ${stats.succeeded} 项`
     : hasProblem
-      ? (counts.lastError ?? `${counts.failed} 项失败，${counts.pending} 项待同步`)
+      ? (counts.lastError ?? `${counts.failed} 项失败，${counts.pending} 项未同步`)
       : hasPending
-        ? `${counts.pending} 项待同步`
+        ? `${counts.pending} 项未同步`
         : counts.synced > 0
           ? `最近 ${counts.synced} 项已同步`
           : '暂无同步队列记录';

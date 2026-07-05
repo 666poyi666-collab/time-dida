@@ -77,6 +77,9 @@ export function HistoryPanel() {
   const [completedTaskIds, setCompletedTaskIds] = useState<Set<string>>(() => new Set());
   const [sessionSyncMeta, setSessionSyncMeta] = useState<Record<string, SessionSyncState>>({});
   const [syncQueue, setSyncQueue] = useState<SyncQueueItem[]>([]);
+  const [sessionSegmentsById, setSessionSegmentsById] = useState<Record<string, FocusSegment[]>>(
+    {},
+  );
   const [rangePreset, setRangePreset] = useState<RangePreset>('today');
   const [customStart, setCustomStart] = useState(toDateInput(Date.now()));
   const [customEnd, setCustomEnd] = useState(toDateInput(Date.now()));
@@ -112,8 +115,20 @@ export function HistoryPanel() {
       window.focuslink.sessions.list(100),
       window.focuslink.sync.list(),
     ]);
-    setSessions(list);
+    const sessionList = list as FocusSession[];
+    setSessions(sessionList);
     setSyncQueue(queue as SyncQueueItem[]);
+    const segmentEntries = await Promise.all(
+      sessionList.map(async (session) => {
+        try {
+          const d = await window.focuslink.sessions.get(session.id);
+          return [session.id, d?.segments ?? []] as const;
+        } catch {
+          return [session.id, []] as const;
+        }
+      }),
+    );
+    setSessionSegmentsById(Object.fromEntries(segmentEntries));
   };
 
   useEffect(() => {
@@ -123,6 +138,10 @@ export function HistoryPanel() {
   const reloadDetail = async (id: string) => {
     const d = await window.focuslink.sessions.get(id);
     setDetail(d);
+    setSessionSegmentsById((prev) => ({
+      ...prev,
+      [id]: d?.segments ?? [],
+    }));
   };
 
   const refreshSyncQueue = async () => {
@@ -144,7 +163,11 @@ export function HistoryPanel() {
 
   const handleDelete = async (id: string) => {
     const isCurrentSession = snapshot?.sessionId === id;
-    if (isCurrentSession && snapshot && (snapshot.state === 'running' || snapshot.state === 'paused')) {
+    if (
+      isCurrentSession &&
+      snapshot &&
+      (snapshot.state === 'running' || snapshot.state === 'paused')
+    ) {
       addToast('当前专注仍在进行中，请先结束专注后再删除这条记录。', 'error');
       return;
     }
@@ -331,7 +354,7 @@ export function HistoryPanel() {
       [sessionId]: {
         label: '同步中',
         tone: 'warn',
-        title: '已关联滴答任务，正在写入任务评论',
+        title: '已关联滴答任务，正在同步到滴答清单',
       },
     }));
     try {
@@ -353,9 +376,12 @@ export function HistoryPanel() {
       setSessionSyncMeta((prev) => ({
         ...prev,
         [sessionId]: {
-          label: result.succeeded > 0 ? `已同步 ${result.succeeded} 条` : '已入队',
-          tone: 'ok',
-          title: '滴答任务评论同步已完成或已被队列记录',
+          label: result.succeeded > 0 ? `已同步 ${result.succeeded} 条` : '未同步',
+          tone: result.succeeded > 0 ? 'ok' : 'muted',
+          title:
+            result.succeeded > 0
+              ? '同步到滴答清单已完成'
+              : '没有新的未同步队列项；可能已同步，或没有有效滴答片段',
         },
       }));
       if (result.succeeded > 0) {
@@ -502,9 +528,9 @@ export function HistoryPanel() {
         setSessionSyncMeta((prev) => ({
           ...prev,
           [sessionId]: {
-            label: '无待同步项',
+            label: '未同步',
             tone: 'warn',
-            title: '没有新的待同步队列项（可能已全部同步）',
+            title: '没有新的未同步队列项（可能已全部同步）',
           },
         }));
         addToast('没有需要同步的滴答任务记录（可能已全部同步）', 'info');
@@ -730,10 +756,12 @@ export function HistoryPanel() {
                           {formatRelative(session.startedAt)}
                         </span>
                       </div>
-                      {session.endedAt && session.wallElapsedMs > session.activeElapsedMs + 60000 ? (
+                      {session.endedAt &&
+                      session.wallElapsedMs > session.activeElapsedMs + 60000 ? (
                         /* 总历时远大于专注时长（含大量暂停）：避免 "开始→结束" 时间段误导 */
                         <div className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
-                          {formatDateTime(session.startedAt)} 开始 · 专注 {formatDuration(session.activeElapsedMs)}
+                          {formatDateTime(session.startedAt)} 开始 · 专注{' '}
+                          {formatDuration(session.activeElapsedMs)}
                         </div>
                       ) : (
                         <div className="mt-0.5 text-xs leading-relaxed text-fg-subtle">
@@ -752,7 +780,11 @@ export function HistoryPanel() {
                     <div className="hidden items-center gap-3 text-[11px] text-fg-muted sm:flex">
                       <SessionLinkPreview
                         session={session}
-                        segments={detail?.session.id === session.id ? detail.segments : null}
+                        segments={
+                          detail?.session.id === session.id
+                            ? detail.segments
+                            : sessionSegmentsById[session.id]
+                        }
                       />
                       <SessionSyncBadge state={syncState} />
                       <span>专注 {formatDuration(session.activeElapsedMs)}</span>
@@ -920,7 +952,7 @@ function SessionLinkPreview({
   segments,
 }: {
   session: FocusSession;
-  segments: FocusSegment[] | null;
+  segments?: FocusSegment[];
 }) {
   if (segments) {
     const linked = segments.filter((seg) => seg.taskId && seg.taskSource);
@@ -961,7 +993,7 @@ function SessionLinkPreview({
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-subtle px-2 py-1 text-fg-subtle">
-      <Link2 size={10} /> 查看片段关联
+      <Link2 size={10} /> 展开查看片段
     </span>
   );
 }
@@ -1020,7 +1052,9 @@ function SessionDetailHeader({
             </p>
             {session.endedAt && session.wallElapsedMs > session.activeElapsedMs + 60000 ? (
               <span className="text-xs text-fg-subtle">
-                {formatDateTime(session.startedAt)} 开始 · 专注 {formatDuration(session.activeElapsedMs)} · 总历时 {formatDuration(session.wallElapsedMs)}
+                {formatDateTime(session.startedAt)} 开始 · 专注{' '}
+                {formatDuration(session.activeElapsedMs)} · 总历时{' '}
+                {formatDuration(session.wallElapsedMs)}
               </span>
             ) : (
               <span className="text-xs text-fg-subtle">
@@ -1324,7 +1358,10 @@ function HistoryFocusTimelineRow({
             {seg.endedAt && ` - ${formatDateTime(seg.endedAt)}`}
           </span>
           {isSynced && (
-            <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent" title="已同步到滴答云端">
+            <span
+              className="rounded-md bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent"
+              title="已同步到滴答云端"
+            >
               已同步
             </span>
           )}

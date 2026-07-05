@@ -62,7 +62,7 @@ describe('sync queue status aggregation', () => {
         queueItem('pending', { type: 'session-note', sessionId: 'session-1' }, 'pending', 100),
       ),
     ).toMatchObject({
-      label: '待同步',
+      label: '未同步',
       tone: 'warn',
     });
 
@@ -104,7 +104,7 @@ describe('sync queue status aggregation', () => {
     ]);
 
     expect(map['session-1']).toMatchObject({
-      label: '待同步',
+      label: '未同步',
       tone: 'warn',
     });
   });

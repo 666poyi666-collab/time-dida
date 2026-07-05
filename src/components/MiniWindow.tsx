@@ -216,7 +216,7 @@ export function MiniWindow() {
     return (
       <div
         ref={containerRef}
-        className={`mini-window-shell mini-window-${state} mini-window-collapsed motion-base flex h-full w-full flex-col rounded-[26px] px-3.5 py-2.5 text-fg`}
+        className={`mini-window-shell mini-window-${state} mini-window-collapsed motion-base flex h-full w-full flex-col px-3.5 py-2.5 text-fg`}
         onDoubleClick={handleExpand}
         title="双击展开"
       >
@@ -237,19 +237,19 @@ export function MiniWindow() {
         </div>
 
         <div className="mt-2 grid min-h-0 flex-1 grid-cols-2 gap-2">
-          <div className="mini-stat-card mini-stat-card-primary min-w-0 px-2.5 py-1.5">
+          <div className="mini-stat-card mini-stat-card-primary mini-stat-compact min-w-0 px-2.5 py-1.5">
             <div className="truncate text-[9px] font-semibold text-fg-subtle">{primaryLabel}</div>
             <div
-              className={`timer-digit motion-digit mt-0.5 text-[17px] font-bold leading-none ${activeTone}`}
+              className={`timer-digit motion-digit mt-0.5 text-[18px] font-bold leading-none ${activeTone}`}
             >
               {formatDuration(isIdle ? 0 : primaryMs)}
             </div>
           </div>
-          <div className="mini-stat-card min-w-0 px-2.5 py-1.5">
+          <div className="mini-stat-card mini-stat-compact min-w-0 px-2.5 py-1.5">
             <div className="truncate text-[9px] font-semibold text-fg-subtle">
               {cumulativeLabel}
             </div>
-            <div className="timer-digit motion-digit mt-0.5 text-[17px] font-bold leading-none text-fg">
+            <div className="timer-digit motion-digit mt-0.5 text-[18px] font-bold leading-none text-fg">
               {formatDuration(cumulativeMs)}
             </div>
           </div>
@@ -262,9 +262,9 @@ export function MiniWindow() {
   return (
     <div
       ref={containerRef}
-      className={`mini-window-shell mini-window-${state} motion-base flex h-full w-full flex-col rounded-[30px] px-4 py-3 text-fg`}
+      className={`mini-window-shell mini-window-${state} motion-base flex h-full w-full flex-col px-4 py-3 text-fg`}
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className="mini-top-row flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <StateDot state={state} size="xs" />
           <span className={`shrink-0 text-[10px] font-semibold ${STATE_TEXT[state]}`}>
@@ -294,8 +294,8 @@ export function MiniWindow() {
         </div>
       </div>
 
-      <div className="mt-2 flex items-end justify-between gap-3">
-        <div className="min-w-0">
+      <div className="mt-2 flex items-stretch justify-between gap-3">
+        <div className="mini-time-block min-w-0 flex-1 px-3 py-2">
           <div className="text-[9px] font-semibold text-fg-subtle">
             {isPaused ? '当前暂停片段' : isRunning ? '当前专注片段' : '准备开始'}
           </div>
@@ -311,7 +311,7 @@ export function MiniWindow() {
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-5 gap-1.5">
+      <div className="mt-2 grid grid-cols-5 gap-1.5">
         <MiniStat
           label="当前专注"
           value={formatDuration(isRunning ? currentFocusMs : 0)}
@@ -327,7 +327,7 @@ export function MiniWindow() {
         <MiniStat label="总历时" value={formatDuration(wallElapsedMs)} className="col-span-1" />
       </div>
 
-      <div className="mt-auto flex items-center justify-center gap-2 pt-2">
+      <div className="mt-auto flex items-center justify-center gap-2 pt-1.5">
         <button
           className="mini-primary-button no-drag motion-press inline-flex h-7 items-center gap-1.5 px-4 text-[11px] font-semibold"
           onClick={handleToggle}

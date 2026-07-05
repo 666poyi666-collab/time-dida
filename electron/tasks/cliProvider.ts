@@ -909,10 +909,7 @@ export class TickTickCliProvider implements TaskProvider {
       // dida task filter 可能不返回归档/共享/特定项目的任务。
       // 若有缓存，用 dida task get 二次确认任务是否仍然存在。
       if (cached) {
-        const verified = await this.verifyDidaTaskExists(
-          cached.externalId,
-          cached.projectId ?? '',
-        );
+        const verified = await this.verifyDidaTaskExists(cached.externalId, cached.projectId ?? '');
         if (verified) {
           logger.info('cli', 'task not in filter list but verified via task get', { taskId });
           return verified;
@@ -1163,10 +1160,9 @@ export class TickTickCliProvider implements TaskProvider {
     // dida 配置下：context 为 null 表示任务已删除，跳过 comment 同步
     // 非 dida 配置下：保留 getTask 回退逻辑
     const task = context?.task ?? (isDidaConfig(cfg) ? null : await this.getTask(taskId));
-    // 任务在滴答中已删除：跳过 comment 同步，不报错
     if (!task) {
-      logger.warn('cli', 'task not found in dida, skipping comment sync', { taskId });
-      return;
+      logger.warn('cli', 'task not found in dida, comment sync failed', { taskId });
+      throw new Error('滴答任务不存在或无法读取，未写入同步记录。请刷新任务列表后重新关联。');
     }
     const targetTask = context?.isChecklistItem ? context.parentTask : task;
     const externalTaskId = targetTask?.externalId ?? normalizeTaskId(taskId);
@@ -1287,30 +1283,26 @@ export class TickTickCliProvider implements TaskProvider {
       ? `${formatFocusRecord(record)}\n${marker}`
       : `${formatFocusRecord(record)}\n${marker}`;
 
-    const args = [
-      'focus',
-      'create',
-      '--type',
-      '1',
-    ];
+    const args = ['focus', 'create', '--type', '1'];
     // task-id 可选：任务已删除时不传，创建无关联的专注记录
     if (externalTaskId) {
       args.push('--task-id', externalTaskId);
     }
     args.push(
-      '--note', noteText,
-      '--start-time', startTime,
-      '--end-time', endTime,
-      '--duration', String(durationSec),
-      '--pause-duration', String(pauseDurationSec),
+      '--note',
+      noteText,
+      '--start-time',
+      startTime,
+      '--end-time',
+      endTime,
+      '--duration',
+      String(durationSec),
+      '--pause-duration',
+      String(pauseDurationSec),
       '--json',
     );
 
-    const r = await execDidaFileWithDiagnose(
-      args,
-      Math.max(cfg.timeoutMs, 15000),
-      'na',
-    );
+    const r = await execDidaFileWithDiagnose(args, Math.max(cfg.timeoutMs, 15000), 'na');
     if (r.record.status !== 'success' || isUndefinedCliOutput(r.stdout)) {
       throw new Error(
         `CLI 创建专注记录失败：${
@@ -1322,7 +1314,9 @@ export class TickTickCliProvider implements TaskProvider {
     }
     const parsed = parseJson<{ id?: string }>(r.stdout, r.record);
     if (!parsed.ok || !parsed.data.id) {
-      throw new Error(`CLI 创建专注记录返回格式异常：${parsed.ok ? '缺少 id 字段' : parsed.raw.slice(0, 200)}`);
+      throw new Error(
+        `CLI 创建专注记录返回格式异常：${parsed.ok ? '缺少 id 字段' : parsed.raw.slice(0, 200)}`,
+      );
     }
     return parsed.data.id;
   }
@@ -1344,7 +1338,9 @@ export class TickTickCliProvider implements TaskProvider {
       } else {
         // resolveDidaTaskContext 返回 null：任务已从滴答删除，或 CLI 失败且无缓存。
         // 不调用 getTask 回退（getTask 在 dida 配置下也会返回 null），直接创建无关联专注记录。
-        logger.warn('cli', 'task not found in dida, creating unassociated focus record', { taskId });
+        logger.warn('cli', 'task not found in dida, creating unassociated focus record', {
+          taskId,
+        });
       }
     }
 
@@ -1355,7 +1351,10 @@ export class TickTickCliProvider implements TaskProvider {
       const existing = await this.listDidaFocusRecords(listFrom, listTo, cfg);
       const matched = existing.find((f) => (f.note ?? '').includes(marker));
       if (matched) {
-        logger.info('cli', 'focus record already exists, skipping', { marker, focusId: matched.id });
+        logger.info('cli', 'focus record already exists, skipping', {
+          marker,
+          focusId: matched.id,
+        });
         // 即使跳过也要存储 cloudFocusId，便于后续删除
         if (record.segmentId && matched.id) {
           setSegmentCloudFocusId(record.segmentId, matched.id);
@@ -1397,7 +1396,9 @@ export class TickTickCliProvider implements TaskProvider {
     // 兜底：cloudFocusId 为空时（v0.2.17 之前同步的历史记录），通过 marker 在云端反查。
     // 这样可以把错误的旧记录（如时间偏大的 2 小时 4 分钟）也删掉再重新同步。
     if (!focusIdToDelete) {
-      logger.info('cli', 'deleteFocusRecord: no cloudFocusId, trying marker fallback', { segmentId });
+      logger.info('cli', 'deleteFocusRecord: no cloudFocusId, trying marker fallback', {
+        segmentId,
+      });
       focusIdToDelete = await this.findCloudFocusIdByMarker(seg, cfg);
       if (focusIdToDelete) {
         logger.info('cli', 'deleteFocusRecord: found cloud record via marker', {
@@ -1406,9 +1407,13 @@ export class TickTickCliProvider implements TaskProvider {
         });
       } else {
         // marker 也找不到，说明云端确实没有这条记录，视为成功
-        logger.info('cli', 'deleteFocusRecord: no cloud record found via marker, treating as success', {
-          segmentId,
-        });
+        logger.info(
+          'cli',
+          'deleteFocusRecord: no cloud record found via marker, treating as success',
+          {
+            segmentId,
+          },
+        );
         return true;
       }
     }

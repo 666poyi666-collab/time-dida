@@ -54,14 +54,14 @@ export function queueItemToSessionSyncState(item: SyncQueueItem): SessionSyncSta
     return {
       label: '已同步',
       tone: 'ok',
-      title: '最近一次同步已完成：已写入滴答云端专注记录或任务评论',
+      title: '最近一次同步已完成：已写入滴答清单',
     };
   }
   if (item.status === 'pending') {
     return {
-      label: '待同步',
+      label: '未同步',
       tone: 'warn',
-      title: '已有同步队列记录，尚未成功写入滴答',
+      title: '已有同步队列记录，尚未成功写入滴答清单',
     };
   }
   if (item.status === 'failed') {
@@ -73,7 +73,7 @@ export function queueItemToSessionSyncState(item: SyncQueueItem): SessionSyncSta
   }
   if (item.status === 'skipped') {
     return {
-      label: '已跳过',
+      label: '未同步',
       tone: 'muted',
       title: '最近一次同步被跳过',
     };
