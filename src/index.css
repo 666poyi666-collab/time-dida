@@ -983,41 +983,65 @@
     @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold;
   }
 
-  /* ── 动效工具类（沿用 v0.2 节奏） ── */
+  /* ── v0.3.8 动效系统：GPU 加速 + 高帧率丝滑 ──
+     原则：只用 transform/opacity（合成器层属性），避免触发布局重绘。
+     will-change 策略：仅对持续动画元素设置，静态元素不加（避免内存开销）。 */
+
+  /* 动效节奏精进：更细腻的三档 */
+  --motion-instant: 80ms;
+  --motion-fast: 120ms;
+  --motion-normal: 200ms;
+  --motion-slow: 320ms;
+  --motion-spring: 460ms;
+  /* spring 曲线：模拟物理弹性，比 cubic-bezier 更自然 */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+
   .motion-base {
     transition:
-      background-color var(--motion-fast) var(--ease-out),
-      border-color var(--motion-fast) var(--ease-out),
-      color var(--motion-fast) var(--ease-out),
-      box-shadow var(--motion-normal) var(--ease-out),
-      transform var(--motion-fast) var(--ease-out);
+      background-color var(--motion-fast) var(--ease-out-quart),
+      border-color var(--motion-fast) var(--ease-out-quart),
+      color var(--motion-fast) var(--ease-out-quart),
+      box-shadow var(--motion-normal) var(--ease-out-quart),
+      transform var(--motion-fast) var(--ease-out-quart);
   }
 
   .motion-smooth {
     transition:
-      background-color var(--motion-normal) var(--ease-in-out),
-      border-color var(--motion-normal) var(--ease-in-out),
-      color var(--motion-normal) var(--ease-in-out),
-      box-shadow var(--motion-slow) var(--ease-in-out),
-      opacity var(--motion-normal) var(--ease-in-out),
-      transform var(--motion-normal) var(--ease-out);
+      background-color var(--motion-normal) var(--ease-in-out-quart),
+      border-color var(--motion-normal) var(--ease-in-out-quart),
+      color var(--motion-normal) var(--ease-in-out-quart),
+      box-shadow var(--motion-slow) var(--ease-in-out-quart),
+      opacity var(--motion-normal) var(--ease-out-quart),
+      transform var(--motion-normal) var(--ease-out-quart);
+  }
+
+  /* GPU 加速：强制独立合成层，确保 60-120fps */
+  .motion-gpu {
+    will-change: transform, opacity;
+    transform: translateZ(0);
+    backface-visibility: hidden;
   }
 
   .motion-lift {
     transition:
-      transform var(--motion-normal) var(--ease-out),
-      box-shadow var(--motion-normal) var(--ease-out),
-      border-color var(--motion-fast) var(--ease-out);
+      transform var(--motion-normal) var(--ease-spring),
+      box-shadow var(--motion-normal) var(--ease-out-quart),
+      border-color var(--motion-fast) var(--ease-out-quart);
+    will-change: transform;
   }
   .motion-lift:hover {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
   }
 
   .motion-scale {
     transition:
-      transform var(--motion-fast) var(--ease-out),
-      box-shadow var(--motion-normal) var(--ease-out),
-      background-color var(--motion-fast) var(--ease-out);
+      transform var(--motion-fast) var(--ease-spring),
+      box-shadow var(--motion-normal) var(--ease-out-quart),
+      background-color var(--motion-fast) var(--ease-out-quart);
+    will-change: transform;
   }
   .motion-scale:hover {
     transform: scale(var(--scale-hover));
@@ -1028,27 +1052,31 @@
 
   .motion-press {
     transition:
-      transform var(--motion-fast) var(--ease-out),
-      background-color var(--motion-fast) var(--ease-out),
-      box-shadow var(--motion-fast) var(--ease-out);
+      transform var(--motion-instant) var(--ease-out-quart),
+      background-color var(--motion-fast) var(--ease-out-quart),
+      box-shadow var(--motion-fast) var(--ease-out-quart),
+      filter var(--motion-fast) var(--ease-out-quart);
+    will-change: transform;
   }
   .motion-press:active {
-    transform: translateY(1px);
+    transform: scale(0.97);
   }
 
   .motion-digit {
     font-variant-numeric: tabular-nums;
     font-feature-settings: 'tnum';
-    transition: opacity var(--motion-fast) var(--ease-out);
+    transition: opacity var(--motion-fast) var(--ease-out-quart);
   }
 
+  /* 高帧率入场动画：仅用 transform+opacity，GPU 合成 */
   .motion-fade-up {
-    animation: motion-fade-up var(--motion-normal) var(--ease-out) both;
+    animation: motion-fade-up var(--motion-normal) var(--ease-out-expo) both;
+    will-change: transform, opacity;
   }
   @keyframes motion-fade-up {
     from {
       opacity: 0;
-      transform: translateY(4px);
+      transform: translateY(6px);
     }
     to {
       opacity: 1;
@@ -1057,7 +1085,8 @@
   }
 
   .motion-fade-in {
-    animation: motion-fade-in var(--motion-normal) var(--ease-out) both;
+    animation: motion-fade-in var(--motion-normal) var(--ease-out-quart) both;
+    will-change: opacity;
   }
   @keyframes motion-fade-in {
     from {
@@ -1068,18 +1097,35 @@
     }
   }
 
+  /* spring 弹性入场 */
+  .motion-spring-in {
+    animation: motion-spring-in var(--motion-spring) var(--ease-spring) both;
+    will-change: transform, opacity;
+  }
+  @keyframes motion-spring-in {
+    from {
+      opacity: 0;
+      transform: scale(0.92) translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
   .motion-breathe {
-    animation: motion-breathe 3.2s var(--ease-in-out) infinite;
+    animation: motion-breathe 3.2s var(--ease-in-out-quart) infinite;
+    will-change: transform, opacity;
   }
   @keyframes motion-breathe {
     0%,
     100% {
       opacity: 0.92;
-      transform: translateY(0);
+      transform: translateY(0) scale(1);
     }
     50% {
       opacity: 1;
-      transform: translateY(-2px);
+      transform: translateY(-2px) scale(1.005);
     }
   }
 
@@ -1275,6 +1321,7 @@
     .motion-slide-up,
     .motion-stagger-child,
     .motion-idle-pulse,
+    .motion-spring-in,
     .arc-rotate {
       animation: none !important;
     }
@@ -1290,6 +1337,9 @@
     .motion-hover-glow:hover {
       transform: none !important;
       filter: none !important;
+    }
+    .motion-gpu {
+      will-change: auto !important;
     }
   }
 }

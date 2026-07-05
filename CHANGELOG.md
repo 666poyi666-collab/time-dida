@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.3.8 - 2026-07-06（极光剧场 · Step 9：动效系统重做 - 丝滑高帧率）
+
+- **GPU 加速**：新增 `.motion-gpu` 工具类，`will-change: transform, opacity` + `translateZ(0)` 强制独立合成层，确保 60-120fps。
+- **spring 物理曲线**：新增 `--ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1)` 模拟弹性，比传统 cubic-bezier 更自然。
+- **quart/expo 缓动**：新增 `--ease-out-quart`/`--ease-out-expo`/`--ease-in-out-quart`，更精致的减速曲线。
+- **动效节奏精进**：五档时间——instant(80ms)/fast(120ms)/normal(200ms)/slow(320ms)/spring(460ms)。
+- **按钮按压**：`.motion-press:active` 从 `translateY(1px)` 改为 `scale(0.97)`，更有物理弹性感。
+- **悬停抬升**：`.motion-lift:hover` 位移从 -2px 加到 -3px，弹性更明显。
+- **spring 入场**：新增 `.motion-spring-in` 动画，scale+translateY 弹性入场。
+- **任务抽屉**：弹簧参数调优 `stiffness: 420, damping: 40, mass: 0.9`，更丝滑。
+- **页面切换**：缓动从 `cubic-bezier(0.22,1,0.36,1)` 改为 `cubic-bezier(0.16,1,0.3,1)`（expo），时长 0.22→0.28s 更从容。
+- 所有 `will-change` 在 `prefers-reduced-motion` 下降级为 `auto`。
+- typecheck + 59 测试通过。
+
 ## v0.3.7 - 2026-07-06（极光剧场 · Step 8：图标系统重构）
 
 - **统一图标包装器**：新增 `src/components/Icon.tsx`，用 `createIcon` HOC 包装 60+ 个 lucide 图标。

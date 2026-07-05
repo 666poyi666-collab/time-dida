@@ -88,7 +88,7 @@ export default function App() {
     if (settings) applyTheme(settings);
   }, [settings]);
 
-  const pageTransition = { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const };
+  const pageTransition = { duration: 0.28, ease: [0.16, 1, 0.3, 1] as const };
 
   const timerState = snapshot?.state ?? 'idle';
   // 画布环境光：根据计时状态切换极光层
@@ -247,7 +247,7 @@ function TimerStage({
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              transition={{ type: 'spring', stiffness: 380, damping: 38 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 40, mass: 0.9 }}
               className="absolute bottom-0 right-0 top-0 z-40 flex w-[380px] max-w-[88vw] flex-col border-l border-border/50 bg-bg-card/95 backdrop-blur-xl"
             >
               {/* 抽屉头 */}
