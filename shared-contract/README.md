@@ -1,6 +1,6 @@
 # Shared Contract Area
 
-> 当前版本：v0.2.28
+> 当前版本：v0.2.29
 
 FocusLink 前后端共享契约当前主要在 `shared/`。
 

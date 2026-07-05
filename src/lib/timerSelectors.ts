@@ -90,5 +90,7 @@ export function getCurrentTaskTitle(snapshot: TimerSnapshot | null): string | nu
   if (snapshot.currentTaskTitle) return snapshot.currentTaskTitle;
   const seg = snapshot.segments?.find((s) => s.id === snapshot.currentSegmentId);
   if (seg?.title) return seg.title;
+  if (seg?.taskTitle) return seg.taskTitle;
+  if (snapshot.sessionDefaultTaskTitle) return snapshot.sessionDefaultTaskTitle;
   return null;
 }

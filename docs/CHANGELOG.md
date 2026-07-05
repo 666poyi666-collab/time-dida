@@ -3,6 +3,17 @@
 > 本仓库遵循简易版本记录。每个版本对应一个 `release-vXXX/` 打包目录。
 > 历史修复细节见 `docs/archive/` 下的各报告文档。
 
+## v0.2.29 (2026-07-05)
+
+### GetDesign Notion 接入 + 小窗交互一致性
+
+- 执行 `npx getdesign@latest add notion`，新增 `notion/DESIGN.md` 作为原始 Notion 设计语言参考。
+- 前端交接文件补充 GetDesign 使用边界：FocusLink 只吸收暖纸面、轻边框、Inter 字体层级、克制阴影、结构蓝和装饰小色块，不照搬 Notion 产品形态。
+- `getCurrentTaskTitle` 补齐 session 默认任务回退，避免小窗在已有本次默认任务时仍显示“未关联任务”。
+- 新增 `tests/timerSelectors.test.ts` 覆盖当前任务、片段任务、本次默认任务的标题优先级。
+- 小窗 `finished` 状态点击开始时先 reset 再 toggle，避免和主计时区出现行为分叉。
+- 小窗主按钮按状态使用语义色：开始/继续为绿色，暂停为橙色。
+
 ## v0.2.28 (2026-07-05)
 
 ### 计时界面交互语义重构

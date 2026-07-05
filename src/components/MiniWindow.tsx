@@ -1,7 +1,7 @@
 // 专注小窗 - FocusLink 核心交互入口
 // 两种模式：EXPANDED（420×184 详情卡）、COLLAPSED（260×88 缩小卡）
 // 透明无边框窗口，始终置顶，支持拖拽和主题同步
-// 暂停态统一使用橙色（warning），专注态使用绿色（accent）
+// 暂停态统一使用橙色（warning），专注态使用绿色（success）
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import type { TimerSnapshot, AppSettings } from '@shared/types';
@@ -36,7 +36,7 @@ const STATE_LABEL: Record<string, string> = {
   stopping: '结束中',
 };
 
-// 暂停态统一橙色（warning），专注态绿色（accent）
+// 暂停态统一橙色（warning），专注态绿色（success）
 const STATE_DOT: Record<string, string> = {
   idle: 'bg-fg-subtle',
   running: 'state-dot-running',
@@ -179,13 +179,20 @@ export function MiniWindow() {
   const primaryLabel = isPaused ? '当前暂停' : isIdle ? '待开始' : '当前专注';
   const cumulativeLabel = isPaused ? '累计暂停' : '累计专注';
   const activeTone = isPaused ? 'text-warning' : isRunning ? 'text-success' : 'text-fg';
+  const primaryButtonClass = isRunning ? 'mini-action-pause' : 'mini-action-focus';
 
   // ─── 事件处理 ────────────────────────────────────────────────
-  const handleToggle = useCallback(async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const snap = await window.focuslink.timer.toggle();
-    setSnapshot(snap);
-  }, []);
+  const handleToggle = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (state === 'finished') {
+        await window.focuslink.timer.reset();
+      }
+      const snap = await window.focuslink.timer.toggle();
+      setSnapshot(snap);
+    },
+    [state],
+  );
 
   const handleStop = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -329,7 +336,7 @@ export function MiniWindow() {
 
       <div className="mt-auto flex items-center justify-center gap-2 pt-1.5">
         <button
-          className="mini-primary-button no-drag motion-press inline-flex h-7 items-center gap-1.5 px-4 text-[11px] font-semibold"
+          className={`mini-primary-button ${primaryButtonClass} no-drag motion-press inline-flex h-7 items-center gap-1.5 px-4 text-[11px] font-semibold`}
           onClick={handleToggle}
         >
           {state === 'running' ? <Pause size={12} /> : <Play size={12} />}
