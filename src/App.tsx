@@ -218,8 +218,9 @@ function TimerStage({
 }) {
   return (
     <div className="flex h-full w-full">
-      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[580px] flex-1 flex-col justify-center px-6 py-5">
+      {/* 左侧：计时器舞台 */}
+      <div className={`flex min-w-0 flex-col overflow-y-auto transition-[width] duration-[var(--motion-slow)] ease-[var(--ease-silk)] ${taskDrawerOpen ? 'flex-1' : 'flex-1'}`}>
+        <div className="mx-auto flex w-full max-w-[560px] flex-1 flex-col justify-center px-6 py-5">
           <TimerPanel />
         </div>
         <div className="shrink-0 px-6 pb-4">
@@ -227,45 +228,43 @@ function TimerStage({
         </div>
       </div>
 
+      {/* 右侧：任务面板 — 宽屏 split view */}
       <AnimatePresence>
         {taskDrawerOpen && (
-          <>
-            <motion.div
-              key="drawer-scrim"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.1, ease: [0.16, 1, 0.3, 1] }}
-              onClick={onToggleDrawer}
-              className="absolute inset-0 z-30 bg-black/30 backdrop-blur-[2px]"
-            />
-            <motion.div
-              key="drawer-panel"
-              initial={{ x: '100%', opacity: 0.6 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: '100%', opacity: 0.6 }}
-              transition={{ type: 'spring', stiffness: 420, damping: 36, mass: 0.7 }}
-              className="motion-gpu absolute bottom-0 right-0 top-0 z-40 flex w-[320px] max-w-[88vw] flex-col border-l border-border/40 glass-elevated"
-              style={{ borderTopLeftRadius: 14, borderBottomLeftRadius: 14 }}
-            >
-              <div className="flex items-center justify-between border-b border-border/40 px-4 py-2.5">
-                <div className="flex items-center gap-2">
-                  <Icon.ListTodo size="sm" tone="accent" />
-                  <span className="font-display text-[13px] font-semibold">任务</span>
-                </div>
-                <button
-                  className="window-icon-button !h-7 !w-7"
-                  onClick={onToggleDrawer}
-                  title="关闭任务面板"
-                >
-                  <Icon.PanelClose size="sm" />
-                </button>
+          <motion.div
+            key="task-split-panel"
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 'min(400px, 38vw)', opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 36, mass: 0.8 }}
+            className="motion-gpu relative z-30 flex h-full flex-col overflow-hidden border-l border-border/40"
+            style={{
+              background: 'rgb(var(--app-surface) / 0.6)',
+              backdropFilter: 'blur(24px) saturate(1.4)',
+              WebkitBackdropFilter: 'blur(24px) saturate(1.4)',
+            }}
+          >
+            {/* 面板头部 */}
+            <div className="flex items-center justify-between border-b border-border/30 px-4 py-2.5" style={{ boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.04)' }}>
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-accent/10 text-accent">
+                  <Icon.ListTodo size="xs" />
+                </span>
+                <span className="font-display text-[13px] font-semibold tracking-tight">任务</span>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
-                <TaskPanel inDrawer />
-              </div>
-            </motion.div>
-          </>
+              <button
+                className="window-icon-button !h-7 !w-7 motion-press"
+                onClick={onToggleDrawer}
+                title="关闭任务面板"
+              >
+                <Icon.PanelClose size="sm" />
+              </button>
+            </div>
+            {/* 任务内容区 */}
+            <div className="min-h-0 flex-1 overflow-hidden p-2.5">
+              <TaskPanel inDrawer />
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

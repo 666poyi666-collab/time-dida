@@ -67,14 +67,11 @@
     --app-border: 229 231 235;
     --app-border-strong: 209 213 219;
     --app-border-subtle: 239 241 244;
-    --app-accent: 94 106 210;
-    --app-accent-hover: 80 91 190;
-    --app-accent-soft: 94 106 210 / 0.08;
-    --app-accent-fg: 255 255 255;
     --app-success: 22 163 74;
     --app-warning: 217 119 6;
     --app-danger: 220 38 38;
     --app-info: 37 99 235;
+    /* accent 不在此定义 — 由 .accent-* 类提供，确保双主题都能切换 */
 
     --aurora-1: 94 106 210 / 0.02;
     --aurora-2: 52 211 153 / 0.015;
@@ -152,24 +149,24 @@
     --app-border: 229 231 235;
     --app-border-strong: 209 213 219;
     --app-border-subtle: 239 241 244;
-    --app-accent: 94 106 210;
-    --app-accent-hover: 80 91 190;
-    --app-accent-soft: 94 106 210 / 0.08;
-    --app-accent-fg: 255 255 255;
     --app-success: 22 163 74;
     --app-warning: 217 119 6;
     --app-danger: 220 38 38;
     --app-info: 37 99 235;
-    --aurora-1: 94 106 210 / 0.02;
-    --aurora-2: 52 211 153 / 0.015;
-    --aurora-3: 251 146 60 / 0.01;
-    --noise-texture: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+    /* 浅色模式阴影 — 深扩散投影 */
     --shadow-xs: 0 1px 1px rgb(11 13 17 / 0.02);
-    --shadow-sm: 0 1px 1px rgb(11 13 17 / 0.025), 0 1px 2px rgb(11 13 17 / 0.03);
-    --shadow-md: 0 1px 1px rgb(11 13 17 / 0.02), 0 4px 10px -4px rgb(11 13 17 / 0.06), 0 0 0 1px rgb(11 13 17 / 0.03);
-    --shadow-lg: 0 1px 2px rgb(11 13 17 / 0.015), 0 8px 20px -8px rgb(11 13 17 / 0.1), 0 0 0 1px rgb(11 13 17 / 0.04);
-    --shadow-glow: 0 0 0 1px rgb(var(--app-accent) / 0.12), 0 6px 20px -10px rgb(var(--app-accent) / 0.25);
-    --shadow-modal: 0 0 0 1px rgb(11 13 17 / 0.04), 0 2px 4px rgb(11 13 17 / 0.02), 0 12px 32px -8px rgb(11 13 17 / 0.12), 0 32px 64px -24px rgb(11 13 17 / 0.15);
+    --shadow-sm: 0 1px 2px rgb(11 13 17 / 0.04), 0 1px 3px rgb(11 13 17 / 0.03);
+    --shadow-md: 0 2px 4px rgb(11 13 17 / 0.04), 0 4px 12px -4px rgb(11 13 17 / 0.08), 0 0 0 1px rgb(11 13 17 / 0.03);
+    --shadow-lg: 0 2px 4px rgb(11 13 17 / 0.03), 0 8px 24px -8px rgb(11 13 17 / 0.12), 0 0 0 1px rgb(11 13 17 / 0.04);
+    --shadow-glow: 0 0 0 1px rgb(var(--app-accent) / 0.15), 0 6px 20px -10px rgb(var(--app-accent) / 0.3);
+    --shadow-modal: 0 0 0 1px rgb(11 13 17 / 0.05), 0 4px 8px rgb(11 13 17 / 0.04), 0 16px 40px -8px rgb(11 13 17 / 0.15), 0 32px 64px -24px rgb(11 13 17 / 0.18);
+    /* 浅色模式 aurora 更淡 */
+    --aurora-1: rgb(var(--app-accent) / 0.025);
+    --aurora-2: rgb(52 211 153 / 0.015);
+    --aurora-3: rgb(251 146 60 / 0.01);
+    /* 浅色噪点更淡 */
+    --noise-texture: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.02'/%3E%3C/svg%3E");
+    --app-accent-fg: 255 255 255;
     --accent-muted: 238 240 252;
   }
 
@@ -191,18 +188,15 @@
     --app-border: 36 39 46;
     --app-border-strong: 54 58 67;
     --app-border-subtle: 25 27 32;
-    --app-accent: 129 140 248;
-    --app-accent-hover: 157 169 252;
-    --app-accent-soft: 129 140 248 / 0.12;
-    --app-accent-fg: 8 9 11;
     --app-success: 52 211 153;
     --app-warning: 251 146 60;
     --app-danger: 248 113 113;
     --app-info: 96 165 250;
+    /* accent 不在此定义 — 由 .accent-* 类提供，确保双主题都能切换 */
 
-    --aurora-1: 129 140 248 / 0.03;
-    --aurora-2: 52 211 153 / 0.022;
-    --aurora-3: 251 146 60 / 0.015;
+    --aurora-1: rgb(var(--app-accent) / 0.035);
+    --aurora-2: rgb(52 211 153 / 0.022);
+    --aurora-3: rgb(251 146 60 / 0.015);
 
     /* 噪点纹理：深色模式稍强 */
     --noise-texture: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
@@ -226,51 +220,79 @@
       0 4px 8px rgb(0 0 0 / 0.08),
       0 16px 40px -12px rgb(0 0 0 / 0.45),
       0 40px 80px -32px rgb(0 0 0 / 0.5);
+    --app-accent-fg: 8 9 11;
     --accent-muted: 24 28 46;
   }
 
-  /* 主题色变体 */
+  /* ── 主题色变体：双主题感知 ──
+     每个 accent 在 dark/light 下有不同的色值
+     深色用更亮的色调（在暗背景上醒目）
+     浅色用更深的色调（在白背景上可读） */
   .accent-indigo {
     --app-accent: 129 140 248;
     --app-accent-hover: 157 169 252;
+    --app-accent-soft: 129 140 248 / 0.12;
     --accent: var(--app-accent);
-    --accent-muted: 24 28 46;
-    --aurora-1: 129 140 248 / 0.035;
+  }
+  .light .accent-indigo {
+    --app-accent: 79 70 229;
+    --app-accent-hover: 67 56 202;
+    --app-accent-soft: 79 70 229 / 0.08;
   }
   .accent-violet {
     --app-accent: 167 139 250;
     --app-accent-hover: 196 181 253;
+    --app-accent-soft: 167 139 250 / 0.12;
     --accent: var(--app-accent);
-    --accent-muted: 32 22 52;
-    --aurora-1: 167 139 250 / 0.035;
+  }
+  .light .accent-violet {
+    --app-accent: 124 58 237;
+    --app-accent-hover: 109 40 217;
+    --app-accent-soft: 124 58 237 / 0.08;
   }
   .accent-emerald {
     --app-accent: 52 211 153;
     --app-accent-hover: 110 231 183;
+    --app-accent-soft: 52 211 153 / 0.12;
     --accent: var(--app-accent);
-    --accent-muted: 10 36 30;
-    --aurora-1: 52 211 153 / 0.035;
+  }
+  .light .accent-emerald {
+    --app-accent: 16 185 129;
+    --app-accent-hover: 5 150 105;
+    --app-accent-soft: 16 185 129 / 0.08;
   }
   .accent-rose {
     --app-accent: 251 113 133;
     --app-accent-hover: 253 164 175;
+    --app-accent-soft: 251 113 133 / 0.12;
     --accent: var(--app-accent);
-    --accent-muted: 44 14 26;
-    --aurora-1: 251 113 133 / 0.035;
+  }
+  .light .accent-rose {
+    --app-accent: 225 29 72;
+    --app-accent-hover: 219 39 91;
+    --app-accent-soft: 225 29 72 / 0.08;
   }
   .accent-amber {
     --app-accent: 251 191 36;
     --app-accent-hover: 253 224 71;
+    --app-accent-soft: 251 191 36 / 0.12;
     --accent: var(--app-accent);
-    --accent-muted: 40 28 6;
-    --aurora-1: 251 191 36 / 0.035;
+  }
+  .light .accent-amber {
+    --app-accent: 217 119 6;
+    --app-accent-hover: 180 83 9;
+    --app-accent-soft: 217 119 6 / 0.08;
   }
   .accent-sky {
     --app-accent: 56 189 248;
     --app-accent-hover: 125 211 252;
+    --app-accent-soft: 56 189 248 / 0.12;
     --accent: var(--app-accent);
-    --accent-muted: 10 32 48;
-    --aurora-1: 56 189 248 / 0.035;
+  }
+  .light .accent-sky {
+    --app-accent: 14 165 233;
+    --app-accent-hover: 2 132 199;
+    --app-accent-soft: 14 165 233 / 0.08;
   }
 
   .nav-active {
@@ -655,13 +677,27 @@
     background: rgb(var(--app-bg));
     position: relative;
   }
+  /* 画布材质层：噪点 + 极淡渐变 */
+  .app-shell::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image: var(--noise-texture);
+    background-size: 256px 256px;
+    opacity: 0.6;
+    mix-blend-mode: overlay;
+  }
+  .app-shell > * { position: relative; z-index: 1; }
 
   /* ── 侧轨：Apex 紧凑导航 ── */
   .side-rail {
-    background: rgb(var(--app-surface) / 0.45);
+    background: rgb(var(--app-surface) / 0.55);
     backdrop-filter: blur(32px) saturate(1.5);
     -webkit-backdrop-filter: blur(32px) saturate(1.5);
     border-right: 1px solid rgb(var(--border) / 0.25);
+    box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.03);
   }
 
   .rail-btn {
