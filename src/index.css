@@ -641,18 +641,19 @@
     height: 40px;
     border-radius: 14px;
     transition:
-      background-color var(--motion-fast) var(--ease-out),
-      color var(--motion-fast) var(--ease-out),
-      box-shadow var(--motion-normal) var(--ease-out),
-      transform var(--motion-fast) var(--ease-out);
+      background-color var(--motion-fast) var(--ease-out-quart),
+      color var(--motion-fast) var(--ease-out-quart),
+      box-shadow var(--motion-normal) var(--ease-out-quart),
+      transform var(--motion-instant) var(--ease-spring);
+    will-change: transform;
   }
   .rail-btn:hover {
-    background: rgb(var(--app-surface-2) / 0.8);
+    background: rgb(var(--app-surface-2) / 0.75);
     color: rgb(var(--fg-default));
-    transform: translateX(2px);
+    transform: translateX(2px) scale(1.04);
   }
   .rail-btn:active {
-    transform: translateX(0) scale(0.96);
+    transform: translateX(0) scale(0.95);
   }
 
   /* 旧 topbar/workspace 类保留向后兼容，逐步移除 */
@@ -845,19 +846,22 @@
     @apply relative flex items-center gap-2 px-2.5 py-2;
     border-radius: 14px;
     transition:
-      border-color var(--motion-fast) var(--ease-out),
-      background-color var(--motion-fast) var(--ease-out),
-      box-shadow var(--motion-fast) var(--ease-out);
+      border-color var(--motion-fast) var(--ease-out-quart),
+      background-color var(--motion-fast) var(--ease-out-quart),
+      box-shadow var(--motion-fast) var(--ease-out-quart),
+      transform var(--motion-instant) var(--ease-out-quart);
   }
 
   .task-row-parent {
-    border: 1px solid rgb(var(--border) / 0.6);
-    background: rgb(var(--app-surface) / 0.8);
+    border: 1px solid rgb(var(--border) / 0.5);
+    background: rgb(var(--app-surface) / 0.7);
     box-shadow: var(--shadow-sm);
   }
   .task-row-parent:hover {
-    border-color: rgb(var(--border-strong) / 0.6);
-    background: rgb(var(--app-elevated) / 0.8);
+    border-color: rgb(var(--border-strong) / 0.55);
+    background: rgb(var(--app-elevated) / 0.75);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
   }
   .task-row-child {
     border: 1px solid transparent;
@@ -887,46 +891,58 @@
   .btn {
     @apply inline-flex items-center justify-center gap-2 font-semibold;
     transition:
-      background-color var(--motion-fast) var(--ease-out),
-      border-color var(--motion-fast) var(--ease-out),
-      color var(--motion-fast) var(--ease-out),
-      box-shadow var(--motion-normal) var(--ease-out),
-      transform var(--motion-fast) var(--ease-out),
-      filter var(--motion-fast) var(--ease-out);
+      background-color var(--motion-fast) var(--ease-out-quart),
+      border-color var(--motion-fast) var(--ease-out-quart),
+      color var(--motion-fast) var(--ease-out-quart),
+      box-shadow var(--motion-normal) var(--ease-out-quart),
+      transform var(--motion-instant) var(--ease-out-quart),
+      filter var(--motion-fast) var(--ease-out-quart);
+    will-change: transform;
     @apply disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .btn:active {
-    transform: translateY(1px);
+    transform: scale(0.97);
   }
   .btn-primary {
     @apply btn rounded-xl px-5 py-2.5 text-sm bg-accent text-accent-fg;
-    @apply hover:brightness-110;
     min-height: 40px;
     box-shadow:
-      0 12px 28px -20px rgb(var(--accent) / 0.9),
+      0 8px 20px -16px rgb(var(--accent) / 0.8),
+      inset 0 1px 0 rgb(255 255 255 / 0.14);
+  }
+  .btn-primary:hover {
+    filter: brightness(1.12);
+    box-shadow:
+      0 10px 24px -16px rgb(var(--accent) / 0.9),
       inset 0 1px 0 rgb(255 255 255 / 0.18);
   }
   .btn-focus-action {
     @apply btn rounded-xl px-5 py-2.5 text-sm text-white;
     min-height: 40px;
-    background: linear-gradient(180deg, rgb(var(--success) / 0.98), rgb(16 137 92 / 0.98));
+    background: linear-gradient(180deg, rgb(var(--success) / 0.96), rgb(16 137 92 / 0.96));
     box-shadow:
-      0 12px 28px -20px rgb(var(--success) / 0.84),
-      inset 0 1px 0 rgb(255 255 255 / 0.22);
+      0 8px 20px -16px rgb(var(--success) / 0.78),
+      inset 0 1px 0 rgb(255 255 255 / 0.18);
   }
   .btn-focus-action:hover {
-    filter: brightness(1.08);
+    filter: brightness(1.1);
+    box-shadow:
+      0 10px 24px -16px rgb(var(--success) / 0.88),
+      inset 0 1px 0 rgb(255 255 255 / 0.22);
   }
   .btn-pause-action {
     @apply btn rounded-xl px-5 py-2.5 text-sm text-white;
     min-height: 40px;
-    background: linear-gradient(180deg, rgb(var(--warning) / 0.96), rgb(181 74 8 / 0.98));
+    background: linear-gradient(180deg, rgb(var(--warning) / 0.94), rgb(181 74 8 / 0.96));
     box-shadow:
-      0 12px 28px -20px rgb(var(--warning) / 0.82),
-      inset 0 1px 0 rgb(255 255 255 / 0.22);
+      0 8px 20px -16px rgb(var(--warning) / 0.76),
+      inset 0 1px 0 rgb(255 255 255 / 0.18);
   }
   .btn-pause-action:hover {
-    filter: brightness(1.08);
+    filter: brightness(1.1);
+    box-shadow:
+      0 10px 24px -16px rgb(var(--warning) / 0.86),
+      inset 0 1px 0 rgb(255 255 255 / 0.22);
   }
   .btn-ghost {
     @apply btn rounded-xl px-3.5 py-2 text-sm text-fg-muted;
@@ -934,24 +950,27 @@
   }
   .btn-outline {
     @apply btn rounded-xl border border-border px-3.5 py-2 text-sm text-fg;
-    @apply hover:bg-bg-subtle;
     min-height: 40px;
-    background: rgb(var(--app-surface) / 0.7);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+    background: rgb(var(--app-surface) / 0.6);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+  }
+  .btn-outline:hover {
+    background: rgb(var(--app-surface-2) / 0.8);
+    border-color: rgb(var(--border-strong) / 0.6);
   }
 
   .card {
     @apply border border-border;
     border-radius: var(--radius-xl);
-    background: rgb(var(--app-surface) / 0.85);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgb(var(--app-surface) / 0.82);
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.06) inset,
+      0 1px 0 rgb(255 255 255 / 0.04) inset,
       var(--shadow-md);
     transition:
-      border-color var(--motion-normal) var(--ease-out),
-      box-shadow var(--motion-normal) var(--ease-out);
+      border-color var(--motion-normal) var(--ease-out-quart),
+      box-shadow var(--motion-normal) var(--ease-out-quart);
   }
 
   .input {
@@ -959,12 +978,15 @@
     @apply placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/45;
     border-radius: var(--radius-lg);
     transition:
-      border-color var(--motion-fast) var(--ease-out),
-      box-shadow var(--motion-normal) var(--ease-out),
-      background-color var(--motion-fast) var(--ease-out);
+      border-color var(--motion-fast) var(--ease-out-quart),
+      box-shadow var(--motion-normal) var(--ease-out-quart),
+      background-color var(--motion-fast) var(--ease-out-quart);
     min-height: 40px;
-    background: rgb(var(--app-surface) / 0.8);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+    background: rgb(var(--app-surface) / 0.7);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  }
+  .input:hover {
+    border-color: rgb(var(--border-strong) / 0.5);
   }
 
   .app-section {

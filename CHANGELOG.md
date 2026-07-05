@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.9 - 2026-07-06（极光剧场 · Step 10：组件精进 - Linear 级精致度）
+
+- **按钮系统精进**：阴影从 12px 降到 8px（更克制），hover 时阴影加深（有层次），按压 `scale(0.97)` 替代 `translateY`。
+- **按钮 hover 态**：主按钮/专注/暂停按钮 hover 时阴影 + 亮度同步变化，视觉反馈更丰富。
+- **outline 按钮**：hover 时背景 + 边框同步变化，独立 hover 态取代 Tailwind hover。
+- **卡片精进**：backdrop-blur 从 12px 加到 16px + saturate(1.2)，玻璃感更强。
+- **输入框精进**：hover 态边框加深，背景透明度降低更融入画布。
+- **任务行精进**：hover 时 `translateY(-1px)` 微抬升 + 阴影加深，有浮起感。
+- **侧轨按钮精进**：hover 时 `translateX(2px) scale(1.04)` 弹性放大，按压 `scale(0.95)`。
+- 所有组件过渡曲线统一为 `--ease-out-quart`，节奏更精致。
+- typecheck + 59 测试通过。
+
 ## v0.3.8 - 2026-07-06（极光剧场 · Step 9：动效系统重做 - 丝滑高帧率）
 
 - **GPU 加速**：新增 `.motion-gpu` 工具类，`will-change: transform, opacity` + `translateZ(0)` 强制独立合成层，确保 60-120fps。
