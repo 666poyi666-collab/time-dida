@@ -1,7 +1,7 @@
 appId: com.focuslink.app
 productName: FocusLink
 directories:
-  output: release-v047
+  output: release-v048
   buildResources: build
 files:
   - dist/**/*

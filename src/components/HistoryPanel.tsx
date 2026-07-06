@@ -93,6 +93,15 @@ export function HistoryPanel() {
     () => groupByWeek(filteredSessions, range),
     [filteredSessions, range.start, range.end],
   );
+  // 只包含筛选范围内 session 的 segments（修复数据不一致bug）
+  const filteredSessionSegments = useMemo(() => {
+    const result: Record<string, FocusSegment[]> = {};
+    for (const s of filteredSessions) {
+      const segs = sessionSegmentsById[s.id];
+      if (segs) result[s.id] = segs;
+    }
+    return result;
+  }, [filteredSessions, sessionSegmentsById]);
   const persistedSyncStates = useMemo(() => buildSessionSyncStateMap(syncQueue), [syncQueue]);
 
   const getDisplayedSyncState = (sessionId: string) =>
@@ -654,101 +663,108 @@ export function HistoryPanel() {
           </span>
         </div>
 
-        {/* 筛选与统计 */}
-        <div className="mb-3 space-y-2.5">
-          {/* 时间筛选卡片 */}
-          <div className="rounded-lg border border-border/70 bg-bg-card/60 p-3">
-            <div className="mb-2.5 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-1.5 text-[13px] font-medium text-fg">
-                <Icon.Calendar size="sm" tone="accent" />
-                时间筛选
-              </div>
-              <span className="text-[11px] text-fg-subtle">
-                {formatShortDate(range.start)} - {formatShortDate(range.end)}
-              </span>
+        {/* 筛选 */}
+        <div className="mb-3 rounded-lg border border-border/70 bg-bg-card/60 p-3">
+          <div className="mb-2.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 text-[13px] font-medium text-fg">
+              <Icon.Calendar size="sm" tone="accent" />
+              时间筛选
             </div>
-            <div className="flex flex-wrap gap-1">
-              {RANGE_PRESETS.map((item) => (
-                <button
-                  key={item.id}
-                  className={`motion-press rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
-                    rangePreset === item.id
-                      ? 'bg-accent text-accent-fg'
-                      : 'border border-border/60 bg-bg-subtle/50 text-fg-muted hover:bg-bg-subtle hover:text-fg'
-                  }`}
-                  onClick={() => setRangePreset(item.id)}
-                >
-                  {item.label}
-                </button>
-              ))}
+            <span className="text-[11px] text-fg-subtle">
+              {formatShortDate(range.start)} - {formatShortDate(range.end)}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {RANGE_PRESETS.map((item) => (
+              <button
+                key={item.id}
+                className={`motion-press rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                  rangePreset === item.id
+                    ? 'bg-accent text-accent-fg'
+                    : 'border border-border/60 bg-bg-subtle/50 text-fg-muted hover:bg-bg-subtle hover:text-fg'
+                }`}
+                onClick={() => setRangePreset(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          {rangePreset === 'custom' && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-border/50 pt-2.5">
+              <input
+                type="date"
+                className="input !w-auto !py-1.5 text-[12px]"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+              />
+              <span className="text-[12px] text-fg-subtle">至</span>
+              <input
+                type="date"
+                className="input !w-auto !py-1.5 text-[12px]"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+              />
             </div>
-            {rangePreset === 'custom' && (
-              <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-border/50 pt-2.5">
-                <input
-                  type="date"
-                  className="input !w-auto !py-1.5 text-[12px]"
-                  value={customStart}
-                  onChange={(e) => setCustomStart(e.target.value)}
-                />
-                <span className="text-[12px] text-fg-subtle">至</span>
-                <input
-                  type="date"
-                  className="input !w-auto !py-1.5 text-[12px]"
-                  value={customEnd}
-                  onChange={(e) => setCustomEnd(e.target.value)}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* 四项统计 */}
-          <div className="grid gap-2 md:grid-cols-4">
-            <DetailStat label="筛选专注" value={formatDuration(rangeStats.active)} />
-            <DetailStat label="暂停" value={formatDuration(rangeStats.pause)} tone="warn" />
-            <DetailStat label="总历时" value={formatDuration(rangeStats.wall)} />
-            <DetailStat label="Session" value={String(rangeStats.count)} />
-          </div>
-
-          {/* 按天/按周 */}
-          <div className="grid gap-2.5 lg:grid-cols-2">
-            <SummaryPanel title="按天" icon={<Icon.BarChart size="sm" />} items={dailyStats} />
-            <SummaryPanel title="按周" icon={<Icon.Calendar size="sm" />} items={weeklyStats} />
-          </div>
+          )}
         </div>
 
-        {/* ── 可视化区域 ── */}
-        <div className="mb-3 grid gap-2.5 lg:grid-cols-2">
-          <DailyBarChart dailyStats={dailyStats} range={range} />
-          <FocusHeatmap sessions={filteredSessions} range={range} />
-          <TaskDistribution sessionSegments={sessionSegmentsById} />
-          {/* 趋势对比 */}
-          <div className="viz-card rounded-lg border border-border/60 bg-bg-card/50 p-3">
-            <div className="mb-3 flex items-center gap-1.5">
-              <span className="flex h-5 w-5 items-center justify-center rounded-md bg-warning/10 text-warning">
-                <Icon.TrendingUp size="xs" tone="warning" />
-              </span>
-              <span className="text-[12px] font-semibold text-fg">趋势对比</span>
-              <span className="text-[10.5px] text-fg-subtle">vs 上一周期</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <TrendCard current={rangeStats.active} previous={prevRangeStats.active} label="专注时长" />
-              <TrendCard current={rangeStats.count} previous={prevRangeStats.count} label="次数" format="number" />
-              <TrendCard current={rangeStats.pause} previous={prevRangeStats.pause} label="暂停时长" />
-              <TrendCard current={rangeStats.active / Math.max(rangeStats.count, 1)} previous={prevRangeStats.active / Math.max(prevRangeStats.count, 1)} label="平均/次" />
-            </div>
-          </div>
-        </div>
-
-        {/* Session 列表 */}
+        {/* ── 筛选范围内无数据：友好空状态 ── */}
         {filteredSessions.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border/60 bg-bg-subtle/20 py-10 text-center">
+          <div className="rounded-lg border border-dashed border-border/60 bg-bg-subtle/20 py-12 text-center">
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-bg-subtle/60 text-fg-subtle">
               <Icon.Inbox size="xl" />
             </div>
             <p className="text-[13px] font-medium text-fg-muted">当前时间范围没有专注记录</p>
             <p className="mt-1 text-[11px] text-fg-subtle">换一个筛选范围，或者开始一次新的专注。</p>
+            <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+              <button className="motion-press rounded-md border border-border/60 bg-bg-card/50 px-3 py-1 text-[11.5px] font-medium text-fg-muted hover:text-fg" onClick={() => setRangePreset('7d')}>近7天</button>
+              <button className="motion-press rounded-md border border-border/60 bg-bg-card/50 px-3 py-1 text-[11.5px] font-medium text-fg-muted hover:text-fg" onClick={() => setRangePreset('15d')}>半个月</button>
+              <button className="motion-press rounded-md border border-border/60 bg-bg-card/50 px-3 py-1 text-[11.5px] font-medium text-fg-muted hover:text-fg" onClick={() => setRangePreset('30d')}>1个月</button>
+            </div>
           </div>
         ) : (
+          <>
+            {/* 四项统计 */}
+            <div className="mb-3 grid gap-2 md:grid-cols-4">
+              <DetailStat label="筛选专注" value={formatDuration(rangeStats.active)} />
+              <DetailStat label="暂停" value={formatDuration(rangeStats.pause)} tone="warn" />
+              <DetailStat label="总历时" value={formatDuration(rangeStats.wall)} />
+              <DetailStat label="Session" value={String(rangeStats.count)} />
+            </div>
+
+            {/* 可视化区域 */}
+            <div className="mb-3 grid gap-2.5 lg:grid-cols-2">
+              <DailyBarChart dailyStats={dailyStats} range={range} />
+              <FocusHeatmap sessions={filteredSessions} range={range} />
+              <TaskDistribution sessionSegments={filteredSessionSegments} />
+              {/* 趋势对比 */}
+              <div className="viz-card rounded-lg border border-border/60 bg-bg-card/50 p-3">
+                <div className="mb-3 flex items-center gap-1.5">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-md bg-warning/10 text-warning">
+                    <Icon.TrendingUp size="xs" tone="warning" />
+                  </span>
+                  <span className="text-[12px] font-semibold text-fg">趋势对比</span>
+                  <span className="text-[10.5px] text-fg-subtle">vs 上一周期</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <TrendCard current={rangeStats.active} previous={prevRangeStats.active} label="专注时长" />
+                  <TrendCard current={rangeStats.count} previous={prevRangeStats.count} label="次数" format="number" />
+                  <TrendCard current={rangeStats.pause} previous={prevRangeStats.pause} label="暂停时长" />
+                  <TrendCard current={rangeStats.active / Math.max(rangeStats.count, 1)} previous={prevRangeStats.active / Math.max(prevRangeStats.count, 1)} label="平均/次" />
+                </div>
+              </div>
+            </div>
+
+            {/* 按天/按周 */}
+            <div className="mb-3 grid gap-2.5 lg:grid-cols-2">
+              <SummaryPanel title="按天" icon={<Icon.BarChart size="sm" />} items={dailyStats} />
+              <SummaryPanel title="按周" icon={<Icon.Calendar size="sm" />} items={weeklyStats} />
+            </div>
+          </>
+        )}
+
+        {/* Session 列表 */}
+        {filteredSessions.length > 0 && (
           <div className="space-y-1.5">
             {filteredSessions.map((session) => {
               const syncState = getDisplayedSyncState(session.id);
