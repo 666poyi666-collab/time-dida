@@ -1,5 +1,5 @@
 // 设置页 - 快捷键/主题/计时行为/任务来源/CLI/同步/滴答账号/系统
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/useStore';
 import type { AppSettings } from '@shared/types';
 import { APP_VERSION } from '@shared/version';
@@ -46,6 +46,18 @@ type HotkeyBadgeState = {
 export function SettingsPanel() {
   const { settings, setSettings, addToast, setTicktickStatus } = useStore();
   const [capturing, setCapturing] = useState<keyof AppSettings['hotkeys'] | null>(null);
+  // captureKey 清理函数 ref：组件卸载时若仍在捕获，需移除全局监听
+  const captureCleanupRef = useRef<(() => void) | null>(null);
+
+  // 组件卸载时清理 captureKey 的全局监听，防止泄漏
+  useEffect(() => {
+    return () => {
+      if (captureCleanupRef.current) {
+        captureCleanupRef.current();
+        captureCleanupRef.current = null;
+      }
+    };
+  }, []);
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [region, setRegion] = useState<'ticktick' | 'dida365'>('dida365');
@@ -153,10 +165,41 @@ export function SettingsPanel() {
 
   if (!settings) return null;
 
+  // 乐观更新：先更新本地状态（UI 立即响应），再异步持久化
   const update = async (partial: Partial<AppSettings>) => {
-    const next = await window.focuslink.settings.set({ ...settings, ...partial });
-    setSettings(next);
+    const optimistic = { ...settings, ...partial };
+    setSettings(optimistic); // 立即更新 UI，避免文本输入卡顿
+    try {
+      const next = await window.focuslink.settings.set(optimistic);
+      setSettings(next); // 用服务端返回的真实值校正
+    } catch {
+      // 持久化失败时回退到当前 settings（下次渲染会恢复旧值）
+      setSettings(settings);
+    }
   };
+
+  // 文本输入专用更新：乐观更新但延迟持久化（防抖），避免每次按键都 IPC + 磁盘写
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const updateDebounced = (partial: Partial<AppSettings>) => {
+    const optimistic = { ...settings, ...partial };
+    setSettings(optimistic);
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        const next = await window.focuslink.settings.set(optimistic);
+        setSettings(next);
+      } catch {
+        /* 忽略，下次输入会重试 */
+      }
+    }, 400);
+  };
+
+  // 组件卸载时清理防抖定时器
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
 
   const captureKey = (key: keyof AppSettings['hotkeys']) => {
     setCapturing(key);
@@ -182,7 +225,13 @@ export function SettingsPanel() {
     const cleanup = () => {
       window.removeEventListener('keydown', handler, true);
       setCapturing(null);
+      captureCleanupRef.current = null;
     };
+    // 若上次捕获未清理（理论上不会，但防御性处理）
+    if (captureCleanupRef.current) {
+      captureCleanupRef.current();
+    }
+    captureCleanupRef.current = cleanup;
     window.addEventListener('keydown', handler, true);
   };
 
@@ -610,7 +659,7 @@ export function SettingsPanel() {
                       className="input min-w-[200px] font-mono text-xs"
                       value={settings.ticktickCli.executable}
                       onChange={(e) =>
-                        update({
+                        updateDebounced({
                           ticktickCli: { ...settings.ticktickCli, executable: e.target.value },
                         })
                       }
@@ -623,7 +672,7 @@ export function SettingsPanel() {
                         className="input min-w-[200px] font-mono text-xs"
                         value={settings.ticktickCli.listTasksCommand}
                         onChange={(e) =>
-                          update({
+                          updateDebounced({
                             ticktickCli: {
                               ...settings.ticktickCli,
                               listTasksCommand: e.target.value,
@@ -637,7 +686,7 @@ export function SettingsPanel() {
                         className="input min-w-[200px] font-mono text-xs"
                         value={settings.ticktickCli.searchTasksCommand}
                         onChange={(e) =>
-                          update({
+                          updateDebounced({
                             ticktickCli: {
                               ...settings.ticktickCli,
                               searchTasksCommand: e.target.value,
@@ -651,7 +700,7 @@ export function SettingsPanel() {
                         className="input min-w-[200px] font-mono text-xs"
                         value={settings.ticktickCli.appendNoteCommand}
                         onChange={(e) =>
-                          update({
+                          updateDebounced({
                             ticktickCli: {
                               ...settings.ticktickCli,
                               appendNoteCommand: e.target.value,
@@ -663,13 +712,14 @@ export function SettingsPanel() {
                     <Row label="超时（毫秒）">
                       <input
                         type="number"
+                        min={1000}
                         className="input w-24 text-xs"
                         value={settings.ticktickCli.timeoutMs}
                         onChange={(e) =>
                           update({
                             ticktickCli: {
                               ...settings.ticktickCli,
-                              timeoutMs: Number(e.target.value),
+                              timeoutMs: Math.max(1000, Number(e.target.value) || 10000),
                             },
                           })
                         }

@@ -49,6 +49,7 @@ type SegmentFilter = 'all' | 'unlinked' | 'linked';
 export function HistoryPanel() {
   const { snapshot, addToast, setSnapshot } = useStore();
   const [sessions, setSessions] = useState<FocusSession[]>([]);
+  const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
@@ -107,25 +108,36 @@ export function HistoryPanel() {
   const getDisplayedSyncState = (sessionId: string) =>
     sessionSyncMeta[sessionId] ?? persistedSyncStates[sessionId] ?? NOT_SYNCED_STATE;
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const load = async () => {
-    const [list, queue] = await Promise.all([
-      window.focuslink.sessions.list(100),
-      window.focuslink.sync.list(),
-    ]);
-    const sessionList = list as FocusSession[];
-    setSessions(sessionList);
-    setSyncQueue(queue as SyncQueueItem[]);
-    const segmentEntries = await Promise.all(
-      sessionList.map(async (session) => {
-        try {
-          const d = await window.focuslink.sessions.get(session.id);
-          return [session.id, d?.segments ?? []] as const;
-        } catch {
-          return [session.id, []] as const;
-        }
-      }),
-    );
-    setSessionSegmentsById(Object.fromEntries(segmentEntries));
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [list, queue] = await Promise.all([
+        window.focuslink.sessions.list(100),
+        window.focuslink.sync.list(),
+      ]);
+      const sessionList = list as FocusSession[];
+      setSessions(sessionList);
+      setSyncQueue(queue as SyncQueueItem[]);
+      setSessionSyncMeta({}); // 清空瞬态同步状态，避免显示过时信息
+      const segmentEntries = await Promise.all(
+        sessionList.map(async (session) => {
+          try {
+            const d = await window.focuslink.sessions.get(session.id);
+            return [session.id, d?.segments ?? []] as const;
+          } catch {
+            return [session.id, []] as const;
+          }
+        }),
+      );
+      setSessionSegmentsById(Object.fromEntries(segmentEntries));
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -632,6 +644,35 @@ export function HistoryPanel() {
       setSyncingSessionId(null);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 text-fg-subtle">
+        <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-bg-subtle/60">
+          <Icon.Loader size="lg" className="motion-spin text-accent" />
+        </div>
+        <p className="text-[12px] font-medium text-fg-muted">加载中...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 text-fg-subtle">
+        <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-danger/10 text-danger">
+          <Icon.AlertCircle size="xl" />
+        </div>
+        <div className="text-center">
+          <p className="text-[13px] font-medium text-fg-muted">加载失败</p>
+          <p className="mt-1 max-w-[360px] text-[11px] text-fg-subtle">{loadError}</p>
+        </div>
+        <button className="btn-outline motion-press" onClick={() => load()}>
+          <Icon.Refresh size="xs" />
+          重试
+        </button>
+      </div>
+    );
+  }
 
   if (sessions.length === 0) {
     return (

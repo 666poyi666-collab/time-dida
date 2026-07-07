@@ -1,7 +1,7 @@
 appId: com.focuslink.app
 productName: FocusLink
 directories:
-  output: release-v048
+  output: release-v0411
   buildResources: build
 files:
   - dist/**/*
@@ -33,5 +33,6 @@ nsis:
   shortcutName: FocusLink
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
+  include: build/installer.nsh
 portable:
   artifactName: ${productName}-${version}-${arch}-portable.${ext}

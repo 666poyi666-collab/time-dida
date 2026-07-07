@@ -25,6 +25,7 @@ const MIGRATION_RESET_FAILED_SYNC_V0213_KEY = 'migration.resetFailedSyncV0213';
 const MIGRATION_RESET_FAILED_SYNC_V0214_KEY = 'migration.resetFailedSyncV0214';
 const MIGRATION_RESET_FAILED_SYNC_V0215_KEY = 'migration.resetFailedSyncV0215';
 const MIGRATION_RESET_FAILED_SYNC_V0216_KEY = 'migration.resetFailedSyncV0216';
+const MIGRATION_RESYNC_FOCUS_RECORD_V0410_KEY = 'migration.resyncFocusRecordV0410';
 const MIGRATION_FLAG_DONE = '1';
 
 export function getSettings(): AppSettings {
@@ -63,6 +64,7 @@ export function getSettings(): AppSettings {
   applyResetFailedSyncV0214Migration();
   applyResetFailedSyncV0215Migration();
   applyResetFailedSyncV0216Migration();
+  applyResyncFocusRecordV0410Migration();
   normalizeMiniWindowSize(settings);
   return settings;
 }
@@ -269,6 +271,40 @@ function applyResetFailedSyncV0216Migration(): void {
     logger.warn('settings', 'failed to reset sync items', err instanceof Error ? err.message : String(err));
   }
   setSetting(MIGRATION_RESET_FAILED_SYNC_V0216_KEY, MIGRATION_FLAG_DONE);
+}
+
+/** v0.4.10 迁移：重置所有已标记为 synced 的 segment-focus 同步项
+ *  v0.4.10 修复了 syncFocusRecordToCloud 的核心 bug：focus-record 模式下
+ *  当 taskSource=ticktick-cli 时，错误地调用 appendFocusRecordsToTask（写评论）
+ *  而非 createFocusRecord（创建云端专注记录），导致专注记录从未真正上传到滴答云端。
+ *  此迁移将所有 synced 的 segment-focus 项重置为 pending，让修复后的逻辑重新处理。
+ *  createFocusRecord 内置去重（通过 marker 匹配已有专注记录），不会产生重复。 */
+function applyResyncFocusRecordV0410Migration(): void {
+  const flag = getSetting(MIGRATION_RESYNC_FOCUS_RECORD_V0410_KEY);
+  if (flag === MIGRATION_FLAG_DONE) return;
+  try {
+    const db = getDb();
+    // 重置所有 synced 的 segment-focus 项为 pending
+    const result = db
+      .prepare(
+        "UPDATE sync_queue SET status = 'pending', retry_count = 0, last_error = NULL WHERE status = 'synced' AND type = 'segment-focus'",
+      )
+      .run();
+    const resetCount = result.changes;
+    if (resetCount > 0) {
+      logger.info(
+        'settings',
+        `v0410 migration: reset ${resetCount} synced segment-focus items to pending for re-sync via createFocusRecord`,
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      'settings',
+      'failed to reset synced segment-focus items',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+  setSetting(MIGRATION_RESYNC_FOCUS_RECORD_V0410_KEY, MIGRATION_FLAG_DONE);
 }
 
 export function saveSettings(settings: AppSettings): AppSettings {

@@ -239,11 +239,19 @@ export interface AppSettings {
     /** region: ticktick (海外) | dida365 (国内) */
     region: 'ticktick' | 'dida365';
   };
+  /** 番茄 Todo 本地同步配置 */
+  tomatodo: TomatodoConfig;
 }
 
 /** 设置变更域 - 用于按域分流处理副作用，避免主题保存触发快捷键重注册 */
 export type SettingsDomain =
-  'theme' | 'hotkeys' | 'miniWindow' | 'taskProvider' | 'layout' | 'general';
+  | 'theme'
+  | 'hotkeys'
+  | 'miniWindow'
+  | 'taskProvider'
+  | 'layout'
+  | 'general'
+  | 'tomatodo';
 
 /** 主界面左右分栏布局配置 */
 export interface LayoutConfig {
@@ -303,6 +311,22 @@ export interface TickTickCliConfig {
   timeoutMs: number;
 }
 
+/** 番茄 Todo 本地同步配置 - 写入 tomatodo_db.json 的 PCRecord */
+export interface TomatodoConfig {
+  /** 是否启用番茄 Todo 同步 */
+  enabled: boolean;
+  /** tomatodo_db.json 路径，留空则运行时用 appData/tomatodo/tomatodo_db.json 探测 */
+  dbPath: string;
+  /** 学科关键词映射（标题推断用），留空则用 shared/tomatodoPolicy 默认表 */
+  subjectKeywords: Record<string, string[]>;
+  /** 滴答项目 ID → 学科映射，留空则用默认表 */
+  projectSubjectMap: Record<string, string>;
+  /** 无法识别学科时的兜底分类（默认「杂」） */
+  defaultSubject: string;
+  /** 同步完成后是否自动在番茄 Todo 中按学科归类（默认开） */
+  autoClassify: boolean;
+}
+
 /** 默认设置 */
 export const DEFAULT_SETTINGS: AppSettings = {
   hotkeys: {
@@ -357,6 +381,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
     connected: false,
     clientId: '',
     region: 'dida365',
+  },
+  tomatodo: {
+    enabled: false,
+    dbPath: '',
+    subjectKeywords: {},
+    projectSubjectMap: {},
+    defaultSubject: '杂',
+    autoClassify: true,
   },
 };
 

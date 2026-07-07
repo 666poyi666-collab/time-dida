@@ -115,6 +115,11 @@ const api = {
     resyncSegment: (segmentId: string) =>
       ipcRenderer.invoke('sync:resync-segment', segmentId),
   },
+  tomatodo: {
+    syncSegment: (segmentId: string) => ipcRenderer.invoke('tomatodo:sync-segment', segmentId),
+    syncSession: (sessionId: string) => ipcRenderer.invoke('tomatodo:sync-session', sessionId),
+    status: (sessionId: string) => ipcRenderer.invoke('tomatodo:status', sessionId),
+  },
   window: {
     minimizeToTray: () => ipcRenderer.send('window:minimize-to-tray'),
     show: () => ipcRenderer.send('window:show'),

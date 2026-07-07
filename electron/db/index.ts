@@ -334,6 +334,27 @@ export function searchTaskCache(query: string, source?: TaskSource): TaskCache[]
   return rows.map(rowToTaskCache);
 }
 
+/** 按 externalId（dida 任务 id）或内部 id 查找单条任务缓存，用于番茄 Todo 学科项目推断 */
+export function findTaskCache(taskId: string, source?: TaskSource): TaskCache | null {
+  const db = getDb();
+  const sourceClause = source ? 'AND source = ?' : '';
+  const params: unknown[] = [taskId];
+  if (source) params.push(source);
+  const row = db
+    .prepare(
+      `SELECT * FROM tasks_cache WHERE external_id = ? ${sourceClause} LIMIT 1`,
+    )
+    .get(...params) as TaskCacheRow | undefined;
+  if (row) return rowToTaskCache(row);
+  // 回退按内部 id 查
+  const idParams: unknown[] = [taskId];
+  if (source) idParams.push(source);
+  const idRow = db
+    .prepare(`SELECT * FROM tasks_cache WHERE id = ? ${sourceClause} LIMIT 1`)
+    .get(...idParams) as TaskCacheRow | undefined;
+  return idRow ? rowToTaskCache(idRow) : null;
+}
+
 // ============ Sync queue ============
 
 export function insertSyncQueue(item: SyncQueueItem): void {

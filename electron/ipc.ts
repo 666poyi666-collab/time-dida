@@ -33,6 +33,12 @@ import {
   resyncSegment,
 } from './sync/syncService.js';
 import {
+  syncSegmentToTomatodo,
+  syncSessionToTomatodo,
+  deleteTomatodoRecordForSegment,
+  getTomatodoSyncStatus,
+} from './sync/tomatodoSyncService.js';
+import {
   listSessions,
   getSession as getSessionDb,
   listSegments,
@@ -65,6 +71,10 @@ function detectChangedDomains(prev: AppSettings, next: AppSettings): SettingsDom
   }
   if (JSON.stringify(prev.layout) !== JSON.stringify(next.layout)) {
     domains.push('layout');
+  }
+  // tomatodo: 番茄 Todo 同步配置变更（开关、库路径、学科映射）
+  if (JSON.stringify(prev.tomatodo) !== JSON.stringify(next.tomatodo)) {
+    domains.push('tomatodo');
   }
   // general: 计时行为、同步、系统行为等
   if (
@@ -366,7 +376,13 @@ export function registerIpc(
     // 若计时器卡在 finished 状态（1.5s 自动重置窗口内），立即重置为 idle，
     // 避免用户回到计时界面看到 finished 状态的 UI 空洞
     timer.resetIfFinished();
-    logger.info('ipc', 'session deleted', { sessionId: id, cloudDeleted, cloudFailed });
+    // 番茄 Todo 删除联动：移除该会话所有 segment 的 PCRecord
+    let tomatodoDeleted = 0;
+    for (const seg of segs) {
+      const r = deleteTomatodoRecordForSegment(seg.id);
+      tomatodoDeleted += r.deletedCount;
+    }
+    logger.info('ipc', 'session deleted', { sessionId: id, cloudDeleted, cloudFailed, tomatodoDeleted });
     // 始终返回最新快照，确保渲染层 UI 一致
     return timer.getSnapshot();
   });
@@ -383,7 +399,9 @@ export function registerIpc(
       });
     }
     deleteSegment(id);
-    logger.info('ipc', 'segment deleted', { segmentId: id, cloudDeleted });
+    // 番茄 Todo 删除联动：移除该 segment 的 PCRecord
+    const tomatodoRes = deleteTomatodoRecordForSegment(id);
+    logger.info('ipc', 'segment deleted', { segmentId: id, cloudDeleted, tomatodoDeleted: tomatodoRes.deletedCount });
     return { cloudDeleted };
   });
   ipcMain.handle('sessions:export', (_e, id: string, format: 'json' | 'csv' | 'markdown') =>
@@ -477,6 +495,20 @@ export function registerIpc(
     const result = await resyncSegment(segmentId);
     return result;
   });
+
+  // ============ 番茄 Todo 同步（独立并行通道） ============
+  /** 手动同步单个 segment 到番茄 Todo */
+  ipcMain.handle('tomatodo:sync-segment', (_e, segmentId: string) =>
+    syncSegmentToTomatodo(segmentId),
+  );
+  /** 手动同步整个会话到番茄 Todo */
+  ipcMain.handle('tomatodo:sync-session', (_e, sessionId: string) =>
+    syncSessionToTomatodo(sessionId),
+  );
+  /** 查询某会话各 segment 的番茄 Todo 同步状态（供 UI 展示） */
+  ipcMain.handle('tomatodo:status', (_e, sessionId: string) =>
+    getTomatodoSyncStatus(sessionId),
+  );
 
   // ============ Window ============
   ipcMain.on('window:minimize-to-tray', () => window.hide());

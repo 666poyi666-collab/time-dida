@@ -28,6 +28,7 @@ import {
 } from '@shared/miniWindowLayout';
 import { getLoginItemSettings, shouldStartHiddenToTray } from '@shared/startupPolicy';
 import { enqueueSessionSync, runPending } from './sync/syncService.js';
+import { syncSessionToTomatodo } from './sync/tomatodoSyncService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -444,6 +445,29 @@ function handleTimerStateTransition(snap: TimerSnapshot): void {
 
 function autoSyncFinishedSession(sessionId: string): void {
   if (autoSyncSessions.has(sessionId)) return;
+  autoSyncSessions.add(sessionId);
+
+  // 番茄 Todo 同步：独立并行通道，不受 dida syncMode 影响，按学科分类写入本地库
+  try {
+    const ttResult = syncSessionToTomatodo(sessionId);
+    if (ttResult.total > 0) {
+      logger.info('tomatodoSync', 'auto sync after focus finished', {
+        sessionId,
+        total: ttResult.total,
+        synced: ttResult.synced,
+        skipped: ttResult.skipped,
+        failed: ttResult.failed,
+        dbPath: ttResult.dbPath,
+      });
+    }
+  } catch (err) {
+    logger.warn('tomatodoSync', 'auto sync failed', {
+      sessionId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // dida 同步（原有逻辑）
   const settings = getSettings();
   const segments = listSegments(sessionId);
   if (!shouldAutoSyncFinishedSession(settings.syncMode, segments)) {
@@ -455,7 +479,6 @@ function autoSyncFinishedSession(sessionId: string): void {
     return;
   }
 
-  autoSyncSessions.add(sessionId);
   try {
     enqueueSessionSync(sessionId);
   } catch (err) {

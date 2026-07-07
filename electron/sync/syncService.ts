@@ -43,13 +43,18 @@ async function syncFocusRecordToCloud(taskId: string, record: FocusRecord): Prom
     ...record,
     taskId,
   };
-  const settings = getSettings();
-  if (settings.taskSource === 'ticktick-cli' && provider.appendFocusRecordsToTask) {
-    await provider.appendFocusRecordsToTask(taskId, [recordWithTask]);
-    return;
-  }
+  // focus-record 模式：优先创建云端专注记录（dida focus create）
+  // createFocusRecord 返回 null 表示 provider 不支持（如非 dida 配置），
+  // 此时回退到追加任务备注（appendFocusRecordsToTask）
   if (provider.createFocusRecord) {
-    await provider.createFocusRecord(recordWithTask);
+    const focusId = await provider.createFocusRecord(recordWithTask);
+    if (focusId !== null) return;
+    logger.info('sync', 'createFocusRecord returned null, falling back to comment sync', {
+      segmentId: record.segmentId,
+    });
+  }
+  if (provider.appendFocusRecordsToTask) {
+    await provider.appendFocusRecordsToTask(taskId, [recordWithTask]);
     return;
   }
   if (provider.appendFocusRecordToTask) {

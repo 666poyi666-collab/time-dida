@@ -8,6 +8,7 @@ import { HistoryPanel } from './components/HistoryPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Toast } from './components/Toast';
 import { Icon } from './components/Icon';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import type { AppSettings } from '@shared/types';
 
 type View = 'timer' | 'history' | 'settings';
@@ -101,111 +102,113 @@ export default function App() {
         : 'aurora-canvas';
 
   return (
-    <div className="app-shell theme-transition flex h-screen w-screen overflow-hidden text-fg antialiased">
-      {/* ── 侧轨：Apex 紧凑导航 ── */}
-      <aside className="side-rail relative z-20 flex w-[52px] flex-col items-center gap-0.5 py-2.5">
-        <BrandMark state={timerState} />
+    <ErrorBoundary>
+      <div className="app-shell theme-transition flex h-screen w-screen overflow-hidden text-fg antialiased">
+        {/* ── 侧轨：Apex 紧凑导航 ── */}
+        <aside className="side-rail relative z-20 flex w-[52px] flex-col items-center gap-0.5 py-2.5">
+          <BrandMark state={timerState} />
 
-        <div className="mt-3 flex flex-col items-center gap-0.5">
-          <RailBtn
-            active={view === 'timer'}
-            onClick={() => setView('timer')}
-            icon={<Icon.Timer size="md" />}
-            label="计时"
-          />
-          <RailBtn
-            active={view === 'history'}
-            onClick={() => setView('history')}
-            icon={<Icon.History size="md" />}
-            label="历史"
-          />
-          <RailBtn
-            active={view === 'settings'}
-            onClick={() => setView('settings')}
-            icon={<Icon.Settings size="md" />}
-            label="设置"
-          />
-        </div>
-
-        <div className="mt-1.5 flex flex-col items-center gap-0.5">
-          {view === 'timer' && (
+          <div className="mt-3 flex flex-col items-center gap-0.5">
             <RailBtn
-              active={taskDrawerOpen}
-              onClick={() => setTaskDrawerOpen((v) => !v)}
-              icon={<Icon.ListTodo size="md" />}
-              label="任务"
-              accent
+              active={view === 'timer'}
+              onClick={() => setView('timer')}
+              icon={<Icon.Timer size="md" />}
+              label="计时"
             />
-          )}
-        </div>
+            <RailBtn
+              active={view === 'history'}
+              onClick={() => setView('history')}
+              icon={<Icon.History size="md" />}
+              label="历史"
+            />
+            <RailBtn
+              active={view === 'settings'}
+              onClick={() => setView('settings')}
+              icon={<Icon.Settings size="md" />}
+              label="设置"
+            />
+          </div>
 
-        <div className="mt-auto flex flex-col items-center gap-0.5">
-          <RailBtn
-            onClick={() => window.focuslink.window.minimizeToTray()}
-            icon={<Icon.Minus size="sm" />}
-            label="最小化"
-            ghost
-          />
-          <RailBtn
-            onClick={() => window.focuslink.window.minimizeToTray()}
-            icon={<Icon.X size="sm" />}
-            label="关闭"
-            ghost
-            danger
-          />
-        </div>
-      </aside>
-
-      {/* ── 主舞台 ── */}
-      <main className={`perf-contain-content relative flex-1 overflow-hidden ${canvasCls}`}>
-        <AnimatePresence mode="wait">
-          {view === 'timer' && (
-            <motion.div
-              key="view-timer"
-              variants={pageVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              transition={pageTransition}
-              className="absolute inset-0"
-            >
-              <TimerStage
-                taskDrawerOpen={taskDrawerOpen}
-                onToggleDrawer={() => setTaskDrawerOpen((v) => !v)}
+          <div className="mt-1.5 flex flex-col items-center gap-0.5">
+            {view === 'timer' && (
+              <RailBtn
+                active={taskDrawerOpen}
+                onClick={() => setTaskDrawerOpen((v) => !v)}
+                icon={<Icon.ListTodo size="md" />}
+                label="任务"
+                accent
               />
-            </motion.div>
-          )}
-          {view === 'history' && (
-            <motion.div
-              key="view-history"
-              variants={pageVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              transition={pageTransition}
-              className="absolute inset-0"
-            >
-              <HistoryPanel />
-            </motion.div>
-          )}
-          {view === 'settings' && (
-            <motion.div
-              key="view-settings"
-              variants={pageVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              transition={pageTransition}
-              className="absolute inset-0"
-            >
-              <SettingsPanel />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </main>
+            )}
+          </div>
 
-      <Toast />
-    </div>
+          <div className="mt-auto flex flex-col items-center gap-0.5">
+            <RailBtn
+              onClick={() => window.focuslink.window.minimizeToTray()}
+              icon={<Icon.Minus size="sm" />}
+              label="最小化"
+              ghost
+            />
+            <RailBtn
+              onClick={() => window.focuslink.window.minimizeToTray()}
+              icon={<Icon.X size="sm" />}
+              label="关闭"
+              ghost
+              danger
+            />
+          </div>
+        </aside>
+
+        {/* ── 主舞台 ── */}
+        <main className={`perf-contain-content relative flex-1 overflow-hidden ${canvasCls}`}>
+          <AnimatePresence mode="wait">
+            {view === 'timer' && (
+              <motion.div
+                key="view-timer"
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={pageTransition}
+                className="absolute inset-0"
+              >
+                <TimerStage
+                  taskDrawerOpen={taskDrawerOpen}
+                  onToggleDrawer={() => setTaskDrawerOpen((v) => !v)}
+                />
+              </motion.div>
+            )}
+            {view === 'history' && (
+              <motion.div
+                key="view-history"
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={pageTransition}
+                className="absolute inset-0"
+              >
+                <HistoryPanel />
+              </motion.div>
+            )}
+            {view === 'settings' && (
+              <motion.div
+                key="view-settings"
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={pageTransition}
+                className="absolute inset-0"
+              >
+                <SettingsPanel />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </main>
+
+        <Toast />
+      </div>
+    </ErrorBoundary>
   );
 }
 
