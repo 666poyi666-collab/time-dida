@@ -370,6 +370,7 @@ export function HistoryPanel() {
       await window.focuslink.sync.enqueueSession(sessionId);
       const result = await window.focuslink.sync.runPending();
       await refreshSyncQueue();
+      if (expanded) await reloadDetail(expanded);
       if (result.failed > 0) {
         setSessionSyncMeta((prev) => ({
           ...prev,
@@ -1332,7 +1333,7 @@ function HistoryTimelineList({
       startedAt: segment.startedAt,
     }))
     .filter(({ segment }) => {
-      const hasTask = !!segment.taskId && !!segment.title;
+      const hasTask = !!segment.taskId && !!segment.taskSource;
       if (filter === 'linked') return hasTask;
       if (filter === 'unlinked') return !hasTask;
       return true;
@@ -1417,7 +1418,7 @@ function HistoryFocusTimelineRow({
   onResync: () => void;
   isTaskCompleted: boolean;
 }) {
-  const hasTask = !!seg.taskId && !!seg.title;
+  const hasTask = !!seg.taskId && !!seg.taskSource;
   const isSynced = !!seg.cloudFocusId;
   return (
     <div
@@ -1533,7 +1534,7 @@ function HistoryPauseTimelineRow({ pause, index }: { pause: PauseEvent; index: n
 // ─── A. Session 总览（备用组件，保留以备扩展） ────────────────────
 function SessionOverview({ detail }: { detail: SessionDetail }) {
   const { session, segments, pauses } = detail;
-  const linkedCount = segments.filter((s) => s.taskId && s.title).length;
+  const linkedCount = segments.filter((s) => s.taskId && s.taskSource).length;
   const unlinkedCount = segments.length - linkedCount;
   return (
     <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
@@ -1623,7 +1624,7 @@ function BatchLinkPanel({
   onBatchUnlinked: () => void;
   onBatchAll: () => void;
 }) {
-  const unlinkedCount = segments.filter((s) => !s.taskId || !s.title).length;
+  const unlinkedCount = segments.filter((s) => !s.taskId || !s.taskSource).length;
   return (
     <div className="rounded-lg border border-border/60 bg-bg-subtle/20 p-3">
       <div className="mb-2 flex items-center gap-1.5">
@@ -1710,9 +1711,9 @@ function CompactSegmentList({
   onComplete: (seg: FocusSegment) => void;
   completedTaskIds: Set<string>;
 }) {
-  const unlinkedCount = segments.filter((s) => !s.taskId || !s.title).length;
+  const unlinkedCount = segments.filter((s) => !s.taskId || !s.taskSource).length;
   const filtered = segments.filter((seg) => {
-    const hasTask = !!seg.taskId && !!seg.title;
+    const hasTask = !!seg.taskId && !!seg.taskSource;
     if (filter === 'unlinked') return !hasTask;
     if (filter === 'linked') return hasTask;
     return true;
@@ -1777,7 +1778,7 @@ function CompactSegmentRow({
   onComplete: () => void;
   isTaskCompleted: boolean;
 }) {
-  const hasTask = !!seg.taskId && !!seg.title;
+  const hasTask = !!seg.taskId && !!seg.taskSource;
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div

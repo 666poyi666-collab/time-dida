@@ -128,7 +128,9 @@ export function TaskPicker({
   const sourceTasks = isLocal ? localTasks : ticktickTasks;
 
   const filteredTree = useMemo(() => {
-    return filterTree(sourceTasks, query, selectedProject, allowCompleted);
+    // 搜索时忽略项目过滤器，让用户能搜到所有项目中的匹配任务
+    const effectiveProject = query.trim() ? '' : selectedProject;
+    return filterTree(sourceTasks, query, effectiveProject, allowCompleted);
   }, [sourceTasks, query, selectedProject, allowCompleted]);
 
   const toggleCollapse = (id: string) => setCollapsed((p) => ({ ...p, [id]: !p[id] }));
@@ -382,11 +384,18 @@ function filterTreeByProject(tasks: Task[], projectId: string): Task[] {
 function filterAndBuildTree(tasks: Task[], q: string, allowCompleted: boolean): Task[] {
   const out: Task[] = [];
   for (const t of tasks) {
-    if (t.isCompleted && !allowCompleted) continue;
+    // 先递归子任务，再决定是否保留父任务
+    // 这样已完成父任务下的未完成子任务仍可见
     const children = t.children ? filterAndBuildTree(t.children, q, allowCompleted) : [];
     const selfMatch = !q || t.title.toLowerCase().includes(q);
     const childHasMatch = children.length > 0;
+
+    // 跳过已完成的任务（除非 allowCompleted 或有匹配的子任务）
+    if (t.isCompleted && !allowCompleted && !childHasMatch) continue;
+
+    // 搜索模式下，没有自身匹配也没有子任务匹配则跳过
     if (q && !selfMatch && !childHasMatch) continue;
+
     out.push({ ...t, children: children.length > 0 ? children : undefined });
   }
   return out;

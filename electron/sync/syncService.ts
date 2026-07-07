@@ -163,15 +163,23 @@ export async function resyncSegment(segmentId: string): Promise<{ ok: boolean; e
       segmentId,
       cloudFocusId: seg.cloudFocusId,
     });
+    let deleteOk = false;
     try {
-      const deleteOk = await provider.deleteFocusRecord(segmentId);
+      deleteOk = await provider.deleteFocusRecord(segmentId);
       logger.info('sync', 'resyncSegment: deleteFocusRecord result', { segmentId, ok: deleteOk });
     } catch (err) {
       logger.warn('sync', 'resyncSegment: delete cloud failed', {
         segmentId,
         error: err instanceof Error ? err.message : String(err),
       });
-      // 继续重新同步：云端可能已删除，或删除失败但用户仍想重新上传
+    }
+    // 删除失败时不能继续：createFocusRecord 的 marker 去重会找到旧记录并跳过，
+    // 导致 resync 静默返回成功但实际未做任何更改
+    if (!deleteOk) {
+      return {
+        ok: false,
+        error: '删除云端旧记录失败，无法重新同步。请检查网络或 dida CLI 后重试。',
+      };
     }
   } else {
     logger.warn('sync', 'resyncSegment: provider has no deleteFocusRecord', { segmentId });
@@ -203,6 +211,19 @@ export async function resyncSegment(segmentId: string): Promise<{ ok: boolean; e
   }
   // 4. 立即处理
   const result = await runPending();
+  // 检查目标 segment 的队列项是否真正同步成功
+  // runPending 处理所有 pending 项，不能仅靠聚合结果判断目标 segment 是否成功
+  const targetItem = listSyncQueue().find((item) => {
+    try {
+      const payload = JSON.parse(item.payload) as Payload;
+      return payload.type === 'segment-focus' && payload.segmentId === segmentId;
+    } catch {
+      return false;
+    }
+  });
+  if (targetItem && targetItem.status === 'failed') {
+    return { ok: false, error: targetItem.lastError ?? '重新同步失败' };
+  }
   if (result.failed > 0 && result.succeeded === 0) {
     return { ok: false, error: '重新同步失败，请查看日志' };
   }

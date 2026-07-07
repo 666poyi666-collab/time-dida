@@ -17,6 +17,18 @@ function minStr(ms: number): string {
   return `${Math.round(ms / 60000)} 分钟`;
 }
 
+/** CSV 转义：含逗号、引号、换行的字段用双引号包裹，内部引号转义为两个引号 */
+function csvEscape(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  const s = String(value);
+  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  // 防止公式注入：以 = + - @ 开头的字段前缀单引号
+  if (/^[=+\-@]/.test(s)) return `'${s}`;
+  return s;
+}
+
 export function exportSession(
   session: FocusSession,
   segments: FocusSegment[],
@@ -29,24 +41,24 @@ export function exportSession(
   if (format === 'csv') {
     const rows = [
       'type,id,startedAt,endedAt,activeMs,pauseMs,wallMs,taskId,title',
-      `session,${session.id},${fmtDateTime(session.startedAt)},${
-        session.endedAt ? fmtDateTime(session.endedAt) : ''
+      `session,${csvEscape(session.id)},${csvEscape(fmtDateTime(session.startedAt))},${
+        session.endedAt ? csvEscape(fmtDateTime(session.endedAt)) : ''
       },${session.activeElapsedMs},${session.pauseElapsedMs},${session.wallElapsedMs},${
-        session.defaultTaskId ?? ''
-      },${session.title ?? ''}`,
+        csvEscape(session.defaultTaskId)
+      },${csvEscape(session.title)}`,
     ];
     for (const s of segments) {
       rows.push(
-        `segment,${s.id},${fmtDateTime(s.startedAt)},${
-          s.endedAt ? fmtDateTime(s.endedAt) : ''
-        },${s.activeElapsedMs},,${s.taskId ?? ''},${s.title ?? ''}`,
+        `segment,${csvEscape(s.id)},${csvEscape(fmtDateTime(s.startedAt))},${
+          s.endedAt ? csvEscape(fmtDateTime(s.endedAt)) : ''
+        },${s.activeElapsedMs},,,${csvEscape(s.taskId)},${csvEscape(s.title)}`,
       );
     }
     for (const p of pauses) {
       rows.push(
-        `pause,${p.id},${fmtDateTime(p.pauseStartedAt)},${
-          p.pauseEndedAt ? fmtDateTime(p.pauseEndedAt) : ''
-        },,${p.durationMs},,`,
+        `pause,${csvEscape(p.id)},${csvEscape(fmtDateTime(p.pauseStartedAt))},${
+          p.pauseEndedAt ? csvEscape(fmtDateTime(p.pauseEndedAt)) : ''
+        },,${p.durationMs},,,`,
       );
     }
     return rows.join('\n');

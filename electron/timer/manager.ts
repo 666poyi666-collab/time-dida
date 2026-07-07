@@ -486,18 +486,16 @@ export class TimerManager {
     taskSource: TaskSource,
     taskTitle?: string,
   ): void {
-    if (!this.session || this.session.id !== sessionId) {
-      const s = getSession(sessionId);
-      if (!s) throw new Error(`session 不存在: ${sessionId}`);
-      this.session = s;
-    }
-    this.session.defaultTaskId = taskId;
-    this.session.defaultTaskSource = taskSource;
-    this.session.defaultTaskTitle = taskTitle ?? null;
-    this.session.updatedAt = Date.now();
-    updateSession(this.session);
-    // 同步到当前 segment（如果未单独指定）
-    if (this.currentSegment && !this.currentSegment.taskId) {
+    const isCurrent = this.session?.id === sessionId;
+    const s = isCurrent ? this.session! : getSession(sessionId);
+    if (!s) throw new Error(`session 不存在: ${sessionId}`);
+    s.defaultTaskId = taskId;
+    s.defaultTaskSource = taskSource;
+    s.defaultTaskTitle = taskTitle ?? null;
+    s.updatedAt = Date.now();
+    updateSession(s);
+    // 仅当操作的是当前活跃 session 时才同步到 currentSegment
+    if (isCurrent && this.currentSegment && !this.currentSegment.taskId) {
       this.currentSegment.taskId = taskId;
       this.currentSegment.taskSource = taskSource;
       if (taskTitle != null) this.currentSegment.title = taskTitle;
@@ -510,16 +508,14 @@ export class TimerManager {
 
   /** 清除 session 的默认任务 */
   clearSessionDefaultTask(sessionId: string): void {
-    if (!this.session || this.session.id !== sessionId) {
-      const s = getSession(sessionId);
-      if (!s) throw new Error(`session 不存在: ${sessionId}`);
-      this.session = s;
-    }
-    this.session.defaultTaskId = null;
-    this.session.defaultTaskSource = null;
-    this.session.defaultTaskTitle = null;
-    this.session.updatedAt = Date.now();
-    updateSession(this.session);
+    const isCurrent = this.session?.id === sessionId;
+    const s = isCurrent ? this.session! : getSession(sessionId);
+    if (!s) throw new Error(`session 不存在: ${sessionId}`);
+    s.defaultTaskId = null;
+    s.defaultTaskSource = null;
+    s.defaultTaskTitle = null;
+    s.updatedAt = Date.now();
+    updateSession(s);
     logger.info('timer', 'cleared session default task', { sessionId });
     this.emit();
   }
@@ -552,16 +548,14 @@ export class TimerManager {
     }
     // 同步更新 session 默认任务（便于后续新建 segment 继承）
     if (count > 0) {
-      if (!this.session || this.session.id !== sessionId) {
-        const s = getSession(sessionId);
-        if (s) this.session = s;
-      }
-      if (this.session) {
-        this.session.defaultTaskId = taskId;
-        this.session.defaultTaskSource = taskSource;
-        this.session.defaultTaskTitle = taskTitle;
-        this.session.updatedAt = Date.now();
-        updateSession(this.session);
+      const isCurrent = this.session?.id === sessionId;
+      const s = isCurrent ? this.session! : getSession(sessionId);
+      if (s) {
+        s.defaultTaskId = taskId;
+        s.defaultTaskSource = taskSource;
+        s.defaultTaskTitle = taskTitle;
+        s.updatedAt = Date.now();
+        updateSession(s);
       }
     }
     logger.info('timer', 'batch linked segments', { sessionId, count, onlyUnlinked });
@@ -807,6 +801,22 @@ export class TimerManager {
   }
 
   dispose(): void {
+    // 如果计时器仍在运行或暂停，先正常停止以关闭 session/segment
+    // 防止退出后 recover() 将停机时间计入专注时长
+    if (this.state === 'running' || this.state === 'paused') {
+      try {
+        this.stop();
+      } catch (err) {
+        logger.warn('timer', 'dispose: stop() failed, persisting as-is', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    // 取消自动重置定时器（stop 内部设置的 1.5s reset）
+    if (this.resetTimeout) {
+      clearTimeout(this.resetTimeout);
+      this.resetTimeout = null;
+    }
     this.stopTick();
     // 退出前最后持久化一次
     this.persistSnapshot();
