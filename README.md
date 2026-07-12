@@ -139,9 +139,9 @@ RELEASE_NOTES.md
 
 | 版本 | 本地安装版 | 候选说明 |
 | --- | --- | --- |
-| 0.7.0 | `release-v070/FocusLink-0.7.0-x64.exe` | [v0.7.0](release-v070/RELEASE_NOTES.md) |
 | 0.8.0 | `release-v080/FocusLink-0.8.0-x64.exe` | [v0.8.0](release-v080/RELEASE_NOTES.md) |
 | 0.9.0 | `release-v090/FocusLink-0.9.0-x64.exe` | [v0.9.0](release-v090/RELEASE_NOTES.md) |
+| 0.10.0 | `release-v0100/FocusLink-0.10.0-x64.exe` | [v0.10.0](release-v0100/RELEASE_NOTES.md) |
 
 每次版本迭代必须同步更新 `CHANGELOG.md`、本地 `RELEASE_NOTES.md` 和 GitHub Release，并上传安装版、便携版与 SHA256。只推送代码或 tag 不算发布完成。
 

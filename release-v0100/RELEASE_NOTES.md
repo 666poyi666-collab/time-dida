@@ -4,7 +4,7 @@
 >
 > 日期：2026-07-13
 >
-> 对应提交：待正式构建前填写；本文不代表已创建 tag 或 GitHub Release
+> 对应提交：`4f8c7dc`；本文不代表已创建 tag 或 GitHub Release
 
 ## 本次更新
 
@@ -21,18 +21,18 @@
 
 - 数据模型不需要用户手工迁移；滴答工作台不再展示任务来源切换。
 - 已配置 dida CLI 的环境会优先使用 CLI；只有 CLI 不可用时才尝试已登录 OAuth。
-- v0.10.0 尚未生成安装版或便携版，不存在可供核对的 SHA256。
+- 已生成安装版与便携版候选；在正式发布前仍以本页 SHA256 为本机校验依据。
 
 ## 已知限制
 
-- 本文仍是发布草案。在静态检查、完整回归、主窗/小窗、真实 dida、真实番茄 To-do、安装版/便携版 smoke 及 GitHub Release 回读全部完成前，不得宣称 v0.10.0 已发布。
+- 本机旧版 FocusLink 当前保留一个暂停会话，而安装器会强制结束所有 `FocusLink.exe`；为避免擅自打断用户状态，本轮未执行静默安装启动 smoke。unpacked 与便携版已通过，安装版与 GitHub Release 仍保持候选/未发布状态。
 
 ## 下载与校验
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.10.0-x64.exe` | 正式打包后写入 |
-| `FocusLink-0.10.0-x64-portable.exe` | 正式打包后写入 |
+| `FocusLink-0.10.0-x64.exe` | `e51d4ad493641ea72cfdc8f67e620d024453c703b94e304ae5cb84a95f3bdf71` |
+| `FocusLink-0.10.0-x64-portable.exe` | `e6f44d3e9485b2074aefe32c24310006f57e15b2194eb036df6dd7a8cad1300c` |
 
 ## 验证状态
 
@@ -40,4 +40,4 @@
 - 打包版主窗深浅主题、idle/running/paused、任务、统计、设置、TaskPicker 以及两态小窗 smoke 已通过；未出现页面溢出或黑色合成块。
 - 真实临时滴答任务已通过中文评论、marker 幂等、专注写入、完成/恢复及 UI“完成 → 6 秒撤销 → 再完成 → 今日首位找回 → 恢复”，并确认测试任务清理成功。
 - 本机番茄 To-do 1.6.2 已通过本地写入、云端确认、marker 幂等与删除清理。
-- 待干净提交生成安装版/便携版、完成不打断现有计时的安装启动验收、填写 SHA256，并由 GitHub Release workflow 发布与回读。
+- 干净提交 `4f8c7dc` 已生成安装版/便携版；unpacked 与便携版启动 smoke 通过，SHA256 已填写。剩余门禁是安装版启动验收，以及 GitHub Release workflow 发布与回读。
