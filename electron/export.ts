@@ -43,9 +43,9 @@ export function exportSession(
       'type,id,startedAt,endedAt,activeMs,pauseMs,wallMs,taskId,title',
       `session,${csvEscape(session.id)},${csvEscape(fmtDateTime(session.startedAt))},${
         session.endedAt ? csvEscape(fmtDateTime(session.endedAt)) : ''
-      },${session.activeElapsedMs},${session.pauseElapsedMs},${session.wallElapsedMs},${
-        csvEscape(session.defaultTaskId)
-      },${csvEscape(session.title)}`,
+      },${session.activeElapsedMs},${session.pauseElapsedMs},${session.wallElapsedMs},${csvEscape(
+        session.defaultTaskId,
+      )},${csvEscape(session.title)}`,
     ];
     for (const s of segments) {
       rows.push(

@@ -10,7 +10,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/**/*.test.ts', 'scripts/manual-timer-regression.ts'],
+    include: ['tests/**/*.test.ts', 'scripts/regression/manual-timer-regression.ts'],
     globals: true,
   },
 });

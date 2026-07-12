@@ -14,6 +14,7 @@ import type {
   SessionStatus,
   TaskSource,
   SyncStatus,
+  TomatodoSubject,
 } from '@shared/types';
 
 let db: Database.Database | null = null;
@@ -57,20 +58,32 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE focus_segments ADD COLUMN cloud_focus_id TEXT');
     logger.info('database', 'migration: added focus_segments.cloud_focus_id');
   }
-  // v0.2.22 修复：合并片段时未先 closeSegment，导致 segment.activeElapsedMs 过期，
-  // 与 session.activeElapsedMs 不一致。这里对已结束的 session 做数据修复：
-  // 若 session 只有一个 segment，直接把 segment.activeElapsedMs 设为 session.activeElapsedMs。
-  repairSegmentDurations(database);
+  // focus_segments.tomatodo_subject：番茄 Todo 学科分类（手动选择）
+  if (!hasCol('focus_segments', 'tomatodo_subject')) {
+    database.exec('ALTER TABLE focus_segments ADD COLUMN tomatodo_subject TEXT');
+    logger.info('database', 'migration: added focus_segments.tomatodo_subject');
+  }
+  const migratedSubjects = database
+    .prepare("UPDATE focus_segments SET tomatodo_subject = '学习' WHERE tomatodo_subject = '杂'")
+    .run();
+  if (migratedSubjects.changes > 0) {
+    logger.info('database', 'migration: renamed tomatodo fallback 杂 -> 学习', {
+      count: migratedSubjects.changes,
+    });
+  }
+  // 历史版本可能留下 session/segment 汇总差异。启动时只审计，不再猜测并改写
+  // 用户的片段事实数据；真正的数据迁移必须具备版本标记和可验证的守恒策略。
+  auditSegmentDurations(database);
 }
 
-/** 修复历史数据：确保已结束 session 的 segment.activeElapsedMs 之和不小于 session 总时长 */
-function repairSegmentDurations(database: Database.Database): void {
+/** 只记录历史汇总差异，禁止在每次启动时修改片段。 */
+function auditSegmentDurations(database: Database.Database): void {
   const sessions = database
     .prepare(
       `SELECT id, active_elapsed_ms AS activeElapsedMs, ended_at AS endedAt FROM focus_sessions WHERE ended_at IS NOT NULL`,
     )
     .all() as Array<{ id: string; activeElapsedMs: number; endedAt: number }>;
-  let repaired = 0;
+  let inconsistent = 0;
   for (const s of sessions) {
     const segs = database
       .prepare(
@@ -79,39 +92,18 @@ function repairSegmentDurations(database: Database.Database): void {
       .all(s.id) as Array<{ id: string; activeElapsedMs: number }>;
     if (segs.length === 0) continue;
     const segSum = segs.reduce((sum, seg) => sum + seg.activeElapsedMs, 0);
-    // 不一致：单 segment 直接用 session 总值；多 segment 按比例补差到第一个
     if (Math.abs(segSum - s.activeElapsedMs) > 1000) {
-      if (segs.length === 1) {
-        database
-          .prepare(`UPDATE focus_segments SET active_elapsed_ms = ? WHERE id = ?`)
-          .run(s.activeElapsedMs, segs[0].id);
-        repaired++;
-        logger.info('database', 'repaired single segment duration', {
-          sessionId: s.id,
-          segmentId: segs[0].id,
-          from: segs[0].activeElapsedMs,
-          to: s.activeElapsedMs,
-        });
-      } else {
-        // 多 segment：把差值加到第一个 segment（最常见的合并目标）
-        const diff = s.activeElapsedMs - segSum;
-        const newFirst = Math.max(0, segs[0].activeElapsedMs + diff);
-        database
-          .prepare(`UPDATE focus_segments SET active_elapsed_ms = ? WHERE id = ?`)
-          .run(newFirst, segs[0].id);
-        repaired++;
-        logger.info('database', 'repaired multi-segment duration (diff to first)', {
-          sessionId: s.id,
-          segmentId: segs[0].id,
-          diff,
-          from: segs[0].activeElapsedMs,
-          to: newFirst,
-        });
-      }
+      inconsistent++;
+      logger.warn('database', 'session/segment duration mismatch detected; left unchanged', {
+        sessionId: s.id,
+        sessionActiveMs: s.activeElapsedMs,
+        segmentActiveMs: segSum,
+        segmentCount: segs.length,
+      });
     }
   }
-  if (repaired > 0) {
-    logger.info('database', `repairSegmentDurations: repaired ${repaired} sessions`);
+  if (inconsistent > 0) {
+    logger.warn('database', `auditSegmentDurations: ${inconsistent} inconsistent sessions`);
   }
 }
 
@@ -174,16 +166,41 @@ export function getActiveSession(): FocusSession | null {
 export function listSessions(limit = 100): FocusSession[] {
   const db = getDb();
   const rows = db
-    .prepare('SELECT * FROM focus_sessions ORDER BY started_at DESC LIMIT ?')
-    .all(limit) as SessionRow[];
-  return rows.map(rowToSession);
+    .prepare(
+      `SELECT fs.*,
+         COUNT(seg.id) AS segment_count,
+         SUM(CASE WHEN seg.task_id IS NOT NULL AND seg.task_source IS NOT NULL THEN 1 ELSE 0 END)
+           AS linked_segment_count,
+         SUM(CASE WHEN seg.task_id IS NOT NULL AND seg.task_source = 'ticktick' THEN 1 ELSE 0 END)
+           AS ticktick_linked_segment_count
+       FROM focus_sessions fs
+       LEFT JOIN focus_segments seg ON seg.session_id = fs.id
+       GROUP BY fs.id
+       ORDER BY fs.started_at DESC
+       LIMIT ?`,
+    )
+    .all(limit) as Array<
+    SessionRow & {
+      segment_count: number;
+      linked_segment_count: number;
+      ticktick_linked_segment_count: number;
+    }
+  >;
+  return rows.map((row) => ({
+    ...rowToSession(row),
+    segmentCount: Number(row.segment_count ?? 0),
+    linkedSegmentCount: Number(row.linked_segment_count ?? 0),
+    ticktickLinkedSegmentCount: Number(row.ticktick_linked_segment_count ?? 0),
+  }));
 }
 
 export function deleteSession(id: string): void {
   const db = getDb();
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM sync_queue WHERE payload LIKE ?').run(`%"sessionId":"${id}"%`);
-    const segIds = db.prepare('SELECT id FROM focus_segments WHERE session_id = ?').all(id) as Array<{ id: string }>;
+    const segIds = db
+      .prepare('SELECT id FROM focus_segments WHERE session_id = ?')
+      .all(id) as Array<{ id: string }>;
     for (const seg of segIds) {
       db.prepare('DELETE FROM sync_queue WHERE payload LIKE ?').run(`%"segmentId":"${seg.id}"%`);
     }
@@ -201,9 +218,9 @@ export function insertSegment(segment: FocusSegment): void {
   db.prepare(
     `INSERT INTO focus_segments
       (id, session_id, task_id, task_source, title, started_at, ended_at,
-       active_elapsed_ms, note, created_at, updated_at)
+       active_elapsed_ms, note, tomatodo_subject, created_at, updated_at)
      VALUES (@id, @sessionId, @taskId, @taskSource, @title, @startedAt, @endedAt,
-       @activeElapsedMs, @note, @createdAt, @updatedAt)`,
+       @activeElapsedMs, @note, @tomatodoSubject, @createdAt, @updatedAt)`,
   ).run(segment);
 }
 
@@ -212,7 +229,7 @@ export function updateSegment(segment: FocusSegment): void {
   db.prepare(
     `UPDATE focus_segments SET
       task_id = @taskId, task_source = @taskSource, title = @title, ended_at = @endedAt,
-      active_elapsed_ms = @activeElapsedMs, note = @note, updated_at = @updatedAt
+      active_elapsed_ms = @activeElapsedMs, note = @note, tomatodo_subject = @tomatodoSubject, updated_at = @updatedAt
      WHERE id = @id`,
   ).run(segment);
 }
@@ -234,7 +251,58 @@ export function listSegments(sessionId: string): FocusSegment[] {
 
 export function deleteSegment(id: string): void {
   const db = getDb();
-  db.prepare('DELETE FROM focus_segments WHERE id = ?').run(id);
+  const row = db.prepare('SELECT session_id FROM focus_segments WHERE id = ?').get(id) as
+    { session_id: string } | undefined;
+  if (!row) return;
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM sync_queue WHERE payload LIKE ?').run(`%"segmentId":"${id}"%`);
+    db.prepare('DELETE FROM pause_events WHERE segment_id = ?').run(id);
+    db.prepare('DELETE FROM focus_segments WHERE id = ?').run(id);
+    db.prepare(
+      `UPDATE focus_sessions SET
+         active_elapsed_ms = COALESCE((SELECT SUM(active_elapsed_ms) FROM focus_segments WHERE session_id = ?), 0),
+         pause_elapsed_ms = COALESCE((SELECT SUM(duration_ms) FROM pause_events WHERE session_id = ?), 0),
+         updated_at = ?
+       WHERE id = ?`,
+    ).run(row.session_id, row.session_id, Date.now(), row.session_id);
+  });
+  tx();
+}
+
+/** 外部删除前先撤掉待处理队列，防止云记录在删除过程中被后台重建。 */
+export function deleteSyncQueueForSegments(
+  segmentIds: readonly string[],
+  sessionId?: string,
+): void {
+  if (segmentIds.length === 0 && !sessionId) return;
+  const db = getDb();
+  const tx = db.transaction(() => {
+    if (sessionId) {
+      db.prepare('DELETE FROM sync_queue WHERE payload LIKE ?').run(`%"sessionId":"${sessionId}"%`);
+    }
+    for (const segmentId of segmentIds) {
+      db.prepare('DELETE FROM sync_queue WHERE payload LIKE ?').run(`%"segmentId":"${segmentId}"%`);
+    }
+  });
+  tx();
+}
+
+/** 合并已结束片段时保留暂停账本，把被合并片段的暂停归到 keeper。 */
+export function reassignPausesToSegment(
+  fromSegmentIds: readonly string[],
+  toSegmentId: string,
+): void {
+  const ids = [...new Set(fromSegmentIds.filter((id) => id && id !== toSegmentId))];
+  if (ids.length === 0) return;
+  const db = getDb();
+  const stmt = db.prepare(
+    'UPDATE pause_events SET segment_id = ?, updated_at = ? WHERE segment_id = ?',
+  );
+  const now = Date.now();
+  const tx = db.transaction(() => {
+    for (const id of ids) stmt.run(toSegmentId, now, id);
+  });
+  tx();
 }
 
 /** 记录已同步到滴答云端的专注记录 ID，用于删除时联动 */
@@ -245,6 +313,33 @@ export function setSegmentCloudFocusId(segmentId: string, cloudFocusId: string |
     Date.now(),
     segmentId,
   );
+}
+
+/** 设置 segment 的番茄 Todo 学科分类（手动选择） */
+export function setSegmentTomatodoSubject(segmentId: string, subject: string | null): void {
+  const db = getDb();
+  db.prepare('UPDATE focus_segments SET tomatodo_subject = ?, updated_at = ? WHERE id = ?').run(
+    subject,
+    Date.now(),
+    segmentId,
+  );
+}
+
+export function setSegmentsTomatodoSubject(segmentIds: string[], subject: string | null): number {
+  if (segmentIds.length === 0) return 0;
+  const db = getDb();
+  const now = Date.now();
+  const stmt = db.prepare(
+    'UPDATE focus_segments SET tomatodo_subject = ?, updated_at = ? WHERE id = ?',
+  );
+  const tx = db.transaction((ids: string[]) => {
+    let updated = 0;
+    for (const segmentId of ids) {
+      updated += Number(stmt.run(subject, now, segmentId).changes ?? 0);
+    }
+    return updated;
+  });
+  return tx(segmentIds);
 }
 
 // ============ Pause ============
@@ -290,10 +385,7 @@ export function listPauses(sessionId: string): PauseEvent[] {
 
 // ============ Tasks cache ============
 
-export function upsertTaskCache(task: TaskCache): void {
-  const db = getDb();
-  db.prepare(
-    `INSERT INTO tasks_cache
+const UPSERT_TASK_CACHE_SQL = `INSERT INTO tasks_cache
       (id, source, external_id, project_id, title, status, priority, due_date,
        tags, content, raw_json, last_synced_at, created_at, updated_at)
      VALUES (@id, @source, @externalId, @projectId, @title, @status, @priority, @dueDate,
@@ -303,8 +395,26 @@ export function upsertTaskCache(task: TaskCache): void {
        project_id = excluded.project_id, title = excluded.title, status = excluded.status,
        priority = excluded.priority, due_date = excluded.due_date, tags = excluded.tags,
        content = excluded.content, raw_json = excluded.raw_json,
-       last_synced_at = excluded.last_synced_at, updated_at = excluded.updated_at`,
-  ).run(task);
+       last_synced_at = excluded.last_synced_at, updated_at = excluded.updated_at`;
+
+export function upsertTaskCache(task: TaskCache): void {
+  const db = getDb();
+  db.prepare(UPSERT_TASK_CACHE_SQL).run(task);
+}
+
+/**
+ * A task refresh can contain hundreds of parents and checklist items. Reuse one prepared
+ * statement and commit the complete snapshot in one transaction so the Electron main
+ * process does not repeatedly enter SQLite for every item.
+ */
+export function upsertTaskCaches(tasks: readonly TaskCache[]): void {
+  if (tasks.length === 0) return;
+  const db = getDb();
+  const statement = db.prepare(UPSERT_TASK_CACHE_SQL);
+  const writeAll = db.transaction((rows: readonly TaskCache[]) => {
+    for (const task of rows) statement.run(task);
+  });
+  writeAll(tasks);
 }
 
 export function listTaskCache(source?: TaskSource): TaskCache[] {
@@ -341,9 +451,7 @@ export function findTaskCache(taskId: string, source?: TaskSource): TaskCache | 
   const params: unknown[] = [taskId];
   if (source) params.push(source);
   const row = db
-    .prepare(
-      `SELECT * FROM tasks_cache WHERE external_id = ? ${sourceClause} LIMIT 1`,
-    )
+    .prepare(`SELECT * FROM tasks_cache WHERE external_id = ? ${sourceClause} LIMIT 1`)
     .get(...params) as TaskCacheRow | undefined;
   if (row) return rowToTaskCache(row);
   // 回退按内部 id 查
@@ -399,7 +507,9 @@ export function getSyncQueueItem(id: string): SyncQueueItem | null {
 export function resetFailedSyncItems(): number {
   const db = getDb();
   const info = db
-    .prepare("UPDATE sync_queue SET status = 'pending', retry_count = 0, last_error = NULL WHERE status = 'failed'")
+    .prepare(
+      "UPDATE sync_queue SET status = 'pending', retry_count = 0, last_error = NULL WHERE status = 'failed'",
+    )
     .run();
   return info.changes;
 }
@@ -485,6 +595,7 @@ interface SegmentRow {
   active_elapsed_ms: number;
   note: string | null;
   cloud_focus_id: string | null;
+  tomatodo_subject: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -500,6 +611,7 @@ function rowToSegment(r: SegmentRow): FocusSegment {
     activeElapsedMs: r.active_elapsed_ms,
     note: r.note,
     cloudFocusId: r.cloud_focus_id,
+    tomatodoSubject: (r.tomatodo_subject as TomatodoSubject | null) ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

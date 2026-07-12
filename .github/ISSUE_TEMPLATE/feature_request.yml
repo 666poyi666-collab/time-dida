@@ -11,7 +11,7 @@ body:
         - SQLite schema（见 electron/db/schema.sql）
         - dida CLI Provider 的对外接口
         - 全局快捷键 Ctrl+Alt+ 修饰键规则
-        - 现有 IPC 通道契约（见 docs/ARCHITECTURE.md）
+        - 现有 IPC 通道契约（见 backend-design/BACKEND_SPEC.md）
 
   - type: textarea
     id: problem
@@ -59,7 +59,7 @@ body:
     attributes:
       label: 契约确认
       options:
-        - label: 我已阅读 docs/ARCHITECTURE.md 中的不可修改契约清单
+        - label: 我已阅读 frontend-design/FRONTEND_SPEC.md 与 backend-design/BACKEND_SPEC.md
           required: true
-        - label: 该功能不会要求修改核心业务逻辑层
+        - label: 如需修改核心契约，我已说明迁移、兼容与验证要求
           required: true

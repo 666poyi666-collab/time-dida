@@ -29,6 +29,7 @@ export function formatDurationPadded(ms: number): string {
 /** ms -> "X 分钟" / "X 小时 Y 分钟" */
 export function formatMinutes(ms: number): string {
   const totalMin = Math.round(ms / 60000);
+  if (ms > 0 && totalMin === 0) return '<1 分钟';
   if (totalMin < 60) return `${totalMin} 分钟`;
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;

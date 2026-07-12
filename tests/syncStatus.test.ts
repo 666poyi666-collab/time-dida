@@ -5,7 +5,7 @@ import {
   getQueueSessionId,
   NOT_SYNCED_STATE,
   queueItemToSessionSyncState,
-} from '../src/lib/syncStatus';
+} from '../src/features/history/syncPresentation';
 
 function queueItem(
   id: string,
@@ -38,21 +38,65 @@ describe('sync queue status aggregation', () => {
     });
   });
 
-  it('uses the latest queue item for a session', () => {
+  it('uses the latest queue item for the same logical segment', () => {
     const map = buildSessionSyncStateMap([
       queueItem(
         'old',
-        { type: 'session-note', sessionId: 'session-1' },
+        { type: 'segment-focus', sessionId: 'session-1', segmentId: 'segment-1' },
         'failed',
         100,
         'old error',
       ),
-      queueItem('new', { type: 'session-note', sessionId: 'session-1' }, 'synced', 200),
+      queueItem(
+        'new',
+        { type: 'segment-focus', sessionId: 'session-1', segmentId: 'segment-1' },
+        'synced',
+        200,
+      ),
     ]);
 
     expect(map['session-1']).toMatchObject({
       label: '已同步',
       tone: 'ok',
+    });
+  });
+
+  it('does not let one fresh synced segment hide another pending or failed segment', () => {
+    const pendingMap = buildSessionSyncStateMap([
+      queueItem(
+        'synced',
+        { type: 'segment-focus', sessionId: 'session-1', segmentId: 'segment-1' },
+        'synced',
+        300,
+      ),
+      queueItem(
+        'pending',
+        { type: 'segment-focus', sessionId: 'session-1', segmentId: 'segment-2' },
+        'pending',
+        100,
+      ),
+    ]);
+    expect(pendingMap['session-1']).toMatchObject({ label: '未同步', tone: 'warn' });
+
+    const failedMap = buildSessionSyncStateMap([
+      queueItem(
+        'synced',
+        { type: 'segment-focus', sessionId: 'session-1', segmentId: 'segment-1' },
+        'synced',
+        400,
+      ),
+      queueItem(
+        'failed',
+        { type: 'segment-focus', sessionId: 'session-1', segmentId: 'segment-2' },
+        'failed',
+        100,
+        'network down',
+      ),
+    ]);
+    expect(failedMap['session-1']).toMatchObject({
+      label: '同步失败',
+      tone: 'error',
+      title: 'network down',
     });
   });
 

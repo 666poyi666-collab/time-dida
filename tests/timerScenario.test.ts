@@ -51,6 +51,12 @@ function createMemDb() {
     // meta
     getMeta: (k: string) => metaStore.get(k) ?? null,
     setMeta: (k: string, v: string) => metaStore.set(k, v),
+    clear: () => {
+      sessions.length = 0;
+      segments.length = 0;
+      pauses.length = 0;
+      metaStore.clear();
+    },
   };
 }
 
@@ -68,6 +74,11 @@ vi.mock('../electron/db/index', () => ({
   listSegments: (sid: string) => memDb.listSegments(sid),
   getSegment: (id: string) => memDb.getSegment(id),
   deleteSegment: (id: string) => memDb.deleteSegment(id),
+  reassignPausesToSegment: (fromIds: string[], toId: string) => {
+    for (const pause of memDb.pauses) {
+      if (fromIds.includes(pause.segmentId)) pause.segmentId = toId;
+    }
+  },
   insertPause: (p: any) => memDb.insertPause(p),
   updatePause: (p: any) => memDb.updatePause(p),
   getOpenPause: (sid: string) => memDb.getOpenPause(sid),
@@ -77,13 +88,14 @@ vi.mock('../electron/db/index', () => ({
 }));
 
 import { TimerManager } from '../electron/timer/manager';
-import { buildMixedTimelineItems } from '../src/lib/buildMixedTimeline';
+import { buildMixedTimelineItems } from '../shared/focus/timeline';
 
 describe('TimerManager 真实场景：开始5s → 暂停3s → 继续4s → 暂停2s → 继续6s', () => {
   let timer: TimerManager;
 
   beforeAll(() => {
-    timer = new TimerManager('new-segment');
+    timer = new TimerManager();
+    timer.setSegmentBehavior('new-segment');
   });
 
   it('场景执行后应有 3 个专注片段 + 2 个暂停片段，且每段从 0 开始', () => {
@@ -162,6 +174,10 @@ describe('TimerManager 真实场景：开始5s → 暂停3s → 继续4s → 暂
     (timer as any).settleActive(fakeNow);
     (timer as any).lastTick = fakeNow;
 
+    // 当前仍在累积的片段不能参与合并，否则会破坏 active 基准并覆盖时长。
+    expect(() => timer.mergeSegments([seg1.id, seg3.id])).toThrow('当前片段仍在计时');
+    expect(timer.getSnapshot().segments).toHaveLength(3);
+
     // 6. 停止
     snap = timer.stop();
     expect(snap.state).toBe('finished');
@@ -229,6 +245,33 @@ describe('TimerManager 真实场景：开始5s → 暂停3s → 继续4s → 暂
     console.log('累计暂停:', snap.pauseElapsedMs, 'ms (~5s)');
     console.log('===========================================================\n');
 
+    Date.now = realDateNow;
+  });
+
+  it('不足持久化周期的专注在暂停时立即写入，崩溃恢复后不丢失', () => {
+    timer.dispose();
+    memDb.clear();
+    const realDateNow = Date.now;
+    let fakeNow = 2_000_000;
+    Date.now = () => fakeNow;
+
+    const beforeCrash = new TimerManager();
+    beforeCrash.start();
+    fakeNow += 3_000;
+    const paused = beforeCrash.pause();
+
+    expect(paused.activeElapsedMs).toBe(3_000);
+    expect(memDb.sessions[0].activeElapsedMs).toBe(3_000);
+    expect(memDb.segments[0].activeElapsedMs).toBe(3_000);
+
+    const recovered = new TimerManager();
+    recovered.recover();
+    const recoveredSnapshot = recovered.getSnapshot();
+    expect(recoveredSnapshot.state).toBe('paused');
+    expect(recoveredSnapshot.activeElapsedMs).toBe(3_000);
+    expect(recoveredSnapshot.segments[0].activeElapsedMs).toBe(3_000);
+
+    recovered.dispose();
     Date.now = realDateNow;
   });
 });

@@ -1,266 +1,164 @@
 # FocusLink
 
-全局快捷键驱动的专注时间记录器 + 滴答清单任务关联器。
+FocusLink 是一个本地优先的 Windows 桌面专注工具：主进程精确记录专注、暂停与自然跨度，把片段关联到滴答清单任务，并通过彼此独立的队列同步滴答清单与番茄 To-do。
 
-> 当前版本：**v0.2.29**
-> 仓库：https://github.com/666poyi666-collab/time-dida
+> 当前迭代：v0.10.0（候选构建；尚未发布）
+>
+> 版本主题：精密明亮工作面、可找回的滴答任务、统计与 renderer 稳定性、时间优先小窗
 
-它不是普通秒表，也不是普通番茄钟，而是一个 **Focus Session + Focus Segment 时间账本系统**。
+## 产品边界
 
-## 核心理念
+- 专注计时与崩溃恢复。
+- Session / Segment / PauseEvent 三层时间账本。
+- 滴答任务关联与操作；dida CLI 优先，TickTick OAuth 后备。
+- 滴答专注/评论同步与番茄 To-do 本地优先云补传。
+- 主窗口、托盘、全局快捷键和固定两态小窗。
 
-一次「专注」可以包含多个时间段；每个时间段都可以独立关联任务，也可以合并到同一个任务；暂停期间要记录间隔，但不算入专注时长。
+FocusLink 不是聊天应用、营销页或通用仪表盘。界面和实现规范分别以 [前端设计](frontend-design/README.md) 与 [后端设计](backend-design/README.md) 为准。
 
-### 三时间模型
+## 三时间模型
 
-| 时间 | 含义 |
+| 字段 | 含义 |
 | --- | --- |
-| `activeElapsedMs` | 真正专注时长（不含暂停） |
-| `pauseElapsedMs` | 暂停总时长 |
-| `wallElapsedMs` | 从开始到结束的自然总跨度 |
+| `activeElapsedMs` | 真正专注时长，不含暂停 |
+| `pauseElapsedMs` | 暂停累计 |
+| `wallElapsedMs` | 会话开始到结束的自然跨度 |
 
-**核心场景验证**：专注 45 分钟 → 暂停 5 分钟 → 专注 45 分钟 → 结束
-
-- 专注时长 = 90 分钟
-- 暂停时长 = 5 分钟
-- 总跨度 = 95 分钟
-
-### 数据模型
-
-- **Focus Session**：一次完整专注会话，可包含多个 Segment
-- **Focus Segment**：会话中的一个时间段，关联一个任务
-- **Pause Event**：暂停事件，记录间隔，不属于任何 Segment
-
-规则：一个 Session 可有多个 Segment；一个 Segment 只有一个主任务；Segment 可覆盖 Session 默认任务；暂停不属于任何 Segment；可合并/拆分 Segment。
-
-## 技术栈
-
-- **Electron 31** + **React 18** + **TypeScript 5**
-- **Vite 5** 构建（含 `vite-plugin-electron`）
-- **better-sqlite3** 本地数据库（SQLite）
-- **Zustand** 状态管理
-- **Tailwind CSS** + **Framer Motion** 样式与动画
-- **lucide-react** 图标
-- **@fontsource/inter** / **@fontsource/inter-tight** 本地字体
-- 持久化使用自研轻量 `JsonStore`（XOR 混淆 + base64），**不使用 electron-store**
-
-## 项目分区
-
-从 v0.2.5 起，交接资料按三块独立存放：
-
-| 分区 | 目录 | 用途 |
-| --- | --- | --- |
-| 前端设计 | `frontend-design/` | UI 设计交接、视觉规范、给其他 UI AI 的详细说明 |
-| 后端 | `backend/` | Electron 主进程、计时、同步、dida Provider 的后端说明 |
-| 共享契约 | `shared-contract/` | 前后端共享类型、策略与行为边界说明 |
-
-源码仍保持当前稳定路径：前端实现位于 `src/`，后端实现位于 `electron/`，共享代码位于 `shared/`。
+例如 45 分钟专注、5 分钟暂停、45 分钟专注，结果固定为 90 分钟有效专注、5 分钟暂停、95 分钟总历时。暂停后继续会创建新 Segment，并继承会话默认任务。
 
 ## 快速开始
 
+环境：Windows 10/11、Node.js 20+、npm 10+。
+
 ```bash
-# 安装依赖（含 better-sqlite3 原生模块编译）
 npm install
-
-# 重建原生模块以适配 Electron（如需要）
-npm run rebuild
-
-# 开发模式（主窗口 + 专注小窗热更新）
 npm run dev
-
-# 类型检查 + 构建
-npm run build
-
-# 打包 Windows 安装包
-npm run dist:win
-
-# 运行测试
-npm test
-
-# 代码格式化 / 检查
-npm run format
-npm run format:check
 ```
 
-开发服务器默认端口 `5174`，专注小窗开发地址为 `http://localhost:5174/mini.html`。
+常用命令：
 
-## 下载与安装
+```bash
+npm run format:check
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npm run dist
+```
 
-每个版本构建后会生成两类产物（位于仓库根目录的 `release-vXXX/` 文件夹，当前版本为 `release-v0229/`）：
+完整测试、真实外部服务和发布门禁见 [backend-design/TEST_AND_RELEASE.md](backend-design/TEST_AND_RELEASE.md)。
 
-| 类型 | 路径 | 说明 |
-| --- | --- | --- |
-| 安装包 | `release-v0229/FocusLink-0.2.29-x64.exe` | NSIS 安装程序，双击即可安装，无需 PowerShell |
-| 免安装版 | `release-v0229/FocusLink-0.2.29-x64-portable.exe` | 单文件便携版，双击即可运行 |
+## 任务与同步
 
-安装版默认安装到 `%LOCALAPPDATA%\Programs\FocusLink\`，会创建桌面快捷方式和开始菜单项。
+### 滴答清单 / dida CLI
 
-历史版本归档（仅保留最近三版）：
+FocusLink 的任务页固定表达“滴答清单”，不再把本地、CLI 和 OAuth 显示成并列的任务来源。CLI 与 OAuth 只是连接方式：刷新时先探测 dida CLI，不可用时才使用已登录 OAuth。CLI 按以下顺序解析：
 
-| 版本 | 安装包 |
-| --- | --- |
-| `0.2.27` | `release-v0227/FocusLink-0.2.27-x64.exe` |
-| `0.2.28` | `release-v0228/FocusLink-0.2.28-x64.exe` |
-| `0.2.29` | `release-v0229/FocusLink-0.2.29-x64.exe` |
+1. 设置中的手动 executable。
+2. 用户 npm 全局目录内 dida 的真实 Node 入口。
+3. 当前环境 PATH。
 
-## 全局快捷键
+写操作使用参数数组，不把中文、换行或 JSON 拼入 shell。专注摘要优先写任务评论，失败才回退到任务正文；每个片段使用 `[FocusLink:segment:<id>]` marker 去重。checklist 子项通过父任务 `items` 更新，不伪装成普通任务。
 
-| 功能 | 默认快捷键 |
-| --- | --- |
-| 开始 / 暂停 / 继续 | `Ctrl + Alt + Space` |
-| 结束当前专注 | `Ctrl + Alt + Enter` |
-| 打开 / 隐藏主窗口 | `Ctrl + Alt + F` |
-| 快速关联任务 | `Ctrl + Alt + T` |
-| 显示 / 隐藏专注小窗 | `Ctrl + Alt + M` |
+任务工作台首次只加载活动任务；已完成历史按需读取近 30 / 90 / 365 天并以 `completedAt` 稳定排序。完成后有 6 秒一键撤销，之后仍可在已完成列表找到并恢复；超长列表以每批最多 120 项逐步显示。
 
-快捷键统一使用 `Ctrl+Alt+` 修饰键以避免系统冲突。可在设置页修改，修改后自动重新注册；注册失败（冲突）会弹出 Toast 提示，不会崩溃，并自动恢复旧快捷键。
+### 番茄 To-do
 
-## 滴答清单 / TickTick 集成
+FocusLink 先以稳定 marker 原子写入本地 PCRecord，再在客户端可用时通过原生桥批量上传。只有云端确认后才标记已同步；客户端关闭时保留待上传状态。无法识别学科的 FocusLink 记录归入“学习”，不会迁移用户的其他记录。
 
-### 架构
+两个同步域互相独立。本地写入、任务关联和云端同步在界面上使用不同状态文案。
 
-采用 Adapter 架构，**稳定任务评论同步 + 本地记录兜底**：
+## 界面与稳定性基线
 
-- **dida CLI（推荐）**：复用本地 `dida` 命令行工具的 OAuth token，读取清单/任务，并优先把专注记录写入任务评论；评论失败时回退到任务内容
-- **TickTick / Dida365 Open API**：OAuth 授权（PKCE loopback），拉取清单/任务，在任务备注中追加专注记录
-- **实验性 Focus 适配器**：默认关闭，依赖非官方 V2/session API，不稳定
-- **本地兜底**：所有专注记录先保存本地，同步失败进入 `sync_queue`，绝不丢数据
-
-> 详细命令模板、诊断步骤见 [docs/DIDA_CLI.md](docs/DIDA_CLI.md)。
-
-### 同步模式
-
-| 模式 | 说明 |
-| --- | --- |
-| 稳定 · 同步到滴答清单 | 在滴答任务评论中追加专注记录；评论失败时回退到任务内容 |
-| 实验 · 写入 Focus 记录 | 仅作实验适配，不作为 dida CLI 默认同步路径 |
-| 仅本地 | 不同步，只保存本地 |
-
-### Token 安全
-
-OAuth token 通过 `JsonStore` 加密文件保存（`focuslink-credentials.json`，XOR 混淆 + base64），**不存 localStorage**。生产环境可替换为 `keytar`（OS keychain）。
+- 默认亮色与暗色均使用精密明亮的中性画布、高不透明表面、稳定对比和定向阴影；主工作面不堆叠大面积 blur、径向光晕或文字发光。
+- 中文界面使用内置 `Noto Sans SC Variable`，数字与拉丁使用内置 `Geist Variable`，`JetBrains Mono` 仅用于诊断和代码；主窗可读/可操作文案不小于 11px。动效使用 140/220/320ms 节奏，主要过渡限定在 transform/opacity/颜色，并完整支持 reduced-motion。
+- 统计详情使用 request id 拒绝旧响应，且不会因计时 tick 每秒重渲染整页。
+- renderer 无响应时在有界预算内受控重载，主进程计时不中断；日志保留 Error 的 name/message/stack/cause，托盘与 snapshot 监听只初始化一次。
+- 小窗尺寸保持收起 `184×35`、展开 `256×92`；收起态只显示进度/状态、当前时间和展开入口，当前时间字号为 23.5px / 30px。
 
 ## 项目结构
 
-```
-time-dida/
-├── electron/                  # 主进程
-│   ├── main.ts                # 入口：单实例锁、窗口、托盘、快捷键、电源事件
-│   ├── preload.ts             # contextBridge 暴露类型安全 IPC
-│   ├── ipc.ts                 # IPC 处理器（按域分流副作用）
-│   ├── tray.ts                # 系统托盘（状态联动）
-│   ├── hotkeys.ts             # 全局快捷键（debounce + 失败检测）
-│   ├── logger.ts              # 日志系统
-│   ├── credentials.ts         # OAuth token 凭证存储
-│   ├── jsonStore.ts           # 轻量 JSON 存储（替代 electron-store）
-│   ├── settingsStore.ts       # 应用设置
-│   ├── export.ts              # 数据导出（JSON/CSV/Markdown）
-│   ├── cli.ts                 # CLI 预留（本地 HTTP server）
-│   ├── db/                    # SQLite 数据访问层 + Schema
-│   ├── timer/                 # 状态机 + TimerManager（三时间账本 + 崩溃恢复）
-│   ├── tasks/                 # 本地任务 + dida CLI Provider
-│   ├── providers/             # TickTick OAuth 适配器 + 实验性 Focus 适配器
-│   └── sync/                  # sync_queue 处理
-├── src/                       # 渲染进程 (React)
-│   ├── App.tsx                # 主壳 + 导航
-│   ├── mini.tsx               # 专注小窗入口
-│   ├── components/            # TimerPanel / TaskPanel / MiniWindow / HistoryPanel / ...
-│   ├── store/useStore.ts      # Zustand
-│   └── lib/                   # time / historyStats / paneLayout / syncStatus
-├── shared/types.ts            # 共享类型（主/渲染共用，IPC 契约）
-├── tests/                     # Vitest 测试
-├── docs/                      # 产品/架构/UI/CLI/测试/变更文档
-└── electron-builder.yml       # 打包配置
+```text
+time1/
+├── src/                    # renderer：app / features / ui / styles
+├── electron/               # 主进程、SQLite、计时、Provider、同步和系统能力
+├── shared/                 # 跨进程类型、IPC API、尺寸常量和纯策略
+├── tests/                  # 自动化回归
+├── scripts/                # build / regression / smoke
+├── build/                  # 应用图标与安装器源资产
+├── public/                 # renderer 静态源资产
+├── frontend-design/        # 唯一前端设计与交接规范
+├── backend-design/         # 唯一后端、测试与发布规范
+├── .github/                # Issue 表单、Release 模板与自动发布 workflow
+├── release-v*/             # 最近三个版本的正式资产与 Release notes
+├── AGENTS.md               # AI 必须遵守的仓库规则
+└── CHANGELOG.md            # 全版本变化历史
 ```
 
-## 关键设计
+不要重新创建 `docs/`、`backend/`、`shared-contract/`、设计归档或一次性修复报告。可再生成的 `dist/`、`dist-electron/`、`dist-selftest/`、`test-data/` 和结果 JSON 不属于项目结构。
 
-### 状态机
+## 架构摘要
 
-`idle + START -> running + PAUSE -> paused + RESUME -> running + STOP -> finished + RESET -> idle`
-
-不允许散乱 boolean，所有转换通过 `transition()` 纯函数校验，非法转换被拒绝。
-
-### 崩溃恢复
-
-- 每 5 秒持久化 `activeElapsedMs` 快照到 segment + `app_meta(lastTick)`
-- 程序重启后 `recover()`：
-  - 若存在 active session 且有未关闭 pause → 恢复为 `paused`
-  - 若重启前是 `running` → 按 `lastTick` 与当前时间重算 `activeElapsedMs`
-- 系统睡眠/唤醒：`powerMonitor` 监听，唤醒后强制刷新快照
-
-### 数据完整性
-
-数据库触发器强制：
-
-- `segment_ended_at` 不能早于 `segment_started_at`
-- `pause_ended_at` 不能早于 `pause_started_at`
-- 不允许负时间
-- `ON DELETE CASCADE` 删除 session 时联动清理
-
-### 单实例
-
-`app.requestSingleInstanceLock()`，第二个实例启动时唤起已有窗口。
-
-## 测试
-
-```bash
-npm test
+```text
+React renderer
+  -> window.focuslink
+  -> context-isolated preload
+  -> validated IPC
+  -> timer / task / sync services
+  -> SQLite / dida / TickTick / 番茄 To-do / Windows
 ```
 
-覆盖：状态机所有合法/非法转换、Toggle 行为、完整专注流程（多次暂停/继续）、三时间模型核心场景（45+5+45 → 90/5/95）、多次暂停累加、时间回退保护。详见 [docs/TESTING.md](docs/TESTING.md)。
+- renderer 不直接访问 Node、数据库、文件系统或 shell。
+- Electron 主进程持有计时、窗口和外部副作用事实。
+- `shared/ipc/api.ts` 是 renderer API 的唯一类型真值。
+- dida 队列与番茄补传先保证本地持久化，再异步收敛云端。
 
-## 数据与日志位置
+## 数据与日志
 
-应用数据全部位于 Electron 的 `userData` 目录，Windows 下为 `%APPDATA%/FocusLink/`：
-
-| 类型 | 路径 |
+| 类型 | 默认位置 |
 | --- | --- |
-| 数据库 | `%APPDATA%/FocusLink/focuslink.db` |
-| 设置 | `%APPDATA%/FocusLink/focuslink-settings.json` |
-| 凭证 | `%APPDATA%/FocusLink/focuslink-credentials.json`（XOR 混淆） |
-| 日志 | `%APPDATA%/FocusLink/logs/focuslink-YYYY-MM-DD.log` |
+| 安装版 SQLite | `%APPDATA%/FocusLink/focuslink.db` |
+| 安装版设置 | `%APPDATA%/FocusLink/settings.json` |
+| 日志 | `%APPDATA%/FocusLink/logs/` |
+| 便携版数据 | 可执行文件同目录的 `focuslink-data/` |
 
-日志按天滚动，记录所有关键操作（timer/hotkey/ipc/cli/database/jsonStore 等作用域）。
+回归和自测必须使用隔离目录，不得读取或修改真实用户数据。凭据不写入日志或导出。
 
-## 常见问题
+## 发布资产
 
-**Q: better-sqlite3 安装/启动报错？**
-A: 运行 `npm run rebuild` 重新编译原生模块以适配 Electron。
+每个 `release-vXYZ/` 只保留四类文件：
 
-**Q: 快捷键无效？**
-A: 可能与其他软件冲突，查看设置页 Toast 提示；修改为其他组合键。`Ctrl+Alt+M` 在部分系统会被占用，可改用 `Ctrl+Alt+Shift+M`。
+```text
+FocusLink-x.y.z-x64.exe
+FocusLink-x.y.z-x64-portable.exe
+SHA256SUMS.txt
+RELEASE_NOTES.md
+```
 
-**Q: 滴答清单登录失败？**
-A: 确认回调地址为 `http://localhost:18321/callback`；确认 Client ID/Secret 正确；确认区域选择正确（国内 dida365 / 海外 ticktick）。使用 dida CLI 时先在终端执行 `dida auth login` 完成登录。
+当前本地保留的候选资产（不代表已有对应 tag 或 GitHub Release）：
 
-**Q: 同步失败会丢数据吗？**
-A: 不会。所有记录先保存本地，同步失败进入 `sync_queue`，可重试（最多 5 次后标记 failed）。
+| 版本 | 本地安装版 | 候选说明 |
+| --- | --- | --- |
+| 0.7.0 | `release-v070/FocusLink-0.7.0-x64.exe` | [v0.7.0](release-v070/RELEASE_NOTES.md) |
+| 0.8.0 | `release-v080/FocusLink-0.8.0-x64.exe` | [v0.8.0](release-v080/RELEASE_NOTES.md) |
+| 0.9.0 | `release-v090/FocusLink-0.9.0-x64.exe` | [v0.9.0](release-v090/RELEASE_NOTES.md) |
 
-**Q: 关闭窗口后还在计时吗？**
-A: 是。关闭窗口默认最小化到托盘，主进程继续计时。退出只能通过托盘菜单的「退出」。
+每次版本迭代必须同步更新 `CHANGELOG.md`、本地 `RELEASE_NOTES.md` 和 GitHub Release，并上传安装版、便携版与 SHA256。只推送代码或 tag 不算发布完成。
 
-## 文档
+线上审计（2026-07-13）：仓库当前只有到 `v0.5.0` 的历史 tag，GitHub Releases 页面仍为空；`v0.6.0`–`v0.9.0` 只有本地候选资产且没有准确版本提交，不能补造历史 Release。v0.10.0 只有全部门禁通过并完成线上回读后才可标记发布。
 
-完整文档位于 `docs/`：
+## 文档入口
 
-- [产品规格](docs/PRODUCT_SPEC.md)
-- [架构说明](docs/ARCHITECTURE.md)
-- [UI 规格](docs/UI_SPEC.md)
-- [dida CLI 集成](docs/DIDA_CLI.md)
-- [测试指南](docs/TESTING.md)
-- [变更日志](docs/CHANGELOG.md)
-
-历史修复报告归档于 `docs/archive/`。
-
-## 后续扩展
-
-- CLI 完整实现（`electron/cli.ts` 已预留本地 HTTP server）
-- MCP Server（架构中预留，工具：`focuslink_get_status` / `focuslink_start_timer` 等）
-- 实验性 Focus 适配器接入非官方 V2 API（需 session cookie，非账号密码）
-- 统计图表（基于已有数据模型，无需重构）
-- 打包 macOS/Linux
+- [前端设计索引](frontend-design/README.md)
+- [前端单一真相](frontend-design/FRONTEND_SPEC.md)
+- [前端 AI 接手清单](frontend-design/AI_HANDOFF_CHECKLIST.md)
+- [后端设计索引](backend-design/README.md)
+- [后端与共享契约](backend-design/BACKEND_SPEC.md)
+- [测试与发布门禁](backend-design/TEST_AND_RELEASE.md)
+- [后端 AI 接手清单](backend-design/AI_HANDOFF_CHECKLIST.md)
+- [v0.10.0 Release 正文候选](backend-design/releases/v0.10.0.md)
+- [版本历史](CHANGELOG.md)
 
 ## License
 
-MIT
+[MIT](LICENSE)

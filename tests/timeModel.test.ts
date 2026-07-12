@@ -3,6 +3,7 @@
 //   专注 45min -> 暂停 5min -> 专注 45min -> 结束
 //   结果：active=90min, pause=5min, wall=95min
 import { describe, it, expect } from 'vitest';
+import { formatMinutes } from '../src/lib/time';
 
 /**
  * 模拟 TimerManager 的三时间计算逻辑（纯函数版本，便于测试）
@@ -134,5 +135,13 @@ describe('三时间模型', () => {
     ]);
     expect(result.activeElapsedMs).toBeGreaterThanOrEqual(0);
     expect(result.pauseElapsedMs).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('历史短专注格式', () => {
+  it('does not present a non-zero short session as zero minutes', () => {
+    expect(formatMinutes(1_000)).toBe('<1 分钟');
+    expect(formatMinutes(29_999)).toBe('<1 分钟');
+    expect(formatMinutes(60_000)).toBe('1 分钟');
   });
 });

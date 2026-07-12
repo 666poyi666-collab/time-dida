@@ -17,6 +17,15 @@ export function shouldStartHiddenToTray(
 ): boolean {
   if (startMinimizedToTray) return true;
   return argv.some(
-    (arg) => arg === HIDDEN_START_ARG || (LEGACY_HIDDEN_START_ARGS as readonly string[]).includes(arg),
+    (arg) =>
+      arg === HIDDEN_START_ARG || (LEGACY_HIDDEN_START_ARGS as readonly string[]).includes(arg),
   );
+}
+
+export function shouldAutoSelectDidaTaskSource(input: {
+  migrationDone: boolean;
+  didaInstalled: boolean;
+  taskSource: 'local' | 'ticktick-cli' | 'ticktick-oauth';
+}): boolean {
+  return !input.migrationDone && input.didaInstalled && input.taskSource === 'local';
 }

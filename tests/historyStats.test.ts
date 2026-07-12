@@ -7,7 +7,7 @@ import {
   groupByDay,
   groupByWeek,
   summarizeSessions,
-} from '../src/lib/historyStats';
+} from '../src/features/history/historyStats';
 
 function at(year: number, month: number, day: number, hour = 12): number {
   return new Date(year, month - 1, day, hour, 0, 0, 0).getTime();

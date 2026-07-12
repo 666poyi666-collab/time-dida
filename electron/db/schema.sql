@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS focus_segments (
   ended_at INTEGER,
   active_elapsed_ms INTEGER NOT NULL DEFAULT 0,
   note TEXT,
+  tomatodo_subject TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   FOREIGN KEY(session_id) REFERENCES focus_sessions(id) ON DELETE CASCADE

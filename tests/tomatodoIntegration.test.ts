@@ -3,7 +3,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { addTomatodoRecord, loadTomatodoDb, nextRecordId } from '../electron/providers/tomatodoAdapter';
+import {
+  addTomatodoRecord,
+  loadTomatodoDb,
+  nextRecordId,
+} from '../electron/integrations/tomatodo/localDb';
 
 const REAL_DB = path.join(os.homedir(), 'AppData', 'Roaming', 'tomatodo', 'tomatodo_db.json');
 
@@ -106,8 +110,8 @@ describe('tomatodo integration against real db schema', () => {
     expect(second.skipped).toBe(true);
 
     const after = loadTomatodoDb(dbPath);
-    const matches = (after.PCRecord ?? []).filter(
-      (r) => (r.s1 ?? '').includes('integration-test-4'),
+    const matches = (after.PCRecord ?? []).filter((r) =>
+      (r.s1 ?? '').includes('integration-test-4'),
     );
     expect(matches.length).toBe(1);
   });

@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: 项目文档
-    url: https://github.com/666poyi666-collab/time-dida/tree/main/docs
-    about: 产品规格、架构、UI 规范、dida CLI、测试、变更日志均在 docs/ 目录。
+    url: https://github.com/666poyi666-collab/time-dida/blob/main/README.md
+    about: 从 README 进入前端设计、后端设计、测试发布和 AI 接手规范。
   - name: 变更日志
-    url: https://github.com/666poyi666-collab/time-dida/blob/main/docs/CHANGELOG.md
+    url: https://github.com/666poyi666-collab/time-dida/blob/main/CHANGELOG.md
     about: 提交 issue 前请先查看是否已在最新版本修复。

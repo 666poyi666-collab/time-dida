@@ -22,11 +22,11 @@ export interface TrayCallbacks {
 /** 生成状态托盘 SVG：小尺寸保持单环 + 中心点，颜色随计时状态变化。 */
 function makeStateSvg(state: TimerState): string {
   const tones: Record<TimerState, { ring: string; arc: string; dot: string }> = {
-    idle: { ring: '#615d59', arc: '#a39e98', dot: '#0075de' },
-    running: { ring: '#31302e', arc: '#1aae39', dot: '#0075de' },
-    paused: { ring: '#31302e', arc: '#dd5b00', dot: '#f59e0b' },
-    stopping: { ring: '#31302e', arc: '#0075de', dot: '#62aef0' },
-    finished: { ring: '#31302e', arc: '#2a9d99', dot: '#1aae39' },
+    idle: { ring: '#4b514d', arc: '#8b938d', dot: '#4e4eb2' },
+    running: { ring: '#313a35', arc: '#138459', dot: '#4e4eb2' },
+    paused: { ring: '#313a35', arc: '#c24b5b', dot: '#c24b5b' },
+    stopping: { ring: '#313a35', arc: '#4e4eb2', dot: '#9696ca' },
+    finished: { ring: '#313a35', arc: '#23845f', dot: '#138459' },
   };
   const tone = tones[state] ?? tones.idle;
   return `<?xml version="1.0" encoding="UTF-8"?>

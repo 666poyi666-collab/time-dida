@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   HIDDEN_START_ARG,
   getLoginItemSettings,
+  shouldAutoSelectDidaTaskSource,
   shouldStartHiddenToTray,
 } from '../shared/startupPolicy';
 
@@ -22,5 +23,29 @@ describe('startup policy', () => {
     expect(shouldStartHiddenToTray(true, ['FocusLink.exe'])).toBe(true);
     expect(shouldStartHiddenToTray(false, ['FocusLink.exe', '--hidden'])).toBe(true);
     expect(shouldStartHiddenToTray(false, ['FocusLink.exe', '--start-minimized'])).toBe(true);
+  });
+
+  it('selects an installed dida CLI once without overriding an explicit source later', () => {
+    expect(
+      shouldAutoSelectDidaTaskSource({
+        migrationDone: false,
+        didaInstalled: true,
+        taskSource: 'local',
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoSelectDidaTaskSource({
+        migrationDone: true,
+        didaInstalled: true,
+        taskSource: 'local',
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoSelectDidaTaskSource({
+        migrationDone: false,
+        didaInstalled: true,
+        taskSource: 'ticktick-oauth',
+      }),
+    ).toBe(false);
   });
 });

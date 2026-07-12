@@ -1,0 +1,239 @@
+name: Build and publish release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag, for example v0.10.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: focuslink-release-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Verify, package and publish
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Validate tag, version and release notes
+        shell: pwsh
+        env:
+          RELEASE_EVENT_NAME: ${{ github.event_name }}
+          RELEASE_INPUT_TAG: ${{ inputs.tag }}
+          RELEASE_REF_NAME: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content -Raw -LiteralPath 'package.json' | ConvertFrom-Json).version
+          $lockVersion = (Get-Content -Raw -LiteralPath 'package-lock.json' | ConvertFrom-Json).version
+          $tag = if ($env:RELEASE_EVENT_NAME -eq 'workflow_dispatch') { $env:RELEASE_INPUT_TAG } else { $env:RELEASE_REF_NAME }
+          if ($tag -ne "v$version") {
+            throw "Tag $tag does not match package version $version"
+          }
+          if ($lockVersion -ne $version) {
+            throw "package-lock version $lockVersion does not match package version $version"
+          }
+
+          $releaseDirectory = "release-v$($version.Replace('.', ''))"
+          $notesSource = "backend-design/releases/v$version.md"
+          if (-not (Test-Path -LiteralPath $notesSource -PathType Leaf)) {
+            throw "Missing release notes source: $notesSource"
+          }
+
+          $sharedVersion = Get-Content -Raw -LiteralPath 'shared/version.ts'
+          if ($sharedVersion -notmatch "APP_VERSION\s*=\s*'$([regex]::Escape($version))'" -or
+              $sharedVersion -notmatch "APP_RELEASE_DIR\s*=\s*'$([regex]::Escape($releaseDirectory))'") {
+            throw 'shared/version.ts is not aligned with package.json'
+          }
+          $builder = Get-Content -Raw -LiteralPath 'electron-builder.yml'
+          if ($builder -notmatch "(?m)^\s*output:\s*$([regex]::Escape($releaseDirectory))\s*$") {
+            throw 'electron-builder.yml output is not aligned with package.json'
+          }
+
+          $releaseBody = Get-Content -Raw -LiteralPath $notesSource
+          if ($releaseBody -notmatch '(?m)^>\s*发布状态：已验证待发布\s*$') {
+            throw 'Release notes must contain the exact machine-checkable status: 发布状态：已验证待发布'
+          }
+          if ($releaseBody -match '草稿|草案|候选|尚未发布|状态：未发布|待执行|待正式|待完成|待填写|以下是验收目标|\[ \]') {
+            throw 'Release notes still contain a draft or unfinished verification item'
+          }
+
+          "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_DIRECTORY=$releaseDirectory" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_NOTES_SOURCE=$notesSource" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify source
+        shell: pwsh
+        run: |
+          npm run format:check
+          npm run typecheck
+          npm run lint
+          npm test
+          npm audit --omit=dev
+
+      - name: Run isolated Electron regressions
+        run: npm run regression:electron
+
+      - name: Package Windows applications
+        run: npm run dist
+
+      - name: Smoke-test unpacked main and mini windows
+        shell: pwsh
+        run: |
+          $executable = Join-Path $env:RELEASE_DIRECTORY 'win-unpacked/FocusLink.exe'
+          node scripts/smoke/ui-state-smoke.cjs $executable (Join-Path $env:RUNNER_TEMP 'focuslink-ui-smoke')
+          node scripts/smoke/mini-ui-smoke.cjs $executable (Join-Path $env:RUNNER_TEMP 'focuslink-mini-smoke')
+
+      - name: Smoke-test portable and installed applications
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RELEASE_DIRECTORY "FocusLink-$env:RELEASE_VERSION-x64.exe"
+          $portable = Join-Path $env:RELEASE_DIRECTORY "FocusLink-$env:RELEASE_VERSION-x64-portable.exe"
+          node scripts/smoke/ui-state-smoke.cjs $portable (Join-Path $env:RUNNER_TEMP 'focuslink-portable-smoke')
+
+          $installDirectory = Join-Path $env:RUNNER_TEMP 'FocusLink-installed'
+          $process = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$installDirectory") -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) {
+            throw "Silent installer exited with code $($process.ExitCode)"
+          }
+          $installedExecutable = Join-Path $installDirectory 'FocusLink.exe'
+          if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
+            throw "Installed executable not found: $installedExecutable"
+          }
+          node scripts/smoke/ui-state-smoke.cjs $installedExecutable (Join-Path $env:RUNNER_TEMP 'focuslink-installed-smoke')
+
+      - name: Prepare checksums and release body
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RELEASE_DIRECTORY "FocusLink-$env:RELEASE_VERSION-x64.exe"
+          $portable = Join-Path $env:RELEASE_DIRECTORY "FocusLink-$env:RELEASE_VERSION-x64-portable.exe"
+          $notes = Join-Path $env:RELEASE_DIRECTORY 'RELEASE_NOTES.md'
+          $checksums = Join-Path $env:RELEASE_DIRECTORY 'SHA256SUMS.txt'
+
+          foreach ($file in @($installer, $portable)) {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Missing packaged asset: $file"
+            }
+          }
+
+          $installerHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
+          $portableHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $portable).Hash.ToLowerInvariant()
+          @(
+            "$installerHash *$(Split-Path -Leaf $installer)"
+            "$portableHash *$(Split-Path -Leaf $portable)"
+          ) | Set-Content -LiteralPath $checksums -Encoding utf8
+
+          $body = Get-Content -Raw -LiteralPath $env:RELEASE_NOTES_SOURCE
+          $installerPlaceholder = "| ``FocusLink-$env:RELEASE_VERSION-x64.exe`` | 正式打包后写入 |"
+          $portablePlaceholder = "| ``FocusLink-$env:RELEASE_VERSION-x64-portable.exe`` | 正式打包后写入 |"
+          $body = $body.Replace($installerPlaceholder, "| ``FocusLink-$env:RELEASE_VERSION-x64.exe`` | ``$installerHash`` |")
+          $body = $body.Replace($portablePlaceholder, "| ``FocusLink-$env:RELEASE_VERSION-x64-portable.exe`` | ``$portableHash`` |")
+          if ($body -match '正式打包后写入') {
+            throw 'Release notes checksum placeholders were not replaced'
+          }
+          Set-Content -LiteralPath $notes -Value $body -Encoding utf8
+
+          "RELEASE_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_PORTABLE=$portable" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_CHECKSUMS=$checksums" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_NOTES=$notes" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "GitHub Release $env:RELEASE_TAG already exists; refusing to overwrite it"
+          }
+
+          gh release create $env:RELEASE_TAG `
+            $env:RELEASE_INSTALLER `
+            $env:RELEASE_PORTABLE `
+            $env:RELEASE_CHECKSUMS `
+            --verify-tag `
+            --title "FocusLink $env:RELEASE_TAG" `
+            --notes-file $env:RELEASE_NOTES
+
+      - name: Read back published assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = gh release view $env:RELEASE_TAG --json tagName,name,body,isDraft,isPrerelease,assets,url | ConvertFrom-Json
+          if ($release.tagName -ne $env:RELEASE_TAG -or $release.isDraft -or $release.isPrerelease) {
+            throw 'Published Release metadata did not match the requested stable tag'
+          }
+          if ($release.name -ne "FocusLink $env:RELEASE_TAG") {
+            throw "Published Release title is incorrect: $($release.name)"
+          }
+          if (-not [uri]::IsWellFormedUriString([string]$release.url, [uriKind]::Absolute)) {
+            throw 'Published Release does not expose a valid page URL'
+          }
+
+          $expectedBody = (Get-Content -Raw -LiteralPath $env:RELEASE_NOTES).Replace("`r`n", "`n").TrimEnd()
+          $actualBody = ([string]$release.body).Replace("`r`n", "`n").TrimEnd()
+          if ($actualBody -ne $expectedBody) {
+            throw 'Published Release body differs from the generated local RELEASE_NOTES.md'
+          }
+
+          $localCommit = (git rev-list -n 1 $env:RELEASE_TAG).Trim()
+          $remoteCommit = (gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:RELEASE_TAG" --jq .sha).Trim()
+          if ($localCommit -ne $remoteCommit) {
+            throw "Release tag target mismatch: local=$localCommit remote=$remoteCommit"
+          }
+
+          $expected = @(
+            "FocusLink-$env:RELEASE_VERSION-x64.exe"
+            "FocusLink-$env:RELEASE_VERSION-x64-portable.exe"
+            'SHA256SUMS.txt'
+          )
+          $actual = @($release.assets | ForEach-Object { $_.name })
+          if ($actual.Count -ne $expected.Count) {
+            throw "Published Release has $($actual.Count) assets; expected exactly $($expected.Count)"
+          }
+          foreach ($asset in $expected) {
+            if ($asset -notin $actual) {
+              throw "Published Release is missing asset: $asset"
+            }
+          }
+          foreach ($asset in $release.assets) {
+            if ([long]$asset.size -le 0) {
+              throw "Published asset is empty: $($asset.name)"
+            }
+            if (-not [uri]::IsWellFormedUriString([string]$asset.url, [uriKind]::Absolute)) {
+              throw "Published asset has no valid download URL: $($asset.name)"
+            }
+          }
+
+          Write-Host "Verified GitHub Release $env:RELEASE_TAG with all required assets."

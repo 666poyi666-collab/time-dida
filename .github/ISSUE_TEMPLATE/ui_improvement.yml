@@ -6,8 +6,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        FocusLink 的 UI 规范见 docs/UI_SPEC.md，请先对照确认问题归属。
-        UI AI 接手时应只修改「可修改文件清单」内的文件，不触碰底层逻辑。
+        FocusLink 的 UI 规范见 frontend-design/FRONTEND_SPEC.md，请先对照确认问题归属。
+        若需求会改变 IPC、数据或同步语义，请同时遵守 backend-design/BACKEND_SPEC.md。
 
   - type: dropdown
     id: surface
@@ -15,11 +15,10 @@ body:
       label: 出现位置
       options:
         - 主窗口 - 计时器区（TimerPanel）
-        - 主窗口 - 任务面板（TaskPanel / TaskPicker）
-        - 主窗口 - 历史记录（HistoryPanel / SegmentTimeline）
+        - 主窗口 - 任务（Tasks / TaskPicker）
+        - 主窗口 - 统计（HistoryPanel / SegmentTimeline）
         - 主窗口 - 设置（SettingsPanel）
         - 小窗 - 展开态（MiniWindow expanded）
-        - 小窗 - 紧凑态（MiniWindow compact）
         - 小窗 - 收起态（MiniWindow collapsed）
         - 托盘菜单
         - 全局 / 主题 / 字体
@@ -60,7 +59,7 @@ body:
     attributes:
       label: 涉及的设计 Token（可选）
       description: |
-        如颜色、字号、间距、圆角等，尽量引用 docs/UI_SPEC.md 中的 token 名。
+        如颜色、字号、间距、圆角等，尽量引用 frontend-design/FRONTEND_SPEC.md 中的 token 名。
       placeholder: "color.surface, font.timer, radius.md"
     validations:
       required: false
@@ -70,7 +69,7 @@ body:
     attributes:
       label: 范围确认
       options:
-        - label: 我已确认此改动落在 UI_SPEC.md 的「可修改文件清单」内
+        - label: 我已阅读 frontend-design/FRONTEND_SPEC.md 与 AI_HANDOFF_CHECKLIST.md
           required: true
-        - label: 我不会要求修改 electron/ 下的底层逻辑文件
+        - label: 如果会改变底层契约，我会明确列出并要求同步测试与后端文档
           required: true

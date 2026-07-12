@@ -5,8 +5,9 @@
 // 诊断模式：
 //   每次执行命令记录完整信息（exitCode/stdout/stderr/parseResult/error）。
 //   diagnose() 一次性返回所有诊断字段供 UI 展示。
-import { exec, execFile } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type {
@@ -19,12 +20,19 @@ import type {
   TickTickCliConfig,
   AppSettings,
   TaskCache,
+  TaskWorkspaceRefreshOptions,
 } from '@shared/types';
 import { getSettings, saveSettings } from '../settingsStore.js';
 import { logger } from '../logger.js';
-import { listTaskCache, upsertTaskCache, getSegment, setSegmentCloudFocusId } from '../db/index.js';
+import {
+  listTaskCache,
+  upsertTaskCache,
+  upsertTaskCaches,
+  getSegment,
+  setSegmentCloudFocusId,
+} from '../db/index.js';
+import { reopenDidaTaskViaOpenApi } from '../integrations/ticktick/didaOpenApiBridge.js';
 
-const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
 /** dida CLI 默认命令模板 - 探测到 dida 后自动应用 */
@@ -91,6 +99,7 @@ export function applyDidaDefaults(): AppSettings {
 
 /** Windows 候选命令名，依次 where 探测 */
 const CANDIDATE_CMDS = ['dida', 'ticktick', 'ticktick-cli', 'todo'];
+const DIDA_RAW_TASK_CACHE_TTL_MS = 30_000;
 
 /** 单步命令执行结果（用于诊断） */
 export interface CliExecRecord {
@@ -156,6 +165,9 @@ interface RawDidaTask {
   desc?: unknown;
   note?: unknown;
   status?: unknown;
+  completedTime?: unknown;
+  createdTime?: unknown;
+  modifiedTime?: unknown;
   sortOrder?: unknown;
   timeZone?: unknown;
   isAllDay?: unknown;
@@ -173,14 +185,143 @@ interface DidaTaskContext {
   isChecklistItem: boolean;
 }
 
+export interface TickTickCliProviderOptions {
+  /** Successful active-task snapshots only; failures are never cached. */
+  rawTaskCacheTtlMs?: number;
+  now?: () => number;
+}
+
 interface DidaComment {
   id?: unknown;
   title?: unknown;
   content?: unknown;
 }
 
-/** 最近一次执行记录（供 UI 显示） */
-let lastRecord: CliExecRecord | null = null;
+export interface DidaCloudFocusRecord {
+  id: string;
+  note?: string;
+  /** dida focus list/get 返回毫秒；create 的 --duration 输入则是秒。 */
+  duration?: number | string;
+  startTime?: string;
+  endTime?: string;
+  /** dida focus list/get 返回秒。 */
+  pauseDuration?: number | string;
+}
+
+export interface DidaFocusTiming {
+  startTime: string;
+  endTime: string;
+  startMs: number;
+  endMs: number;
+  expectedDurationMs: number;
+  durationSec: number;
+  pauseDurationSec: number;
+}
+
+export const DIDA_FOCUS_DURATION_TOLERANCE_MS = 1500;
+
+/**
+ * dida 服务端按 end-start-pause 计算 duration。
+ * 旧版曾把 pause 加进 end 并传 --pause-duration，导致 TickTick UI 显示的
+ * 时间跨度等于 active+pause（隔夜暂停会让 4 分钟专注显示为 8+ 小时）。
+ * 现在 end 只加 active，不传 --pause-duration；服务端计算 duration=end-start=active。
+ * 暂停时长仍保留在 note 文本中，不影响信息完整性。
+ */
+export function buildDidaFocusTiming(input: {
+  startedAt: number;
+  activeElapsedMs: number;
+  pauseElapsedMs: number;
+}): DidaFocusTiming {
+  if (!Number.isFinite(input.startedAt)) throw new Error('专注开始时间无效');
+  if (!Number.isFinite(input.activeElapsedMs) || input.activeElapsedMs <= 0) {
+    throw new Error('专注时长无效');
+  }
+  const expectedDurationMs = Math.max(1000, Math.round(input.activeElapsedMs));
+  const startMs = Math.round(input.startedAt);
+  const endMs = startMs + expectedDurationMs;
+  return {
+    startTime: new Date(startMs).toISOString(),
+    endTime: new Date(endMs).toISOString(),
+    startMs,
+    endMs,
+    expectedDurationMs,
+    durationSec: Math.max(1, Math.round(expectedDurationMs / 1000)),
+    pauseDurationSec: 0,
+  };
+}
+
+/** 从 dida focus list/get 结果读取云端有效专注时长（毫秒）。 */
+export function getDidaCloudFocusDurationMs(record: DidaCloudFocusRecord): number | null {
+  const rawDuration = Number(record.duration);
+  if (Number.isFinite(rawDuration) && rawDuration >= 0) return Math.round(rawDuration);
+
+  const startMs = record.startTime ? Date.parse(record.startTime) : Number.NaN;
+  const endMs = record.endTime ? Date.parse(record.endTime) : Number.NaN;
+  const pauseSec = Number(record.pauseDuration ?? 0);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || !Number.isFinite(pauseSec)) {
+    return null;
+  }
+  return Math.max(0, Math.round(endMs - startMs - Math.max(0, pauseSec) * 1000));
+}
+
+/** duration 未知时返回 null，避免为了无法验证的差异破坏性重建。 */
+export function didaFocusDurationMatches(
+  record: DidaCloudFocusRecord,
+  expectedDurationMs: number,
+  toleranceMs = DIDA_FOCUS_DURATION_TOLERANCE_MS,
+): boolean | null {
+  const actualDurationMs = getDidaCloudFocusDurationMs(record);
+  if (actualDurationMs === null) return null;
+  return Math.abs(actualDurationMs - expectedDurationMs) <= Math.max(0, toleranceMs);
+}
+
+export type DidaFocusReconciliationPlan =
+  | { action: 'create'; markerMatches: [] }
+  | {
+      action: 'keep';
+      keeper: DidaCloudFocusRecord;
+      duplicates: DidaCloudFocusRecord[];
+      durationVerified: boolean;
+      markerMatches: DidaCloudFocusRecord[];
+    }
+  | {
+      action: 'rebuild';
+      stale: DidaCloudFocusRecord[];
+      markerMatches: DidaCloudFocusRecord[];
+    };
+
+/**
+ * 对同一 marker 的云端记录作纯决策：正确记录直接复用；旧版错误时安全重建；
+ * duration 不可验证时宁可复用也不破坏用户数据。
+ */
+export function planDidaFocusReconciliation(
+  records: DidaCloudFocusRecord[],
+  marker: string,
+  expectedDurationMs: number,
+): DidaFocusReconciliationPlan {
+  const markerMatches = records.filter((focus) => (focus.note ?? '').includes(marker));
+  if (markerMatches.length === 0) return { action: 'create', markerMatches: [] };
+
+  const verified = markerMatches.find(
+    (focus) => didaFocusDurationMatches(focus, expectedDurationMs) === true,
+  );
+  const unknown = markerMatches.find(
+    (focus) => didaFocusDurationMatches(focus, expectedDurationMs) === null,
+  );
+  const keeper = verified ?? unknown;
+  if (keeper) {
+    return {
+      action: 'keep',
+      keeper,
+      // 只有已经验证 keeper 正确时才收敛重复记录；未知数据不做破坏性清理。
+      duplicates: verified ? markerMatches.filter((focus) => focus.id !== keeper.id) : [],
+      durationVerified: !!verified,
+      markerMatches,
+    };
+  }
+
+  return { action: 'rebuild', stale: markerMatches, markerMatches };
+}
 
 function truncate(s: string, n = 2000): string {
   if (!s) return '';
@@ -193,50 +334,55 @@ function maskSecret(s: string): string {
 
 /** 自动探测本地可用的滴答清单 CLI 命令；探测到 dida 时自动迁移旧 ticktick 模板 */
 export async function detectCli(): Promise<CliDetectResult> {
-  const isWin = process.platform === 'win32';
-  const whereCmd = isWin ? 'where' : 'which';
-  for (const cmd of CANDIDATE_CMDS) {
-    try {
-      const { stdout: whereOut } = await execAsync(`${whereCmd} ${cmd}`, {
-        timeout: 3000,
-        windowsHide: true,
-      });
-      const executablePath = whereOut.split(/\r?\n/)[0]?.trim() ?? '';
-      // 探测成功，尝试 --help 解析能力
-      let helpOutput: string | undefined;
-      try {
-        const { stdout } = await execAsync(`${cmd} --help`, {
-          timeout: 5000,
-          windowsHide: true,
-        });
-        helpOutput = stdout.slice(0, 800);
-      } catch {
-        // --help 失败不影响探测
-      }
-      logger.info('cli', `detected CLI: ${cmd} at ${executablePath}`);
+  const cfg = getConfig();
 
-      // 探测到 dida 后，若当前模板仍含 ticktick 字面量（旧版本残留），自动迁移为 dida 模板
-      if (cmd === 'dida') {
-        const cur = getSettings();
-        if (
-          templatesContainTicktick(cur.ticktickCli) ||
-          hasLegacyDidaAppendTemplate(cur.ticktickCli)
-        ) {
-          logger.info('cli', 'auto-migrating stale CLI templates -> dida templates');
-          applyDidaDefaults();
-        }
-      }
+  // GUI/开机启动进程常常没有继承用户 npm PATH。先按手动配置、用户目录下的
+  // npm 全局目录和 dida 包真实入口解析，再把 PATH 中的裸命令作为最后兜底。
+  const didaTarget = resolveDidaExecTarget(cfg.executable);
+  const versionResult = enforceDidaOutputPolicy(
+    await execFileWithDiagnose(
+      didaTarget.file,
+      [...didaTarget.argsPrefix, '--version'],
+      5000,
+      'na',
+    ),
+  );
+  if (versionResult.record.status === 'success') {
+    const helpResult = enforceDidaOutputPolicy(
+      await execFileWithDiagnose(didaTarget.file, [...didaTarget.argsPrefix, '--help'], 5000, 'na'),
+    );
+    const helpOutput =
+      helpResult.record.status === 'success' ? helpResult.stdout.slice(0, 800) : undefined;
+    logger.info('cli', `detected CLI: dida at ${didaTarget.executablePath}`);
 
-      return {
-        found: true,
-        executable: cmd,
-        executablePath,
-        candidates: { cmd, found: true },
-        helpOutput,
-      };
-    } catch {
-      // 继续探测下一个
+    const cur = getSettings();
+    if (templatesContainTicktick(cur.ticktickCli) || hasLegacyDidaAppendTemplate(cur.ticktickCli)) {
+      logger.info('cli', 'auto-migrating stale CLI templates -> dida templates');
+      applyDidaDefaults();
     }
+
+    return {
+      found: true,
+      executable: 'dida',
+      executablePath: didaTarget.executablePath,
+      candidates: { cmd: 'dida', found: true },
+      helpOutput,
+    };
+  }
+
+  // 兼容历史 ticktick CLI 配置。这里同样用 execFile，不经 shell；dida 已在上面
+  // 走过完整的无 PATH 解析，因此不再重复探测。
+  for (const cmd of CANDIDATE_CMDS.filter((candidate) => candidate !== 'dida')) {
+    const result = await execFileWithDiagnose(cmd, ['--help'], 5000, 'na');
+    if (result.record.status !== 'success') continue;
+    logger.info('cli', `detected CLI: ${cmd}`);
+    return {
+      found: true,
+      executable: cmd,
+      executablePath: cmd,
+      candidates: { cmd, found: true },
+      helpOutput: result.stdout.slice(0, 800),
+    };
   }
   logger.info('cli', 'no TickTick CLI detected');
   return {
@@ -264,13 +410,84 @@ function renderTemplate(template: string, vars: Record<string, string>): string 
   return out;
 }
 
+/**
+ * 把设置中的命令模板拆成 executable + argv。只处理引号/空白，不允许管道、重定向
+ * 等 shell 语义；dida 的所有调用最终都会交给 execFile 参数数组。
+ */
+export function splitCommandLine(command: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | null = null;
+  let tokenStarted = false;
+
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i];
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+        continue;
+      }
+      if (ch === '\\' && command[i + 1] === quote) {
+        current += quote;
+        i += 1;
+        continue;
+      }
+      current += ch;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      tokenStarted = true;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (tokenStarted) {
+        args.push(current);
+        current = '';
+        tokenStarted = false;
+      }
+      continue;
+    }
+    current += ch;
+    tokenStarted = true;
+  }
+
+  if (quote) throw new Error('CLI 命令包含未闭合的引号');
+  if (tokenStarted) args.push(current);
+  if (args.some((arg) => /^(?:\||\|\||&&|>|>>|<)$/.test(arg))) {
+    throw new Error('CLI 命令模板不支持管道、重定向或命令串联');
+  }
+  return args;
+}
+
+function executableBasename(executable: string): string {
+  return path.win32.basename(executable).toLowerCase();
+}
+
+function isDidaExecutable(executable: string): boolean {
+  const basename = executableBasename(executable);
+  return (
+    basename === 'dida' ||
+    basename === 'dida.cmd' ||
+    basename === 'dida.exe' ||
+    basename === 'dida.ps1' ||
+    /(?:^|[\\/])@suibiji[\\/]dida-cli[\\/]/i.test(executable)
+  );
+}
+
 function isDidaCommand(command: string): boolean {
-  const trimmed = command.trim();
-  return trimmed === 'dida' || /^dida(?:\.cmd|\.exe)?\s/i.test(trimmed);
+  try {
+    const [executable] = splitCommandLine(command);
+    return !!executable && isDidaExecutable(executable);
+  } catch {
+    return false;
+  }
 }
 
 function isDidaConfig(cfg: TickTickCliConfig): boolean {
   return (
+    (!!cfg.executable && isDidaExecutable(cfg.executable)) ||
     isDidaCommand(cfg.listTasksCommand) ||
     isDidaCommand(cfg.getTaskCommand) ||
     isDidaCommand(cfg.appendNoteCommand)
@@ -287,89 +504,338 @@ function rawTaskId(value: RawDidaTask | null): string | null {
   return id == null ? null : String(id);
 }
 
+/**
+ * dida 的 `task update --items` 会用整个数组覆盖父任务 checklist。必须原样保留每个
+ * item 的 completedTime、日期、提醒以及 CLI 尚未建模的字段，只覆盖目标项 status。
+ */
+export function buildDidaChecklistItemsWithCompletion(
+  rawItems: unknown[],
+  childId: string,
+  completed: boolean,
+): unknown[] {
+  const normalizedChildId = normalizeTaskId(childId);
+  return rawItems.map((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const item = value as Record<string, unknown>;
+    const itemId = item.externalId ?? item.id;
+    if (itemId == null || String(itemId) !== normalizedChildId) return value;
+    if (completed) {
+      // 完成时只设置 status=2。completedTime 若服务端需要会自行生成；客户端不伪造时间。
+      return { ...item, status: 2 };
+    }
+    // 恢复未完成必须同时清掉旧 completedTime，否则 dida/本地归一化仍会把它判为已完成。
+    return { ...item, status: 0, completedTime: null };
+  });
+}
+
+/** 兼容已有测试/调用点。 */
+export function buildCompletedDidaChecklistItems(rawItems: unknown[], childId: string): unknown[] {
+  return buildDidaChecklistItemsWithCompletion(rawItems, childId, true);
+}
+
 function normalizeTaskId(taskId: string): string {
   return taskId.replace(/^ticktick:/, '');
 }
 
-function parseCachedMeta(rawJson: string | null): { parentId?: string | null } {
+interface CachedTaskMeta {
+  parentId?: string | null;
+  completedAt?: number | null;
+  createdAt?: number | null;
+  updatedAt?: number | null;
+}
+
+function nullableTimestamp(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const timestamp = typeof value === 'number' ? value : Date.parse(String(value));
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function parseCachedMeta(rawJson: string | null): CachedTaskMeta {
   if (!rawJson) return {};
   try {
-    const parsed = JSON.parse(rawJson) as { parentId?: unknown };
-    return { parentId: parsed.parentId == null ? null : String(parsed.parentId) };
+    const parsed = JSON.parse(rawJson) as Record<string, unknown>;
+    return {
+      parentId: parsed.parentId == null ? null : String(parsed.parentId),
+      completedAt: nullableTimestamp(parsed.completedAt),
+      createdAt: nullableTimestamp(parsed.createdAt),
+      updatedAt: nullableTimestamp(parsed.updatedAt),
+    };
   } catch {
     return {};
   }
 }
 
-function isUndefinedCliOutput(stdout: string): boolean {
+export function normalizeCompletedDays(value: number | undefined): number {
+  if (!Number.isFinite(value)) return 30;
+  return Math.min(3650, Math.max(1, Math.floor(value as number)));
+}
+
+export function isUndefinedCliOutput(stdout: string): boolean {
   return stdout.trim() === 'undefined';
 }
 
-function findNodeExecutable(): string | null {
-  const candidates: string[] = [];
-  const isElectron = !!process.versions.electron;
-  if (!isElectron && process.execPath) {
-    candidates.push(process.execPath);
-  }
-  if (process.env.APPDATA) {
-    candidates.push(path.join(process.env.APPDATA, 'npm', 'node.exe'));
-  }
-  candidates.push('C:\\Program Files\\nodejs\\node.exe');
-  candidates.push('C:\\Program Files (x86)\\nodejs\\node.exe');
-  if (process.env.NVM_HOME) {
-    candidates.push(path.join(process.env.NVM_HOME, process.version, 'node.exe'));
-  }
-  if (process.env.NODE) {
-    candidates.push(process.env.NODE);
-  }
-  candidates.push('node');
-  for (const candidate of candidates) {
-    try {
-      if (candidate === 'node' || fs.existsSync(candidate)) {
-        return candidate;
-      }
-    } catch {
-      // continue
-    }
-  }
-  return null;
+type CliExecResult = { stdout: string; stderr: string; record: CliExecRecord };
+
+/** dida 偶尔会以退出码 0 输出 `undefined`；这不是成功，必须进入重试/诊断路径。 */
+function enforceDidaOutputPolicy(result: CliExecResult): CliExecResult {
+  if (result.record.status !== 'success' || !isUndefinedCliOutput(result.stdout)) return result;
+  result.record.status = 'failed';
+  result.record.error = 'dida 返回 undefined';
+  logger.error('cli', 'dida returned undefined with exit code 0', {
+    command: result.record.command,
+  });
+  return result;
 }
 
-let didaExecTargetCache: { file: string; argsPrefix: string[] } | null = null;
+export interface DidaExecTarget {
+  /** 实际传给 execFile 的程序。 */
+  file: string;
+  /** dida 子命令之前的固定参数（例如真实 JS 入口）。 */
+  argsPrefix: string[];
+  /** 供诊断 UI 展示的 dida shim/脚本真实路径。 */
+  executablePath: string;
+  kind: 'node-script' | 'cmd-shim' | 'powershell-shim' | 'executable' | 'path-command';
+}
 
-function getDidaExecTarget(): { file: string; argsPrefix: string[] } {
-  if (didaExecTargetCache) return didaExecTargetCache;
-  if (process.platform === 'win32') {
-    const npmRoot = process.env.APPDATA ? path.join(process.env.APPDATA, 'npm') : null;
-    const cliScript = npmRoot
-      ? path.join(npmRoot, 'node_modules', '@suibiji', 'dida-cli', 'dist', 'index.js')
-      : null;
-    if (cliScript && fs.existsSync(cliScript)) {
-      const nodeExe = findNodeExecutable();
-      if (nodeExe) {
-        didaExecTargetCache = { file: nodeExe, argsPrefix: [cliScript] };
-        logger.info('cli', 'using node + cliScript', { nodeExe, cliScript });
-        return didaExecTargetCache;
-      }
-    }
-    const cmdShim = npmRoot ? path.join(npmRoot, 'dida.cmd') : null;
-    if (cmdShim && fs.existsSync(cmdShim)) {
-      didaExecTargetCache = { file: 'cmd.exe', argsPrefix: ['/c', cmdShim] };
-      logger.info('cli', 'using cmd.exe /c dida.cmd fallback');
-      return didaExecTargetCache;
+export interface DidaExecResolverOptions {
+  env?: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
+  homedir?: string;
+  fileExists?: (candidate: string) => boolean;
+}
+
+function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const direct = env[name];
+  if (direct) return direct;
+  const found = Object.keys(env).find((key) => key.toLowerCase() === name.toLowerCase());
+  return found ? env[found] : undefined;
+}
+
+function expandExecutablePath(value: string, env: NodeJS.ProcessEnv, homedir: string): string {
+  let expanded = value.trim();
+  expanded = expanded.replace(/%([^%]+)%/g, (whole, name: string) => envValue(env, name) ?? whole);
+  if (expanded === '~') expanded = homedir;
+  else if (expanded.startsWith('~\\') || expanded.startsWith('~/')) {
+    expanded = path.join(homedir, expanded.slice(2));
+  }
+  return expanded;
+}
+
+function findNodeExecutableForDida(
+  options: Required<Pick<DidaExecResolverOptions, 'env' | 'platform' | 'homedir' | 'fileExists'>>,
+): string | null {
+  const { env, platform, homedir, fileExists } = options;
+  const candidates = [
+    envValue(env, 'NODE'),
+    envValue(env, 'NVM_SYMLINK')
+      ? path.join(
+          envValue(env, 'NVM_SYMLINK') as string,
+          platform === 'win32' ? 'node.exe' : 'node',
+        )
+      : undefined,
+    envValue(env, 'ProgramFiles')
+      ? path.join(envValue(env, 'ProgramFiles') as string, 'nodejs', 'node.exe')
+      : undefined,
+    envValue(env, 'ProgramFiles(x86)')
+      ? path.join(envValue(env, 'ProgramFiles(x86)') as string, 'nodejs', 'node.exe')
+      : undefined,
+    platform === 'win32' ? 'C:\\Program Files\\nodejs\\node.exe' : undefined,
+    platform === 'win32' ? 'C:\\Program Files (x86)\\nodejs\\node.exe' : undefined,
+    platform === 'win32'
+      ? path.join(homedir, 'scoop', 'apps', 'nodejs-lts', 'current', 'node.exe')
+      : undefined,
+    platform === 'win32'
+      ? path.join(homedir, 'scoop', 'apps', 'nodejs', 'current', 'node.exe')
+      : undefined,
+  ].filter((candidate): candidate is string => !!candidate);
+
+  for (const candidate of candidates) {
+    try {
+      if (fileExists(candidate)) return candidate;
+    } catch {
+      // 继续检查其他候选。
     }
   }
-  didaExecTargetCache = { file: 'dida', argsPrefix: [] };
-  return didaExecTargetCache;
+  return platform === 'win32' ? null : 'node';
+}
+
+function makeTargetFromCandidate(
+  candidate: string,
+  options: Required<Pick<DidaExecResolverOptions, 'env' | 'platform' | 'homedir' | 'fileExists'>>,
+): DidaExecTarget | null {
+  const { env, platform, fileExists } = options;
+  const expanded = expandExecutablePath(candidate, env, options.homedir);
+  const extension = path.extname(expanded).toLowerCase();
+
+  try {
+    if (!fileExists(expanded)) return null;
+  } catch {
+    return null;
+  }
+
+  const packageScript = path.join(
+    path.dirname(expanded),
+    'node_modules',
+    '@suibiji',
+    'dida-cli',
+    'dist',
+    'index.js',
+  );
+  const nodeExe = findNodeExecutableForDida(options);
+
+  if (
+    (extension === '.cmd' || extension === '.bat' || executableBasename(expanded) === 'dida') &&
+    fileExists(packageScript) &&
+    nodeExe
+  ) {
+    return {
+      file: nodeExe,
+      argsPrefix: [packageScript],
+      executablePath: packageScript,
+      kind: 'node-script',
+    };
+  }
+  if (extension === '.js' || extension === '.mjs' || extension === '.cjs') {
+    if (!nodeExe) return null;
+    return {
+      file: nodeExe,
+      argsPrefix: [expanded],
+      executablePath: expanded,
+      kind: 'node-script',
+    };
+  }
+  if (platform === 'win32' && (extension === '.cmd' || extension === '.bat')) {
+    return {
+      file: envValue(env, 'COMSPEC') || 'cmd.exe',
+      argsPrefix: ['/d', '/s', '/c', expanded],
+      executablePath: expanded,
+      kind: 'cmd-shim',
+    };
+  }
+  if (platform === 'win32' && extension === '.ps1') {
+    return {
+      file: 'powershell.exe',
+      argsPrefix: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', expanded],
+      executablePath: expanded,
+      kind: 'powershell-shim',
+    };
+  }
+  return { file: expanded, argsPrefix: [], executablePath: expanded, kind: 'executable' };
+}
+
+/**
+ * 解析 dida 的可执行目标。优先顺序：手动 executable -> npm 包真实 JS -> npm shim
+ * -> PATH 裸命令。Windows 用户目录由 USERPROFILE/homedir 推导，不要求 APPDATA 存在。
+ */
+export function resolveDidaExecTarget(
+  configuredExecutable = '',
+  resolverOptions: DidaExecResolverOptions = {},
+): DidaExecTarget {
+  const env = resolverOptions.env ?? process.env;
+  const platform = resolverOptions.platform ?? process.platform;
+  const homedir = resolverOptions.homedir ?? os.homedir();
+  const fileExists = resolverOptions.fileExists ?? fs.existsSync;
+  const options = { env, platform, homedir, fileExists };
+
+  const configured = expandExecutablePath(configuredExecutable, env, homedir);
+  const configuredParts = configured ? splitCommandLine(configured) : [];
+  const [configuredFile, ...configuredArgs] = configuredParts;
+  if (configured) {
+    // executable 设置框通常保存不带引号的完整 Windows 路径，其中可能包含空格。
+    const directFullPath = makeTargetFromCandidate(configured, options);
+    if (directFullPath) return directFullPath;
+
+    const configuredScript = configuredArgs[0];
+    if (
+      configuredFile &&
+      configuredScript &&
+      /^node(?:\.exe)?$/i.test(executableBasename(configuredFile)) &&
+      /\.(?:c|m)?js$/i.test(configuredScript) &&
+      fileExists(configuredScript)
+    ) {
+      return {
+        file: configuredFile,
+        argsPrefix: configuredArgs,
+        executablePath: configuredScript,
+        kind: 'node-script',
+      };
+    }
+    if (configuredFile && !/^(?:dida|dida\.cmd|dida\.exe|dida\.ps1)$/i.test(configuredFile)) {
+      const direct = makeTargetFromCandidate(configuredFile, options);
+      if (direct) {
+        direct.argsPrefix.push(...configuredArgs);
+        return direct;
+      }
+    }
+
+    // 显式绝对路径或自定义命令必须优先于自动探测。只有裸 dida/dida.cmd 等
+    // 通用别名才继续解析用户 npm 目录，以修复 GUI/开机启动进程缺 PATH 的场景。
+    const isExplicitPath =
+      platform === 'win32'
+        ? path.win32.isAbsolute(configuredFile ?? '')
+        : path.posix.isAbsolute(configuredFile ?? '');
+    const isBareDidaAlias = /^(?:dida|dida\.cmd|dida\.exe|dida\.ps1)$/i.test(configuredFile ?? '');
+    if (configuredFile && (isExplicitPath || !isBareDidaAlias)) {
+      return {
+        file: configuredFile,
+        argsPrefix: configuredArgs,
+        executablePath: configuredFile,
+        kind: 'path-command',
+      };
+    }
+  }
+
+  const npmRoots = new Set<string>();
+  const appData = envValue(env, 'APPDATA');
+  const userProfile = envValue(env, 'USERPROFILE');
+  const npmPrefix = envValue(env, 'NPM_CONFIG_PREFIX');
+  if (appData) npmRoots.add(path.join(appData, 'npm'));
+  if (userProfile) npmRoots.add(path.join(userProfile, 'AppData', 'Roaming', 'npm'));
+  if (homedir) npmRoots.add(path.join(homedir, 'AppData', 'Roaming', 'npm'));
+  if (npmPrefix) npmRoots.add(npmPrefix);
+
+  for (const npmRoot of npmRoots) {
+    const candidates = [
+      path.join(npmRoot, 'node_modules', '@suibiji', 'dida-cli', 'dist', 'index.js'),
+      path.join(npmRoot, platform === 'win32' ? 'dida.cmd' : 'dida'),
+      path.join(npmRoot, platform === 'win32' ? 'dida.exe' : 'dida'),
+    ];
+    for (const candidate of candidates) {
+      const target = makeTargetFromCandidate(candidate, options);
+      if (target) {
+        // 保留手动裸命令后附加的全局参数，例如 `dida --profile work`。
+        target.argsPrefix.push(...configuredArgs);
+        return target;
+      }
+    }
+  }
+
+  if (configuredFile) {
+    return {
+      file: configuredFile,
+      argsPrefix: configuredArgs,
+      executablePath: configuredFile,
+      kind: 'path-command',
+    };
+  }
+  return { file: 'dida', argsPrefix: [], executablePath: 'dida', kind: 'path-command' };
 }
 
 async function execDidaFileWithDiagnose(
   args: string[],
   timeoutMs: number,
   parseResult: 'success' | 'failed' | 'na' = 'na',
+  configuredExecutable = getConfig().executable,
 ): Promise<{ stdout: string; stderr: string; record: CliExecRecord }> {
-  const target = getDidaExecTarget();
-  return execFileWithDiagnose(target.file, [...target.argsPrefix, ...args], timeoutMs, parseResult);
+  const target = resolveDidaExecTarget(configuredExecutable);
+  return enforceDidaOutputPolicy(
+    await execFileWithDiagnose(
+      target.file,
+      [...target.argsPrefix, ...args],
+      timeoutMs,
+      parseResult,
+    ),
+  );
 }
 
 /**
@@ -384,77 +850,30 @@ async function execWithDiagnose(
   timeoutMs: number,
   parseResult: 'success' | 'failed' | 'na' = 'na',
 ): Promise<{ stdout: string; stderr: string; record: CliExecRecord }> {
-  const cwd = process.cwd();
-  const masked = maskSecret(command);
-  logger.info('cli', 'exec', { command: masked, cwd, timeoutMs });
-
-  const startTs = Date.now();
-  const record: CliExecRecord = {
-    command: masked,
-    cwd,
-    timeoutMs,
-    exitCode: null,
-    stdout: '',
-    stderr: '',
-    durationMs: 0,
-    status: 'success',
-    parseResult,
-  };
-
   try {
-    const { stdout, stderr } = await execAsync(command, {
-      timeout: timeoutMs,
-      maxBuffer: 1024 * 1024 * 4,
-      windowsHide: true,
-    });
-    record.stdout = stdout;
-    record.stderr = stderr;
-    record.exitCode = 0;
-    record.durationMs = Date.now() - startTs;
-    record.parseResult = parseResult;
-    lastRecord = record;
-    logger.info('cli', 'exec done', {
-      exitCode: 0,
-      durationMs: record.durationMs,
-      stdoutLen: stdout.length,
-      stderrLen: stderr.length,
-    });
-    return { stdout, stderr, record };
-  } catch (err: unknown) {
-    record.durationMs = Date.now() - startTs;
-    const e = err as NodeJS.ErrnoException & {
-      stdout?: string;
-      stderr?: string;
-      code?: string | number;
-      signal?: string;
-      killed?: boolean;
-    };
-    record.stdout = e.stdout ?? '';
-    record.stderr = e.stderr ?? '';
-    record.exitCode = typeof e.code === 'number' ? e.code : null;
-    // 判断错误类型
-    if (e.killed || e.signal === 'SIGTERM') {
-      record.status = 'timeout';
-      record.error = `命令超时（${timeoutMs}ms）`;
-    } else if (e.code === 'ENOENT' || /not found|is not recognized/i.test(e.message ?? '')) {
-      record.status = 'not-found';
-      record.error = `命令不存在：${e.message}`;
-    } else if (typeof e.code === 'number' && e.code !== 0) {
-      record.status = 'failed';
-      record.error = `退出码 ${e.code}：${e.message}`;
-    } else {
-      record.status = 'failed';
-      record.error = e.message ?? String(err);
+    const [executable, ...args] = splitCommandLine(command);
+    if (!executable) throw new Error('CLI 命令为空');
+    if (isDidaExecutable(executable)) {
+      const configured = getConfig().executable.trim() || executable;
+      return execDidaFileWithDiagnose(args, timeoutMs, parseResult, configured);
     }
-    lastRecord = record;
-    logger.error('cli', 'exec failed', {
-      status: record.status,
-      exitCode: record.exitCode,
-      error: record.error,
-      stdoutLen: record.stdout.length,
-      stderrLen: record.stderr.length,
-    });
-    return { stdout: record.stdout, stderr: record.stderr, record };
+    return execFileWithDiagnose(executable, args, timeoutMs, parseResult);
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err.message : String(err);
+    const record: CliExecRecord = {
+      command: maskSecret(command),
+      cwd: process.cwd(),
+      timeoutMs,
+      exitCode: null,
+      stdout: '',
+      stderr: '',
+      durationMs: 0,
+      status: 'failed',
+      parseResult,
+      error,
+    };
+    logger.error('cli', 'command parse failed', { command: record.command, error });
+    return { stdout: '', stderr: '', record };
   }
 }
 
@@ -491,7 +910,6 @@ async function execFileWithDiagnose(
     record.stderr = stderr;
     record.exitCode = 0;
     record.durationMs = Date.now() - startTs;
-    lastRecord = record;
     logger.info('cli', 'execFile done', {
       exitCode: 0,
       durationMs: record.durationMs,
@@ -524,7 +942,6 @@ async function execFileWithDiagnose(
       record.status = 'failed';
       record.error = e.message ?? String(err);
     }
-    lastRecord = record;
     logger.error('cli', 'execFile failed', {
       status: record.status,
       exitCode: record.exitCode,
@@ -534,16 +951,6 @@ async function execFileWithDiagnose(
     });
     return { stdout: record.stdout, stderr: record.stderr, record };
   }
-}
-
-/** 兼容旧调用（保留 runCommand 接口） */
-async function runCommand(command: string, timeoutMs: number): Promise<string> {
-  const { stdout, record } = await execWithDiagnose(command, timeoutMs, 'na');
-  if (record.status !== 'success' && record.status !== 'parse-failed') {
-    // 命令本身失败（timeout/not-found/failed）抛出
-    throw new Error(record.error ?? `命令执行失败：${command}`);
-  }
-  return stdout;
 }
 
 /** 尝试解析 JSON，失败时返回原始输出片段供 UI 展示 */
@@ -582,8 +989,8 @@ export async function diagnoseCli(): Promise<CliDiagnoseResult> {
 
   // 1. 探测
   const detect = await detectCli();
-  const executable = cfg.executable?.trim() || detect.executable || 'dida';
-  const executablePath = cfg.executable?.trim() || detect.executablePath || '';
+  const executable = detect.executable || cfg.executable?.trim() || 'dida';
+  const executablePath = detect.executablePath || cfg.executable?.trim() || '';
   steps.push({
     name: '探测 CLI',
     ok: detect.found || !!cfg.executable,
@@ -597,7 +1004,7 @@ export async function diagnoseCli(): Promise<CliDiagnoseResult> {
   // 2. 版本
   let version = '';
   try {
-    const r = await execWithDiagnose(`${executable} --version`, 5000, 'na');
+    const r = await execDidaFileWithDiagnose(['--version'], 5000, 'na', cfg.executable);
     version = r.stdout.trim();
     steps.push({
       name: '版本检测',
@@ -617,7 +1024,7 @@ export async function diagnoseCli(): Promise<CliDiagnoseResult> {
   let loggedIn: boolean | null = null;
   let loginStatusText = '';
   try {
-    const r = await execWithDiagnose(`${executable} auth status`, 5000, 'na');
+    const r = await execDidaFileWithDiagnose(['auth', 'status'], 5000, 'na', cfg.executable);
     loginStatusText = (r.stdout + r.stderr).trim();
     loggedIn = /已登录|logged in|authenticated/i.test(loginStatusText);
     steps.push({
@@ -719,6 +1126,23 @@ export async function diagnoseCli(): Promise<CliDiagnoseResult> {
 
 export class TickTickCliProvider implements TaskProvider {
   name = 'ticktick-cli';
+  private readonly rawTaskCacheTtlMs: number;
+  private readonly now: () => number;
+  private readonly rawTaskCache = new Map<
+    string,
+    { tasks: RawDidaTask[]; expiresAt: number; generation: number }
+  >();
+  private readonly rawTaskRequests = new Map<string, Promise<RawDidaTask[]>>();
+  private readonly forcedRawTaskRequests = new Map<string, Promise<RawDidaTask[]>>();
+  private rawTaskCacheGeneration = 0;
+
+  constructor(options: TickTickCliProviderOptions = {}) {
+    const configuredTtl = options.rawTaskCacheTtlMs ?? DIDA_RAW_TASK_CACHE_TTL_MS;
+    this.rawTaskCacheTtlMs = Number.isFinite(configuredTtl)
+      ? Math.max(0, configuredTtl)
+      : DIDA_RAW_TASK_CACHE_TTL_MS;
+    this.now = options.now ?? Date.now;
+  }
 
   get isAuthenticated(): boolean {
     // CLI 模式无独立鉴权，只要命令可用即可
@@ -764,6 +1188,21 @@ export class TickTickCliProvider implements TaskProvider {
 
   async listTasks(projectId?: string): Promise<Task[]> {
     const cfg = getConfig();
+    if (isDidaConfig(cfg) && projectId) {
+      const { stdout, record } = await execDidaFileWithDiagnose(
+        ['task', 'filter', '--projects', projectId, '--json'],
+        cfg.timeoutMs,
+        'na',
+      );
+      if (record.status !== 'success') {
+        throw new Error(`CLI 任务列表失败：${record.error ?? record.stderr.slice(0, 200)}`);
+      }
+      const parsed = parseJson<unknown[]>(stdout, record);
+      if (!parsed.ok) throw new Error(`CLI 任务列表不是 JSON：${parsed.raw.slice(0, 200)}`);
+      const tasks = normalizeTasks(parsed.data);
+      cacheTasks(tasks);
+      return tasks;
+    }
     const cmd = renderTemplate(cfg.listTasksCommand, {
       projectId: projectId ?? '',
     });
@@ -785,6 +1224,38 @@ export class TickTickCliProvider implements TaskProvider {
       throw new Error(`CLI 输出不是 JSON。原始输出片段：${parsed.raw.slice(0, 200)}`);
     }
     const tasks = normalizeTasks(parsed.data);
+    cacheTasks(tasks);
+    return tasks;
+  }
+
+  /**
+   * 工作台默认只读取活动任务；仅在 UI 明确查看完成历史时读取限定时间窗。
+   * 这样不会因为账号多年历史而阻塞 Electron 主进程和任务渲染。
+   */
+  async listWorkspaceTasks(
+    projectId?: string,
+    options: TaskWorkspaceRefreshOptions = {},
+  ): Promise<Task[]> {
+    const cfg = getConfig();
+    if (!isDidaConfig(cfg)) return this.listTasks(projectId);
+    const activeTasks = await this.listRawDidaTasks(projectId, options.force === true);
+    if (!options.includeCompleted) {
+      return normalizeTasks(activeTasks);
+    }
+
+    // dida 0.1.10 的 filter 只可靠返回活动任务；已完成普通任务从 completed 单独读取。
+    // 活动任务先写且不允许历史端点覆盖，避免恢复后的状态被短暂旧值覆盖。
+    const completedTasks = await this.listCompletedRawDidaTasks(projectId, options.completedDays);
+    const merged = new Map<string, RawDidaTask>();
+    for (const rawTask of activeTasks) {
+      const id = rawTaskId(rawTask);
+      if (id) merged.set(id, rawTask);
+    }
+    for (const rawTask of completedTasks) {
+      const id = rawTaskId(rawTask);
+      if (id && !merged.has(id)) merged.set(id, rawTask);
+    }
+    const tasks = normalizeTasks([...merged.values()]);
     cacheTasks(tasks);
     return tasks;
   }
@@ -827,23 +1298,96 @@ export class TickTickCliProvider implements TaskProvider {
     );
   }
 
-  private async listRawDidaTasks(): Promise<RawDidaTask[]> {
+  private async listRawDidaTasks(projectId?: string, force = false): Promise<RawDidaTask[]> {
+    const cacheKey = projectId ?? '__all__';
+    if (force) {
+      const forcedPending = this.forcedRawTaskRequests.get(cacheKey);
+      if (forcedPending) return forcedPending;
+      this.invalidateRawTaskCache();
+    }
+    const cached = this.rawTaskCache.get(cacheKey);
+    if (
+      cached &&
+      cached.generation === this.rawTaskCacheGeneration &&
+      cached.expiresAt > this.now()
+    ) {
+      return cached.tasks;
+    }
+
+    const pending = this.rawTaskRequests.get(cacheKey);
+    if (pending) return pending;
+
+    const generation = this.rawTaskCacheGeneration;
+    let request: Promise<RawDidaTask[]>;
+    request = (async () => {
+      const cfg = getConfig();
+      const args = ['task', 'filter'];
+      if (projectId) args.push('--projects', projectId);
+      args.push('--status', '0', '--json');
+      const { stdout, record } = await execDidaFileWithDiagnose(args, cfg.timeoutMs, 'na');
+      if (record.status !== 'success') {
+        throw new Error(`CLI 任务列表失败：${record.error ?? record.stderr.slice(0, 200)}`);
+      }
+      const parsed = parseJson<unknown[]>(stdout, record);
+      if (!parsed.ok) {
+        throw new Error(`CLI 任务列表不是 JSON：${parsed.raw.slice(0, 200)}`);
+      }
+      const rawTasks = parsed.data.map(asRawTask).filter((task): task is RawDidaTask => !!task);
+      if (generation === this.rawTaskCacheGeneration) {
+        cacheTasks(normalizeTasks(rawTasks));
+        if (this.rawTaskCacheTtlMs > 0) {
+          this.rawTaskCache.set(cacheKey, {
+            tasks: rawTasks,
+            expiresAt: this.now() + this.rawTaskCacheTtlMs,
+            generation,
+          });
+        }
+      }
+      return rawTasks;
+    })().finally(() => {
+      if (this.rawTaskRequests.get(cacheKey) === request) {
+        this.rawTaskRequests.delete(cacheKey);
+      }
+      if (this.forcedRawTaskRequests.get(cacheKey) === request) {
+        this.forcedRawTaskRequests.delete(cacheKey);
+      }
+    });
+    this.rawTaskRequests.set(cacheKey, request);
+    if (force) this.forcedRawTaskRequests.set(cacheKey, request);
+    return request;
+  }
+
+  private invalidateRawTaskCache(): void {
+    this.rawTaskCacheGeneration += 1;
+    this.rawTaskCache.clear();
+    // Do not let a request started before a task mutation satisfy a later read. It may still
+    // finish, but its generation guard prevents it from repopulating the cache.
+    this.rawTaskRequests.clear();
+    this.forcedRawTaskRequests.clear();
+  }
+
+  private async listCompletedRawDidaTasks(
+    projectId?: string,
+    completedDays?: number,
+  ): Promise<RawDidaTask[]> {
     const cfg = getConfig();
-    const { stdout, record } = await execDidaFileWithDiagnose(
-      ['task', 'filter', '--status', '0,2', '--json'],
-      cfg.timeoutMs,
-      'na',
-    );
+    const args = ['task', 'completed'];
+    if (projectId) args.push('--projects', projectId);
+    const days = normalizeCompletedDays(completedDays);
+    const endAt = Date.now();
+    const startAt = endAt - days * 24 * 60 * 60 * 1000;
+    args.push('--start-date', new Date(startAt).toISOString());
+    args.push('--end-date', new Date(endAt).toISOString());
+    args.push('--json');
+    const { stdout, record } = await execDidaFileWithDiagnose(args, cfg.timeoutMs, 'na');
     if (record.status !== 'success') {
-      throw new Error(`CLI 任务列表失败：${record.error ?? record.stderr.slice(0, 200)}`);
+      throw new Error(`CLI 已完成任务列表失败：${record.error ?? record.stderr.slice(0, 200)}`);
     }
     const parsed = parseJson<unknown[]>(stdout, record);
     if (!parsed.ok) {
-      throw new Error(`CLI 任务列表不是 JSON：${parsed.raw.slice(0, 200)}`);
+      throw new Error(`CLI 已完成任务列表不是 JSON：${parsed.raw.slice(0, 200)}`);
     }
-    const rawTasks = parsed.data.map(asRawTask).filter((task): task is RawDidaTask => !!task);
-    cacheTasks(normalizeTasks(rawTasks));
-    return rawTasks;
+    return parsed.data.map(asRawTask).filter((task): task is RawDidaTask => !!task);
   }
 
   private rawToTask(
@@ -901,52 +1445,64 @@ export class TickTickCliProvider implements TaskProvider {
 
   private async resolveDidaTaskContext(taskId: string): Promise<DidaTaskContext | null> {
     const cached = this.getCachedTask(taskId);
-    try {
-      const rawTasks = await this.listRawDidaTasks();
-      const fromRaw = this.findContextInRawTasks(rawTasks, taskId);
-      if (fromRaw) return fromRaw;
-      // filter 列表中找不到此任务，但这不意味着任务已删除：
-      // dida task filter 可能不返回归档/共享/特定项目的任务。
-      // 若有缓存，用 dida task get 二次确认任务是否仍然存在。
-      if (cached) {
-        const verified = await this.verifyDidaTaskExists(cached.externalId, cached.projectId ?? '');
-        if (verified) {
-          logger.info('cli', 'task not in filter list but verified via task get', { taskId });
-          return verified;
+    // 任务上下文关系到 focus create 最终绑定普通任务还是 checklist 父任务。
+    // 网络、限流、超时或解析错误时不能用“null”降级，否则调用方会把仍然存在的任务
+    // 当成已删除，并创建一条无关联云专注。错误必须原样进入同步队列重试。
+    const rawTasks = await this.listRawDidaTasks();
+    const fromRaw = this.findContextInRawTasks(rawTasks, taskId);
+    if (fromRaw) return fromRaw;
+
+    // filter 列表中找不到此任务，但这不意味着任务已删除：
+    // dida task filter 可能不返回归档/共享/特定项目的任务。
+    // 若有缓存，用 dida task get 二次确认任务是否仍然存在。
+    if (cached) {
+      const cachedParentId = parseCachedMeta(cached.rawJson).parentId;
+      if (cachedParentId) {
+        const parentCache = this.getCachedTask(cachedParentId);
+        const parentProjectId = cached.projectId ?? parentCache?.projectId ?? '';
+        const verifiedParent = await this.verifyDidaTaskExists(
+          parentCache?.externalId ?? cachedParentId,
+          parentProjectId,
+        );
+        if (!verifiedParent) {
+          logger.warn('cli', 'cached checklist parent no longer exists', {
+            taskId,
+            parentId: cachedParentId,
+          });
+          return null;
         }
-        // task get 也拿不到 → 任务确实已删除
-        logger.warn('cli', 'task not found in filter nor via task get, likely deleted', { taskId });
-        return null;
+        const nested = this.findContextInRawTasks([verifiedParent.rawTask], taskId);
+        if (nested) return nested;
+
+        // 少数 dida 版本的 task get 不回传 items；缓存中的 parentId 仍是明确关系，
+        // 云专注必须绑定父任务，不能错误地 task get(childId) 或降级为无关联。
+        const childTask = cacheToTask(cached);
+        childTask.parentId = cachedParentId;
+        return {
+          task: childTask,
+          parentTask: verifiedParent.task,
+          rawTask: { id: childTask.externalId, title: childTask.title },
+          rawParent: verifiedParent.rawTask,
+          isChecklistItem: true,
+        };
       }
-      logger.warn('cli', 'task not found in dida task list and no cache available', { taskId });
+      const verified = await this.verifyDidaTaskExists(cached.externalId, cached.projectId ?? '');
+      if (verified) {
+        logger.info('cli', 'task not in filter list but verified via task get', { taskId });
+        return verified;
+      }
+      // 只有 task get 明确返回 not-found 才会到这里；其他错误会抛出。
+      logger.warn('cli', 'task not found in filter nor via task get, likely deleted', { taskId });
       return null;
-    } catch (err) {
-      logger.warn('cli', 'resolve dida task context from raw list failed', {
-        taskId,
-        error: err instanceof Error ? err.message : String(err),
-      });
     }
-    // 仅在 CLI 调用失败时回退到缓存
-    if (!cached) return null;
-    const task = cacheToTask(cached);
-    return {
-      task,
-      parentTask: null,
-      rawTask: {
-        id: cached.externalId,
-        projectId: cached.projectId,
-        title: cached.title,
-        content: cached.content,
-        status: cached.status,
-      },
-      rawParent: null,
-      isChecklistItem: false,
-    };
+    logger.warn('cli', 'task not found in dida task list and no cache available', { taskId });
+    return null;
   }
 
   /** 用 dida task get 二次确认任务是否仍然存在。
    *  filter 可能不返回归档/共享项目的任务，但 task get 可以直接按 id 获取。
-   *  返回 DidaTaskContext（任务存在）或 null（任务不存在/get 失败）。 */
+   *  返回 DidaTaskContext（任务存在）或 null（服务端明确返回不存在）。
+   *  429、超时、undefined 和解析错误均抛出，让同步队列稍后重试。 */
   private async verifyDidaTaskExists(
     externalId: string,
     projectId: string,
@@ -954,7 +1510,7 @@ export class TickTickCliProvider implements TaskProvider {
     const cfg = getConfig();
     if (!projectId) {
       logger.warn('cli', 'verifyDidaTaskExists skipped: no projectId in cache', { externalId });
-      return null;
+      throw new Error('缺少清单 ID，无法确认滴答任务是否仍然存在');
     }
     try {
       const { stdout, record } = await execDidaFileWithDiagnose(
@@ -962,21 +1518,25 @@ export class TickTickCliProvider implements TaskProvider {
         cfg.timeoutMs,
         'na',
       );
-      if (record.status !== 'success' || isUndefinedCliOutput(stdout)) {
-        logger.warn('cli', 'verifyDidaTaskExists: task get failed or undefined', {
+      if (record.status !== 'success') {
+        const detail = [record.stdout, record.stderr, record.error].filter(Boolean).join('\n');
+        if (/\b404\b|not[ -]?found|任务不存在|找不到(?:该)?任务/i.test(detail)) {
+          return null;
+        }
+        logger.warn('cli', 'verifyDidaTaskExists: task get failed', {
           externalId,
           projectId,
           status: record.status,
         });
-        return null;
+        throw new Error(`CLI 读取任务失败：${record.error ?? record.stderr.slice(0, 200)}`);
       }
       const parsed = parseJson<unknown>(stdout, record);
       if (!parsed.ok) {
         logger.warn('cli', 'verifyDidaTaskExists: task get returned non-JSON', { externalId });
-        return null;
+        throw new Error(`CLI 任务详情输出不是 JSON：${parsed.raw.slice(0, 200)}`);
       }
       const rawTask = asRawTask(parsed.data);
-      if (!rawTask) return null;
+      if (!rawTask) throw new Error('CLI 任务详情返回格式异常');
       const task = this.rawToTask(rawTask, null, projectId);
       // 更新缓存
       cacheTasks([task]);
@@ -993,7 +1553,7 @@ export class TickTickCliProvider implements TaskProvider {
         projectId,
         error: err instanceof Error ? err.message : String(err),
       });
-      return null;
+      throw err;
     }
   }
 
@@ -1003,7 +1563,7 @@ export class TickTickCliProvider implements TaskProvider {
     if (isDidaConfig(cfg)) {
       const context = await this.resolveDidaTaskContext(taskId);
       if (context) return context.task;
-      // dida 配置下 resolveDidaTaskContext 返回 null 表示任务已从滴答删除（或 CLI 失败且无缓存）。
+      // dida 配置下 null 只表示任务已明确不存在；临时 CLI 错误会直接抛出。
       // 不回退到缓存——缓存中可能是已删除的任务，会导致 focus create 传过期的 task-id。
       return null;
     }
@@ -1245,7 +1805,7 @@ export class TickTickCliProvider implements TaskProvider {
     fromMs: number,
     toMs: number,
     cfg: TickTickCliConfig,
-  ): Promise<Array<{ id: string; note?: string }>> {
+  ): Promise<DidaCloudFocusRecord[]> {
     const fromIso = new Date(fromMs).toISOString();
     const toIso = new Date(toMs).toISOString();
     const r = await execDidaFileWithDiagnose(
@@ -1254,14 +1814,20 @@ export class TickTickCliProvider implements TaskProvider {
       'na',
     );
     if (r.record.status !== 'success') {
-      logger.warn('cli', 'listDidaFocusRecords failed', { error: r.record.error });
-      return [];
+      throw new Error(
+        `CLI 读取云端专注记录失败：${r.record.error ?? r.record.stderr.slice(0, 200)}`,
+      );
     }
     const parsed = parseJson<unknown[]>(r.stdout, r.record);
-    if (!parsed.ok) return [];
+    if (!parsed.ok) {
+      throw new Error(`CLI 云端专注记录输出不是 JSON：${parsed.raw.slice(0, 200)}`);
+    }
     return parsed.data
-      .filter((item): item is { id: string; note?: string } => !!item && typeof item === 'object')
-      .map((item) => item as { id: string; note?: string });
+      .filter(
+        (item): item is DidaCloudFocusRecord =>
+          !!item && typeof item === 'object' && typeof (item as { id?: unknown }).id === 'string',
+      )
+      .map((item) => item as DidaCloudFocusRecord);
   }
 
   private async createDidaFocusRecord(
@@ -1272,12 +1838,7 @@ export class TickTickCliProvider implements TaskProvider {
     if (!record.endedAt) {
       throw new Error('专注记录未结束，无法同步到云端');
     }
-    const startTime = new Date(record.startedAt).toISOString();
-    // 滴答云端用 endTime - startTime 显示时长，因此 endTime 必须等于 startTime + activeElapsedMs，
-    // 否则会把暂停时间也算进专注时长（segment.endedAt 包含暂停期间的墙时间）。
-    const endTime = new Date(record.startedAt + record.activeElapsedMs).toISOString();
-    const durationSec = Math.max(1, Math.round(record.activeElapsedMs / 1000));
-    const pauseDurationSec = Math.max(0, Math.round(record.pauseElapsedMs / 1000));
+    const timing = buildDidaFocusTiming(record);
     const marker = getFocusRecordMarker(record);
     const noteText = record.taskTitle
       ? `${formatFocusRecord(record)}\n${marker}`
@@ -1292,13 +1853,11 @@ export class TickTickCliProvider implements TaskProvider {
       '--note',
       noteText,
       '--start-time',
-      startTime,
+      timing.startTime,
       '--end-time',
-      endTime,
+      timing.endTime,
       '--duration',
-      String(durationSec),
-      '--pause-duration',
-      String(pauseDurationSec),
+      String(timing.durationSec),
       '--json',
     );
 
@@ -1321,6 +1880,23 @@ export class TickTickCliProvider implements TaskProvider {
     return parsed.data.id;
   }
 
+  private async deleteDidaFocusRecordById(focusId: string, cfg: TickTickCliConfig): Promise<void> {
+    const { record } = await execDidaFileWithDiagnose(
+      ['focus', 'delete', focusId, '--type', '1', '--json'],
+      Math.max(cfg.timeoutMs, 15000),
+      'na',
+    );
+    if (
+      record.status === 'failed' &&
+      /404|not found/i.test(record.stderr + record.stdout + (record.error ?? ''))
+    ) {
+      return;
+    }
+    if (record.status !== 'success') {
+      throw new Error(`CLI 删除旧专注记录失败：${record.error ?? record.stderr.slice(0, 200)}`);
+    }
+  }
+
   async createFocusRecord(record: FocusRecord): Promise<string | null> {
     const cfg = getConfig();
     if (!isDidaConfig(cfg)) return null;
@@ -1336,8 +1912,7 @@ export class TickTickCliProvider implements TaskProvider {
         const targetTask = context.isChecklistItem ? context.parentTask : context.task;
         externalTaskId = targetTask?.externalId ?? normalizeTaskId(taskId);
       } else {
-        // resolveDidaTaskContext 返回 null：任务已从滴答删除，或 CLI 失败且无缓存。
-        // 不调用 getTask 回退（getTask 在 dida 配置下也会返回 null），直接创建无关联专注记录。
+        // resolveDidaTaskContext 返回 null：任务已明确不存在，创建无关联专注记录。
         logger.warn('cli', 'task not found in dida, creating unassociated focus record', {
           taskId,
         });
@@ -1345,26 +1920,51 @@ export class TickTickCliProvider implements TaskProvider {
     }
 
     const marker = getFocusRecordMarker(record);
+    const timing = buildDidaFocusTiming(record);
     const listFrom = record.startedAt - 60_000;
-    const listTo = (record.endedAt ?? Date.now()) + 60_000;
-    try {
-      const existing = await this.listDidaFocusRecords(listFrom, listTo, cfg);
-      const matched = existing.find((f) => (f.note ?? '').includes(marker));
-      if (matched) {
-        logger.info('cli', 'focus record already exists, skipping', {
-          marker,
-          focusId: matched.id,
-        });
-        // 即使跳过也要存储 cloudFocusId，便于后续删除
-        if (record.segmentId && matched.id) {
-          setSegmentCloudFocusId(record.segmentId, matched.id);
-        }
-        return matched.id;
-      }
-    } catch (err) {
-      logger.warn('cli', 'failed to check existing focus records, proceeding to create', {
-        error: err instanceof Error ? err.message : String(err),
+    const listTo = Math.max(record.endedAt ?? 0, timing.endMs) + 60_000;
+    // 去重读取失败时绝不能继续 create，否则网络/限流故障会制造重复云记录。
+    const existing = await this.listDidaFocusRecords(listFrom, listTo, cfg);
+    const plan = planDidaFocusReconciliation(existing, marker, timing.expectedDurationMs);
+    if (plan.action === 'keep') {
+      logger.info('cli', 'focus record already exists, skipping', {
+        marker,
+        focusId: plan.keeper.id,
+        durationVerified: plan.durationVerified,
       });
+      // 即使跳过也要存储 cloudFocusId，便于后续删除。
+      if (record.segmentId) {
+        setSegmentCloudFocusId(record.segmentId, plan.keeper.id);
+      }
+      // 若上一次“先创建替代记录、再删旧记录”在清理阶段中断，这里会保留已验证
+      // 正确的一条并收敛重复 marker。duration 未知时不会返回待删除项。
+      for (const duplicate of plan.duplicates) {
+        await this.deleteDidaFocusRecordById(duplicate.id, cfg);
+      }
+      return plan.keeper.id;
+    }
+
+    if (plan.action === 'rebuild') {
+      // 旧版曾把 end 设为 start+active，同时仍传 pause，导致服务端二次扣 pause。
+      // 只有 marker 相同且所有记录的 duration 都已确认错误时才重建。先创建正确替代记录，
+      // 再删除旧记录：创建失败时旧数据仍在；清理失败时下次运行会识别正确记录并继续收敛。
+      logger.warn('cli', 'existing focus duration mismatch, rebuilding safely', {
+        marker,
+        focusIds: plan.stale.map((focus) => focus.id),
+        expectedDurationMs: timing.expectedDurationMs,
+        actualDurationMs: plan.stale.map((focus) => getDidaCloudFocusDurationMs(focus)),
+      });
+      const replacementId = await this.createDidaFocusRecord(externalTaskId, record, cfg);
+      if (record.segmentId) setSegmentCloudFocusId(record.segmentId, replacementId);
+      for (const stale of plan.stale) {
+        await this.deleteDidaFocusRecordById(stale.id, cfg);
+      }
+      logger.info('cli', 'rebuilt dida focus record with corrected duration', {
+        marker,
+        replacementId,
+        removedFocusIds: plan.stale.map((focus) => focus.id),
+      });
+      return replacementId;
     }
 
     const focusId = await this.createDidaFocusRecord(externalTaskId, record, cfg);
@@ -1391,113 +1991,86 @@ export class TickTickCliProvider implements TaskProvider {
       return false;
     }
 
-    let focusIdToDelete: string | null = seg.cloudFocusId;
-
-    // 兜底：cloudFocusId 为空时（v0.2.17 之前同步的历史记录），通过 marker 在云端反查。
-    // 这样可以把错误的旧记录（如时间偏大的 2 小时 4 分钟）也删掉再重新同步。
-    if (!focusIdToDelete) {
-      logger.info('cli', 'deleteFocusRecord: no cloudFocusId, trying marker fallback', {
-        segmentId,
-      });
-      focusIdToDelete = await this.findCloudFocusIdByMarker(seg, cfg);
-      if (focusIdToDelete) {
-        logger.info('cli', 'deleteFocusRecord: found cloud record via marker', {
-          segmentId,
-          focusId: focusIdToDelete,
-        });
-      } else {
-        // marker 也找不到，说明云端确实没有这条记录，视为成功
-        logger.info(
-          'cli',
-          'deleteFocusRecord: no cloud record found via marker, treating as success',
-          {
-            segmentId,
-          },
-        );
-        return true;
-      }
+    // 即使已经保存 cloudFocusId，也必须按 marker 查询一次：旧版本和中断恢复可能留下
+    // 多条同 marker 记录。查询错误必须抛出，绝不能与“确实没有记录”混为一谈。
+    const focusIds = new Set<string>();
+    if (seg.cloudFocusId) focusIds.add(seg.cloudFocusId);
+    for (const focusId of await this.findCloudFocusIdsByMarker(seg, cfg)) {
+      focusIds.add(focusId);
     }
 
-    try {
-      const { stdout, record } = await execDidaFileWithDiagnose(
-        ['focus', 'delete', focusIdToDelete, '--type', '1', '--json'],
-        Math.max(cfg.timeoutMs, 15000),
-        'na',
-      );
-      // 404 视为成功（云端已被手动删除）
-      if (record.status === 'failed' && /404|not found/i.test(record.stderr + record.stdout)) {
-        logger.info('cli', 'deleteFocusRecord: cloud record not found (404), treating as success', {
-          segmentId,
-          cloudFocusId: focusIdToDelete,
-        });
-      } else if (record.status !== 'success') {
-        logger.warn('cli', 'deleteFocusRecord: CLI failed', {
-          segmentId,
-          cloudFocusId: focusIdToDelete,
-          status: record.status,
-          stderr: record.stderr.slice(0, 200),
-        });
-        return false;
-      }
-      // 清除 cloudFocusId
-      setSegmentCloudFocusId(segmentId, null);
-      logger.info('cli', 'deleteFocusRecord: cloud record deleted', {
-        segmentId,
-        cloudFocusId: focusIdToDelete,
-      });
+    if (focusIds.size === 0) {
+      logger.info('cli', 'deleteFocusRecord: no cloud record found via marker', { segmentId });
       return true;
-    } catch (err) {
-      logger.warn('cli', 'deleteFocusRecord error', {
-        segmentId,
-        cloudFocusId: focusIdToDelete,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return false;
     }
+
+    for (const focusId of focusIds) {
+      await this.deleteDidaFocusRecordById(focusId, cfg);
+    }
+    // 所有重复记录均确认删除后才能清除本地引用。
+    setSegmentCloudFocusId(segmentId, null);
+    logger.info('cli', 'deleteFocusRecord: cloud records deleted', {
+      segmentId,
+      cloudFocusIds: [...focusIds],
+    });
+    return true;
   }
 
   /**
-   * 兜底方案：当本地未存储 cloudFocusId 时，通过 marker 在云端专注记录列表中反查。
+   * 通过 marker 在云端专注记录列表中反查全部匹配项。
    * marker 形如 [FocusLink:segment:<segmentId>]，写入专注记录的 note 字段。
    * 查询范围以 segment 起止时间各外扩 1 分钟，覆盖时区/取整误差。
    */
-  private async findCloudFocusIdByMarker(
+  private async findCloudFocusIdsByMarker(
     seg: FocusSegment,
     cfg: TickTickCliConfig,
-  ): Promise<string | null> {
-    if (!seg.endedAt) return null;
+  ): Promise<string[]> {
+    if (!seg.endedAt) return [];
     const marker = `[FocusLink:segment:${seg.id}]`;
     const listFrom = seg.startedAt - 60_000;
     const listTo = seg.endedAt + 60_000;
-    try {
-      const existing = await this.listDidaFocusRecords(listFrom, listTo, cfg);
-      const matched = existing.find((f) => (f.note ?? '').includes(marker));
-      return matched?.id ?? null;
-    } catch (err) {
-      logger.warn('cli', 'findCloudFocusIdByMarker failed', {
-        segmentId: seg.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return null;
-    }
+    const existing = await this.listDidaFocusRecords(listFrom, listTo, cfg);
+    return existing.filter((focus) => (focus.note ?? '').includes(marker)).map((focus) => focus.id);
   }
 
   async completeTask(task: Task): Promise<void> {
+    await this.setTaskCompleted(task, true);
+  }
+
+  async setTaskCompleted(task: Task, completed: boolean): Promise<void> {
     const cfg = getConfig();
     const context = isDidaConfig(cfg)
       ? await this.resolveDidaTaskContext(task.externalId || task.id)
       : null;
     if (context?.isChecklistItem) {
-      await this.completeDidaChecklistItem(context, cfg);
+      if (context.task.isCompleted === completed) return;
+      await this.setDidaChecklistItemCompleted(context, cfg, completed);
+      this.invalidateRawTaskCache();
       return;
     }
+
+    if (isDidaConfig(cfg) && !context) {
+      throw new Error('滴答任务不存在或已从当前账号移除，请刷新任务列表后重试。');
+    }
+
+    if (context?.task.isCompleted === completed) return;
 
     const taskId = normalizeTaskId(task.externalId || task.id);
     const cachedForTask = this.getCachedTask(taskId);
     const projectId = task.projectId ?? cachedForTask?.projectId ?? context?.task.projectId;
     if (!projectId) {
-      throw new Error('缺少清单 ID，无法通过 dida CLI 完成该任务。请先刷新任务列表。');
+      throw new Error('缺少清单 ID，无法通过 dida CLI 更新任务状态。请先刷新任务列表。');
     }
+
+    if (!completed) {
+      if (!isDidaConfig(cfg)) {
+        throw new Error('当前 CLI Provider 不支持恢复普通任务。请切换到 dida CLI 后重试。');
+      }
+      await this.reopenDidaTask(taskId, projectId, cfg);
+      this.invalidateRawTaskCache();
+      return;
+    }
+
     const r = isDidaConfig(cfg)
       ? await execDidaFileWithDiagnose(['task', 'complete', projectId, taskId], cfg.timeoutMs, 'na')
       : await execWithDiagnose(`dida task complete ${projectId} ${taskId}`, cfg.timeoutMs, 'na');
@@ -1511,37 +2084,88 @@ export class TickTickCliProvider implements TaskProvider {
         }`,
       );
     }
-    if (cachedForTask) {
-      cachedForTask.status = 'completed';
-      cachedForTask.updatedAt = Date.now();
-      upsertTaskCache(cachedForTask);
-    }
+    this.markCachedTaskCompleted(taskId, true);
+    this.invalidateRawTaskCache();
     logger.info('cli', 'completed task', { taskId, projectId });
   }
 
-  private async completeDidaChecklistItem(
+  private async reopenDidaTask(
+    taskId: string,
+    projectId: string,
+    cfg: TickTickCliConfig,
+  ): Promise<void> {
+    // dida CLI 未来版本可直接暴露 Update Task 的 status 字段；使用 argv 调用以兼容该
+    // 能力。当前 CLI 若不认识 --status，会进入下面的明确错误，而不是假装恢复成功。
+    const r = await execDidaFileWithDiagnose(
+      ['task', 'update', taskId, '--id', taskId, '--project', projectId, '--status', '0', '--json'],
+      cfg.timeoutMs,
+      'na',
+    );
+    if (r.record.status !== 'success' || isUndefinedCliOutput(r.stdout)) {
+      const detail = (r.record.stderr || r.record.error || r.stdout).trim().slice(0, 300);
+      logger.error('cli', 'reopen task failed', detail);
+      if (/unknown option\s+['"]?--status|未知选项[^\n]*--status/i.test(detail)) {
+        // npm latest dida CLI 尚未暴露 --status；复用它已经安全保存的 token 调 Open API。
+        // bridge 内部会 GET -> POST -> GET 验证，任何“接受但未恢复”都会抛错。
+        await reopenDidaTaskViaOpenApi(projectId, taskId);
+        this.markCachedTaskCompleted(taskId, false);
+        logger.info('cli', 'reopened task through dida Open API bridge', { taskId, projectId });
+        return;
+      }
+      throw new Error(
+        `CLI 恢复任务失败：${
+          isUndefinedCliOutput(r.stdout) ? 'dida 返回 undefined' : detail || '未知错误'
+        }`,
+      );
+    }
+
+    const parsed = parseJson<unknown>(r.stdout, r.record);
+    const returnedTask = parsed.ok ? asRawTask(parsed.data) : null;
+    let confirmed = returnedTask ? this.rawToTask(returnedTask, null, projectId) : null;
+    if (!confirmed || confirmed.isCompleted) {
+      const verified = await this.verifyDidaTaskExists(taskId, projectId);
+      confirmed = verified?.task ?? null;
+    }
+    if (!confirmed) {
+      throw new Error('dida 未返回恢复后的任务，无法确认云端状态。');
+    }
+    if (confirmed.isCompleted) {
+      await reopenDidaTaskViaOpenApi(projectId, taskId);
+    }
+
+    this.markCachedTaskCompleted(taskId, false);
+    logger.info('cli', 'reopened task', { taskId, projectId });
+  }
+
+  private markCachedTaskCompleted(taskId: string, completed: boolean): void {
+    const cachedForTask = this.getCachedTask(taskId);
+    if (!cachedForTask) return;
+    const changedAt = Date.now();
+    const meta = parseCachedMeta(cachedForTask.rawJson);
+    cachedForTask.status = completed ? 'completed' : 'pending';
+    cachedForTask.rawJson = JSON.stringify({
+      ...meta,
+      completedAt: completed ? changedAt : null,
+      updatedAt: changedAt,
+    });
+    cachedForTask.updatedAt = changedAt;
+    upsertTaskCache(cachedForTask);
+  }
+
+  private async setDidaChecklistItemCompleted(
     context: DidaTaskContext,
     cfg: TickTickCliConfig,
+    completed: boolean,
   ): Promise<void> {
     const parentId = context.parentTask?.externalId ?? rawTaskId(context.rawParent);
     const projectId = context.parentTask?.projectId;
     const childId = context.task.externalId;
     const rawItems = Array.isArray(context.rawParent?.items) ? context.rawParent.items : [];
     if (!parentId || !projectId || rawItems.length === 0) {
-      throw new Error('缺少父任务或清单信息，无法完成 checklist 子项。请先刷新任务列表。');
+      throw new Error('缺少父任务或清单信息，无法更新 checklist 子项。请先刷新任务列表。');
     }
 
-    const items = rawItems
-      .map(asRawTask)
-      .filter((item): item is RawDidaTask => !!item)
-      .map((item) => ({
-        id: rawTaskId(item) ?? undefined,
-        title: String(item.title ?? item.name ?? ''),
-        status: rawTaskId(item) === childId ? 2 : Number(item.status ?? 0),
-        sortOrder: typeof item.sortOrder === 'number' ? item.sortOrder : undefined,
-        timeZone: item.timeZone ? String(item.timeZone) : undefined,
-        isAllDay: typeof item.isAllDay === 'boolean' ? item.isAllDay : undefined,
-      }));
+    const items = buildDidaChecklistItemsWithCompletion(rawItems, childId, completed);
     const itemsJson = JSON.stringify(items);
     const r = await execDidaFileWithDiagnose(
       [
@@ -1560,9 +2184,9 @@ export class TickTickCliProvider implements TaskProvider {
       'na',
     );
     if (r.record.status !== 'success' || isUndefinedCliOutput(r.stdout)) {
-      logger.error('cli', 'complete checklist item failed', r.record.error ?? r.stdout);
+      logger.error('cli', 'update checklist item failed', r.record.error ?? r.stdout);
       throw new Error(
-        `CLI 完成 checklist 子项失败：${
+        `CLI ${completed ? '完成' : '恢复'} checklist 子项失败：${
           isUndefinedCliOutput(r.stdout)
             ? 'dida 返回 undefined'
             : (r.record.error ?? r.record.stderr.slice(0, 200))
@@ -1570,13 +2194,12 @@ export class TickTickCliProvider implements TaskProvider {
       );
     }
 
-    const cachedForTask = this.getCachedTask(childId);
-    if (cachedForTask) {
-      cachedForTask.status = 'completed';
-      cachedForTask.updatedAt = Date.now();
-      upsertTaskCache(cachedForTask);
-    }
-    logger.info('cli', 'completed checklist item', { taskId: childId, parentId, projectId });
+    this.markCachedTaskCompleted(childId, completed);
+    logger.info('cli', completed ? 'completed checklist item' : 'reopened checklist item', {
+      taskId: childId,
+      parentId,
+      projectId,
+    });
   }
 }
 
@@ -1595,7 +2218,9 @@ function normalizeTasks(raw: unknown[], parentId?: string): Task[] {
       : obj.project
         ? String(obj.project)
         : null;
-    // dida status 数字：0=未完成，1=进行中，2=已完成
+    // dida 普通任务的显式 status 是权威状态：0=未完成，1=进行中，2=已完成。
+    // 恢复普通任务后服务端可能保留历史 completedTime，不能因此把 status=0 判回已完成。
+    // checklist 子项存在 status=1 + completedTime 的兼容返回，只有子项才使用该兜底。
     const statusNum = obj.status;
     let statusStr: string | null = null;
     let isCompleted = false;
@@ -1616,11 +2241,21 @@ function normalizeTasks(raw: unknown[], parentId?: string): Task[] {
       statusStr = 'completed';
       isCompleted = true;
     }
-    // completedTime 非空也视为已完成
-    if (!isCompleted && obj.completedTime) {
+    const hasExplicitStatus = typeof statusNum === 'number' || typeof statusNum === 'string';
+    const explicitlyIncomplete =
+      statusNum === 0 || statusNum === '0' || statusNum === 'pending' || statusNum === 'incomplete';
+    const checklistCompletionFallback =
+      parentId !== undefined && !explicitlyIncomplete && obj.completedTime;
+    if (
+      !isCompleted &&
+      ((!hasExplicitStatus && obj.completedTime) || checklistCompletionFallback)
+    ) {
       isCompleted = true;
       if (!statusStr) statusStr = 'completed';
     }
+    const completedAt = isCompleted ? nullableTimestamp(obj.completedTime) : null;
+    const createdAt = nullableTimestamp(obj.createdTime);
+    const updatedAt = nullableTimestamp(obj.modifiedTime);
     // 优先级：dida 用 0/1/3/5
     const priority = obj.priority !== undefined ? Number(obj.priority) : null;
     // 截止日期：dida 用 dueDate 字符串
@@ -1651,6 +2286,9 @@ function normalizeTasks(raw: unknown[], parentId?: string): Task[] {
       title,
       status: statusStr,
       isCompleted,
+      completedAt,
+      createdAt,
+      updatedAt,
       priority,
       dueDate,
       sortOrder,
@@ -1684,33 +2322,46 @@ function cacheToTask(c: TaskCache): Task {
     content: c.content,
     parentId: meta.parentId ?? null,
     isCompleted: c.status === 'completed',
+    completedAt: c.status === 'completed' ? (meta.completedAt ?? null) : null,
+    createdAt: meta.createdAt ?? null,
+    updatedAt: meta.updatedAt ?? null,
   };
 }
 
 function cacheTasks(tasks: Task[]): void {
   const now = Date.now();
+  const rows = new Map<string, TaskCache>();
   const visit = (list: Task[]) => {
     for (const task of list) {
-      upsertTaskCache({
+      const row: TaskCache = {
         id: `ticktick:${task.externalId}`,
         source: 'ticktick',
         externalId: task.externalId,
         projectId: task.projectId,
         title: task.title,
-        status: task.status,
+        // checklist 子项在 dida 响应中可能是 status=1 + completedTime；Task 已完成归一化
+        // 后必须把语义写进缓存，否则后续只读缓存时会错误显示为未完成。
+        status: task.isCompleted ? 'completed' : task.status,
         priority: task.priority,
         dueDate: task.dueDate,
         tags: JSON.stringify(task.tags ?? []),
         content: task.content,
-        rawJson: JSON.stringify({ parentId: task.parentId ?? null }),
+        rawJson: JSON.stringify({
+          parentId: task.parentId ?? null,
+          completedAt: task.completedAt ?? null,
+          createdAt: task.createdAt ?? null,
+          updatedAt: task.updatedAt ?? null,
+        }),
         lastSyncedAt: now,
         createdAt: now,
         updatedAt: now,
-      });
+      };
+      rows.set(row.id, row);
       if (task.children) visit(task.children);
     }
   };
   visit(tasks);
+  upsertTaskCaches([...rows.values()]);
 }
 
 function findCachedTaskProjectId(taskId: string): string | null {

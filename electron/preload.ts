@@ -1,6 +1,8 @@
 // Preload - 暴露类型安全的 IPC 接口给渲染进程
 // contextIsolation: true, nodeIntegration: false
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
+import type { Task, TaskWorkspaceRefreshOptions, TomatodoSubject } from '@shared/types';
+import type { FocusLinkAPI, FocusLinkEventMap, HotkeyAction } from '@shared/ipc/api';
 
 const api = {
   timer: {
@@ -50,11 +52,11 @@ const api = {
       ipcRenderer.invoke('timer:merge-segments', { segmentIds }),
   },
   tasks: {
-    listLocal: () => ipcRenderer.invoke('tasks:list-local'),
-    createLocal: (title: string, projectId?: string) =>
-      ipcRenderer.invoke('tasks:create-local', { title, projectId }),
-    search: (query: string) => ipcRenderer.invoke('tasks:search', query),
-    complete: (task: unknown) => ipcRenderer.invoke('tasks:complete', task),
+    complete: (task: Task) => ipcRenderer.invoke('tasks:complete', task),
+    setCompleted: (task: Task, completed: boolean) =>
+      ipcRenderer.invoke('tasks:set-completed', task, completed),
+    refresh: (options?: TaskWorkspaceRefreshOptions) =>
+      ipcRenderer.invoke('tasks:refresh', options),
   },
   ticktick: {
     login: (clientId: string, clientSecret: string, region: 'ticktick' | 'dida365') =>
@@ -87,8 +89,9 @@ const api = {
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
-    set: (settings: unknown) => ipcRenderer.invoke('settings:set', settings),
-    setHotkey: (key: string, accelerator: string) =>
+    set: (settings: Parameters<FocusLinkAPI['settings']['set']>[0]) =>
+      ipcRenderer.invoke('settings:set', settings),
+    setHotkey: (key: HotkeyAction, accelerator: string) =>
       ipcRenderer.invoke('settings:set-hotkey', key, accelerator),
   },
   hotkey: {
@@ -112,13 +115,18 @@ const api = {
     list: () => ipcRenderer.invoke('sync:list'),
     retry: (id: string) => ipcRenderer.invoke('sync:retry', id),
     runPending: () => ipcRenderer.invoke('sync:run-pending'),
-    resyncSegment: (segmentId: string) =>
-      ipcRenderer.invoke('sync:resync-segment', segmentId),
+    resyncSegment: (segmentId: string) => ipcRenderer.invoke('sync:resync-segment', segmentId),
   },
   tomatodo: {
     syncSegment: (segmentId: string) => ipcRenderer.invoke('tomatodo:sync-segment', segmentId),
     syncSession: (sessionId: string) => ipcRenderer.invoke('tomatodo:sync-session', sessionId),
     status: (sessionId: string) => ipcRenderer.invoke('tomatodo:status', sessionId),
+    setSubject: (segmentId: string, subject: TomatodoSubject | null) =>
+      ipcRenderer.invoke('tomatodo:set-subject', segmentId, subject),
+    setSubjects: (segmentIds: string[], subject: TomatodoSubject | null) =>
+      ipcRenderer.invoke('tomatodo:set-subjects', segmentIds, subject),
+    uploadPending: () => ipcRenderer.invoke('tomatodo:upload-pending'),
+    pendingCount: () => ipcRenderer.invoke('tomatodo:pending-count'),
   },
   window: {
     minimizeToTray: () => ipcRenderer.send('window:minimize-to-tray'),
@@ -126,15 +134,17 @@ const api = {
     quit: () => ipcRenderer.send('window:quit'),
   },
   // 事件监听
-  on: (channel: string, cb: (...args: unknown[]) => void) => {
-    const handler = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...args);
+  on: <Channel extends keyof FocusLinkEventMap>(
+    channel: Channel,
+    cb: (...args: FocusLinkEventMap[Channel]) => void,
+  ) => {
+    const handler = (_e: IpcRendererEvent, ...args: unknown[]) =>
+      cb(...(args as FocusLinkEventMap[Channel]));
     ipcRenderer.on(channel, handler);
     return () => {
       ipcRenderer.removeListener(channel, handler);
     };
   },
-};
+} satisfies FocusLinkAPI;
 
 contextBridge.exposeInMainWorld('focuslink', api);
-
-export type FocusLinkAPI = typeof api;

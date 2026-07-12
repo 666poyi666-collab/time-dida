@@ -1,9 +1,12 @@
 // 共享类型定义 - 主进程和渲染进程共用
 // 严格模式，禁止 any 泛滥
 
+import { MINI_WINDOW_EXPANDED_SIZE } from './miniWindowLayout';
+
 export type TimerState = 'idle' | 'running' | 'paused' | 'stopping' | 'finished';
 export type TimerEvent = 'START' | 'PAUSE' | 'RESUME' | 'STOP' | 'RESET' | 'LINK_TASK' | 'SYNC';
 export type TaskSource = 'local' | 'ticktick';
+export type TomatodoSubject = '语文' | '数学' | '英语' | '物理' | '化学' | '生物' | '学习';
 
 /** 专注会话：一次完整的专注，可包含多个 Segment */
 export interface FocusSession {
@@ -21,6 +24,10 @@ export interface FocusSession {
   note: string | null;
   createdAt: number;
   updatedAt: number;
+  /** 列表查询附带的片段摘要，详情查询可以省略。 */
+  segmentCount?: number;
+  linkedSegmentCount?: number;
+  ticktickLinkedSegmentCount?: number;
 }
 
 export type SessionStatus = 'active' | 'finished' | 'aborted';
@@ -38,6 +45,8 @@ export interface FocusSegment {
   note: string | null;
   /** 已同步到滴答云端的专注记录 ID（用于删除时联动云端） */
   cloudFocusId: string | null;
+  /** 番茄 Todo 分类（手动选择：语文/数学/英语/物理/化学/生物/学习），null 表示未设置 */
+  tomatodoSubject: TomatodoSubject | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -148,10 +157,26 @@ export interface Task {
   parentId?: string | null;
   /** 子任务（dida CLI 的 items[] 归一化后填充） */
   children?: Task[];
-  /** 是否已完成（status=2 或 completedTime 非空 → true） */
+  /** Provider 归一化后的完成状态；显式 status=0 时历史 completedTime 不得覆盖它。 */
   isCompleted?: boolean;
+  /** 远端完成时间；恢复为未完成后必须为 null。 */
+  completedAt?: number | null;
+  /** 远端创建时间（若 Provider 提供）。 */
+  createdAt?: number | null;
+  /** 远端最后修改时间（若 Provider 提供）。 */
+  updatedAt?: number | null;
   /** dida sortOrder 字段，用于稳定排序 */
   sortOrder?: number | null;
+}
+
+/** 任务工作台刷新参数。默认只读取活动任务，避免加载完整完成历史。 */
+export interface TaskWorkspaceRefreshOptions {
+  projectId?: string;
+  includeCompleted?: boolean;
+  /** 已完成任务回溯天数；仅 includeCompleted=true 时生效。 */
+  completedDays?: number;
+  /** 跳过活动任务短缓存；仅用于用户明确触发的手动刷新。 */
+  force?: boolean;
 }
 
 export interface Project {
@@ -178,6 +203,8 @@ export interface TaskProvider {
   appendFocusRecordsToTask?(taskId: string, records: FocusRecord[]): Promise<void>;
   /** 完成任务，用于把 FocusLink 内的勾选同步到任务来源 */
   completeTask?(task: Task): Promise<void>;
+  /** 统一设置任务完成状态。Provider 不支持恢复时必须抛出明确错误，不能静默成功。 */
+  setTaskCompleted?(task: Task, completed: boolean): Promise<void>;
   /** 直接写入 Focus/Pomodoro 专注记录到云端 */
   createFocusRecord?(record: FocusRecord): Promise<string | null>;
   /** 删除已同步到云端的专注记录（按 segmentId 查找本地存储的 cloudFocusId） */
@@ -187,7 +214,8 @@ export interface TaskProvider {
 export interface TaskUpdateInput {
   title?: string;
   content?: string;
-  status?: string;
+  status?: string | number;
+  completedTime?: string | null;
 }
 
 export interface FocusRecord {
@@ -225,7 +253,7 @@ export interface AppSettings {
   closeToTray: boolean;
   /** 启动时显示专注小窗 */
   showMiniOnStart: boolean;
-  /** 当前任务来源：本地任务 / 滴答清单 CLI / TickTick OAuth */
+  /** 滴答连接偏好。`local` 仅用于兼容旧设置，运行时按 CLI 优先自动解析。 */
   taskSource: 'local' | 'ticktick-cli' | 'ticktick-oauth';
   /** 滴答清单 CLI 配置 */
   ticktickCli: TickTickCliConfig;
@@ -245,13 +273,7 @@ export interface AppSettings {
 
 /** 设置变更域 - 用于按域分流处理副作用，避免主题保存触发快捷键重注册 */
 export type SettingsDomain =
-  | 'theme'
-  | 'hotkeys'
-  | 'miniWindow'
-  | 'taskProvider'
-  | 'layout'
-  | 'general'
-  | 'tomatodo';
+  'theme' | 'hotkeys' | 'miniWindow' | 'taskProvider' | 'layout' | 'general' | 'tomatodo';
 
 /** 主界面左右分栏布局配置 */
 export interface LayoutConfig {
@@ -279,9 +301,9 @@ export interface MiniWindowConfig {
   collapsed: boolean;
   /** 是否启用贴边自动收纳 */
   edgeAutoCollapse: boolean;
-  /** 贴边后多少毫秒触发自动收纳（默认 500） */
+  /** 贴边后多少毫秒触发自动收纳（默认 260） */
   edgeCollapseDelayMs: number;
-  /** 鼠标悬停收纳条时自动展开（默认开） */
+  /** 兼容旧设置；新交互使用点击或拖离边缘展开 */
   hoverToExpand: boolean;
   /** 专注开始后若小窗贴边则自动收纳（默认关） */
   autoCollapseOnFocusStart: boolean;
@@ -317,14 +339,8 @@ export interface TomatodoConfig {
   enabled: boolean;
   /** tomatodo_db.json 路径，留空则运行时用 appData/tomatodo/tomatodo_db.json 探测 */
   dbPath: string;
-  /** 学科关键词映射（标题推断用），留空则用 shared/tomatodoPolicy 默认表 */
-  subjectKeywords: Record<string, string[]>;
-  /** 滴答项目 ID → 学科映射，留空则用默认表 */
-  projectSubjectMap: Record<string, string>;
-  /** 无法识别学科时的兜底分类（默认「杂」） */
-  defaultSubject: string;
-  /** 同步完成后是否自动在番茄 Todo 中按学科归类（默认开） */
-  autoClassify: boolean;
+  /** 无法识别学科时的默认分类（默认「学习」） */
+  defaultSubject: TomatodoSubject;
 }
 
 /** 默认设置 */
@@ -336,7 +352,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     linkTask: 'CommandOrControl+Alt+T',
     toggleMiniWindow: 'CommandOrControl+Alt+M',
   },
-  theme: 'dark',
+  theme: 'light',
   accentColor: 'indigo',
   segmentBehavior: 'new-segment',
   syncMode: 'focus-record',
@@ -346,7 +362,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   startMinimizedToTray: false,
   closeToTray: true,
   showMiniOnStart: false,
-  taskSource: 'local',
+  taskSource: 'ticktick-cli',
   ticktickCli: {
     executable: '',
     listTasksCommand: 'dida task filter --json',
@@ -361,14 +377,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
     followMainTheme: true,
     themeMode: 'system',
     opacity: 0.92,
-    width: 420,
-    height: 184,
+    width: MINI_WINDOW_EXPANDED_SIZE.width,
+    height: MINI_WINDOW_EXPANDED_SIZE.height,
     x: null,
     y: null,
     collapsed: false,
-    edgeAutoCollapse: false,
-    edgeCollapseDelayMs: 500,
-    hoverToExpand: true,
+    edgeAutoCollapse: true,
+    edgeCollapseDelayMs: 260,
+    hoverToExpand: false,
     autoCollapseOnFocusStart: false,
     autoShowOnMainHide: true,
     autoShowOnFocusStart: true,
@@ -385,10 +401,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   tomatodo: {
     enabled: false,
     dbPath: '',
-    subjectKeywords: {},
-    projectSubjectMap: {},
-    defaultSubject: '杂',
-    autoClassify: true,
+    defaultSubject: '学习',
   },
 };
 
@@ -429,20 +442,30 @@ export interface TimerIPC {
   }) => Promise<number>;
   'timer:set-segment-title': (args: { segmentId: string; title: string }) => Promise<void>;
   'timer:merge-segments': (args: { segmentIds: string[] }) => Promise<void>;
-  'timer:split-segment': (args: { segmentId: string; atMs: number }) => Promise<void>;
 }
 
 export interface TaskIPC {
-  'tasks:list-local': () => Promise<Task[]>;
-  'tasks:create-local': (input: { title: string; projectId?: string }) => Promise<Task>;
-  'tasks:search': (query: string) => Promise<Task[]>;
   'tasks:complete': (task: Task) => Promise<Task>;
+  'tasks:set-completed': (task: Task, completed: boolean) => Promise<Task>;
+  'tasks:refresh': (options?: TaskWorkspaceRefreshOptions) => Promise<
+    | {
+        ok: true;
+        data: {
+          /** local 仅保留旧渲染器类型兼容；工作台服务实际只返回滴答连接。 */
+          provider: 'local' | 'dida-cli' | 'ticktick-oauth';
+          projects: Project[];
+          tasks: Task[];
+          refreshedAt: number;
+        };
+      }
+    | { ok: false; error: string }
+  >;
   'ticktick:login': (
     clientId: string,
     clientSecret: string,
     region: 'ticktick' | 'dida365',
-  ) => Promise<void>;
-  'ticktick:logout': () => Promise<void>;
+  ) => Promise<AppSettings>;
+  'ticktick:logout': () => Promise<AppSettings>;
   'ticktick:list-projects': () => Promise<Project[]>;
   'ticktick:list-tasks': (projectId?: string) => Promise<Task[]>;
   'ticktick:status': () => Promise<{ connected: boolean; region: string }>;
@@ -453,7 +476,7 @@ export interface SessionIPC {
   'sessions:get': (
     id: string,
   ) => Promise<{ session: FocusSession; segments: FocusSegment[]; pauses: PauseEvent[] } | null>;
-  'sessions:delete': (id: string) => Promise<void>;
+  'sessions:delete': (id: string) => Promise<TimerSnapshot>;
   'sessions:export': (id: string, format: 'json' | 'csv' | 'markdown') => Promise<string>;
 }
 
@@ -480,6 +503,27 @@ export interface SyncIPC {
   'sync:list': () => Promise<SyncQueueItem[]>;
   'sync:retry': (id: string) => Promise<void>;
   'sync:run-pending': () => Promise<{ processed: number; succeeded: number; failed: number }>;
+  'sync:resync-segment': (segmentId: string) => Promise<{
+    ok: boolean;
+    queued?: boolean;
+    error?: string;
+  }>;
+}
+
+export interface TomatodoIPC {
+  'tomatodo:sync-segment': (segmentId: string) => Promise<unknown>;
+  'tomatodo:sync-session': (sessionId: string) => Promise<unknown>;
+  'tomatodo:status': (sessionId: string) => Promise<unknown>;
+  'tomatodo:set-subject': (segmentId: string, subject: string | null) => Promise<unknown>;
+  'tomatodo:set-subjects': (segmentIds: string[], subject: string | null) => Promise<unknown>;
+  'tomatodo:upload-pending': () => Promise<{
+    ok: boolean;
+    total: number;
+    uploaded: number;
+    failed: number;
+    error?: string;
+  }>;
+  'tomatodo:pending-count': () => Promise<number>;
 }
 
 export interface WindowIPC {
@@ -498,4 +542,5 @@ export interface MainEvents {
     id: string;
   }) => void;
   'hotkey:registered': (info: { key: string; success: boolean; error?: string }) => void;
+  'settings:changed': (settings: AppSettings) => void;
 }

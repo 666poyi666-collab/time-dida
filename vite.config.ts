@@ -22,7 +22,9 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['better-sqlite3'],
+              // 这两项都必须保留为运行时依赖。把 ws 内联会让 Rollup 将其可选的
+              // bufferutil/utf-8-validate require 改造成硬失败，Electron 启动即崩溃。
+              external: ['better-sqlite3', 'ws'],
             },
           },
         },

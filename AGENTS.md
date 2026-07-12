@@ -18,10 +18,12 @@ Do not turn it into a chat app, generic dashboard, or landing page.
 - `src/`: renderer UI only.
 - `electron/`: Electron main process, SQLite access, timer manager, dida CLI provider, sync queue.
 - `shared/`: shared types, version constants, and pure policies.
-- `frontend-design/`: UI handoff documents for design agents.
-- `backend/`: backend handoff documents.
-- `shared-contract/`: frontend/backend contract notes.
-- `release-v*/`: packaged artifacts only.
+- `frontend-design/`: the only product/UI/interaction documentation tree; begin at `frontend-design/README.md`.
+- `backend-design/`: the only architecture/IPC/data/test/release documentation tree; begin at `backend-design/README.md`.
+- `.github/`: issue forms and the canonical GitHub Release notes template only.
+- `release-v*/`: packaged release artifacts and that version's `RELEASE_NOTES.md` only.
+
+Do not recreate `docs/`, `backend/`, `shared-contract/`, design archives, one-off fix reports, or parallel handoff documents. Reusable conclusions belong in one of the two specifications; version history belongs in root `CHANGELOG.md` and the matching release notes.
 
 Do not add parallel source trees for the same feature.
 
@@ -51,16 +53,21 @@ Keep state labels precise:
 ## Mini Window Rules
 
 - Mini window has two fixed sizes: collapsed and expanded.
-- Do not reintroduce freeform resizing unless the settings and layout tests are updated.
-- Collapsed mode should show only current focus/pause and cumulative focus/pause.
-- Expanded mode may show task title, current segment, cumulative stats, total wall time, and controls.
+- `shared/miniWindowLayout.ts` is the only executable numeric size source. Do not duplicate sizes in Electron, CSS, settings, or tests; documentation may mirror current acceptance values but must change in the same patch as the constants.
+- Do not reintroduce freeform resizing or a third size.
+- Collapsed mode is a compact edge progress bar showing only progress/state, current time, and the expand affordance.
+- Expanded mode is a dense control console showing the task, current time, cumulative focus/pause/total, and all current controls without nested cards.
+- After a native drag is released near a display work-area edge, snap first and then auto-collapse. Never steal the pointer during drag.
+- Expand toward the inside of the current display and clamp to its work area; cover multi-display and DPI behavior in layout tests and smoke tests.
 
 ## Verification Before Release
 
 Run these before packaging:
 
 ```bash
+npm run format:check
 npm run typecheck
+npm run lint
 npm test
 npm run build
 npm run dist
@@ -72,12 +79,18 @@ For dida sync changes, also run a real temporary dida task test:
 - add a FocusLink comment with Chinese text and a marker
 - list comments and verify the marker exists once
 - repeat the write and verify it is skipped
+- verify normal-task complete/uncomplete, and checklist parent-item mutation when those paths changed
 - delete the temporary task
 
 ## Release Rules
 
-- Bump `package.json`, `package-lock.json`, `shared/version.ts`, `electron-builder.yml`, README, changelog, and frontend handoff version together.
+- Follow `backend-design/TEST_AND_RELEASE.md`; its gates are mandatory.
+- Bump `package.json`, `package-lock.json`, `shared/version.ts`, `electron-builder.yml`, README, CHANGELOG, both design-spec versions, and release notes together.
 - Use release directories like `release-v029` for `0.2.9` and `release-v0210` for `0.2.10`.
 - Keep only the latest three release directories in the repo.
-- Push `main` and the matching git tag.
-- If GitHub Release creation is required, use an authenticated GitHub tool/token; git push alone does not create a Release page entry.
+- Each release directory may contain only the installer, portable executable, `SHA256SUMS.txt`, and `RELEASE_NOTES.md`; remove `win-unpacked`, debug YAML, blockmaps, logs, screenshots, and test results.
+- Generate the final artifacts from a clean commit, then verify installer/portable startup and recompute SHA256.
+- Copy the completed `.github/RELEASE_NOTES_TEMPLATE.md` to the matching release directory and keep it consistent with the top CHANGELOG entry.
+- Push `main` and the matching annotated tag, then create a GitHub Release with the same notes and attach both executables plus SHA256.
+- Git push or tag push alone is never a completed release. Read back the GitHub Release and verify its tag, target commit, body, asset names, sizes, and download links.
+- If authenticated GitHub Release creation fails, report the release as blocked; do not claim it is published.

@@ -19,6 +19,9 @@ function cacheToTask(c: TaskCache): Task {
     tags: c.tags ? JSON.parse(c.tags) : [],
     content: c.content,
     isCompleted: c.status === 'completed',
+    completedAt: c.status === 'completed' ? c.updatedAt : null,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
   };
 }
 
@@ -63,13 +66,17 @@ export const LocalTaskProvider = {
   },
 
   complete(id: string): Task {
+    return this.setCompleted(id, true);
+  },
+
+  setCompleted(id: string, completed: boolean): Task {
     const all = listTaskCache('local');
     const c = all.find((t) => t.id === id || t.externalId === id);
     if (!c) throw new Error(`本地任务不存在: ${id}`);
-    c.status = 'completed';
+    c.status = completed ? 'completed' : 'incomplete';
     c.updatedAt = Date.now();
     upsertTaskCache(c);
-    logger.info('tasks:local', `completed local task: ${c.title}`);
+    logger.info('tasks:local', `${completed ? 'completed' : 'reopened'} local task: ${c.title}`);
     return cacheToTask(c);
   },
 };

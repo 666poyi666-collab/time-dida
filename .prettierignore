@@ -23,13 +23,10 @@ postcss.config.js
 tailwind.config.js
 tsconfig.json
 
-# 文档与归档（markdown 不纳入格式化）
+# 规范文档（markdown 不纳入代码格式化）
 *.md
-docs/
-docs/archive/
-
-# 脚本（独立工具，不在格式化范围）
-scripts/
+frontend-design/
+backend-design/
 
 # 日志与临时文件
 *.log

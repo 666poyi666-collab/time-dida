@@ -1,8 +1,9 @@
 // IPC 处理器 - 主进程接收渲染进程调用
 // 所有 IPC 通道类型安全；关键操作写日志
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow, app } from 'electron';
 import type { TimerManager } from './timer/manager.js';
 import { LocalTaskProvider } from './tasks/localProvider.js';
+import { refreshTaskWorkspace, setTaskCompleted } from './tasks/workspaceService.js';
 import {
   detectCli,
   diagnoseCli,
@@ -12,7 +13,7 @@ import {
   templatesContainTicktick,
   DIDA_DEFAULT_TEMPLATES,
 } from './tasks/cliProvider.js';
-import { ticktickAdapter } from './providers/ticktickAdapter.js';
+import { ticktickAdapter } from './integrations/ticktick/oauthAdapter.js';
 import { getSettings, saveSettings, updateSettings, setHotkey } from './settingsStore.js';
 import {
   registerAllHotkeys,
@@ -21,8 +22,6 @@ import {
   testAccelerator,
   getRegistrationStatus,
   isValidAccelerator,
-  type HotkeyHandlers,
-  type RegistrationResult,
 } from './hotkeys.js';
 import {
   enqueueSegmentSync,
@@ -31,25 +30,40 @@ import {
   retryItem,
   runPending,
   resyncSegment,
+  withPendingSyncExclusive,
 } from './sync/syncService.js';
 import {
   syncSegmentToTomatodo,
   syncSessionToTomatodo,
   deleteTomatodoRecordForSegment,
   getTomatodoSyncStatus,
+  getPendingTomatodoCount,
+  setTomatodoSubjectForSegment,
+  setTomatodoSubjectsForSegments,
+  uploadPendingTomatodoRecords,
 } from './sync/tomatodoSyncService.js';
 import {
   listSessions,
   getSession as getSessionDb,
   listSegments,
   listPauses,
+  getSegment,
   deleteSession,
   deleteSegment,
+  deleteSyncQueueForSegments,
 } from './db/index.js';
 import { exportSessionById } from './export.js';
 import { logger } from './logger.js';
-import type { TaskSource, AppSettings, SettingsDomain, Task } from '@shared/types';
+import type {
+  TaskSource,
+  AppSettings,
+  SettingsDomain,
+  Task,
+  FocusSegment,
+  TaskWorkspaceRefreshOptions,
+} from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/types';
+import { shouldDeleteDidaFocusRecord } from '@shared/autoSyncPolicy';
 
 /** 计算设置变更涉及的域 - 用于按域分流副作用，避免主题保存触发快捷键重注册 */
 function detectChangedDomains(prev: AppSettings, next: AppSettings): SettingsDomain[] {
@@ -94,6 +108,34 @@ function detectChangedDomains(prev: AppSettings, next: AppSettings): SettingsDom
   return domains;
 }
 
+async function deleteExternalRecordsForSegment(segment: FocusSegment): Promise<{
+  didaDeleted: boolean;
+  tomatodoDeleted: number;
+}> {
+  const didaDeleted = await deleteDidaFocusForSegment(segment);
+  const tomatodo = await deleteTomatodoRecordForSegment(segment.id);
+  if (!tomatodo.ok) {
+    throw new Error(`番茄 Todo 记录删除失败（片段 ${segment.id.slice(0, 8)}）`);
+  }
+  return { didaDeleted, tomatodoDeleted: tomatodo.deletedCount };
+}
+
+async function deleteDidaFocusForSegment(segment: FocusSegment): Promise<boolean> {
+  // `taskSource=ticktick` describes the local association and is shared by dida CLI and OAuth.
+  // Calling dida unconditionally would make an OAuth-only user unable to delete a never-synced
+  // segment. A stored cloudFocusId always requires dida cleanup; marker-only legacy cleanup is
+  // attempted when dida is the configured provider.
+  const shouldDeleteDida = shouldDeleteDidaFocusRecord(segment, getSettings().taskSource);
+  if (shouldDeleteDida) {
+    const ok = (await ticktickCliProvider.deleteFocusRecord?.(segment.id)) ?? false;
+    if (!ok) {
+      throw new Error(`滴答云端记录删除失败（片段 ${segment.id.slice(0, 8)}）`);
+    }
+    return true;
+  }
+  return false;
+}
+
 export function registerIpc(
   timer: TimerManager,
   window: BrowserWindow,
@@ -125,7 +167,7 @@ export function registerIpc(
 
   ipcMain.handle(
     'timer:link-task',
-    (
+    async (
       _e,
       args: { segmentId: string; taskId: string; taskSource: TaskSource; taskTitle?: string },
     ) => {
@@ -134,6 +176,17 @@ export function registerIpc(
       if (title == null && args.taskSource === 'local') {
         const task = LocalTaskProvider.getById(args.taskId);
         title = task?.title;
+      }
+      const previous = getSegment(args.segmentId);
+      const changed =
+        !!previous && (previous.taskId !== args.taskId || previous.taskSource !== args.taskSource);
+      if (changed && previous?.endedAt) {
+        await withPendingSyncExclusive(async () => {
+          deleteSyncQueueForSegments([previous.id]);
+          await deleteDidaFocusForSegment(previous);
+          timer.linkSegmentTask(args.segmentId, args.taskId, args.taskSource, title);
+        });
+        return;
       }
       timer.linkSegmentTask(args.segmentId, args.taskId, args.taskSource, title);
     },
@@ -154,7 +207,16 @@ export function registerIpc(
     },
   );
 
-  ipcMain.handle('timer:clear-segment-task', (_e, args: { segmentId: string }) => {
+  ipcMain.handle('timer:clear-segment-task', async (_e, args: { segmentId: string }) => {
+    const previous = getSegment(args.segmentId);
+    if (previous?.endedAt) {
+      await withPendingSyncExclusive(async () => {
+        deleteSyncQueueForSegments([previous.id]);
+        await deleteDidaFocusForSegment(previous);
+        timer.clearSegmentTask(args.segmentId);
+      });
+      return;
+    }
     timer.clearSegmentTask(args.segmentId);
   });
 
@@ -164,7 +226,7 @@ export function registerIpc(
 
   ipcMain.handle(
     'timer:link-segments-batch',
-    (
+    async (
       _e,
       args: {
         sessionId: string;
@@ -179,13 +241,32 @@ export function registerIpc(
         const task = LocalTaskProvider.getById(args.taskId);
         title = task?.title;
       }
-      return timer.linkSegmentsBatch(
-        args.sessionId,
-        args.taskId,
-        args.taskSource,
-        title ?? null,
-        args.onlyUnlinked,
+      const changing = listSegments(args.sessionId).filter(
+        (segment) =>
+          segment.endedAt &&
+          (!args.onlyUnlinked || !segment.taskId) &&
+          (segment.taskId !== args.taskId || segment.taskSource !== args.taskSource),
       );
+      if (changing.length === 0) {
+        return timer.linkSegmentsBatch(
+          args.sessionId,
+          args.taskId,
+          args.taskSource,
+          title ?? null,
+          args.onlyUnlinked,
+        );
+      }
+      return withPendingSyncExclusive(async () => {
+        deleteSyncQueueForSegments(changing.map((segment) => segment.id));
+        for (const segment of changing) await deleteDidaFocusForSegment(segment);
+        return timer.linkSegmentsBatch(
+          args.sessionId,
+          args.taskId,
+          args.taskSource,
+          title ?? null,
+          args.onlyUnlinked,
+        );
+      });
     },
   );
 
@@ -198,29 +279,15 @@ export function registerIpc(
   });
 
   // ============ Tasks ============
-  ipcMain.handle('tasks:list-local', () => LocalTaskProvider.list());
-  ipcMain.handle('tasks:create-local', (_e, input: { title: string; projectId?: string }) =>
-    LocalTaskProvider.create(input.title, input.projectId),
-  );
-  ipcMain.handle('tasks:search', (_e, query: string) => {
-    const local = LocalTaskProvider.search(query);
-    return local;
-  });
   ipcMain.handle('tasks:complete', async (_e, task: Task) => {
-    if (task.source === 'local') {
-      return LocalTaskProvider.complete(task.id);
-    }
-    const settings = getSettings();
-    if (settings.taskSource === 'ticktick-cli') {
-      await ticktickCliProvider.completeTask(task);
-      return { ...task, status: 'completed', isCompleted: true };
-    }
-    if (settings.taskSource === 'ticktick-oauth') {
-      await ticktickAdapter.completeTask(task);
-      return { ...task, status: 'completed', isCompleted: true };
-    }
-    throw new Error('当前任务来源不是滴答清单，无法同步完成状态');
+    return setTaskCompleted(task, true);
   });
+  ipcMain.handle('tasks:set-completed', (_e, task: Task, completed: boolean) =>
+    setTaskCompleted(task, completed),
+  );
+  ipcMain.handle('tasks:refresh', (_e, options?: TaskWorkspaceRefreshOptions) =>
+    refreshTaskWorkspace(options),
+  );
 
   // ============ 滴答清单 CLI ============
   ipcMain.handle('cli:detect', async () => {
@@ -351,58 +418,93 @@ export function registerIpc(
     return { session, segments: listSegments(id), pauses: listPauses(id) };
   });
   ipcMain.handle('sessions:delete', async (_e, id: string) => {
-    // 先删除云端专注记录，再删除本地数据
     const segs = listSegments(id);
-    let cloudDeleted = 0;
-    let cloudFailed = 0;
-    for (const seg of segs) {
-      if (seg.cloudFocusId) {
+    const snapshot = timer.getSnapshot();
+    if (
+      snapshot.sessionId === id &&
+      (snapshot.state === 'running' || snapshot.state === 'paused')
+    ) {
+      throw new Error('当前专注仍在进行中，请先结束后再删除。');
+    }
+
+    return withPendingSyncExclusive(async () => {
+      // 独占区间覆盖撤队列、外部删除和本地删除，防止新的后台 create 在中间插入。
+      deleteSyncQueueForSegments(
+        segs.map((segment) => segment.id),
+        id,
+      );
+
+      let cloudDeleted = 0;
+      let tomatodoDeleted = 0;
+      for (const seg of segs) {
         try {
-          const ok = await ticktickCliProvider.deleteFocusRecord?.(seg.id);
-          if (ok) cloudDeleted++;
-          else cloudFailed++;
-        } catch (err) {
-          logger.warn('ipc', 'failed to delete cloud focus record', {
+          const result = await deleteExternalRecordsForSegment(seg);
+          if (result.didaDeleted) cloudDeleted += 1;
+          tomatodoDeleted += result.tomatodoDeleted;
+        } catch (error) {
+          logger.warn('ipc', 'session external deletion failed; local record preserved', {
+            sessionId: id,
             segmentId: seg.id,
-            cloudFocusId: seg.cloudFocusId,
-            error: err instanceof Error ? err.message : String(err),
+            error: error instanceof Error ? error.message : String(error),
           });
-          cloudFailed++;
+          throw new Error(
+            `${error instanceof Error ? error.message : String(error)}；本地记录已保留，可稍后重试删除。`,
+          );
         }
       }
-    }
-    deleteSession(id);
-    timer.resetIfSession(id);
-    // 若计时器卡在 finished 状态（1.5s 自动重置窗口内），立即重置为 idle，
-    // 避免用户回到计时界面看到 finished 状态的 UI 空洞
-    timer.resetIfFinished();
-    // 番茄 Todo 删除联动：移除该会话所有 segment 的 PCRecord
-    let tomatodoDeleted = 0;
-    for (const seg of segs) {
-      const r = deleteTomatodoRecordForSegment(seg.id);
-      tomatodoDeleted += r.deletedCount;
-    }
-    logger.info('ipc', 'session deleted', { sessionId: id, cloudDeleted, cloudFailed, tomatodoDeleted });
-    // 始终返回最新快照，确保渲染层 UI 一致
-    return timer.getSnapshot();
+
+      // 所有外部删除都确认完成后，才允许删除本地事实来源。
+      deleteSession(id);
+      timer.resetIfSession(id);
+      // 若计时器卡在 finished 状态（1.5s 自动重置窗口内），立即重置为 idle，
+      // 避免用户回到计时界面看到 finished 状态的 UI 空洞
+      timer.resetIfFinished();
+      logger.info('ipc', 'session deleted', {
+        sessionId: id,
+        cloudDeleted,
+        tomatodoDeleted,
+      });
+      // 始终返回最新快照，确保渲染层 UI 一致
+      return timer.getSnapshot();
+    });
   });
 
   /** 删除单个 segment：先删云端专注记录，再删本地 */
   ipcMain.handle('segments:delete', async (_e, id: string) => {
-    let cloudDeleted = false;
-    try {
-      cloudDeleted = (await ticktickCliProvider.deleteFocusRecord?.(id)) ?? false;
-    } catch (err) {
-      logger.warn('ipc', 'segments:delete cloud deletion failed', {
-        segmentId: id,
-        error: err instanceof Error ? err.message : String(err),
-      });
+    const segment = getSegment(id);
+    if (!segment) return { cloudDeleted: false, tomatodoDeleted: 0 };
+    const snapshot = timer.getSnapshot();
+    if (
+      snapshot.currentSegmentId === id &&
+      (snapshot.state === 'running' || snapshot.state === 'paused')
+    ) {
+      throw new Error('当前片段仍在计时，不能删除。');
     }
-    deleteSegment(id);
-    // 番茄 Todo 删除联动：移除该 segment 的 PCRecord
-    const tomatodoRes = deleteTomatodoRecordForSegment(id);
-    logger.info('ipc', 'segment deleted', { segmentId: id, cloudDeleted, tomatodoDeleted: tomatodoRes.deletedCount });
-    return { cloudDeleted };
+
+    return withPendingSyncExclusive(async () => {
+      deleteSyncQueueForSegments([id]);
+      try {
+        const external = await deleteExternalRecordsForSegment(segment);
+        deleteSegment(id);
+        logger.info('ipc', 'segment deleted', {
+          segmentId: id,
+          cloudDeleted: external.didaDeleted,
+          tomatodoDeleted: external.tomatodoDeleted,
+        });
+        return {
+          cloudDeleted: external.didaDeleted,
+          tomatodoDeleted: external.tomatodoDeleted,
+        };
+      } catch (error) {
+        logger.warn('ipc', 'segment external deletion failed; local record preserved', {
+          segmentId: id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)}；本地片段已保留，可稍后重试。`,
+        );
+      }
+    });
   });
   ipcMain.handle('sessions:export', (_e, id: string, format: 'json' | 'csv' | 'markdown') =>
     exportSessionById(id, format),
@@ -412,7 +514,10 @@ export function registerIpc(
   ipcMain.handle('settings:get', () => getSettings());
   ipcMain.handle('settings:set', (_e, settings) => {
     const prev = getSettings();
-    const next = saveSettings(settings);
+    // Renderer callers intentionally send partial settings (for example the task drawer only
+    // changes taskSource). Persisting that object directly temporarily returned a one-field
+    // settings object to Zustand and made timer/theme code lose hotkeys and nested config.
+    const next = updateSettings(settings as Partial<AppSettings>);
     const domains = detectChangedDomains(prev, next);
     // 按域分流副作用：只有 hotkeys 域变更才重新注册快捷键
     onSettingsChanged(domains, next);
@@ -506,9 +611,18 @@ export function registerIpc(
     syncSessionToTomatodo(sessionId),
   );
   /** 查询某会话各 segment 的番茄 Todo 同步状态（供 UI 展示） */
-  ipcMain.handle('tomatodo:status', (_e, sessionId: string) =>
-    getTomatodoSyncStatus(sessionId),
+  ipcMain.handle('tomatodo:status', (_e, sessionId: string) => getTomatodoSyncStatus(sessionId));
+  /** 设置 segment 的番茄 Todo 学科分类（手动选择） */
+  ipcMain.handle('tomatodo:set-subject', (_e, segmentId: string, subject: string | null) =>
+    setTomatodoSubjectForSegment(segmentId, subject),
   );
+  ipcMain.handle('tomatodo:set-subjects', (_e, segmentIds: string[], subject: string | null) =>
+    setTomatodoSubjectsForSegments(segmentIds, subject),
+  );
+  /** 手动上传所有待同步的番茄 Todo 记录到云端 */
+  ipcMain.handle('tomatodo:upload-pending', () => uploadPendingTomatodoRecords());
+  /** 查询待上云的番茄 Todo 记录数 */
+  ipcMain.handle('tomatodo:pending-count', () => getPendingTomatodoCount());
 
   // ============ Window ============
   ipcMain.on('window:minimize-to-tray', () => window.hide());
@@ -516,7 +630,9 @@ export function registerIpc(
     window.show();
     window.focus();
   });
-  ipcMain.on('window:quit', () => window.close());
+  // `window.close()` is intercepted by close-to-tray and only hides the app. This channel is the
+  // explicit quit contract, so route it through before-quit to persist the timer and close DB.
+  ipcMain.on('window:quit', () => app.quit());
 
   logger.info('ipc', 'all handlers registered');
 }

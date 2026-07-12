@@ -5,6 +5,37 @@ import path from 'node:path';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+/**
+ * JSON.stringify(Error) normally produces `{}`, which erased the only useful evidence for the
+ * intermittent main/renderer crashes reported in production. Keep errors, nested causes, bigint
+ * values and circular diagnostic objects loggable without letting logging throw another error.
+ */
+export function serializeLogMeta(meta: unknown): string {
+  const seen = new WeakSet<object>();
+  try {
+    const json = JSON.stringify(meta, (_key, value: unknown) => {
+      if (typeof value === 'bigint') return value.toString();
+      if (value && typeof value === 'object') {
+        if (seen.has(value)) return '[Circular]';
+        seen.add(value);
+        if (value instanceof Error) {
+          return {
+            name: value.name,
+            message: value.message,
+            stack: value.stack,
+            cause: value.cause,
+          };
+        }
+      }
+      return value;
+    });
+    return json ?? String(meta);
+  } catch (error) {
+    const reason = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    return JSON.stringify({ serializationError: reason, fallback: String(meta) });
+  }
+}
+
 class Logger {
   private logFile: string | null = null;
   private stream: fs.WriteStream | null = null;
@@ -25,7 +56,7 @@ class Logger {
 
   private write(level: LogLevel, scope: string, msg: string, meta?: unknown): void {
     const ts = new Date().toISOString();
-    const metaStr = meta != null ? ' ' + JSON.stringify(meta) : '';
+    const metaStr = meta != null ? ' ' + serializeLogMeta(meta) : '';
     const line = `[${ts}] [${level.toUpperCase()}] [${scope}] ${msg}${metaStr}\n`;
     if (this.stream) {
       this.stream.write(line);

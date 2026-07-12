@@ -12,7 +12,6 @@
 //   - 每 1s tick 更新内存快照并推送给渲染进程
 //   - 每 5s 持久化 activeElapsedMs 快照到 segment + app_meta(lastTick)
 //   - 崩溃恢复时：若存在 active session，按 lastTick 与当前时间重算
-import { app } from 'electron';
 import crypto from 'node:crypto';
 import { logger } from '../logger.js';
 import {
@@ -29,6 +28,7 @@ import {
   getOpenPause,
   listPauses,
   deleteSegment,
+  reassignPausesToSegment,
   getMeta,
   setMeta,
 } from '../db/index.js';
@@ -71,14 +71,11 @@ export class TimerManager {
   private persistTimer: NodeJS.Timeout | null = null;
   private resetTimeout: NodeJS.Timeout | null = null;
   private listeners = new Set<SnapshotListener>();
-  private segmentBehavior: 'new-segment' | 'continue-segment' = 'new-segment';
 
-  constructor(segmentBehavior: 'new-segment' | 'continue-segment' = 'new-segment') {
-    this.segmentBehavior = segmentBehavior;
-  }
+  constructor() {}
 
-  setSegmentBehavior(b: 'new-segment' | 'continue-segment'): void {
-    this.segmentBehavior = b;
+  setSegmentBehavior(_b: 'new-segment' | 'continue-segment'): void {
+    // ????????? resume ???? segment????????????
   }
 
   onSnapshot(listener: SnapshotListener): () => void {
@@ -145,8 +142,27 @@ export class TimerManager {
     } else {
       // 未知状态，保守处理为 finished
       logger.warn('timer', 'unclear recovery state, finishing session', { sessionId: active.id });
-      this.session = active;
-      this.stop();
+      const now = Date.now();
+      const recoveredEnd = Math.max(active.startedAt, lastTick > 0 ? lastTick : now);
+      if (lastSegment && lastSegment.endedAt == null) {
+        lastSegment.endedAt = Math.max(lastSegment.startedAt, recoveredEnd);
+        lastSegment.updatedAt = now;
+        updateSegment(lastSegment);
+      }
+      active.status = 'finished';
+      active.endedAt = recoveredEnd;
+      active.wallElapsedMs = Math.max(active.wallElapsedMs, recoveredEnd - active.startedAt);
+      active.updatedAt = now;
+      updateSession(active);
+      this.session = null;
+      this.currentSegment = null;
+      this.currentPause = null;
+      this.activeElapsedMs = 0;
+      this.pauseElapsedMs = 0;
+      this.lastTick = 0;
+      this.state = 'idle';
+      this.clearMeta();
+      this.emit();
       return;
     }
     this.emit();
@@ -289,7 +305,8 @@ export class TimerManager {
       this.currentPause = pause;
     }
     this.state = 'paused';
-    this.persistMeta(now);
+    // PAUSE 是持久化边界：5 秒周期到达前退出也不能丢失刚结算的专注时长。
+    this.persistSnapshot();
     this.stopTick();
     logger.info('timer', 'paused', { activeMs: this.activeElapsedMs });
     this.emit();
@@ -336,7 +353,8 @@ export class TimerManager {
 
     this.lastTick = now;
     this.state = 'running';
-    this.persistMeta(now);
+    // RESUME 同时落盘已结束的 pause、旧 segment 和新 segment 的零基准。
+    this.persistSnapshot();
     this.startTick();
     logger.info('timer', 'resumed (always new segment)', {
       newSegmentId: this.currentSegment?.id,
@@ -578,21 +596,30 @@ export class TimerManager {
   /** 合并多个 segment 为一个（按时间顺序拼接，时长相加） */
   mergeSegments(segmentIds: string[]): void {
     if (!this.session || segmentIds.length < 2) return;
-    // 若当前运行中的 segment 在合并范围内，先 closeSegment 把真实 activeElapsedMs 写入 DB，
-    // 否则 DB 里的 activeElapsedMs 是过期值（只有 closeSegment 才会更新），
-    // 合并后总时长会偏小。
-    const now = Date.now();
     if (
       this.currentSegment &&
       segmentIds.includes(this.currentSegment.id) &&
       (this.state === 'running' || this.state === 'paused')
     ) {
-      this.settleActive(now);
-      this.closeSegment(now);
+      throw new Error('当前片段仍在计时，不能参与合并；请只选择已经结束的片段。');
     }
-    const segs = listSegments(this.session.id).filter((s) => segmentIds.includes(s.id));
+    const allSegments = listSegments(this.session.id);
+    const segs = allSegments.filter((s) => segmentIds.includes(s.id));
     if (segs.length < 2) return;
+    if (segs.some((segment) => !segment.endedAt)) {
+      throw new Error('只能合并已经结束的专注片段。');
+    }
     segs.sort((a, b) => a.startedAt - b.startedAt);
+    const selectedIndexes = segs.map((segment) =>
+      allSegments.findIndex((candidate) => candidate.id === segment.id),
+    );
+    if (
+      selectedIndexes.some(
+        (index, position) => position > 0 && index !== selectedIndexes[0] + position,
+      )
+    ) {
+      throw new Error('只能合并时间线上相邻的专注片段。');
+    }
     const first = segs[0];
     const last = segs[segs.length - 1];
     const totalActive = segs.reduce((sum, s) => sum + s.activeElapsedMs, 0);
@@ -601,11 +628,12 @@ export class TimerManager {
     first.activeElapsedMs = totalActive;
     first.updatedAt = Date.now();
     updateSegment(first);
+    reassignPausesToSegment(
+      segs.slice(1).map((segment) => segment.id),
+      first.id,
+    );
     for (let i = 1; i < segs.length; i++) {
       deleteSegment(segs[i].id);
-    }
-    if (this.currentSegment && segmentIds.includes(this.currentSegment.id)) {
-      this.currentSegment = first;
     }
     logger.info('timer', 'merged segments', {
       count: segs.length,
@@ -630,6 +658,7 @@ export class TimerManager {
       activeElapsedMs: 0,
       note: null,
       cloudFocusId: null,
+      tomatodoSubject: null,
       createdAt: now,
       updatedAt: now,
     };

@@ -4,8 +4,13 @@ import { JsonStore } from './jsonStore.js';
 import { getSetting, setSetting, resetFailedSyncItems, getDb } from './db/index.js';
 import { DEFAULT_SETTINGS } from '@shared/types';
 import type { AppSettings } from '@shared/types';
+import { mergeSettings } from '@shared/settingsPolicy';
 import { getExpandedMiniWindowSize } from '@shared/miniWindowLayout';
 import { logger } from './logger.js';
+import {
+  migrateLegacyTomatodoRecords,
+  resolveTomatodoDbPath,
+} from './integrations/tomatodo/localDb.js';
 
 const store = new JsonStore<AppSettings>({
   name: 'focuslink-settings',
@@ -15,6 +20,7 @@ const store = new JsonStore<AppSettings>({
 const SETTINGS_KEY = 'app_settings';
 // v0.1.5 一次性迁移标记：强制关闭贴边自动收纳（UI 不稳定，交给 UI AI 重做）
 const MIGRATION_V015_KEY = 'migration.v015.edgeAutoCollapseReset';
+const MIGRATION_EDGE_DOCK_V080_KEY = 'migration.v080.edgeDockRestored';
 const MIGRATION_DIDA_APPEND_ID_KEY = 'migration.didaAppendRequiresId';
 const MIGRATION_DIDA_APPEND_PROJECT_KEY = 'migration.didaAppendRequiresProject';
 const MIGRATION_SYNC_MODE_V0211_KEY = 'migration.syncModeV0211';
@@ -26,7 +32,10 @@ const MIGRATION_RESET_FAILED_SYNC_V0214_KEY = 'migration.resetFailedSyncV0214';
 const MIGRATION_RESET_FAILED_SYNC_V0215_KEY = 'migration.resetFailedSyncV0215';
 const MIGRATION_RESET_FAILED_SYNC_V0216_KEY = 'migration.resetFailedSyncV0216';
 const MIGRATION_RESYNC_FOCUS_RECORD_V0410_KEY = 'migration.resyncFocusRecordV0410';
+const MIGRATION_TOMATODO_CLOUD_V053_KEY = 'migration.tomatodoCloudV053';
+const MIGRATION_RECONCILE_DIDA_FOCUS_V060_KEY = 'migration.reconcileDidaFocusV060';
 const MIGRATION_FLAG_DONE = '1';
+let tomatodoCloudMigrationAttemptedThisRun = false;
 
 export function getSettings(): AppSettings {
   // 优先从 electron-store 读取，回退到 DB，再回退到默认
@@ -34,12 +43,12 @@ export function getSettings(): AppSettings {
   try {
     const fromStore = store.store;
     if (fromStore && Object.keys(fromStore).length > 0) {
-      settings = deepMerge(DEFAULT_SETTINGS, fromStore);
+      settings = mergeSettings(DEFAULT_SETTINGS, fromStore);
     } else {
       const fromDb = getSetting(SETTINGS_KEY);
       if (fromDb) {
         try {
-          settings = deepMerge(DEFAULT_SETTINGS, JSON.parse(fromDb));
+          settings = mergeSettings(DEFAULT_SETTINGS, JSON.parse(fromDb));
         } catch {
           settings = DEFAULT_SETTINGS;
         }
@@ -54,6 +63,7 @@ export function getSettings(): AppSettings {
 
   // v0.1.5 一次性迁移：强制关闭贴边自动收纳（仅执行一次）
   applyV015EdgeCollapseMigration(settings);
+  applyEdgeDockV080Migration(settings);
   applyDidaAppendIdMigration(settings);
   applyDidaAppendProjectMigration(settings);
   applySyncModeV0211Migration(settings);
@@ -65,8 +75,19 @@ export function getSettings(): AppSettings {
   applyResetFailedSyncV0215Migration();
   applyResetFailedSyncV0216Migration();
   applyResyncFocusRecordV0410Migration();
+  applyTomatodoCloudV053Migration(settings);
+  applyReconcileDidaFocusV060Migration();
+  normalizeSegmentBehavior(settings);
   normalizeMiniWindowSize(settings);
   return settings;
+}
+
+/** 暂停后继续固定创建新片段；清理旧版仍保存的无效“继续原片段”选项。 */
+function normalizeSegmentBehavior(settings: AppSettings): void {
+  if (settings.segmentBehavior === 'new-segment') return;
+  settings.segmentBehavior = 'new-segment';
+  store.store = settings;
+  setSetting(SETTINGS_KEY, JSON.stringify(settings));
 }
 
 /** v0.1.5 一次性迁移：把 edgeAutoCollapse 强制重置为 false。
@@ -81,6 +102,19 @@ function applyV015EdgeCollapseMigration(settings: AppSettings): void {
     setSetting(SETTINGS_KEY, JSON.stringify(settings));
   }
   setSetting(MIGRATION_V015_KEY, MIGRATION_FLAG_DONE);
+}
+
+/** v0.8.0 重写后的贴边逻辑有进入/离开双阈值与原生尺寸变更保护，可安全恢复。 */
+function applyEdgeDockV080Migration(settings: AppSettings): void {
+  const flag = getSetting(MIGRATION_EDGE_DOCK_V080_KEY);
+  if (flag === MIGRATION_FLAG_DONE) return;
+  settings.miniWindow.edgeAutoCollapse = true;
+  settings.miniWindow.edgeCollapseDelayMs = 260;
+  settings.miniWindow.hoverToExpand = false;
+  store.store = settings;
+  setSetting(SETTINGS_KEY, JSON.stringify(settings));
+  setSetting(MIGRATION_EDGE_DOCK_V080_KEY, MIGRATION_FLAG_DONE);
+  logger.info('settings', 'v080 migration: enable stable mini edge docking');
 }
 
 function normalizeMiniWindowSize(settings: AppSettings): void {
@@ -162,7 +196,11 @@ function applyResetFailedSyncMigration(): void {
       logger.info('settings', `v0211 migration: reset ${count} failed sync items to pending`);
     }
   } catch (err) {
-    logger.warn('settings', 'failed to reset failed sync items', err instanceof Error ? err.message : String(err));
+    logger.warn(
+      'settings',
+      'failed to reset failed sync items',
+      err instanceof Error ? err.message : String(err),
+    );
   }
   setSetting(MIGRATION_RESET_FAILED_SYNC_KEY, MIGRATION_FLAG_DONE);
 }
@@ -176,7 +214,11 @@ function applyResetFailedSyncV0212Migration(): void {
       logger.info('settings', `v0212 migration: reset ${count} failed sync items to pending`);
     }
   } catch (err) {
-    logger.warn('settings', 'failed to reset failed sync items', err instanceof Error ? err.message : String(err));
+    logger.warn(
+      'settings',
+      'failed to reset failed sync items',
+      err instanceof Error ? err.message : String(err),
+    );
   }
   setSetting(MIGRATION_RESET_FAILED_SYNC_V0212_KEY, MIGRATION_FLAG_DONE);
 }
@@ -206,7 +248,11 @@ function applyResetFailedSyncV0213Migration(): void {
       logger.info('settings', `v0213 migration: reset ${count} failed sync items to pending`);
     }
   } catch (err) {
-    logger.warn('settings', 'failed to reset failed sync items', err instanceof Error ? err.message : String(err));
+    logger.warn(
+      'settings',
+      'failed to reset failed sync items',
+      err instanceof Error ? err.message : String(err),
+    );
   }
   setSetting(MIGRATION_RESET_FAILED_SYNC_V0213_KEY, MIGRATION_FLAG_DONE);
 }
@@ -221,13 +267,24 @@ function applyResetFailedSyncV0214Migration(): void {
     // 重置 failed 项
     const failedCount = resetFailedSyncItems();
     // 重置卡住的 pending 项（retryCount > 0 的）
-    const stuckResult = db.prepare("UPDATE sync_queue SET status = 'pending', retry_count = 0, last_error = NULL WHERE status = 'pending' AND retry_count > 0").run();
+    const stuckResult = db
+      .prepare(
+        "UPDATE sync_queue SET status = 'pending', retry_count = 0, last_error = NULL WHERE status = 'pending' AND retry_count > 0",
+      )
+      .run();
     const stuckCount = stuckResult.changes;
     if (failedCount > 0 || stuckCount > 0) {
-      logger.info('settings', `v0214 migration: reset ${failedCount} failed + ${stuckCount} stuck pending sync items`);
+      logger.info(
+        'settings',
+        `v0214 migration: reset ${failedCount} failed + ${stuckCount} stuck pending sync items`,
+      );
     }
   } catch (err) {
-    logger.warn('settings', 'failed to reset sync items', err instanceof Error ? err.message : String(err));
+    logger.warn(
+      'settings',
+      'failed to reset sync items',
+      err instanceof Error ? err.message : String(err),
+    );
   }
   setSetting(MIGRATION_RESET_FAILED_SYNC_V0214_KEY, MIGRATION_FLAG_DONE);
 }
@@ -241,13 +298,24 @@ function applyResetFailedSyncV0215Migration(): void {
   try {
     const db = getDb();
     const failedCount = resetFailedSyncItems();
-    const stuckResult = db.prepare("UPDATE sync_queue SET status = 'pending', retry_count = 0, last_error = NULL WHERE status = 'pending' AND retry_count > 0").run();
+    const stuckResult = db
+      .prepare(
+        "UPDATE sync_queue SET status = 'pending', retry_count = 0, last_error = NULL WHERE status = 'pending' AND retry_count > 0",
+      )
+      .run();
     const stuckCount = stuckResult.changes;
     if (failedCount > 0 || stuckCount > 0) {
-      logger.info('settings', `v0215 migration: reset ${failedCount} failed + ${stuckCount} stuck pending sync items`);
+      logger.info(
+        'settings',
+        `v0215 migration: reset ${failedCount} failed + ${stuckCount} stuck pending sync items`,
+      );
     }
   } catch (err) {
-    logger.warn('settings', 'failed to reset sync items', err instanceof Error ? err.message : String(err));
+    logger.warn(
+      'settings',
+      'failed to reset sync items',
+      err instanceof Error ? err.message : String(err),
+    );
   }
   setSetting(MIGRATION_RESET_FAILED_SYNC_V0215_KEY, MIGRATION_FLAG_DONE);
 }
@@ -262,13 +330,24 @@ function applyResetFailedSyncV0216Migration(): void {
   try {
     const db = getDb();
     const failedCount = resetFailedSyncItems();
-    const stuckResult = db.prepare("UPDATE sync_queue SET status = 'pending', retry_count = 0, last_error = NULL WHERE status = 'pending' AND retry_count > 0").run();
+    const stuckResult = db
+      .prepare(
+        "UPDATE sync_queue SET status = 'pending', retry_count = 0, last_error = NULL WHERE status = 'pending' AND retry_count > 0",
+      )
+      .run();
     const stuckCount = stuckResult.changes;
     if (failedCount > 0 || stuckCount > 0) {
-      logger.info('settings', `v0216 migration: reset ${failedCount} failed + ${stuckCount} stuck pending sync items`);
+      logger.info(
+        'settings',
+        `v0216 migration: reset ${failedCount} failed + ${stuckCount} stuck pending sync items`,
+      );
     }
   } catch (err) {
-    logger.warn('settings', 'failed to reset sync items', err instanceof Error ? err.message : String(err));
+    logger.warn(
+      'settings',
+      'failed to reset sync items',
+      err instanceof Error ? err.message : String(err),
+    );
   }
   setSetting(MIGRATION_RESET_FAILED_SYNC_V0216_KEY, MIGRATION_FLAG_DONE);
 }
@@ -307,6 +386,72 @@ function applyResyncFocusRecordV0410Migration(): void {
   setSetting(MIGRATION_RESYNC_FOCUS_RECORD_V0410_KEY, MIGRATION_FLAG_DONE);
 }
 
+/**
+ * v0.5.3：把旧兜底“杂”迁移为“学习”，并将旧版误标为已上云的 FocusLink
+ * PCRecord 恢复为待同步。外部库只处理带 FocusLink marker 的记录。
+ */
+function applyTomatodoCloudV053Migration(settings: AppSettings): void {
+  const flag = getSetting(MIGRATION_TOMATODO_CLOUD_V053_KEY);
+  if (flag === MIGRATION_FLAG_DONE) return;
+
+  if ((settings.tomatodo.defaultSubject as string) === '杂') {
+    settings.tomatodo.defaultSubject = '学习';
+    store.store = settings;
+    setSetting(SETTINGS_KEY, JSON.stringify(settings));
+  }
+
+  // TomaToDo 正在运行或文件暂时不可用时，把迁移留到下次 FocusLink 启动。
+  // getSettings 是高频路径，同一进程内不能反复探测进程和外部文件。
+  if (tomatodoCloudMigrationAttemptedThisRun) return;
+  tomatodoCloudMigrationAttemptedThisRun = true;
+
+  try {
+    const dbPath = resolveTomatodoDbPath(settings.tomatodo.dbPath);
+    const result = migrateLegacyTomatodoRecords(dbPath);
+    if (!result.ok) {
+      logger.warn('settings', 'tomatodo v0.5.3 migration deferred', { error: result.error });
+      return;
+    }
+    logger.info('settings', 'tomatodo v0.5.3 migration complete', {
+      resetRecords: result.updatedCount,
+    });
+    setSetting(MIGRATION_TOMATODO_CLOUD_V053_KEY, MIGRATION_FLAG_DONE);
+  } catch (error) {
+    logger.warn('settings', 'tomatodo v0.5.3 migration deferred', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * v0.6.0 修正了 dida 云专注的时间语义：end-start 必须等于有效专注时长，暂停只写入
+ * note，不再同时传给 --pause-duration。旧版本已经标为 synced 的队列项也必须重新经过
+ * marker + duration 对账，否则它们永远不会触发 createFocusRecord 的安全重建逻辑。
+ *
+ * 这里只重开 FocusLink 自己的 segment-focus 队列项；createFocusRecord 会保留正确记录、
+ * 收敛重复 marker，并只重建能够确认时长错误的记录，因此不会盲目删除用户数据。
+ */
+function applyReconcileDidaFocusV060Migration(): void {
+  if (getSetting(MIGRATION_RECONCILE_DIDA_FOCUS_V060_KEY) === MIGRATION_FLAG_DONE) return;
+  try {
+    const result = getDb()
+      .prepare(
+        "UPDATE sync_queue SET status = 'pending', retry_count = 0, last_error = NULL, updated_at = ? WHERE status = 'synced' AND type = 'segment-focus'",
+      )
+      .run(Date.now());
+    logger.info('settings', 'v0.6.0 dida focus reconciliation queued', {
+      resetItems: result.changes,
+    });
+    // Only persist the flag after the transaction succeeds. A temporarily unavailable database
+    // must leave the migration retryable on the next settings read/startup.
+    setSetting(MIGRATION_RECONCILE_DIDA_FOCUS_V060_KEY, MIGRATION_FLAG_DONE);
+  } catch (error) {
+    logger.warn('settings', 'v0.6.0 dida focus reconciliation deferred', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 export function saveSettings(settings: AppSettings): AppSettings {
   store.store = settings;
   setSetting(SETTINGS_KEY, JSON.stringify(settings));
@@ -316,7 +461,7 @@ export function saveSettings(settings: AppSettings): AppSettings {
 
 export function updateSettings(partial: Partial<AppSettings>): AppSettings {
   const current = getSettings();
-  const next = deepMerge(current, partial);
+  const next = mergeSettings(current, partial);
   return saveSettings(next);
 }
 
@@ -324,17 +469,4 @@ export function setHotkey(key: keyof AppSettings['hotkeys'], accelerator: string
   const current = getSettings();
   current.hotkeys[key] = accelerator;
   return saveSettings(current);
-}
-
-function deepMerge<T>(base: T, override: Partial<T>): T {
-  const result: any = Array.isArray(base) ? [...(base as any)] : { ...(base as any) };
-  for (const key in override) {
-    const ov = (override as any)[key];
-    if (ov && typeof ov === 'object' && !Array.isArray(ov)) {
-      result[key] = deepMerge(result[key] ?? {}, ov);
-    } else if (ov !== undefined) {
-      result[key] = ov;
-    }
-  }
-  return result as T;
 }

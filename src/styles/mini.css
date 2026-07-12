@@ -1,0 +1,4 @@
+/* Mini renderer style entry. Kept separate so its bundle can be split without changing JSX. */
+@import './foundation.css';
+@import './motion.css';
+@import './features/mini-window.css';

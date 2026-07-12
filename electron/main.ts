@@ -1,10 +1,20 @@
 // Electron 主进程入口
 // 单实例锁、主窗口+专注小窗、托盘、快捷键、IPC、崩溃恢复、snapshot 推送
-import { app, BrowserWindow, shell, powerMonitor, Tray, ipcMain, screen, nativeImage, Menu } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  shell,
+  powerMonitor,
+  ipcMain,
+  screen,
+  nativeImage,
+  Menu,
+} from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { logger } from './logger.js';
-import { initDatabase, closeDatabase, listSegments } from './db/index.js';
+import { initDatabase, closeDatabase, listSegments, getSetting, setSetting } from './db/index.js';
 import { TimerManager } from './timer/manager.js';
 import { createTray, destroyTray } from './tray.js';
 import { registerIpc, setTimerForHotkeys } from './ipc.js';
@@ -23,12 +33,27 @@ import { hasTicktickLinkedSegments, shouldAutoSyncFinishedSession } from '@share
 import {
   MINI_WINDOW_COLLAPSED_SIZE,
   MINI_WINDOW_COLLAPSED_HEIGHT,
+  MINI_WINDOW_EDGE_RELEASE_DISTANCE,
   MINI_WINDOW_SIZE_PRESETS,
+  anchorMiniWindowToEdge,
+  detectMiniWindowEdge,
   getExpandedMiniWindowSize,
+  resizeMiniWindowAroundCenter,
+  type MiniWindowEdge,
 } from '@shared/miniWindowLayout';
-import { getLoginItemSettings, shouldStartHiddenToTray } from '@shared/startupPolicy';
+import { MAIN_WINDOW_DEFAULT_SIZE, MAIN_WINDOW_MIN_SIZE } from '@shared/mainWindowLayout';
+import {
+  getLoginItemSettings,
+  shouldAutoSelectDidaTaskSource,
+  shouldStartHiddenToTray,
+} from '@shared/startupPolicy';
 import { enqueueSessionSync, runPending } from './sync/syncService.js';
-import { syncSessionToTomatodo } from './sync/tomatodoSyncService.js';
+import { resolveDidaExecTarget } from './tasks/cliProvider.js';
+import {
+  syncSessionToTomatodo,
+  uploadPendingTomatodoRecords,
+  getPendingTomatodoCount,
+} from './sync/tomatodoSyncService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -46,13 +71,131 @@ function getAppIcon(): Electron.NativeImage {
 
 let mainWindow: BrowserWindow | null = null;
 let miniWindow: BrowserWindow | null = null;
+let miniDockedEdge: MiniWindowEdge | null = null;
+let miniEdgeTimer: NodeJS.Timeout | null = null;
+let miniBoundsMutationUntil = 0;
+let miniEdgeSuppressUntil = 0;
 let timer: TimerManager | null = null;
-let tray: Tray | null = null;
 // 标记用户真正想退出（点托盘"退出"），区分于"关闭窗口最小化到托盘"
 let isQuitting = false;
 // 上次计时器状态，用于检测状态转换触发小窗自动显示/隐藏
 let lastTimerState: TimerSnapshot['state'] | null = null;
 const autoSyncSessions = new Set<string>();
+const autoSyncInFlight = new Set<Promise<void>>();
+let runtimeUiInitialized = false;
+let snapshotUnsubscribe: (() => void) | null = null;
+
+const RENDERER_UNRESPONSIVE_GRACE_MS = 5_000;
+const RENDERER_RECOVERY_WINDOW_MS = 60_000;
+const RENDERER_MAX_RECOVERIES_PER_WINDOW = 3;
+
+/**
+ * A renderer reload is safe for FocusLink because the timer and ledger live in the main process.
+ * Give transient Chromium stalls a short grace period, then recover the UI without ending focus.
+ * A bounded retry window prevents a broken bundle from entering a tight reload loop.
+ */
+function attachRendererHealthRecovery(win: BrowserWindow, kind: 'main' | 'mini'): void {
+  let unresponsiveTimer: NodeJS.Timeout | null = null;
+  let recoveryInFlight = false;
+  let recoveryWindowStartedAt = 0;
+  let recoveryCount = 0;
+
+  const clearUnresponsiveTimer = () => {
+    if (unresponsiveTimer) clearTimeout(unresponsiveTimer);
+    unresponsiveTimer = null;
+  };
+
+  const context = () => {
+    try {
+      return {
+        kind,
+        url: win.webContents.getURL(),
+        rendererPid: win.webContents.getOSProcessId(),
+      };
+    } catch {
+      return { kind };
+    }
+  };
+
+  const recover = (trigger: 'unresponsive' | 'render-process-gone', details?: unknown) => {
+    if (isQuitting || win.isDestroyed() || recoveryInFlight) return;
+    const now = Date.now();
+    if (
+      recoveryWindowStartedAt === 0 ||
+      now - recoveryWindowStartedAt >= RENDERER_RECOVERY_WINDOW_MS
+    ) {
+      recoveryWindowStartedAt = now;
+      recoveryCount = 0;
+    }
+    if (recoveryCount >= RENDERER_MAX_RECOVERIES_PER_WINDOW) {
+      const retryInMs = Math.max(
+        1_000,
+        RENDERER_RECOVERY_WINDOW_MS - (now - recoveryWindowStartedAt),
+      );
+      logger.error('renderer', 'automatic recovery budget exhausted; retry scheduled', {
+        ...context(),
+        trigger,
+        recoveryCount,
+        retryInMs,
+        details,
+      });
+      clearUnresponsiveTimer();
+      unresponsiveTimer = setTimeout(() => {
+        recoveryWindowStartedAt = 0;
+        recoveryCount = 0;
+        recover(trigger, details);
+      }, retryInMs);
+      unresponsiveTimer.unref?.();
+      return;
+    }
+
+    recoveryInFlight = true;
+    recoveryCount += 1;
+    logger.warn('renderer', 'reloading renderer after health failure', {
+      ...context(),
+      trigger,
+      recoveryAttempt: recoveryCount,
+      details,
+    });
+    try {
+      win.webContents.reloadIgnoringCache();
+    } catch (error) {
+      recoveryInFlight = false;
+      logger.error('renderer', 'renderer reload failed', {
+        ...context(),
+        trigger,
+        error,
+      });
+    }
+  };
+
+  win.on('unresponsive', () => {
+    logger.warn('renderer', 'renderer became unresponsive', context());
+    clearUnresponsiveTimer();
+    unresponsiveTimer = setTimeout(() => recover('unresponsive'), RENDERER_UNRESPONSIVE_GRACE_MS);
+    unresponsiveTimer.unref?.();
+  });
+  win.on('responsive', () => {
+    clearUnresponsiveTimer();
+    logger.info('renderer', 'renderer became responsive', context());
+  });
+  win.webContents.on('did-finish-load', () => {
+    if (recoveryInFlight) {
+      logger.info('renderer', 'renderer recovery completed', {
+        ...context(),
+        recoveryAttempt: recoveryCount,
+      });
+    }
+    recoveryInFlight = false;
+    clearUnresponsiveTimer();
+  });
+  win.webContents.on('render-process-gone', (_event, details) => {
+    clearUnresponsiveTimer();
+    logger.error('renderer', 'render process gone', { ...context(), details });
+    if (details.reason !== 'clean-exit') recover('render-process-gone', details);
+  });
+  win.on('closed', clearUnresponsiveTimer);
+}
 
 // ============ 单实例锁 ============
 const gotLock = app.requestSingleInstanceLock();
@@ -79,15 +222,15 @@ function devUrl(): string {
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1180,
-    height: 760,
-    minWidth: 960,
-    minHeight: 640,
+    width: MAIN_WINDOW_DEFAULT_SIZE.width,
+    height: MAIN_WINDOW_DEFAULT_SIZE.height,
+    minWidth: MAIN_WINDOW_MIN_SIZE.width,
+    minHeight: MAIN_WINDOW_MIN_SIZE.height,
     show: false,
     frame: true,
     titleBarStyle: 'default',
     autoHideMenuBar: true,
-    backgroundColor: '#0b0e14',
+    backgroundColor: '#f5f7f4',
     title: 'FocusLink',
     icon: getAppIcon(),
     webPreferences: {
@@ -97,6 +240,7 @@ function createMainWindow(): BrowserWindow {
       sandbox: false,
     },
   });
+  attachRendererHealthRecovery(win, 'main');
 
   logger.info('main', 'createMainWindow', { isDev, isPackaged: app.isPackaged });
   if (isDev) {
@@ -164,7 +308,7 @@ function createMainWindow(): BrowserWindow {
 function createMiniWindow(): BrowserWindow {
   const settings = getSettings();
   const cfg = settings.miniWindow;
-  // 小窗固定尺寸：缩小卡片 260×88，展开详情 420×184。
+  // 小窗固定尺寸：边缘进度胶囊 184×35，展开控制台 256×92。
   const MIN_W = MINI_WINDOW_SIZE_PRESETS[0].width;
   const MIN_H = MINI_WINDOW_COLLAPSED_HEIGHT;
   const MAX_W = MINI_WINDOW_SIZE_PRESETS[1].width;
@@ -216,6 +360,7 @@ function createMiniWindow(): BrowserWindow {
     maxWidth: MAX_W,
     maxHeight: MAX_H,
     frame: false,
+    thickFrame: false,
     transparent: true,
     resizable: false,
     minimizable: false,
@@ -244,6 +389,23 @@ function createMiniWindow(): BrowserWindow {
   }
 
   const win = new BrowserWindow(opts);
+  attachRendererHealthRecovery(win, 'mini');
+
+  if (cfg.collapsed) {
+    win.setContentSize(MINI_WINDOW_COLLAPSED_SIZE.width, MINI_WINDOW_COLLAPSED_SIZE.height, false);
+  }
+
+  if (cfg.collapsed && cfg.edgeAutoCollapse) {
+    const initialBounds = win.getBounds();
+    const initialDisplay = screen.getDisplayMatching(initialBounds);
+    miniDockedEdge = detectMiniWindowEdge(
+      initialBounds,
+      initialDisplay.workArea,
+      MINI_WINDOW_EDGE_RELEASE_DISTANCE,
+    );
+  } else {
+    miniDockedEdge = null;
+  }
 
   // 应用透明度（通过 setOpacity 控制整个窗口透明度）
   if (cfg.opacity < 1.0) {
@@ -260,7 +422,7 @@ function createMiniWindow(): BrowserWindow {
   let saveTimer: NodeJS.Timeout | null = null;
   let applyingSnap = false;
   const scheduleSave = () => {
-    if (applyingSnap) return;
+    if (applyingSnap || Date.now() < miniBoundsMutationUntil) return;
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       if (!miniWindow || miniWindow.isDestroyed()) return;
@@ -296,59 +458,167 @@ function createMiniWindow(): BrowserWindow {
     }, 400);
   };
 
-  win.on('resize', scheduleSave);
-  win.on('move', scheduleSave);
+  const scheduleEdgeTransition = () => {
+    if (Date.now() < miniBoundsMutationUntil || Date.now() < miniEdgeSuppressUntil) return;
+    if (miniEdgeTimer) clearTimeout(miniEdgeTimer);
+    miniEdgeTimer = null;
 
-  // v0.1.5 稳定性策略：移除贴边自动收纳 + 鼠标悬停展开 + 专注开始自动收纳
-  // 原因：贴边检测不稳定，动画导致窗口乱跳；小窗 UI 交给 UI AI 重做
-  // 保留：手动收起/展开（托盘菜单 + 快捷键）、主窗口隐藏时自动显示
+    const cur = getSettings();
+    if (!cur.miniWindow.edgeAutoCollapse) {
+      miniDockedEdge = null;
+      return;
+    }
+
+    const bounds = win.getBounds();
+    const display = screen.getDisplayMatching(bounds);
+    const edge = detectMiniWindowEdge(bounds, display.workArea);
+
+    if (cur.miniWindow.collapsed) {
+      const releaseEdge = detectMiniWindowEdge(
+        bounds,
+        display.workArea,
+        MINI_WINDOW_EDGE_RELEASE_DISTANCE,
+      );
+      if (releaseEdge) {
+        miniDockedEdge = releaseEdge;
+        return;
+      }
+      // A manually collapsed window stays compact when moved. Only a docked
+      // capsule expands automatically after it clearly leaves every edge.
+      if (!miniDockedEdge) return;
+      miniEdgeTimer = setTimeout(() => {
+        if (!miniWindow || miniWindow.isDestroyed()) return;
+        const latestBounds = miniWindow.getBounds();
+        const latestDisplay = screen.getDisplayMatching(latestBounds);
+        const stillAway = !detectMiniWindowEdge(
+          latestBounds,
+          latestDisplay.workArea,
+          MINI_WINDOW_EDGE_RELEASE_DISTANCE,
+        );
+        if (stillAway) {
+          // Drag-away is different from a click-to-expand: preserve the user's
+          // new location instead of snapping the larger panel back to its old edge.
+          miniDockedEdge = null;
+          expandMiniWindow();
+        }
+      }, 140);
+      return;
+    }
+
+    if (!edge) return;
+    const delay = Math.max(180, Math.min(900, cur.miniWindow.edgeCollapseDelayMs));
+    miniEdgeTimer = setTimeout(() => {
+      if (!miniWindow || miniWindow.isDestroyed()) return;
+      const latestBounds = miniWindow.getBounds();
+      const latestDisplay = screen.getDisplayMatching(latestBounds);
+      const latestEdge = detectMiniWindowEdge(latestBounds, latestDisplay.workArea);
+      if (latestEdge) collapseMiniWindow(latestEdge);
+    }, delay);
+  };
+
+  win.on('resize', scheduleSave);
+  win.on('move', () => {
+    scheduleSave();
+    scheduleEdgeTransition();
+  });
 
   win.on('closed', () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    if (miniEdgeTimer) clearTimeout(miniEdgeTimer);
+    miniEdgeTimer = null;
+    miniDockedEdge = null;
     miniWindow = null;
   });
 
   return win;
 }
 
-/** 收起小窗：直接 setBounds 到 260×88 缩小卡片，无动画（避免窗口乱跳） */
-function collapseMiniWindow(): void {
+function applyMiniWindowBounds(bounds: Electron.Rectangle): void {
+  if (!miniWindow || miniWindow.isDestroyed()) return;
+  miniBoundsMutationUntil = Date.now() + 260;
+  if (
+    bounds.width === MINI_WINDOW_COLLAPSED_SIZE.width &&
+    bounds.height === MINI_WINDOW_COLLAPSED_SIZE.height
+  ) {
+    // Windows enforces a ~44px native minimum frame even for transparent
+    // frameless windows. Content bounds keep the visible progress strip at the
+    // product-owned 35px height while the unavoidable transparent frame stays
+    // outside the renderer surface.
+    miniWindow.setContentBounds(bounds, false);
+  } else {
+    miniWindow.setBounds(bounds, false);
+  }
+}
+
+/** 收起小窗：围绕中心缩成进度胶囊；贴边时始终钉住接触边。 */
+function collapseMiniWindow(edge?: MiniWindowEdge): void {
   if (!miniWindow || miniWindow.isDestroyed()) return;
   const cur = getSettings();
   if (cur.miniWindow.collapsed) return;
   const bounds = miniWindow.getBounds();
-  miniWindow.setBounds(
-    {
-      x: bounds.x,
-      y: bounds.y,
-      width: MINI_WINDOW_COLLAPSED_SIZE.width,
-      height: MINI_WINDOW_COLLAPSED_SIZE.height,
+  const display = screen.getDisplayMatching(bounds);
+  const dockedEdge =
+    edge ??
+    (cur.miniWindow.edgeAutoCollapse ? detectMiniWindowEdge(bounds, display.workArea) : null);
+  const target = dockedEdge
+    ? anchorMiniWindowToEdge(bounds, MINI_WINDOW_COLLAPSED_SIZE, display.workArea, dockedEdge)
+    : resizeMiniWindowAroundCenter(bounds, MINI_WINDOW_COLLAPSED_SIZE, display.workArea);
+  miniDockedEdge = dockedEdge;
+  applyMiniWindowBounds(target);
+  const next = updateSettings({
+    miniWindow: {
+      ...cur.miniWindow,
+      x: target.x,
+      y: target.y,
+      collapsed: true,
     },
-    false,
-  );
-  updateSettings({ miniWindow: { ...cur.miniWindow, collapsed: true } });
-  logger.info('main', 'mini window collapsed (no animation)');
+  });
+  broadcastMiniSettings(next);
+  logger.info('main', 'mini window collapsed', {
+    edge: dockedEdge,
+    x: target.x,
+    y: target.y,
+  });
 }
 
-/** 展开小窗：直接 setBounds 恢复高度，无动画 */
+/** 展开小窗：在原位置恢复控制台；从边缘展开时继续贴住该边。 */
 function expandMiniWindow(): void {
   if (!miniWindow || miniWindow.isDestroyed()) return;
   const cur = getSettings();
   if (!cur.miniWindow.collapsed) return;
+  if (miniEdgeTimer) clearTimeout(miniEdgeTimer);
+  miniEdgeTimer = null;
   const bounds = miniWindow.getBounds();
   const restore = getExpandedMiniWindowSize(cur.miniWindow.width, cur.miniWindow.height);
-  miniWindow.setBounds(
-    { x: bounds.x, y: bounds.y, width: restore.width, height: restore.height },
-    false,
-  );
-  updateSettings({ miniWindow: { ...cur.miniWindow, collapsed: false } });
-  logger.info('main', 'mini window expanded (no animation)');
+  const display = screen.getDisplayMatching(bounds);
+  const edge = miniDockedEdge;
+  const target = edge
+    ? anchorMiniWindowToEdge(bounds, restore, display.workArea, edge)
+    : resizeMiniWindowAroundCenter(bounds, restore, display.workArea);
+  applyMiniWindowBounds(target);
+  // A click on the docked capsule opens a usable panel. A later drag to an
+  // edge re-arms auto-collapse; no hover loop can resize it underneath input.
+  miniEdgeSuppressUntil = Date.now() + 900;
+  miniDockedEdge = null;
+  const next = updateSettings({
+    miniWindow: {
+      ...cur.miniWindow,
+      width: restore.width,
+      height: restore.height,
+      x: target.x,
+      y: target.y,
+      collapsed: false,
+    },
+  });
+  broadcastMiniSettings(next);
+  logger.info('main', 'mini window expanded', { edge, x: target.x, y: target.y });
 }
 
 /** 重置小窗位置和大小为默认 */
 function resetMiniWindow(): void {
   if (!miniWindow || miniWindow.isDestroyed()) return;
   const cur = getSettings();
-  updateSettings({
+  const next = updateSettings({
     miniWindow: {
       ...cur.miniWindow,
       width: MINI_WINDOW_SIZE_PRESETS[1].width,
@@ -358,14 +628,23 @@ function resetMiniWindow(): void {
       collapsed: false,
     },
   });
-  miniWindow.setSize(MINI_WINDOW_SIZE_PRESETS[1].width, MINI_WINDOW_SIZE_PRESETS[1].height);
-  // 重置到屏幕右上角
   const primary = screen.getPrimaryDisplay();
-  miniWindow.setPosition(
-    primary.workArea.x + primary.workArea.width - MINI_WINDOW_SIZE_PRESETS[1].width - 24,
-    primary.workArea.y + 24,
-  );
+  miniDockedEdge = null;
+  miniEdgeSuppressUntil = Date.now() + 900;
+  applyMiniWindowBounds({
+    x: primary.workArea.x + primary.workArea.width - MINI_WINDOW_SIZE_PRESETS[1].width - 24,
+    y: primary.workArea.y + 24,
+    width: MINI_WINDOW_SIZE_PRESETS[1].width,
+    height: MINI_WINDOW_SIZE_PRESETS[1].height,
+  });
+  broadcastMiniSettings(next);
   logger.info('main', 'mini window reset to default');
+}
+
+function broadcastMiniSettings(settings: ReturnType<typeof getSettings>): void {
+  for (const window of getAllWindows()) {
+    window.webContents.send('settings:changed', settings);
+  }
 }
 
 function showMiniWindow(): void {
@@ -414,10 +693,12 @@ function pushSnapshot(snap: TimerSnapshot): void {
 
 /** 专注开始/结束时根据设置自动显示/隐藏小窗 */
 function handleTimerStateTransition(snap: TimerSnapshot): void {
-  const cur = getSettings();
   const prev = lastTimerState;
   lastTimerState = snap.state;
   if (prev === snap.state) return;
+  // getSettings performs compatibility checks backed by SQLite. It is only needed for an actual
+  // state transition, not for every one-second timer tick.
+  const cur = getSettings();
 
   // 专注开始：从非 running 状态转为 running
   const justStarted = snap.state === 'running' && prev !== 'running';
@@ -435,7 +716,9 @@ function handleTimerStateTransition(snap: TimerSnapshot): void {
   // 专注结束：从 running/paused 转为 finished
   const justFinished = snap.state === 'finished' && (prev === 'running' || prev === 'paused');
   if (justFinished && snap.sessionId) {
-    autoSyncFinishedSession(snap.sessionId);
+    const operation = autoSyncFinishedSession(snap.sessionId);
+    autoSyncInFlight.add(operation);
+    void operation.finally(() => autoSyncInFlight.delete(operation));
   }
   if (justFinished && cur.miniWindow.autoHideOnFocusEnd) {
     logger.info('main', 'focus finished, auto-hide mini window');
@@ -443,29 +726,34 @@ function handleTimerStateTransition(snap: TimerSnapshot): void {
   }
 }
 
-function autoSyncFinishedSession(sessionId: string): void {
+async function autoSyncFinishedSession(sessionId: string): Promise<void> {
   if (autoSyncSessions.has(sessionId)) return;
   autoSyncSessions.add(sessionId);
+  const operations: Promise<unknown>[] = [];
 
   // 番茄 Todo 同步：独立并行通道，不受 dida syncMode 影响，按学科分类写入本地库
-  try {
-    const ttResult = syncSessionToTomatodo(sessionId);
-    if (ttResult.total > 0) {
-      logger.info('tomatodoSync', 'auto sync after focus finished', {
-        sessionId,
-        total: ttResult.total,
-        synced: ttResult.synced,
-        skipped: ttResult.skipped,
-        failed: ttResult.failed,
-        dbPath: ttResult.dbPath,
-      });
-    }
-  } catch (err) {
-    logger.warn('tomatodoSync', 'auto sync failed', {
-      sessionId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
+  operations.push(
+    syncSessionToTomatodo(sessionId)
+      .then((ttResult) => {
+        if (ttResult.total > 0) {
+          logger.info('tomatodoSync', 'auto sync after focus finished', {
+            sessionId,
+            total: ttResult.total,
+            synced: ttResult.synced,
+            cloudSynced: ttResult.results.filter((result) => result.cloudSynced).length,
+            skipped: ttResult.skipped,
+            failed: ttResult.failed,
+            dbPath: ttResult.dbPath,
+          });
+        }
+      })
+      .catch((err) => {
+        logger.warn('tomatodoSync', 'auto sync failed', {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }),
+  );
 
   // dida 同步（原有逻辑）
   const settings = getSettings();
@@ -476,6 +764,7 @@ function autoSyncFinishedSession(sessionId: string): void {
     } else if (!hasTicktickLinkedSegments(segments)) {
       logger.info('sync', 'auto sync skipped: no ticktick-linked segments', { sessionId });
     }
+    await Promise.allSettled(operations);
     return;
   }
 
@@ -486,19 +775,23 @@ function autoSyncFinishedSession(sessionId: string): void {
       sessionId,
       error: err instanceof Error ? err.message : String(err),
     });
+    await Promise.allSettled(operations);
     return;
   }
 
-  void runPending()
-    .then((result) => {
-      logger.info('sync', 'auto sync after focus finished', { sessionId, ...result });
-    })
-    .catch((err) => {
-      logger.warn('sync', 'auto sync run failed', {
-        sessionId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
+  operations.push(
+    runPending()
+      .then((result) => {
+        logger.info('sync', 'auto sync after focus finished', { sessionId, ...result });
+      })
+      .catch((err) => {
+        logger.warn('sync', 'auto sync run failed', {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }),
+  );
+  await Promise.allSettled(operations);
 }
 
 function getAllWindows(): BrowserWindow[] {
@@ -510,41 +803,57 @@ function getAllWindows(): BrowserWindow[] {
 
 function ensureTrayAndHotkeys(): void {
   if (!mainWindow || !timer) return;
-  tray = createTray(mainWindow, timer, {
-    onShowMini: showMiniWindow,
-    onHideMini: hideMiniWindow,
-    onCollapseMini: collapseMiniWindow,
-    onExpandMini: expandMiniWindow,
-    onResetMini: resetMiniWindow,
-  });
-  setTimerForHotkeys(timer);
+  if (runtimeUiInitialized) return;
+  runtimeUiInitialized = true;
+  let trayCreated = false;
+  try {
+    createTray(mainWindow, timer, {
+      onShowMini: showMiniWindow,
+      onHideMini: hideMiniWindow,
+      onCollapseMini: collapseMiniWindow,
+      onExpandMini: expandMiniWindow,
+      onResetMini: resetMiniWindow,
+    });
+    trayCreated = true;
+    setTimerForHotkeys(timer);
 
-  // 注入状态查询函数（快捷键触发日志用）
-  setStateGetter(() => timer?.getSnapshot().state ?? 'unknown');
+    // 注入状态查询函数（快捷键触发日志用）
+    setStateGetter(() => timer?.getSnapshot().state ?? 'unknown');
 
-  // 快捷键 handler
-  const hotkeyHandlers: HotkeyHandlers = {
-    toggleTimer: () => {
-      timer?.toggle();
-    },
-    stopTimer: () => timer?.stop(),
-    toggleWindow: () => toggleMainWindow(),
-    linkTask: () => {
-      mainWindow?.show();
-      mainWindow?.focus();
-      mainWindow?.webContents.send('navigate', 'tasks');
-    },
-    toggleMiniWindow: () => toggleMiniWindow(),
-  };
-  setHotkeyHandlers(hotkeyHandlers);
+    // 快捷键 handler
+    const hotkeyHandlers: HotkeyHandlers = {
+      toggleTimer: () => {
+        timer?.toggle();
+      },
+      stopTimer: () => timer?.stop(),
+      toggleWindow: () => toggleMainWindow(),
+      linkTask: () => {
+        mainWindow?.show();
+        mainWindow?.focus();
+        mainWindow?.webContents.send('navigate', 'tasks');
+      },
+      toggleMiniWindow: () => toggleMiniWindow(),
+    };
+    setHotkeyHandlers(hotkeyHandlers);
 
-  // 注册 snapshot 推送（核心修复：计时器实时刷新）
-  timer.onSnapshot((snap) => pushSnapshot(snap));
+    // ready-to-show and the already-loaded fallback can race. Keep exactly one snapshot listener.
+    snapshotUnsubscribe = timer.onSnapshot(pushSnapshot);
 
-  // 注册快捷键并广播结果
-  const settings = getSettings();
-  const results = registerAllHotkeys(settings);
-  broadcastResults(getAllWindows(), results);
+    // 注册快捷键并广播结果
+    const settings = getSettings();
+    const results = registerAllHotkeys(settings);
+    broadcastResults(getAllWindows(), results);
+  } catch (error) {
+    logger.error('main', 'tray/hotkey initialization failed', error);
+    // Once createTray returns it owns a timer listener; retrying initialization would duplicate it.
+    // Keep the usable tray/snapshot path and degrade only the failed optional shortcut setup.
+    if (!trayCreated) {
+      snapshotUnsubscribe?.();
+      snapshotUnsubscribe = null;
+      runtimeUiInitialized = false;
+      destroyTray();
+    }
+  }
 }
 
 app.whenReady().then(() => {
@@ -566,8 +875,36 @@ app.whenReady().then(() => {
 
   initDatabase();
 
-  const settings = getSettings();
-  timer = new TimerManager(settings.segmentBehavior);
+  let settings = getSettings();
+  const didaSourceMigrationKey = 'migration.taskSourceDidaV060';
+  const didaSourceMigrationDone = getSetting(didaSourceMigrationKey) === '1';
+  if (!didaSourceMigrationDone) {
+    try {
+      const target = resolveDidaExecTarget(settings.ticktickCli.executable);
+      const didaInstalled = target.kind !== 'path-command' || fs.existsSync(target.executablePath);
+      if (
+        shouldAutoSelectDidaTaskSource({
+          migrationDone: didaSourceMigrationDone,
+          didaInstalled,
+          taskSource: settings.taskSource,
+        })
+      ) {
+        settings = updateSettings({ taskSource: 'ticktick-cli' });
+        logger.info('main', 'selected dida CLI as the default task source', {
+          executablePath: target.executablePath,
+        });
+      }
+      if (didaInstalled) {
+        setSetting(didaSourceMigrationKey, '1');
+      }
+    } catch (error) {
+      logger.warn('main', 'dida default source detection deferred', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  timer = new TimerManager();
+  timer.setSegmentBehavior(settings.segmentBehavior);
 
   mainWindow = createMainWindow();
 
@@ -588,17 +925,8 @@ app.whenReady().then(() => {
     if (domains.includes('general')) {
       app.setLoginItemSettings(getLoginItemSettings(s.autoStart));
     }
-    // 托盘菜单需重建（含小窗选项）
-    if (domains.includes('general') && tray && mainWindow && timer) {
-      destroyTray();
-      tray = createTray(mainWindow, timer, {
-        onShowMini: showMiniWindow,
-        onHideMini: hideMiniWindow,
-        onCollapseMini: collapseMiniWindow,
-        onExpandMini: expandMiniWindow,
-        onResetMini: resetMiniWindow,
-      });
-    }
+    // Tray actions do not depend on mutable settings. Recreating it leaked the previous timer
+    // listener and multiplied native menu rebuilds on every tick, so keep the single tray alive.
   });
 
   // 崩溃恢复
@@ -616,6 +944,32 @@ app.whenReady().then(() => {
         error: err instanceof Error ? err.message : String(err),
       });
     });
+
+  // 启动后立即检查，并持续探测番茄 Todo：用户晚于 FocusLink 启动客户端时也能自动补传。
+  const TOMATODO_UPLOAD_INTERVAL_MS = 20_000;
+  let tomatodoUploadInFlight = false;
+  const runTomatodoPendingUpload = () => {
+    if (tomatodoUploadInFlight) return;
+    const pending = getPendingTomatodoCount();
+    if (pending === 0) return;
+    tomatodoUploadInFlight = true;
+    void uploadPendingTomatodoRecords()
+      .then((result) => {
+        if (result.uploaded > 0) {
+          logger.info('tomatodoSync', 'periodic pending upload', result);
+        }
+      })
+      .catch((err) => {
+        logger.warn('tomatodoSync', 'periodic upload failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      })
+      .finally(() => {
+        tomatodoUploadInFlight = false;
+      });
+  };
+  runTomatodoPendingUpload();
+  setInterval(runTomatodoPendingUpload, TOMATODO_UPLOAD_INTERVAL_MS);
 
   // 专注小窗 IPC 控制
   ipcMain.on('mini:show', () => showMiniWindow());
@@ -677,15 +1031,29 @@ app.on('before-quit', (e) => {
   e.preventDefault();
   isQuitting = true;
   logger.info('main', 'before-quit: persisting & cleaning up');
-  try {
-    timer?.dispose();
-  } catch (err) {
-    logger.error('main', 'timer dispose error', err);
-  }
-  destroyTray();
-  unregisterAll();
-  closeDatabase();
-  app.exit(0);
+  void (async () => {
+    try {
+      timer?.dispose();
+    } catch (err) {
+      logger.error('main', 'timer dispose error', err);
+    }
+
+    const pending = [...autoSyncInFlight];
+    if (pending.length > 0) {
+      logger.info('main', 'before-quit: waiting for sync handoff', { count: pending.length });
+      await Promise.race([
+        Promise.allSettled(pending),
+        new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+      ]);
+    }
+    snapshotUnsubscribe?.();
+    snapshotUnsubscribe = null;
+    runtimeUiInitialized = false;
+    destroyTray();
+    unregisterAll();
+    closeDatabase();
+    app.exit(0);
+  })();
 });
 
 process.on('uncaughtException', (err) => {
