@@ -9,6 +9,7 @@ const harness = vi.hoisted(() => ({
   writeBridge: vi.fn(),
   writeBatchBridge: vi.fn(),
   updateBridge: vi.fn(),
+  ensureBridge: vi.fn(),
   pendingRecords: [] as Array<{
     recordId: number;
     segmentId: string;
@@ -63,6 +64,10 @@ vi.mock('../electron/integrations/tomatodo/cloudBridge', () => ({
   writeTomatodoRecordThroughBridge: harness.writeBridge,
 }));
 
+vi.mock('../electron/integrations/tomatodo/bridgeLifecycle', () => ({
+  ensureTomatodoBridge: harness.ensureBridge,
+}));
+
 vi.mock('../electron/settingsStore', () => ({
   getSettings: () => ({
     tomatodo: { enabled: true, dbPath: '', defaultSubject: '学习' },
@@ -107,6 +112,7 @@ describe('tomatodo sync service bridge safety and state', () => {
     harness.writeBridge.mockReset();
     harness.writeBatchBridge.mockReset();
     harness.updateBridge.mockReset();
+    harness.ensureBridge.mockReset();
     harness.pendingRecords = [];
     harness.recordStates.clear();
     harness.settings.clear();
@@ -237,6 +243,44 @@ describe('tomatodo sync service bridge safety and state', () => {
     expect(result).toEqual({ ok: true, total: 1, uploaded: 1, failed: 0, error: undefined });
     expect(harness.writeBatchBridge).toHaveBeenCalledTimes(1);
     expect(JSON.parse(harness.settings.get('tomatodo.pendingSegmentIdsV060') ?? '[]')).toEqual([]);
+    expect(harness.ensureBridge).not.toHaveBeenCalled();
+  });
+
+  it('ensures and launches the bridge only for an explicit manual pending upload', async () => {
+    harness.running = false;
+    harness.settings.set('tomatodo.pendingSegmentIdsV060', JSON.stringify(['segment-1']));
+    harness.ensureBridge.mockResolvedValue({
+      state: 'connected',
+      connected: true,
+      running: true,
+      installed: true,
+      launched: true,
+      executablePath: 'C:\\Program Files\\TomaToDo\\TomaToDo.exe',
+    });
+    harness.writeBatchBridge.mockResolvedValue({
+      available: true,
+      ok: true,
+      results: [
+        {
+          available: true,
+          ok: true,
+          recordFound: true,
+          localWritten: true,
+          localChanged: true,
+          uploadConfirmed: true,
+          cloudRecordReadbackSupported: false,
+          skipped: false,
+          recordId: 215,
+        },
+      ],
+    });
+
+    const result = await uploadPendingTomatodoRecords({ ensureBridge: true });
+
+    expect(result).toEqual({ ok: true, total: 1, uploaded: 1, failed: 0, error: undefined });
+    expect(harness.ensureBridge).toHaveBeenCalledTimes(1);
+    expect(harness.writeBatchBridge).toHaveBeenCalledTimes(1);
+    expect(harness.addRecord).not.toHaveBeenCalled();
   });
 
   it('writes a durable bridge failure to local JSON after TomaToDo closes', async () => {

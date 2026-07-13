@@ -6,6 +6,7 @@ import {
   deleteTomatodoRecordThroughBridge,
   writeTomatodoRecordThroughBridge,
 } from '../../electron/integrations/tomatodo/cloudBridge';
+import { ensureTomatodoBridge } from '../../electron/integrations/tomatodo/bridgeLifecycle';
 import { buildTomatodoRecord } from '../../shared/tomatodoPolicy';
 
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -14,6 +15,17 @@ const end = Date.now() - 30_000;
 const start = end - 6_000;
 
 async function main(): Promise<void> {
+  if (process.argv.includes('--probe-only')) {
+    const status = await ensureTomatodoBridge();
+    if (!status.connected) {
+      throw new Error(status.error ?? `番茄 Todo bridge 状态异常：${status.state}`);
+    }
+    process.stdout.write(
+      `${JSON.stringify({ ok: true, probeOnly: true, bridge: status }, null, 2)}\n`,
+    );
+    return;
+  }
+
   let writeAttempted = false;
   let localRecordObserved = false;
   let verificationPassed = false;

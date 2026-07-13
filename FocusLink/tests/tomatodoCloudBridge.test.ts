@@ -9,6 +9,7 @@ vi.mock('electron', () => ({
 
 import {
   deleteTomatodoRecordThroughBridge,
+  probeTomatodoBridge,
   updateTomatodoSubjectThroughBridge,
   writeTomatodoRecordsThroughBridge,
   writeTomatodoRecordThroughBridge,
@@ -157,6 +158,20 @@ describe('tomatodo cloud bridge CDP transaction', () => {
     };
     return { addCalls, deleteCalls, updateCalls, uploadCalls };
   }
+
+  it('probes bridge identity without reading or mutating records', async () => {
+    const records: NativeRecord[] = [];
+    const calls = installNativeApi(records);
+
+    await expect(probeTomatodoBridge()).resolves.toEqual({
+      connected: true,
+      pageDiscovered: true,
+    });
+    expect(calls.addCalls).toHaveLength(0);
+    expect(calls.updateCalls).toHaveLength(0);
+    expect(calls.deleteCalls).toHaveLength(0);
+    expect(calls.uploadCalls).toHaveLength(0);
+  });
 
   it('rejects a CDP page that does not verify as TomaToDo', async () => {
     const records: NativeRecord[] = [];

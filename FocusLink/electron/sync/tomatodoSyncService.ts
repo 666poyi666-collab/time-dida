@@ -29,6 +29,7 @@ import {
   writeTomatodoRecordsThroughBridge,
   writeTomatodoRecordThroughBridge,
 } from '../integrations/tomatodo/cloudBridge.js';
+import { ensureTomatodoBridge } from '../integrations/tomatodo/bridgeLifecycle.js';
 import { getSettings } from '../settingsStore.js';
 import {
   buildTomatodoRecord,
@@ -697,6 +698,11 @@ export interface PendingUploadResult {
   error?: string;
 }
 
+export interface PendingTomatodoUploadOptions {
+  /** User-initiated only. Background retries must never launch an external application. */
+  ensureBridge?: boolean;
+}
+
 const TOMATODO_CLOUD_CONFIRMATION_GRACE_MS = 2000;
 const TOMATODO_CLOUD_CONFIRMATION_POLL_MS = 100;
 
@@ -732,7 +738,9 @@ async function reconcileTomatodoCloudConfirmation(
  * 仅在番茄 Todo 桌面端运行时有效（需要 CDP 桥）。
  * 番茄 Todo 未运行时返回当前待同步数量但不尝试上传。
  */
-async function uploadPendingTomatodoRecordsUnlocked(): Promise<PendingUploadResult> {
+async function uploadPendingTomatodoRecordsUnlocked(
+  options: PendingTomatodoUploadOptions,
+): Promise<PendingUploadResult> {
   const config = getTomatodoConfig();
   if (!config) {
     return { ok: true, total: 0, uploaded: 0, failed: 0 };
@@ -783,7 +791,22 @@ async function uploadPendingTomatodoRecordsUnlocked(): Promise<PendingUploadResu
     return { ok: true, total: 0, uploaded: 0, failed: 0 };
   }
 
-  if (!(await isTomatodoRunningAsync())) {
+  let bridgeConnected = false;
+  if (options.ensureBridge) {
+    const bridgeStatus = await ensureTomatodoBridge();
+    if (!bridgeStatus.connected) {
+      return {
+        ok: false,
+        total: inputs.length,
+        uploaded: 0,
+        failed: inputs.length,
+        error: bridgeStatus.error ?? '番茄 Todo 同步桥不可用。',
+      };
+    }
+    bridgeConnected = true;
+  }
+
+  if (!bridgeConnected && !(await isTomatodoRunningAsync())) {
     // Durable 队列中可能有“客户端运行但桥不可用”时尚未写入 JSON 的 segment。
     // 客户端现已关闭，可以安全落到本地库；保留 durable id，待下次运行后上云确认。
     for (const segmentId of durableIds) {
@@ -837,8 +860,10 @@ async function uploadPendingTomatodoRecordsUnlocked(): Promise<PendingUploadResu
   };
 }
 
-export function uploadPendingTomatodoRecords(): Promise<PendingUploadResult> {
-  return withTomatodoOperationLock(uploadPendingTomatodoRecordsUnlocked);
+export function uploadPendingTomatodoRecords(
+  options: PendingTomatodoUploadOptions = {},
+): Promise<PendingUploadResult> {
+  return withTomatodoOperationLock(() => uploadPendingTomatodoRecordsUnlocked(options));
 }
 
 /** 返回当前待上云的 FocusLink 记录数（供 UI 展示）。 */

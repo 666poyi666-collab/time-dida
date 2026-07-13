@@ -27,6 +27,7 @@
     "smoke:dida:state": "npm run build:selftest && node dist-selftest/dida-task-state-smoke.cjs",
     "smoke:dida:ui": "node scripts/smoke/dida-task-ui-smoke.cjs",
     "smoke:tomatodo:real": "npm run build:selftest && node dist-selftest/tomatodo-cloud-real-smoke.cjs",
+    "smoke:tomatodo:bridge": "npm run build:selftest && node dist-selftest/tomatodo-cloud-real-smoke.cjs --probe-only",
     "typecheck": "tsc --noEmit",
     "postinstall": "electron-builder install-app-deps",
     "rebuild": "electron-rebuild -f -w better-sqlite3",

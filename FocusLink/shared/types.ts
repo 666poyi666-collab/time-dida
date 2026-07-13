@@ -527,6 +527,8 @@ export interface TomatodoIPC {
     error?: string;
   }>;
   'tomatodo:pending-count': () => Promise<number>;
+  'tomatodo:bridge-status': () => Promise<unknown>;
+  'tomatodo:bridge-ensure': () => Promise<unknown>;
 }
 
 export interface WindowIPC {

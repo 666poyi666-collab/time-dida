@@ -172,6 +172,24 @@ export interface PendingTomatodoUploadResult {
   error?: string;
 }
 
+export type TomatodoBridgeState =
+  | 'connected'
+  | 'stopped'
+  | 'restart-required'
+  | 'not-installed'
+  | 'launch-failed'
+  | 'launch-timeout';
+
+export interface TomatodoBridgeStatus {
+  state: TomatodoBridgeState;
+  connected: boolean;
+  running: boolean;
+  installed: boolean;
+  launched: boolean;
+  executablePath?: string;
+  error?: string;
+}
+
 export type FocusLinkNavigationTarget = 'timer' | 'history' | 'settings' | 'tasks' | 'mini';
 
 export interface FocusLinkToast {
@@ -320,6 +338,8 @@ export interface FocusLinkAPI {
     ): Promise<TomatodoSubjectSetResult>;
     uploadPending(): Promise<PendingTomatodoUploadResult>;
     pendingCount(): Promise<number>;
+    bridgeStatus(): Promise<TomatodoBridgeStatus>;
+    ensureBridge(): Promise<TomatodoBridgeStatus>;
   };
   window: {
     minimizeToTray(): void;

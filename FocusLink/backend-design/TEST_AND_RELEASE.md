@@ -60,13 +60,15 @@ npm run smoke:dida:ui -- ../release-v0110/win-unpacked/FocusLink.exe
 
 ### 真实番茄 To-do
 
-客户端处于已登录可同步状态后运行 `npm run smoke:tomatodo:real`，并核对以下结果：
+客户端处于已登录可同步状态后运行 `npm run smoke:tomatodo:bridge` 和 `npm run smoke:tomatodo:real`。前者是不写业务数据的真实桥接 probe，番茄桥接启动/发现逻辑变更时必须纳入发布门禁；后者验证唯一 marker 的本地写入与上传边界。核对以下结果：
 
-- 客户端关闭：写入本地记录，状态保持待上传。
+- FocusLink 启动和后台周期重试：客户端关闭时记录保持待上传，不会擅自启动番茄 To-do。
+- 用户手动同步且客户端未运行：标准安装路径可用时，使用参数数组以 `--remote-debugging-port=0` 按需启动，实际 target 通过身份校验后才连接。
+- 客户端已以普通模式运行但无桥：不得杀进程或自动重启，结果必须要求用户完全退出后再连接。
 - 客户端运行且已登录：`cloudSyncUploadRecord` 返回 success 后标记上传已确认；当前客户端没有专注记录独立云端回读，禁止把本地 marker / `isSynced=1` 写成“云端回读通过”。
 - 未识别标题落入“学习”；已知学科映射正确。
 - 重复写入 marker 不产生重复记录。
-- CDP target 同时通过番茄 ToDo 标题与特征 electronAPI 方法校验；错误页面必须被拒绝。
+- `smoke:tomatodo:bridge` 必须无业务写入地验证标准路径按需启动、番茄 ToDo 标题与特征 electronAPI 方法校验，以及已运行普通实例绝不被结束；错误页面必须被拒绝。
 - 修改学科会请求重新上传；删除 smoke 只验证本地 marker 清理与幂等。当前 API 不支持远端记录删除，结果必须明确报告 `remoteDeleteSupported=false`、`remoteCleanupVerified=false`。
 - smoke 从第一次写入尝试开始就在 `finally` 按唯一 marker 尽力清理，覆盖“写入已发生但响应丢失”；不得破坏用户既有记录。若需要确认云端无临时记录，只能在番茄 ToDo 服务端/其他已绑定端人工核对，不能由本 smoke 宣称。
 

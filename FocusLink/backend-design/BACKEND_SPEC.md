@@ -144,14 +144,15 @@ Provider 的稳定能力应包括：
 本地数据库写入与云桥是两个阶段：
 
 1. 将带 `[FocusLink:tomatodo:segment:<id>]` marker 的 PCRecord 原子写入本地库，`isSynced=0`。
-2. 番茄 To-do 客户端可用时，通过原生桥按会话批量调用 `cloudSyncUploadRecord`。
+2. 已有可验证原生桥时，或用户手动同步触发按需桥接后，按会话批量调用 `cloudSyncUploadRecord`。
 3. 只有上传接口明确返回 `success` 且本地状态成功持久化后才设置 `isSynced=1`。这叫“上传已确认”，不是独立云端回读。
 
 不变量：
 
-- 客户端关闭时保留本地待上传和持久 segment id；启动及周期探测后补传。
+- FocusLink 启动和后台周期重试只探测已存在的可验证桥；客户端关闭时保留本地待上传和持久 segment id，不得为后台补传擅自启动外部应用。
 - 本地 JSON 写成功不能显示为云端已同步。
-- CDP 端口上的页面必须同时通过“番茄 ToDo 标题 + 特征 electronAPI 方法集”身份校验；不得选择任意 `page` target。显式 `FOCUSLINK_TOMATODO_CDP_PORT` 失败时不得回退到通用 9222。
+- 用户手动同步且番茄 To-do 未运行时，可以用 `spawn` / `execFile` 参数数组按需启动已知客户端，参数固定包含 `--remote-debugging-port=0`；不得拼接 shell 命令。只有发现实际端口且目标同时通过“番茄 ToDo 标题 + 特征 electronAPI 方法集”身份校验后才能上传；不得选择任意 `page` target。显式 `FOCUSLINK_TOMATODO_CDP_PORT` 失败时不得回退到通用 9222。
+- 番茄 To-do 已以普通模式运行但没有可验证桥时，绝不自动结束或重启其进程；返回可操作诊断，要求用户完全退出客户端后再从 FocusLink 连接。
 - 已核对番茄 ToDo 1.6.2：`cloudSyncFetchTodo` 只读取待办数据，CloudSyncService 只提供 `fetchTodoData` / `uploadRecordData`，没有专注 PCRecord 的独立云端回读或远端删除 API。因此 bridge 返回 `uploadConfirmed` 与 `cloudRecordReadbackSupported=false`；删除结果固定声明 `local-record-only` 与 `remoteDeleteSupported=false`。
 - 未识别学科统一归入“学习”；迁移只处理 FocusLink marker 记录，不碰用户其他数据。
 - 写盘使用同目录临时文件、fsync、原子替换和备份；Windows `EACCES/EBUSY/EPERM` 做有界退避，持续失败保留旧库。
@@ -187,7 +188,7 @@ Provider 的稳定能力应包括：
 
 - `已关联 / 未关联`：本地 task id 是否存在。
 - `已同步 / 未同步 / 同步失败`：dida 队列是否得到云端可验证结果。
-- `已写入本地 / 待上传 / 云端已同步`：番茄 To-do 两阶段状态。
+- `已写入本地 / 待上传 / 上传已确认`：番茄 To-do 两阶段状态；“上传已确认”不得解释为独立云端回读或远端可删除。
 - session 没有默认任务但存在已关联 segment 时，摘要不能显示“未关联”。
 - 禁止“可同步”“应该成功”等无法证明结果的状态。
 
@@ -196,7 +197,7 @@ Provider 的稳定能力应包括：
 - 计时语义变化：更新状态机/manager、shared selector、数据库、恢复测试和 45+5+45 场景。
 - 任务能力变化：更新 CLI 优先/OAuth 后备连接策略、IPC、`completedAt` 缓存、分阶段加载、任务页、6 秒撤销与失败回滚测试。
 - dida 写入变化：保留 argv、comment-first、父 checklist、marker、undefined 失败，并执行真实临时任务验收。
-- 番茄变化：分别验证客户端关闭、本地待上传、客户端运行、上传接口确认、学科修改和本地 marker 删除；独立云端回读/远端删除只有 API 真正提供后才能加入门禁。
+- 番茄变化：分别验证后台不启动外部应用、手动同步在未运行时用参数数组和端口 0 按需启动、已普通运行时绝不杀进程、身份校验、上传接口确认、学科修改和本地 marker 删除；独立云端回读/远端删除只有 API 真正提供后才能加入门禁。
 - 小窗变化：同步 shared 常量、settings 迁移、Electron bounds、CSS 和 smoke；不把数字复制到文档以外的多处代码。
 - 统计/生命周期变化：覆盖详情 request id、tick 渲染边界、renderer 恢复预算、Error 序列化和托盘监听幂等性。
 - 发布变化：执行 [TEST_AND_RELEASE.md](TEST_AND_RELEASE.md) 的全部门禁并创建 GitHub Release。

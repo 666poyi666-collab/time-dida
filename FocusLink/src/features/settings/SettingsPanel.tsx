@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../app/store';
 import type { AppSettings } from '@shared/types';
+import type { TomatodoBridgeStatus } from '@shared/ipc/api';
 import { APP_VERSION } from '@shared/version';
 import { TOMATODO_SUBJECT_OPTIONS } from '@shared/tomatodoPolicy';
 import { Icon } from '../../ui/Icon';
@@ -96,6 +97,7 @@ export function SettingsPanel() {
   const [hotkeyStatus, setHotkeyStatus] = useState<HotkeyRegistrationStatus | null>(null);
   const [tomatodoPending, setTomatodoPending] = useState<number>(0);
   const [tomatodoPendingError, setTomatodoPendingError] = useState<string | null>(null);
+  const [tomatodoBridge, setTomatodoBridge] = useState<TomatodoBridgeStatus | null>(null);
   const [tomatodoUploading, setTomatodoUploading] = useState(false);
   const [didaSyncRunning, setDidaSyncRunning] = useState(false);
 
@@ -110,6 +112,7 @@ export function SettingsPanel() {
     refreshProviderInfo();
     refreshHotkeyStatus();
     refreshTomatodoPending();
+    refreshTomatodoBridge();
   }, []);
 
   useEffect(() => {
@@ -156,9 +159,25 @@ export function SettingsPanel() {
     }
   };
 
+  const refreshTomatodoBridge = async () => {
+    try {
+      setTomatodoBridge(await window.focuslink.tomatodo.bridgeStatus());
+    } catch (error) {
+      setTomatodoBridge({
+        state: 'launch-failed',
+        connected: false,
+        running: false,
+        installed: true,
+        launched: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
   const refreshSyncState = async () => {
     await Promise.all([
       refreshTomatodoPending(),
+      refreshTomatodoBridge(),
       window.focuslink.sync
         .list()
         .then((items) => setSyncQueue(items))
@@ -188,15 +207,40 @@ export function SettingsPanel() {
   const handleUploadPending = async () => {
     setTomatodoUploading(true);
     try {
+      let bridge = await window.focuslink.tomatodo.bridgeStatus();
+      setTomatodoBridge(bridge);
+
+      if (bridge.state === 'restart-required') {
+        addToast('请先完全退出番茄 Todo，再点击“连接并上传”', 'info');
+        return;
+      }
+
+      if (!bridge.connected) {
+        if (!bridge.installed) {
+          addToast('未找到番茄 Todo，请先安装或检查安装位置', 'error');
+          return;
+        }
+        bridge = await window.focuslink.tomatodo.ensureBridge();
+        setTomatodoBridge(bridge);
+        if (!bridge.connected) {
+          const message =
+            bridge.state === 'restart-required'
+              ? '请完全退出番茄 Todo 后再点击“连接并上传”'
+              : bridge.error || '番茄 Todo 连接尚未就绪，请稍后重试';
+          addToast(message, bridge.state === 'restart-required' ? 'info' : 'error');
+          return;
+        }
+      }
+
       const result = await window.focuslink.tomatodo.uploadPending();
       if (result.uploaded > 0) {
-        addToast(`已上传 ${result.uploaded} 条记录到番茄 Todo 云端`, 'success');
+        addToast(`番茄 Todo 已确认上传 ${result.uploaded} 条记录`, 'success');
       } else if (result.error) {
         addToast(result.error, 'info');
       } else {
         addToast('没有待上传的记录', 'info');
       }
-      await refreshTomatodoPending();
+      await Promise.all([refreshTomatodoPending(), refreshTomatodoBridge()]);
     } catch (e) {
       addToast('上传失败：' + (e as Error).message, 'error');
     } finally {
@@ -475,6 +519,36 @@ export function SettingsPanel() {
   const didaPendingCount = syncQueue.filter((item) => item.status === 'pending').length;
   const didaFailedCount = syncQueue.filter((item) => item.status === 'failed').length;
   const didaNeedsAttention = didaPendingCount + didaFailedCount;
+
+  const tomatodoBridgeLabel = (() => {
+    switch (tomatodoBridge?.state) {
+      case 'connected':
+        return '番茄 Todo 已连接';
+      case 'stopped':
+        return '需要上传时可按需启动番茄 Todo';
+      case 'restart-required':
+        return '请完全退出番茄 Todo，再点击“连接并上传”';
+      case 'not-installed':
+        return '未找到番茄 Todo 安装程序';
+      case 'launch-timeout':
+        return '连接等待超时，可重新尝试';
+      case 'launch-failed':
+        return tomatodoBridge.error || '连接失败，可重新尝试';
+      default:
+        return '正在检查番茄 Todo 连接';
+    }
+  })();
+  const tomatodoCanConnect =
+    tomatodoBridge?.state === 'stopped' ||
+    tomatodoBridge?.state === 'restart-required' ||
+    tomatodoBridge?.state === 'launch-failed' ||
+    tomatodoBridge?.state === 'launch-timeout';
+  const tomatodoActionLabel = tomatodoBridge?.connected ? '立即上传' : '连接并上传';
+  const tomatodoActionDisabled =
+    tomatodoUploading ||
+    !tomatodoBridge ||
+    tomatodoBridge.state === 'not-installed' ||
+    (!tomatodoBridge.connected && !tomatodoCanConnect);
 
   return (
     <div className="settings-page flex h-full flex-col">
@@ -1004,7 +1078,10 @@ export function SettingsPanel() {
                 )}
               </Section>
 
-              <Section title="番茄 Todo 同步" desc="专注结束后自动写入本地并尝试上传云端。">
+              <Section
+                title="番茄 Todo 同步"
+                desc="专注结束后先安全写入本地；待传记录由你按需连接并上传。"
+              >
                 <Row label="启用番茄 Todo 同步" desc="自动匹配六大学科；未识别时使用下方默认分类">
                   <Toggle
                     checked={settings.tomatodo.enabled}
@@ -1052,49 +1129,66 @@ export function SettingsPanel() {
                         />
                       </div>
                     </details>
-                    {tomatodoPendingError && (
-                      <div className="flex items-center gap-3 rounded-xl border border-danger/25 bg-danger/8 px-4 py-3">
-                        <Icon.AlertCircle size="sm" className="shrink-0 text-danger" />
-                        <div>
-                          <p className="text-[12px] font-semibold text-danger">无法读取同步状态</p>
-                          <p className="mt-0.5 text-[11.5px] text-fg-subtle">
-                            检查数据库路径或番茄 Todo 文件权限后重试
+                    <div
+                      className="flex min-h-11 items-center justify-between gap-4 border-t border-border/45 pt-3"
+                      aria-live="polite"
+                    >
+                      <div className="flex min-w-0 items-start gap-2.5">
+                        <span
+                          className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                            tomatodoPendingError ||
+                            tomatodoBridge?.state === 'launch-failed' ||
+                            tomatodoBridge?.state === 'launch-timeout' ||
+                            tomatodoBridge?.state === 'not-installed'
+                              ? 'bg-danger'
+                              : tomatodoBridge?.state === 'restart-required' || tomatodoPending > 0
+                                ? 'bg-warning'
+                                : tomatodoBridge?.connected
+                                  ? 'bg-success'
+                                  : 'bg-fg-subtle/55'
+                          }`}
+                        />
+                        <div className="min-w-0">
+                          <p
+                            className={`text-[12px] font-semibold ${
+                              tomatodoPendingError ? 'text-danger' : 'text-fg'
+                            }`}
+                          >
+                            {tomatodoPendingError
+                              ? '无法读取待上传记录'
+                              : tomatodoPending > 0
+                                ? `${tomatodoPending} 条记录待上传`
+                                : '当前无待上传'}
+                          </p>
+                          <p className="mt-0.5 text-[11px] leading-4 text-fg-subtle">
+                            {tomatodoPendingError
+                              ? '检查数据库路径或番茄 Todo 文件权限后重试'
+                              : tomatodoBridgeLabel}
                           </p>
                         </div>
                       </div>
-                    )}
-                    {!tomatodoPendingError && tomatodoPending > 0 && (
-                      <div className="flex items-center justify-between rounded-xl border border-warning/25 bg-warning/10 px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[12px] font-medium text-warning">
-                            {tomatodoPending} 条记录待上传云端
-                          </span>
-                          <span className="text-[11px] text-fg-subtle">
-                            启动番茄 Todo 后可自动或手动上传
-                          </span>
-                        </div>
+                      {!tomatodoPendingError && tomatodoPending > 0 && (
                         <button
-                          className="btn-outline text-[11px]"
+                          type="button"
+                          className="btn-outline shrink-0 text-[11px]"
                           onClick={handleUploadPending}
-                          disabled={tomatodoUploading}
+                          disabled={tomatodoActionDisabled}
                         >
                           {tomatodoUploading ? (
                             <Icon.Loader size="xs" spin />
-                          ) : (
+                          ) : tomatodoBridge?.connected ? (
                             <Icon.Upload size="xs" />
+                          ) : (
+                            <Icon.Link size="xs" />
                           )}
-                          立即上传
+                          {tomatodoUploading
+                            ? tomatodoBridge?.connected
+                              ? '正在上传'
+                              : '正在连接'
+                            : tomatodoActionLabel}
                         </button>
-                      </div>
-                    )}
-                    {!tomatodoPendingError &&
-                      tomatodoPending === 0 &&
-                      settings.tomatodo.enabled && (
-                        <div className="flex items-center gap-1.5 text-[11px] text-success">
-                          <Icon.CheckCircleFilled size="xs" />
-                          所有记录已同步到云端
-                        </div>
                       )}
+                    </div>
                   </>
                 )}
               </Section>

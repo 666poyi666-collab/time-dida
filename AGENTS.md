@@ -41,6 +41,14 @@ The dida CLI path has sharp edges. Preserve these rules:
 - Before writing, read existing comments/content and skip records whose marker already exists.
 - Treat dida output `undefined` as failure, not success.
 
+## TomaToDo Sync Rules
+
+- Verify the TomaToDo CDP target by its title and required `electronAPI` methods before any read or write.
+- User-triggered upload may launch a stopped standard TomaToDo installation with an argument array, loopback-only debugging, and port `0`; background retries must never launch an external app.
+- If TomaToDo is already running without a verified bridge, return `restart-required`. Never terminate or silently restart the user's process.
+- `cloudSyncUploadRecord` success means `上传已确认`; it is not independent cloud readback.
+- The current client has no PCRecord remote-delete API. Keep cleanup labeled `local-record-only` and never claim remote cleanup was verified.
+
 ## UI Language Rules
 
 Keep state labels precise:

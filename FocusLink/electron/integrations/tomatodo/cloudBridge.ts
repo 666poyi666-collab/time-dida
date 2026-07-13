@@ -23,6 +23,12 @@ interface CdpTargetSearchResult {
   pageDiscovered: boolean;
 }
 
+export interface TomatodoBridgeProbeResult {
+  connected: boolean;
+  pageDiscovered: boolean;
+  error?: 'tomatodo_bridge_unavailable' | 'tomatodo_bridge_identity_not_verified';
+}
+
 export interface TomatodoBridgeWriteResult {
   /** false 表示番茄 Todo 没有开放本地调试桥，调用方应决定是否安全回退写文件。 */
   available: boolean;
@@ -183,6 +189,24 @@ async function findPageTarget(): Promise<CdpTargetSearchResult> {
     }
   }
   return { target: null, pageDiscovered };
+}
+
+/**
+ * Probe the native bridge without reading or mutating any TomaToDo records.
+ * Identity verification evaluates only the document title and method presence.
+ */
+export async function probeTomatodoBridge(): Promise<TomatodoBridgeProbeResult> {
+  const search = await findPageTarget();
+  if (search.target) {
+    return { connected: true, pageDiscovered: true };
+  }
+  return {
+    connected: false,
+    pageDiscovered: search.pageDiscovered,
+    error: search.pageDiscovered
+      ? 'tomatodo_bridge_identity_not_verified'
+      : 'tomatodo_bridge_unavailable',
+  };
 }
 
 function evaluate(target: CdpTarget, expression: string): Promise<unknown> {

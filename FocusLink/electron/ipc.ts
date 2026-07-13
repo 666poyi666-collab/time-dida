@@ -43,6 +43,10 @@ import {
   uploadPendingTomatodoRecords,
 } from './sync/tomatodoSyncService.js';
 import {
+  ensureTomatodoBridge,
+  getTomatodoBridgeStatus,
+} from './integrations/tomatodo/bridgeLifecycle.js';
+import {
   listSessions,
   getSession as getSessionDb,
   listSegments,
@@ -578,9 +582,15 @@ export function registerIpc(
     setTomatodoSubjectsForSegments(segmentIds, subject),
   );
   /** 手动上传所有待同步的番茄 Todo 记录到云端 */
-  ipcMain.handle('tomatodo:upload-pending', () => uploadPendingTomatodoRecords());
+  ipcMain.handle('tomatodo:upload-pending', () =>
+    uploadPendingTomatodoRecords({ ensureBridge: true }),
+  );
   /** 查询待上云的番茄 Todo 记录数 */
   ipcMain.handle('tomatodo:pending-count', () => getPendingTomatodoCount());
+  /** 只读查询桥状态；不会启动或关闭番茄 Todo。 */
+  ipcMain.handle('tomatodo:bridge-status', () => getTomatodoBridgeStatus());
+  /** 用户显式请求时确保桥可用；已普通运行时绝不强制重启。 */
+  ipcMain.handle('tomatodo:bridge-ensure', () => ensureTomatodoBridge());
 
   // ============ Window ============
   ipcMain.on('window:minimize-to-tray', () => window.hide());
