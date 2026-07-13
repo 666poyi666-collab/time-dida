@@ -1,6 +1,11 @@
 ; FocusLink NSIS 自定义安装脚本
 ; 在安装新版前自动关闭运行中的 FocusLink 进程，避免用户手动操作
 
+; 定义 customCheckAppRunning 后 electron-builder 不再自动载入这两个默认依赖；
+; 安装器与卸载器构建都需要它们来执行原生 _CHECK_APP_RUNNING。
+!include "getProcessInfo.nsh"
+Var pid
+
 ; electron-builder 在 install section 里还会执行内置 CHECK_APP_RUNNING。
 ; 隔离发布 smoke 必须同时绕过这一层，否则 /S 会在后台等待运行中提示框。
 ; 正常安装没有该进程级环境变量，仍完整执行默认关闭与占用检查。
