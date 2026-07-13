@@ -434,7 +434,10 @@ async function waitForMiniTheme(mini, theme) {
     if (
       result.themeClass === theme &&
       result.rootClasses.includes(theme) &&
-      !result.rootClasses.includes(theme === 'light' ? 'dark' : 'light')
+      !result.rootClasses.includes(theme === 'light' ? 'dark' : 'light') &&
+      result.mode &&
+      result.buildIdentity.version &&
+      result.buildIdentity.commit
     ) {
       return result;
     }
