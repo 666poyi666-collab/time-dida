@@ -1,0 +1,38 @@
+appId: com.focuslink.app
+productName: FocusLink
+directories:
+  output: ../release-v0110
+  buildResources: build
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+  - '!**/*.{map,ts}'
+asar: true
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+  - "**/node_modules/bindings/**"
+  - "**/node_modules/file-uri-to-path/**"
+extraResources:
+  - from: build/
+    to: build/
+    filter: ["**/*"]
+publish: null
+win:
+  target:
+    - nsis
+    - portable
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: FocusLink
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  include: build/installer.nsh
+portable:
+  artifactName: ${productName}-${version}-${arch}-portable.${ext}

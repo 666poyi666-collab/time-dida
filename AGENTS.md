@@ -15,12 +15,13 @@ Do not turn it into a chat app, generic dashboard, or landing page.
 
 ## Directory Ownership
 
-- `src/`: renderer UI only.
-- `electron/`: Electron main process, SQLite access, timer manager, dida CLI provider, sync queue.
-- `shared/`: shared types, version constants, and pure policies.
-- `frontend-design/`: the only product/UI/interaction documentation tree; begin at `frontend-design/README.md`.
-- `backend-design/`: the only architecture/IPC/data/test/release documentation tree; begin at `backend-design/README.md`.
-- `.github/`: issue forms and the canonical GitHub Release notes template only.
+- `FocusLink/src/`: renderer UI only.
+- `FocusLink/electron/`: Electron main process, SQLite access, timer manager, dida CLI provider, sync queue.
+- `FocusLink/shared/`: shared types, version constants, and pure policies.
+- `FocusLink/frontend-design/`: the only product/UI/interaction documentation tree; begin at `FocusLink/frontend-design/README.md`.
+- `FocusLink/backend-design/`: the only architecture/IPC/data/test/release documentation tree; begin at `FocusLink/backend-design/README.md`.
+- `FocusLink/`: the only source workspace. Build, test, design, and development commands run from here.
+- `.github/`: issue forms, the canonical GitHub Release notes template, and the formal release workflow only.
 - `release-v*/`: packaged release artifacts and that version's `RELEASE_NOTES.md` only.
 
 Do not recreate `docs/`, `backend/`, `shared-contract/`, design archives, one-off fix reports, or parallel handoff documents. Reusable conclusions belong in one of the two specifications; version history belongs in root `CHANGELOG.md` and the matching release notes.
@@ -53,7 +54,7 @@ Keep state labels precise:
 ## Mini Window Rules
 
 - Mini window has two fixed sizes: collapsed and expanded.
-- `shared/miniWindowLayout.ts` is the only executable numeric size source. Do not duplicate sizes in Electron, CSS, settings, or tests; documentation may mirror current acceptance values but must change in the same patch as the constants.
+- `FocusLink/shared/miniWindowLayout.ts` is the only executable numeric size source. Do not duplicate sizes in Electron, CSS, settings, or tests; documentation may mirror current acceptance values but must change in the same patch as the constants.
 - Do not reintroduce freeform resizing or a third size.
 - Collapsed mode is a compact edge progress bar showing only progress/state, current time, and the expand affordance.
 - Expanded mode is a dense control console showing the task, current time, cumulative focus/pause/total, and all current controls without nested cards.
@@ -62,7 +63,7 @@ Keep state labels precise:
 
 ## Verification Before Release
 
-Run these before packaging:
+Run these from `FocusLink/` before packaging:
 
 ```bash
 npm run format:check
@@ -84,8 +85,8 @@ For dida sync changes, also run a real temporary dida task test:
 
 ## Release Rules
 
-- Follow `backend-design/TEST_AND_RELEASE.md`; its gates are mandatory.
-- Bump `package.json`, `package-lock.json`, `shared/version.ts`, `electron-builder.yml`, README, CHANGELOG, both design-spec versions, and release notes together.
+- Follow `FocusLink/backend-design/TEST_AND_RELEASE.md`; its gates are mandatory.
+- Bump `FocusLink/package.json`, `FocusLink/package-lock.json`, `FocusLink/shared/version.ts`, `FocusLink/electron-builder.yml`, root README, root CHANGELOG, both design-spec versions, and release notes together.
 - Use release directories like `release-v029` for `0.2.9` and `release-v0210` for `0.2.10`.
 - Keep only the latest three release directories in the repo.
 - Each release directory may contain only the installer, portable executable, `SHA256SUMS.txt`, and `RELEASE_NOTES.md`; remove `win-unpacked`, debug YAML, blockmaps, logs, screenshots, and test results.

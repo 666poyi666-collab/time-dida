@@ -1,10 +1,14 @@
 # FocusLink vX.Y.Z
 
+> 填写与验证本模板时，所有 `npm` / `node` 命令均从仓库内 `FocusLink/` 执行。
+
 > 发布日期：YYYY-MM-DD
 >
 > 对应提交：`COMMIT_SHA`
 >
-> 发布状态：草稿 / 已验证待发布 / 已发布（只保留真实状态）
+> 发布类型：正式版
+>
+> 验证状态：已通过
 
 ## 本次更新
 
@@ -40,7 +44,7 @@
 - `npm run build`
 - `npm run dist`
 - 主窗、小窗、安装版和便携版 smoke
-- 精密明亮深浅主题与专用字体人工验收：中文使用内置 `Noto Sans SC Variable`，数字与拉丁使用内置 `Geist Variable`，`JetBrains Mono` 仅用于诊断和代码；同时核对只有受控状态光、无大面积 blur/光晕，并检查字号下限、对比度与 reduced-motion
+- 动态材质深浅主题与双字体人工验收：默认 `Manrope Variable` + `Noto Sans SC Variable`，并验证 Geist“精准”方案可切换；核对单一低对比环境层、无整页 blur/合成黑块、字号下限、对比度与 reduced-motion
 - 统计快速展开/切换的 request-id 与计时 tick 性能 smoke
 - 真实 UI “滴答任务完成 → 6 秒撤销 → 再完成 → 完成列表找回 → 恢复” smoke
 - renderer 无响应受控恢复、Error 日志序列化与托盘监听幂等性验证

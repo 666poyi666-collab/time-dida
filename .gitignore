@@ -1,17 +1,15 @@
-node_modules/
-dist/
-dist-electron/
-dist-selftest/
+/FocusLink/node_modules/
+/FocusLink/dist/
+/FocusLink/dist-electron/
+/FocusLink/dist-selftest/
 release/
 release-v*/*
 !release-v*/RELEASE_NOTES.md
-# v0.7 assets are an unversioned local-only backup until a verified remote archive exists.
-release-v070/RELEASE_NOTES.md
 *.log
 .env
 .env.local
 focuslink-data/
-test-data/
-*-result.json
+/FocusLink/test-data/
+/FocusLink/*-result.json
 .DS_Store
 design-pack/

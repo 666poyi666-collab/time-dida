@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag, for example v0.10.0
+        description: Existing release tag, for example v0.11.0
         required: true
         type: string
 
@@ -20,9 +20,12 @@ concurrency:
 
 jobs:
   release:
-    name: Verify, package and publish
+    name: Verify committed artifacts and publish
     runs-on: windows-latest
     timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: FocusLink
 
     steps:
       - name: Check out the tagged source
@@ -36,6 +39,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: FocusLink/package-lock.json
 
       - name: Validate tag, version and release notes
         shell: pwsh
@@ -46,43 +50,140 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $version = (Get-Content -Raw -LiteralPath 'package.json' | ConvertFrom-Json).version
-          $lockVersion = (Get-Content -Raw -LiteralPath 'package-lock.json' | ConvertFrom-Json).version
+          $lockVersions = node -e "const lock=require('./package-lock.json'); process.stdout.write(JSON.stringify([lock.version, lock.packages[''].version]))" | ConvertFrom-Json
+          $lockVersion = $lockVersions[0]
+          $lockRootVersion = $lockVersions[1]
           $tag = if ($env:RELEASE_EVENT_NAME -eq 'workflow_dispatch') { $env:RELEASE_INPUT_TAG } else { $env:RELEASE_REF_NAME }
           if ($tag -ne "v$version") {
             throw "Tag $tag does not match package version $version"
           }
-          if ($lockVersion -ne $version) {
-            throw "package-lock version $lockVersion does not match package version $version"
+          if ($lockVersion -ne $version -or $lockRootVersion -ne $version) {
+            throw "package-lock versions ($lockVersion / $lockRootVersion) do not match package version $version"
           }
 
-          $releaseDirectory = "release-v$($version.Replace('.', ''))"
+          $releaseDirectoryName = "release-v$($version.Replace('.', ''))"
+          $releaseDirectory = "../$releaseDirectoryName"
           $notesSource = "backend-design/releases/v$version.md"
+          $notesRoot = Join-Path $releaseDirectory 'RELEASE_NOTES.md'
           if (-not (Test-Path -LiteralPath $notesSource -PathType Leaf)) {
             throw "Missing release notes source: $notesSource"
+          }
+          if (-not (Test-Path -LiteralPath $notesRoot -PathType Leaf)) {
+            throw "Missing offline release notes: $notesRoot"
           }
 
           $sharedVersion = Get-Content -Raw -LiteralPath 'shared/version.ts'
           if ($sharedVersion -notmatch "APP_VERSION\s*=\s*'$([regex]::Escape($version))'" -or
-              $sharedVersion -notmatch "APP_RELEASE_DIR\s*=\s*'$([regex]::Escape($releaseDirectory))'") {
+              $sharedVersion -notmatch "APP_RELEASE_DIR\s*=\s*'$([regex]::Escape($releaseDirectoryName))'") {
             throw 'shared/version.ts is not aligned with package.json'
           }
           $builder = Get-Content -Raw -LiteralPath 'electron-builder.yml'
-          if ($builder -notmatch "(?m)^\s*output:\s*$([regex]::Escape($releaseDirectory))\s*$") {
+          if ($builder -notmatch "(?m)^\s*output:\s*\.\./$([regex]::Escape($releaseDirectoryName))\s*$") {
             throw 'electron-builder.yml output is not aligned with package.json'
+          }
+          $versionParts = $version.Split('.')
+          $designBaseline = "$($versionParts[0]).$($versionParts[1])"
+          $rootReadme = Get-Content -Raw -LiteralPath '../README.md'
+          $changelog = Get-Content -Raw -LiteralPath '../CHANGELOG.md'
+          if ($rootReadme -notmatch "(?m)^>\s*当前版本：v$([regex]::Escape($version))\s*$") {
+            throw 'README current version is not aligned with package.json'
+          }
+          if ($changelog -notmatch "(?m)^##\s+v$([regex]::Escape($version))\s+-\s+\d{4}-\d{2}-\d{2}") {
+            throw 'CHANGELOG top version is not aligned with package.json'
+          }
+          foreach ($designFile in @(
+            'frontend-design/README.md'
+            'frontend-design/FRONTEND_SPEC.md'
+            'backend-design/README.md'
+            'backend-design/BACKEND_SPEC.md'
+          )) {
+            $designText = Get-Content -Raw -LiteralPath $designFile
+            if ($designText -notmatch "v$([regex]::Escape($designBaseline))\.x") {
+              throw "Design baseline is not aligned with package.json: $designFile"
+            }
           }
 
           $releaseBody = Get-Content -Raw -LiteralPath $notesSource
-          if ($releaseBody -notmatch '(?m)^>\s*发布状态：已验证待发布\s*$') {
-            throw 'Release notes must contain the exact machine-checkable status: 发布状态：已验证待发布'
+          $offlineBody = Get-Content -Raw -LiteralPath $notesRoot
+          if ($releaseBody.Replace("`r`n", "`n").TrimEnd() -ne $offlineBody.Replace("`r`n", "`n").TrimEnd()) {
+            throw 'Versioned and offline release notes must be identical before tagging'
           }
-          if ($releaseBody -match '草稿|草案|候选|尚未发布|状态：未发布|待执行|待正式|待完成|待填写|以下是验收目标|\[ \]') {
+          if ($releaseBody -notmatch '(?m)^>\s*发布类型：正式版\s*$' -or
+              $releaseBody -notmatch '(?m)^>\s*验证状态：已通过\s*$') {
+            throw 'Release notes must identify a formal release whose verification passed'
+          }
+          if ($releaseBody -match 'YYYY-MM-DD|COMMIT_SHA|待填写|待最终提交|正式打包后写入|\|\s*`?填写`?\s*\||\[ \]') {
             throw 'Release notes still contain a draft or unfinished verification item'
+          }
+          if ($releaseBody -notmatch '(?m)^>\s*发布日期：\d{4}-\d{2}-\d{2}\s*$') {
+            throw 'Release notes must contain a concrete YYYY-MM-DD release date'
+          }
+          $commitMatch = [regex]::Match($releaseBody, '(?m)^>\s*对应提交：`?([0-9a-fA-F]{7,40})`?\s*$')
+          if (-not $commitMatch.Success) {
+            throw 'Release notes must contain a concrete build source commit'
+          }
+          $buildCommit = (git rev-parse $commitMatch.Groups[1].Value).Trim()
+          $headCommit = (git rev-parse HEAD).Trim()
+          $tagCommit = (git rev-list -n 1 $tag).Trim()
+          if ($tagCommit -ne $headCommit) {
+            throw "Checked-out tag target $tagCommit does not match HEAD $headCommit"
+          }
+          $tagType = (git cat-file -t "refs/tags/$tag").Trim()
+          if ($tagType -ne 'tag') {
+            throw "Release tag $tag must be annotated"
+          }
+          git fetch origin main:refs/remotes/origin/main --no-tags
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Could not fetch origin/main for release ancestry verification'
+          }
+          git merge-base --is-ancestor $buildCommit $headCommit
+          if ($LASTEXITCODE -ne 0) {
+            throw "Build source commit $buildCommit is not an ancestor of release commit $headCommit"
+          }
+          $releaseParent = (git rev-parse "$headCommit^").Trim()
+          if ($LASTEXITCODE -ne 0 -or $releaseParent -ne $buildCommit) {
+            throw "Tagged release-record commit must be the direct child of build source commit $buildCommit"
+          }
+          $generatedVersion = Get-Content -Raw -LiteralPath 'shared/version.generated.ts'
+          $generatedCommitMatch = [regex]::Match($generatedVersion, "APP_COMMIT\s*=\s*'([^']+)'")
+          $expectedGeneratedCommit = (git rev-parse --short $buildCommit).Trim()
+          if (-not $generatedCommitMatch.Success -or
+              $generatedCommitMatch.Groups[1].Value -ne $expectedGeneratedCommit -or
+              $generatedCommitMatch.Groups[1].Value.EndsWith('-dirty')) {
+            throw 'shared/version.generated.ts does not identify the clean build source commit'
+          }
+          if ($generatedVersion -notmatch "APP_BUILD_TIME\s*=\s*'\d{4}-\d{2}-\d{2}T[^']+Z'") {
+            throw 'shared/version.generated.ts does not contain a concrete UTC build time'
+          }
+
+          $expectedReleaseRecordPaths = @(
+            'FocusLink/shared/version.generated.ts'
+            "FocusLink/backend-design/releases/v$version.md"
+            "$releaseDirectoryName/FocusLink-$version-x64.exe"
+            "$releaseDirectoryName/FocusLink-$version-x64-portable.exe"
+            "$releaseDirectoryName/SHA256SUMS.txt"
+            "$releaseDirectoryName/RELEASE_NOTES.md"
+          )
+          $releaseRecordPaths = @(git diff --name-only $buildCommit $headCommit)
+          if ($LASTEXITCODE -ne 0 -or $releaseRecordPaths.Count -ne $expectedReleaseRecordPaths.Count) {
+            throw 'Release-record commit must contain exactly generated metadata, two notes, and three assets'
+          }
+          foreach ($path in $expectedReleaseRecordPaths) {
+            if ($path -notin $releaseRecordPaths) {
+              throw "Release-record commit is missing the required path: $path"
+            }
+          }
+          git merge-base --is-ancestor $headCommit origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release commit $headCommit is not present on origin/main"
           }
 
           "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "RELEASE_DIRECTORY=$releaseDirectory" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "RELEASE_NOTES_SOURCE=$notesSource" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_NOTES_ROOT=$notesRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_BUILD_COMMIT=$buildCommit" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Install dependencies
         run: npm ci
@@ -90,34 +191,42 @@ jobs:
       - name: Verify source
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           npm run format:check
           npm run typecheck
           npm run lint
           npm test
+          npm run build
+          # `npm run build` intentionally regenerates the local build identity from HEAD.
+          # Release assets were built from the direct parent source commit, so restore the
+          # committed identity before the artifact smoke scripts compare it with the exe.
+          git restore --source=HEAD -- shared/version.generated.ts
           npm audit --omit=dev
 
       - name: Run isolated Electron regressions
         run: npm run regression:electron
 
-      - name: Package Windows applications
-        run: npm run dist
-
-      - name: Smoke-test unpacked main and mini windows
-        shell: pwsh
-        run: |
-          $executable = Join-Path $env:RELEASE_DIRECTORY 'win-unpacked/FocusLink.exe'
-          node scripts/smoke/ui-state-smoke.cjs $executable (Join-Path $env:RUNNER_TEMP 'focuslink-ui-smoke')
-          node scripts/smoke/mini-ui-smoke.cjs $executable (Join-Path $env:RUNNER_TEMP 'focuslink-mini-smoke')
-
-      - name: Smoke-test portable and installed applications
+      - name: Smoke-test committed portable main and mini windows
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $installer = Join-Path $env:RELEASE_DIRECTORY "FocusLink-$env:RELEASE_VERSION-x64.exe"
+          $PSNativeCommandUseErrorActionPreference = $true
           $portable = Join-Path $env:RELEASE_DIRECTORY "FocusLink-$env:RELEASE_VERSION-x64-portable.exe"
-          node scripts/smoke/ui-state-smoke.cjs $portable (Join-Path $env:RUNNER_TEMP 'focuslink-portable-smoke')
+          node scripts/smoke/ui-state-smoke.cjs $portable (Join-Path $env:RUNNER_TEMP 'focuslink-ui-smoke')
+          node scripts/smoke/mini-ui-smoke.cjs $portable (Join-Path $env:RUNNER_TEMP 'focuslink-mini-smoke')
 
+      - name: Smoke-test installed application
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $installer = Join-Path $env:RELEASE_DIRECTORY "FocusLink-$env:RELEASE_VERSION-x64.exe"
           $installDirectory = Join-Path $env:RUNNER_TEMP 'FocusLink-installed'
+          if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+            throw "Installer not found: $installer"
+          }
+          Remove-Item Env:FOCUSLINK_INSTALLER_SKIP_CLOSE -ErrorAction SilentlyContinue
           $process = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$installDirectory") -Wait -PassThru -WindowStyle Hidden
           if ($process.ExitCode -ne 0) {
             throw "Silent installer exited with code $($process.ExitCode)"
@@ -128,37 +237,68 @@ jobs:
           }
           node scripts/smoke/ui-state-smoke.cjs $installedExecutable (Join-Path $env:RUNNER_TEMP 'focuslink-installed-smoke')
 
-      - name: Prepare checksums and release body
+      - name: Verify committed release assets and checksums
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $installer = Join-Path $env:RELEASE_DIRECTORY "FocusLink-$env:RELEASE_VERSION-x64.exe"
           $portable = Join-Path $env:RELEASE_DIRECTORY "FocusLink-$env:RELEASE_VERSION-x64-portable.exe"
-          $notes = Join-Path $env:RELEASE_DIRECTORY 'RELEASE_NOTES.md'
+          $notes = $env:RELEASE_NOTES_ROOT
           $checksums = Join-Path $env:RELEASE_DIRECTORY 'SHA256SUMS.txt'
 
-          foreach ($file in @($installer, $portable)) {
+          foreach ($file in @($installer, $portable, $notes, $checksums)) {
             if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
-              throw "Missing packaged asset: $file"
+              throw "Missing committed release asset: $file"
+            }
+          }
+
+          $expectedNames = @(
+            "FocusLink-$env:RELEASE_VERSION-x64.exe"
+            "FocusLink-$env:RELEASE_VERSION-x64-portable.exe"
+            'SHA256SUMS.txt'
+            'RELEASE_NOTES.md'
+          )
+          $entries = @(Get-ChildItem -LiteralPath $env:RELEASE_DIRECTORY -Force)
+          if ($entries.Count -ne $expectedNames.Count -or @($entries | Where-Object { $_.PSIsContainer }).Count -ne 0) {
+            throw 'Release directory must contain exactly four files and no subdirectories'
+          }
+          foreach ($entry in $entries) {
+            if ($entry.Name -notin $expectedNames) {
+              throw "Unexpected release directory entry: $($entry.Name)"
             }
           }
 
           $installerHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
           $portableHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $portable).Hash.ToLowerInvariant()
-          @(
-            "$installerHash *$(Split-Path -Leaf $installer)"
-            "$portableHash *$(Split-Path -Leaf $portable)"
-          ) | Set-Content -LiteralPath $checksums -Encoding utf8
-
-          $body = Get-Content -Raw -LiteralPath $env:RELEASE_NOTES_SOURCE
-          $installerPlaceholder = "| ``FocusLink-$env:RELEASE_VERSION-x64.exe`` | 正式打包后写入 |"
-          $portablePlaceholder = "| ``FocusLink-$env:RELEASE_VERSION-x64-portable.exe`` | 正式打包后写入 |"
-          $body = $body.Replace($installerPlaceholder, "| ``FocusLink-$env:RELEASE_VERSION-x64.exe`` | ``$installerHash`` |")
-          $body = $body.Replace($portablePlaceholder, "| ``FocusLink-$env:RELEASE_VERSION-x64-portable.exe`` | ``$portableHash`` |")
-          if ($body -match '正式打包后写入') {
-            throw 'Release notes checksum placeholders were not replaced'
+          $checksumLines = @(Get-Content -LiteralPath $checksums | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
+          $expectedChecksumLines = @(
+            ("$installerHash *$(Split-Path -Leaf $installer)").ToLowerInvariant()
+            ("$portableHash *$(Split-Path -Leaf $portable)").ToLowerInvariant()
+          )
+          if ($checksumLines.Count -ne $expectedChecksumLines.Count) {
+            throw 'SHA256SUMS.txt must contain exactly two non-empty lines'
           }
-          Set-Content -LiteralPath $notes -Value $body -Encoding utf8
+          foreach ($line in $expectedChecksumLines) {
+            if ($line -notin $checksumLines) {
+              throw "SHA256SUMS.txt does not contain the expected line: $line"
+            }
+          }
+
+          $body = (Get-Content -Raw -LiteralPath $notes).ToLowerInvariant()
+          if (-not $body.Contains($installerHash) -or -not $body.Contains($portableHash)) {
+            throw 'Release notes do not contain both verified SHA256 values'
+          }
+          $installerName = (Split-Path -Leaf $installer).ToLowerInvariant()
+          $portableName = (Split-Path -Leaf $portable).ToLowerInvariant()
+          $tableLines = @($body -split "`r?`n" | Where-Object { $_.TrimStart().StartsWith('|') })
+          $installerRow = $tableLines | Where-Object { $_.Contains($installerName) } | Select-Object -First 1
+          $portableRow = $tableLines | Where-Object { $_.Contains($portableName) } | Select-Object -First 1
+          if (-not $installerRow -or -not $installerRow.Contains($installerHash)) {
+            throw 'Release notes do not map the installer name to its verified SHA256'
+          }
+          if (-not $portableRow -or -not $portableRow.Contains($portableHash)) {
+            throw 'Release notes do not map the portable name to its verified SHA256'
+          }
 
           "RELEASE_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "RELEASE_PORTABLE=$portable" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
@@ -190,6 +330,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           $release = gh release view $env:RELEASE_TAG --json tagName,name,body,isDraft,isPrerelease,assets,url | ConvertFrom-Json
           if ($release.tagName -ne $env:RELEASE_TAG -or $release.isDraft -or $release.isPrerelease) {
             throw 'Published Release metadata did not match the requested stable tag'
@@ -213,11 +354,12 @@ jobs:
             throw "Release tag target mismatch: local=$localCommit remote=$remoteCommit"
           }
 
-          $expected = @(
-            "FocusLink-$env:RELEASE_VERSION-x64.exe"
-            "FocusLink-$env:RELEASE_VERSION-x64-portable.exe"
-            'SHA256SUMS.txt'
+          $expectedFiles = @(
+            $env:RELEASE_INSTALLER
+            $env:RELEASE_PORTABLE
+            $env:RELEASE_CHECKSUMS
           )
+          $expected = @($expectedFiles | ForEach-Object { Split-Path -Leaf $_ })
           $actual = @($release.assets | ForEach-Object { $_.name })
           if ($actual.Count -ne $expected.Count) {
             throw "Published Release has $($actual.Count) assets; expected exactly $($expected.Count)"
@@ -228,11 +370,29 @@ jobs:
             }
           }
           foreach ($asset in $release.assets) {
-            if ([long]$asset.size -le 0) {
-              throw "Published asset is empty: $($asset.name)"
+            $localPath = $expectedFiles | Where-Object { (Split-Path -Leaf $_) -eq $asset.name } | Select-Object -First 1
+            $localSize = (Get-Item -LiteralPath $localPath).Length
+            if ([long]$asset.size -ne [long]$localSize) {
+              throw "Published asset size differs from local file: $($asset.name) remote=$($asset.size) local=$localSize"
             }
             if (-not [uri]::IsWellFormedUriString([string]$asset.url, [uriKind]::Absolute)) {
               throw "Published asset has no valid download URL: $($asset.name)"
+            }
+          }
+
+          $downloadDirectory = Join-Path $env:RUNNER_TEMP "focuslink-release-download-$([guid]::NewGuid().ToString('N'))"
+          New-Item -ItemType Directory -Path $downloadDirectory | Out-Null
+          gh release download $env:RELEASE_TAG --dir $downloadDirectory
+          foreach ($localPath in $expectedFiles) {
+            $name = Split-Path -Leaf $localPath
+            $downloadedPath = Join-Path $downloadDirectory $name
+            if (-not (Test-Path -LiteralPath $downloadedPath -PathType Leaf)) {
+              throw "Published asset could not be downloaded: $name"
+            }
+            $localHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $localPath).Hash
+            $downloadedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $downloadedPath).Hash
+            if ($downloadedHash -ne $localHash) {
+              throw "Downloaded asset hash differs from local file: $name"
             }
           }
 

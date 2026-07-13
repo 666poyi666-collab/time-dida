@@ -1,0 +1,686 @@
+/* Mini renderer only: 256×92 control console + 184×35 edge focus strip. */
+@layer components {
+  .mini-window-shell {
+    --mini-state: var(--app-accent);
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border: 1px solid rgb(var(--app-border-strong) / 0.66);
+    border-radius: 12px;
+    color: rgb(var(--app-text));
+    background: rgb(var(--app-surface) / 0.99);
+    box-shadow:
+      0 15px 34px -23px rgb(0 0 0 / 0.82),
+      0 1px 0 rgb(255 255 255 / 0.055) inset,
+      0 0 0 1px rgb(var(--app-surface-3) / 0.2) inset;
+    -webkit-app-region: drag;
+    transition:
+      border-radius var(--motion-normal) var(--ease-fluid),
+      border-color var(--motion-normal) var(--ease-fluid),
+      background-color var(--motion-normal) var(--ease-fluid),
+      box-shadow var(--motion-normal) var(--ease-fluid);
+  }
+
+  .light .mini-window-shell {
+    border-color: rgb(var(--app-border-strong) / 0.76);
+    background: rgb(var(--app-elevated) / 0.99);
+    box-shadow:
+      0 13px 30px -23px rgb(24 32 28 / 0.46),
+      0 1px 0 rgb(255 255 255 / 0.9) inset,
+      0 0 0 1px rgb(var(--app-surface-3) / 0.16) inset;
+  }
+
+  .mini-window-shell.mini-window-running {
+    --mini-state: var(--app-success);
+  }
+
+  .mini-window-shell.mini-window-paused {
+    --mini-state: var(--app-pause);
+  }
+
+  .mini-window-shell.mini-window-collapsed {
+    border-radius: 9px;
+    box-shadow:
+      0 9px 24px -18px rgb(0 0 0 / 0.84),
+      0 1px 0 rgb(255 255 255 / 0.05) inset;
+  }
+
+  .light .mini-window-shell.mini-window-collapsed {
+    box-shadow:
+      0 8px 22px -18px rgb(24 32 28 / 0.44),
+      0 1px 0 rgb(255 255 255 / 0.82) inset;
+  }
+
+  .mini-material-stack,
+  .mini-material-glow,
+  .mini-material-grain,
+  .mini-focus-aura {
+    position: absolute;
+    pointer-events: none;
+  }
+
+  .mini-material-stack {
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    border-radius: inherit;
+  }
+
+  .mini-material-glow {
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 10% -35%, rgb(var(--app-accent) / 0.16), transparent 49%),
+      radial-gradient(circle at 100% 115%, rgb(var(--mini-state) / 0.1), transparent 46%),
+      linear-gradient(
+        112deg,
+        rgb(255 255 255 / 0.034),
+        transparent 34% 72%,
+        rgb(255 255 255 / 0.018)
+      );
+    opacity: 0.92;
+    transition: opacity var(--motion-normal) ease;
+  }
+
+  .light .mini-material-glow {
+    background-image:
+      radial-gradient(circle at 9% -40%, rgb(var(--app-accent) / 0.12), transparent 49%),
+      radial-gradient(circle at 100% 118%, rgb(var(--mini-state) / 0.07), transparent 46%),
+      linear-gradient(112deg, rgb(255 255 255 / 0.46), transparent 38% 70%, rgb(255 255 255 / 0.18));
+  }
+
+  .mini-material-grain {
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(115deg, rgb(255 255 255 / 0.018) 0 1px, transparent 1px 5px),
+      repeating-linear-gradient(25deg, rgb(0 0 0 / 0.014) 0 1px, transparent 1px 7px);
+    opacity: 0.46;
+  }
+
+  .light .mini-material-grain {
+    opacity: 0.22;
+  }
+
+  .mini-focus-aura {
+    right: -20px;
+    bottom: -61px;
+    width: 114px;
+    height: 114px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgb(var(--mini-state) / 0.11), transparent 67%);
+    opacity: 0.72;
+    animation: mini-aura-drift 5.6s ease-in-out infinite;
+  }
+
+  .mini-window-collapsed .mini-focus-aura {
+    right: 8px;
+    bottom: -81px;
+    opacity: 0.48;
+  }
+
+  .mini-state-rail {
+    position: absolute;
+    top: 11px;
+    bottom: 11px;
+    left: 1px;
+    z-index: 3;
+    width: 2px;
+    pointer-events: none;
+    border-radius: 0 99px 99px 0;
+    background: rgb(var(--mini-state) / 0.88);
+    box-shadow: 0 0 9px rgb(var(--mini-state) / 0.24);
+    transition:
+      top var(--motion-normal) var(--ease-fluid),
+      bottom var(--motion-normal) var(--ease-fluid),
+      background-color var(--motion-normal) var(--ease-fluid);
+  }
+
+  .mini-window-collapsed .mini-state-rail {
+    top: 6px;
+    bottom: 7px;
+  }
+
+  .mini-dock-cue {
+    position: absolute;
+    z-index: 5;
+    pointer-events: none;
+    opacity: 0;
+    background: rgb(var(--mini-state));
+    box-shadow: 0 0 14px rgb(var(--mini-state) / 0.58);
+  }
+
+  .mini-window-docking.mini-dock-edge-left .mini-dock-cue,
+  .mini-window-docking.mini-dock-edge-right .mini-dock-cue {
+    top: 9px;
+    bottom: 9px;
+    width: 2px;
+  }
+
+  .mini-window-docking.mini-dock-edge-left .mini-dock-cue {
+    left: 1px;
+  }
+
+  .mini-window-docking.mini-dock-edge-right .mini-dock-cue {
+    right: 1px;
+  }
+
+  .mini-window-docking.mini-dock-edge-top .mini-dock-cue,
+  .mini-window-docking.mini-dock-edge-bottom .mini-dock-cue {
+    right: 12px;
+    left: 12px;
+    height: 2px;
+  }
+
+  .mini-window-docking.mini-dock-edge-top .mini-dock-cue {
+    top: 1px;
+  }
+
+  .mini-window-docking.mini-dock-edge-bottom .mini-dock-cue {
+    bottom: 1px;
+  }
+
+  .mini-window-docking .mini-dock-cue {
+    animation: mini-dock-cue var(--mini-dock-transition-duration) var(--ease-fluid) both;
+  }
+
+  .mini-collapsed-content,
+  .mini-expanded-content {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+  }
+
+  .mini-window-docking.mini-dock-edge-left .mini-expanded-content {
+    transform-origin: left center;
+    animation: mini-dock-fold-left var(--mini-dock-transition-duration) var(--ease-fluid) both;
+  }
+
+  .mini-window-docking.mini-dock-edge-right .mini-expanded-content {
+    transform-origin: right center;
+    animation: mini-dock-fold-right var(--mini-dock-transition-duration) var(--ease-fluid) both;
+  }
+
+  .mini-window-docking.mini-dock-edge-top .mini-expanded-content {
+    transform-origin: center top;
+    animation: mini-dock-fold-top var(--mini-dock-transition-duration) var(--ease-fluid) both;
+  }
+
+  .mini-window-docking.mini-dock-edge-bottom .mini-expanded-content {
+    transform-origin: center bottom;
+    animation: mini-dock-fold-bottom var(--mini-dock-transition-duration) var(--ease-fluid) both;
+  }
+
+  .mini-collapsed-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 24px;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 4px 5px 8px;
+  }
+
+  .mini-edge-progress {
+    --mini-progress: 0%;
+    position: absolute;
+    right: 8px;
+    bottom: 1px;
+    left: 8px;
+    height: 3px;
+    overflow: hidden;
+    border-radius: 99px;
+    background: rgb(var(--app-border-strong) / 0.42);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.055) inset;
+  }
+
+  .mini-edge-progress-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--mini-progress);
+    min-width: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      90deg,
+      rgb(var(--mini-state) / 0.68),
+      rgb(var(--mini-state) / 0.98)
+    );
+    box-shadow: 0 0 8px rgb(var(--mini-state) / 0.28);
+    transition: width 760ms var(--ease-fluid);
+  }
+
+  .mini-edge-progress-glint {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: max(0px, calc(var(--mini-progress) - 8px));
+    width: 8px;
+    border-radius: inherit;
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.58));
+    opacity: 0.76;
+    transition: left 760ms var(--ease-fluid);
+  }
+
+  .mini-window-idle .mini-edge-progress-glint {
+    opacity: 0;
+  }
+
+  .mini-collapsed-current,
+  .mini-collapsed-state {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+
+  .mini-collapsed-current {
+    gap: 5px;
+  }
+
+  .mini-collapsed-state {
+    flex: 0 0 auto;
+    gap: 3px;
+  }
+
+  .mini-collapsed-label,
+  .mini-current-label {
+    flex: 0 0 auto;
+    font-size: 9.5px;
+    font-weight: 650;
+    line-height: 1;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+
+  .mini-display-time {
+    color: rgb(var(--app-text));
+    font-family: var(--font-number);
+    font-weight: 640;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum', 'ss01', 'cv11';
+    white-space: nowrap;
+  }
+
+  .mini-collapsed-time {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 25px;
+    line-height: 0.96;
+    letter-spacing: -0.052em;
+  }
+
+  .mini-expanded-content {
+    display: grid;
+    grid-template-rows: 22px minmax(0, 1fr) 24px;
+    gap: 0;
+    padding: 4px 6px 5px 8px;
+  }
+
+  .mini-expanded-header,
+  .mini-expanded-footer,
+  .mini-header-context,
+  .mini-header-actions,
+  .mini-state-badge,
+  .mini-action-dock {
+    display: flex;
+    align-items: center;
+  }
+
+  .mini-expanded-header {
+    min-width: 0;
+    justify-content: space-between;
+    gap: 5px;
+  }
+
+  .mini-header-context {
+    min-width: 0;
+    flex: 1;
+    gap: 5px;
+  }
+
+  .mini-state-badge {
+    flex: 0 0 auto;
+    gap: 4px;
+    font-size: 9.5px;
+    font-weight: 650;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .mini-state-dot {
+    width: 5px;
+    height: 5px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    box-shadow: 0 0 7px rgb(var(--mini-state) / 0.2);
+  }
+
+  .state-dot-running {
+    background: rgb(var(--app-success));
+    animation: mini-state-breathe 2.6s ease-in-out infinite;
+  }
+
+  .mini-header-divider {
+    width: 1px;
+    height: 9px;
+    flex: 0 0 auto;
+    background: rgb(var(--app-border-strong) / 0.54);
+  }
+
+  .mini-task-title {
+    min-width: 0;
+    overflow: hidden;
+    color: rgb(var(--app-muted));
+    font-size: 10px;
+    font-weight: 520;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mini-header-actions {
+    flex: 0 0 auto;
+    gap: 3px;
+  }
+
+  .mini-expanded-body {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 134px minmax(0, 1fr);
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .mini-focus-core {
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 2px 0 1px;
+  }
+
+  .mini-current-label {
+    font-size: 9px;
+  }
+
+  .mini-expanded-time {
+    margin-top: 1px;
+    overflow: hidden;
+    font-size: 31px;
+    line-height: 0.9;
+    letter-spacing: -0.058em;
+  }
+
+  .mini-metric-rail {
+    min-width: 0;
+    display: grid;
+    grid-template-rows: repeat(3, 1fr);
+    padding-left: 6px;
+    border-left: 1px solid rgb(var(--app-border-strong) / 0.48);
+  }
+
+  .mini-metric {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 3px;
+  }
+
+  .mini-metric + .mini-metric {
+    border-top: 1px solid rgb(var(--app-border) / 0.58);
+  }
+
+  .mini-metric > span {
+    color: rgb(var(--app-muted));
+    font-size: 8.5px;
+    font-weight: 530;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .mini-data-time {
+    color: rgb(var(--app-text));
+    font-family: var(--font-number);
+    font-size: 10.5px;
+    font-weight: 560;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    letter-spacing: -0.035em;
+    white-space: nowrap;
+  }
+
+  .mini-metric-focus .mini-data-time {
+    color: rgb(var(--app-success));
+  }
+
+  .mini-metric-pause .mini-data-time {
+    color: rgb(var(--app-pause));
+  }
+
+  .mini-expanded-footer {
+    min-width: 0;
+    justify-content: flex-end;
+  }
+
+  .mini-action-dock {
+    flex: 0 0 auto;
+    gap: 3px;
+  }
+
+  .mini-icon-button,
+  .mini-secondary-button,
+  .mini-primary-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgb(var(--app-border-strong) / 0.7);
+    border-radius: 7px;
+    color: rgb(var(--app-muted));
+    background: rgb(var(--app-surface-2) / 0.9);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.035) inset;
+    transition:
+      color var(--motion-fast) ease,
+      border-color var(--motion-fast) ease,
+      background-color var(--motion-fast) ease,
+      box-shadow var(--motion-fast) ease;
+  }
+
+  .light .mini-icon-button,
+  .light .mini-secondary-button,
+  .light .mini-primary-button {
+    background: rgb(var(--app-surface-2) / 0.78);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.72) inset;
+  }
+
+  .mini-icon-button {
+    position: relative;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    padding: 0;
+  }
+
+  .mini-icon-button::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+  }
+
+  .mini-window-collapsed .mini-icon-button {
+    width: 24px;
+    height: 24px;
+    flex-basis: 24px;
+  }
+
+  .mini-icon-button:hover,
+  .mini-secondary-button:hover {
+    color: rgb(var(--app-text));
+    border-color: rgb(var(--mini-state) / 0.48);
+    background: rgb(var(--app-surface-3) / 0.92);
+    box-shadow: 0 0 0 2px rgb(var(--mini-state) / 0.07);
+  }
+
+  .mini-primary-button,
+  .mini-secondary-button {
+    height: 24px;
+    gap: 3px;
+    padding: 0 7px;
+    font-size: 9px;
+    line-height: 1;
+  }
+
+  .mini-primary-button {
+    min-width: 50px;
+    font-weight: 650;
+  }
+
+  .mini-action-focus {
+    border-color: rgb(var(--app-accent) / 0.82);
+    color: rgb(var(--app-accent-fg));
+    background: rgb(var(--app-accent));
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.16) inset,
+      0 5px 13px -9px rgb(var(--app-accent) / 0.78);
+  }
+
+  .mini-action-focus:hover {
+    border-color: rgb(var(--app-accent-hover));
+    color: rgb(var(--app-accent-fg));
+    background: rgb(var(--app-accent-hover));
+  }
+
+  .light .mini-action-focus {
+    background: rgb(var(--app-accent));
+  }
+
+  .mini-action-pause {
+    color: rgb(var(--app-text));
+    background: rgb(var(--app-surface-3) / 0.84);
+  }
+
+  .mini-action-pause:hover {
+    border-color: rgb(var(--app-pause) / 0.5);
+    color: rgb(var(--app-pause));
+    background: rgb(var(--app-pause) / 0.1);
+  }
+
+  .mini-secondary-button {
+    min-width: 43px;
+    font-weight: 540;
+  }
+
+  .mini-secondary-button:disabled {
+    opacity: 0.3;
+    pointer-events: none;
+  }
+
+  .mini-window-shell button,
+  .mini-window-shell .no-drag {
+    -webkit-app-region: no-drag;
+  }
+}
+
+@keyframes mini-state-breathe {
+  0%,
+  100% {
+    opacity: 0.65;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes mini-aura-drift {
+  0%,
+  100% {
+    opacity: 0.48;
+    transform: translate3d(0, 0, 0) scale(0.96);
+  }
+  50% {
+    opacity: 0.82;
+    transform: translate3d(-7px, -3px, 0) scale(1.06);
+  }
+}
+
+@keyframes mini-dock-cue {
+  0% {
+    opacity: 0;
+  }
+  34%,
+  72% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0.28;
+  }
+}
+
+@keyframes mini-dock-fold-left {
+  0%,
+  18% {
+    opacity: 1;
+    transform: translateX(0) scaleX(1);
+  }
+  100% {
+    opacity: 0.18;
+    transform: translateX(-5px) scaleX(0.965);
+  }
+}
+
+@keyframes mini-dock-fold-right {
+  0%,
+  18% {
+    opacity: 1;
+    transform: translateX(0) scaleX(1);
+  }
+  100% {
+    opacity: 0.18;
+    transform: translateX(5px) scaleX(0.965);
+  }
+}
+
+@keyframes mini-dock-fold-top {
+  0%,
+  18% {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+  100% {
+    opacity: 0.18;
+    transform: translateY(-4px) scaleY(0.96);
+  }
+}
+
+@keyframes mini-dock-fold-bottom {
+  0%,
+  18% {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+  100% {
+    opacity: 0.18;
+    transform: translateY(4px) scaleY(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mini-state-dot,
+  .mini-focus-aura,
+  .mini-window-docking .mini-expanded-content,
+  .mini-window-docking .mini-dock-cue {
+    animation: none !important;
+  }
+
+  .mini-window-docking .mini-expanded-content {
+    opacity: 0.68;
+  }
+
+  .mini-window-docking .mini-dock-cue {
+    opacity: 0.75;
+  }
+
+  .mini-edge-progress-fill,
+  .mini-edge-progress-glint {
+    transition: none;
+  }
+}

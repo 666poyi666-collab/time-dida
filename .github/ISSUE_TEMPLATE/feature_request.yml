@@ -8,10 +8,10 @@ body:
       value: |
         请先确认该功能不会破坏以下不可变契约：
         - Timer 状态机（idle→running→paused→running→finished）
-        - SQLite schema（见 electron/db/schema.sql）
+        - SQLite schema（见 FocusLink/electron/db/schema.sql）
         - dida CLI Provider 的对外接口
         - 全局快捷键 Ctrl+Alt+ 修饰键规则
-        - 现有 IPC 通道契约（见 backend-design/BACKEND_SPEC.md）
+        - 现有 IPC 通道契约（见 FocusLink/backend-design/BACKEND_SPEC.md）
 
   - type: textarea
     id: problem
@@ -59,7 +59,7 @@ body:
     attributes:
       label: 契约确认
       options:
-        - label: 我已阅读 frontend-design/FRONTEND_SPEC.md 与 backend-design/BACKEND_SPEC.md
+        - label: 我已阅读 FocusLink/frontend-design/FRONTEND_SPEC.md 与 FocusLink/backend-design/BACKEND_SPEC.md
           required: true
         - label: 如需修改核心契约，我已说明迁移、兼容与验证要求
           required: true
