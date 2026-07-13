@@ -8,11 +8,12 @@ const root = path.resolve(__dirname, '..', '..');
 const packageVersion = String(
   JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '',
 ).trim();
+const releaseDirectory = `release-v${packageVersion.replace(/\./g, '')}`;
 const generatedVersion = fs.readFileSync(path.join(root, 'shared', 'version.generated.ts'), 'utf8');
 const generatedCommitMatch = /APP_COMMIT\s*=\s*'([^']+)'/.exec(generatedVersion);
 const expectedCommit = generatedCommitMatch?.[1] || '';
 const executable = path.resolve(
-  process.argv[2] || path.join(root, '..', 'release-v0110', 'win-unpacked', 'FocusLink.exe'),
+  process.argv[2] || path.join(root, '..', releaseDirectory, 'win-unpacked', 'FocusLink.exe'),
 );
 const outputDir = path.resolve(
   process.argv[3] || path.join(os.tmpdir(), `focuslink-ui-states-${Date.now()}`),

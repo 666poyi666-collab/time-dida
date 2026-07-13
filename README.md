@@ -2,7 +2,7 @@
 
 FocusLink 是一个本地优先的 Windows 桌面专注工具：主进程精确记录专注、暂停与自然跨度，把片段关联到滴答清单任务，并通过彼此独立的队列同步滴答清单与番茄 To-do。
 
-> 当前版本：v0.11.0
+> 当前版本：v0.11.1
 >
 > 版本主题：动态材质工作面、双字体体验、过渡式贴边小窗、单一源码工作区
 
@@ -142,13 +142,13 @@ RELEASE_NOTES.md
 
 | 版本 | 本地安装版 | 版本说明 |
 | --- | --- | --- |
-| 0.9.0 | `release-v090/FocusLink-0.9.0-x64.exe` | [v0.9.0](release-v090/RELEASE_NOTES.md) |
 | 0.10.0 | `release-v0100/FocusLink-0.10.0-x64.exe` | [v0.10.0](release-v0100/RELEASE_NOTES.md) |
 | 0.11.0 | `release-v0110/FocusLink-0.11.0-x64.exe` | [v0.11.0](release-v0110/RELEASE_NOTES.md) |
+| 0.11.1 | `release-v0111/FocusLink-0.11.1-x64.exe` | [v0.11.1](release-v0111/RELEASE_NOTES.md) |
 
 每次版本迭代必须同步更新 `CHANGELOG.md`、本地 `RELEASE_NOTES.md` 和 GitHub Release，并上传安装版、便携版与 SHA256。只推送代码或 tag 不算发布完成。
 
-v0.11.0 的正式线上记录见 [GitHub Release](https://github.com/666poyi666-collab/time-dida/releases/tag/v0.11.0)。每个新版本都必须由 tag workflow 复验已提交产物，并回读正文、目标提交、附件名称、字节数、下载链接与下载后 SHA256；不能补造未完成门禁的历史 Release。
+v0.11.1 的正式线上记录见 [GitHub Release](https://github.com/666poyi666-collab/time-dida/releases/tag/v0.11.1)。每个新版本都必须由 tag workflow 复验已提交产物，并回读正文、目标提交、附件名称、字节数、下载链接与下载后 SHA256；不能移动失败的旧 tag，也不能补造未完成门禁的历史 Release。
 
 ## 文档入口
 
@@ -159,7 +159,8 @@ v0.11.0 的正式线上记录见 [GitHub Release](https://github.com/666poyi666-
 - [后端与共享契约](FocusLink/backend-design/BACKEND_SPEC.md)
 - [测试与发布门禁](FocusLink/backend-design/TEST_AND_RELEASE.md)
 - [后端 AI 接手清单](FocusLink/backend-design/AI_HANDOFF_CHECKLIST.md)
-- [v0.11.0 Release 正文](FocusLink/backend-design/releases/v0.11.0.md)
+- [v0.11.1 Release 正文](FocusLink/backend-design/releases/v0.11.1.md)
+- [v0.11.0 离线发布记录](FocusLink/backend-design/releases/v0.11.0.md)
 - [版本历史](CHANGELOG.md)
 
 ## License

@@ -1,6 +1,6 @@
 # FocusLink 后端设计索引
 
-> 适用版本：v0.11.x 设计基线
+> 适用版本：v0.11.x 设计基线（当前实现 v0.11.1）
 >
 > 文档责任：Electron 主进程、SQLite、IPC、任务 Provider、同步、测试与发布。
 
@@ -11,8 +11,9 @@
 1. [BACKEND_SPEC.md](BACKEND_SPEC.md)：架构、数据、IPC、计时、任务和双同步的单一真相。
 2. [TEST_AND_RELEASE.md](TEST_AND_RELEASE.md)：自动化、真实服务、打包、校验和 GitHub Release 门禁。
 3. [AI_HANDOFF_CHECKLIST.md](AI_HANDOFF_CHECKLIST.md)：新 AI 或维护者的接手/交付清单。
-4. [releases/v0.11.0.md](releases/v0.11.0.md)：v0.11.0 的不可变 Release 正文；内容必须与本地发布目录和 GitHub Release 一致。
-5. [../frontend-design/FRONTEND_SPEC.md](../frontend-design/FRONTEND_SPEC.md)：用户可见行为、主题、动效与小窗表现。
+4. [releases/v0.11.1.md](releases/v0.11.1.md)：v0.11.1 的当前不可变 Release 正文；内容必须与本地发布目录和 GitHub Release 一致。
+5. [releases/v0.11.0.md](releases/v0.11.0.md)：被 runner 特有 smoke 断言阻断后的离线发布记录；公开 tag 不移动，未创建 GitHub Release。
+6. [../frontend-design/FRONTEND_SPEC.md](../frontend-design/FRONTEND_SPEC.md)：用户可见行为、主题、动效与小窗表现。
 
 ## 源码责任
 
