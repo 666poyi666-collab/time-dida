@@ -18,8 +18,9 @@ try {
     .split(/\r?\n/)
     .filter(Boolean)
     // The generator rewrites this tracked file on every build. It must not make an
-    // otherwise clean source commit report itself as dirty on the next build.
-    .filter((line) => !line.endsWith(' shared/version.generated.ts'));
+    // otherwise clean source commit report itself as dirty on the next build. Git may
+    // report the path from the repository root even when cwd points at FocusLink.
+    .filter((line) => !line.replace(/\\/g, '/').endsWith('shared/version.generated.ts'));
   if (dirtyEntries.length > 0) commit += '-dirty';
 } catch {
   commit = 'dev-' + Date.now().toString(36);
