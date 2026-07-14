@@ -303,8 +303,16 @@ async function main() {
   await evaluate('document.querySelector(\'button[aria-label="设置"]\')?.click()');
   await waitForAnyText(['滴答连接']);
   results.settingsLight = await captureScreen('settings-light');
+  await evaluate(`(() => {
+    const tab = [...document.querySelectorAll('.settings-tab')]
+      .find((button) => button.textContent?.includes('体验'));
+    if (!tab) throw new Error('Experience settings tab was not found');
+    tab.click();
+  })()`);
+  await waitForAnyText(['字体气质']);
   await evaluate("window.focuslink.settings.set({ fontProfile: 'manrope' })");
   await delay(250);
+  results.settingsFontManrope = await captureScreen('settings-font-manrope');
   results.manropeFont = await evaluate(`(() => {
     const body = getComputedStyle(document.body);
     const preview = getComputedStyle(document.querySelector('.font-preview-manrope .settings-font-sample'));
@@ -313,6 +321,7 @@ async function main() {
   })()`);
   await evaluate("window.focuslink.settings.set({ fontProfile: 'geist' })");
   await delay(250);
+  results.settingsFontGeist = await captureScreen('settings-font-geist');
   results.geistFont = await evaluate(`(() => {
     const body = getComputedStyle(document.body);
     const preview = getComputedStyle(document.querySelector('.font-preview-geist .settings-font-sample'));
