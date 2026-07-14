@@ -229,6 +229,28 @@
   }
 }
 
+@keyframes timer-orbit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes timer-signal {
+  0%,
+  100% {
+    height: 3px;
+    opacity: 0.5;
+  }
+  42% {
+    height: 12px;
+    opacity: 1;
+  }
+  68% {
+    height: 6px;
+    opacity: 0.76;
+  }
+}
+
 @keyframes material-enter {
   from {
     opacity: 0;
@@ -254,6 +276,28 @@
     gap: 10px;
   }
 
+  .session-workspace.with-ledger {
+    height: auto !important;
+    overflow: visible;
+    gap: 10px !important;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .session-workspace.with-ledger .focus-workspace-panel,
+  .session-workspace.with-ledger .timeline-container {
+    border: 1px solid rgb(var(--app-border) / 0.76);
+    border-radius: 20px;
+    background: rgb(var(--app-surface) / 0.9);
+    box-shadow: var(--shadow-material);
+  }
+
+  .session-workspace.with-ledger .session-ledger-pane {
+    border-left: 0;
+    background: transparent;
+  }
+
   .session-ledger-pane,
   .session-workspace.ledger-items-1 .session-ledger-pane,
   .session-workspace.ledger-items-2 .session-ledger-pane,
@@ -264,6 +308,26 @@
   .settings-section {
     grid-template-columns: 1fr;
     gap: 12px;
+  }
+
+  .history-focus-ring-card {
+    grid-column: span 4;
+  }
+
+  .history-daily-card {
+    grid-column: span 8;
+  }
+
+  .history-session-rank-card {
+    grid-column: span 12;
+  }
+}
+
+@media (max-width: 680px) {
+  .history-focus-ring-card,
+  .history-daily-card,
+  .history-session-rank-card {
+    grid-column: span 12;
   }
 }
 

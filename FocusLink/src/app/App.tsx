@@ -15,15 +15,17 @@ import type { AppSettings } from '@shared/types';
 type View = 'timer' | 'tasks' | 'history' | 'settings';
 
 const PAGE_TRANSITION = {
-  duration: 0.28,
+  duration: 0.34,
   ease: [0.16, 1, 0.3, 1] as const,
 };
 const PAGE_VARIANTS = {
-  initial: { opacity: 0 },
+  initial: (direction: number) => ({ opacity: 0, x: direction * 14, scale: 0.996 }),
   animate: {
     opacity: 1,
+    x: 0,
+    scale: 1,
   },
-  exit: { opacity: 0 },
+  exit: (direction: number) => ({ opacity: 0, x: direction * -8, scale: 0.998 }),
 };
 
 const VIEW_ORDER: Record<View, number> = {
@@ -270,7 +272,7 @@ function ViewPage({ children, direction }: { children: React.ReactNode; directio
       animate="animate"
       exit="exit"
       transition={PAGE_TRANSITION}
-      className="absolute inset-0"
+      className="absolute inset-0 will-change-transform"
       // AnimatePresence(mode="sync") retains the previous route during its fade. useIsPresent flips
       // immediately, so an exiting full-screen layer can never intercept the next route's clicks.
       style={{ pointerEvents: isPresent ? 'auto' : 'none' }}

@@ -15,6 +15,8 @@
     --font-display: 'Manrope Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
     --font-number: 'Manrope Variable', 'Noto Sans SC Variable', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --font-ui-weight: 420;
+    --font-ui-tracking: 0.004em;
     --motion-fast: 140ms;
     --motion-normal: 220ms;
     --motion-slow: 320ms;
@@ -113,15 +115,19 @@
   }
 
   .font-profile-geist {
-    --font-ui: 'Geist Variable', 'Noto Sans SC Variable', 'Noto Sans SC', sans-serif;
-    --font-display: 'Geist Variable', 'Noto Sans SC Variable', 'Noto Sans SC', sans-serif;
-    --font-number: 'Geist Variable', 'Noto Sans SC Variable', system-ui, sans-serif;
+    --font-ui: 'Geist Variable', 'Microsoft YaHei UI', 'Noto Sans SC Variable', sans-serif;
+    --font-display: 'Geist Variable', 'Microsoft YaHei UI', 'Noto Sans SC Variable', sans-serif;
+    --font-number: 'Geist Variable', 'Microsoft YaHei UI', system-ui, sans-serif;
+    --font-ui-weight: 450;
+    --font-ui-tracking: -0.012em;
   }
 
   .font-profile-manrope {
     --font-ui: 'Manrope Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
     --font-display: 'Manrope Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
     --font-number: 'Manrope Variable', 'Noto Sans SC Variable', system-ui, sans-serif;
+    --font-ui-weight: 420;
+    --font-ui-tracking: 0.004em;
   }
 
   .light {
@@ -212,12 +218,12 @@
     background: rgb(var(--app-bg));
     font-family: var(--font-ui);
     font-size: 14px;
-    font-weight: 400;
+    font-weight: var(--font-ui-weight);
     line-height: 1.5;
     font-feature-settings: 'tnum', 'liga', 'kern';
     font-optical-sizing: auto;
     font-synthesis: none;
-    letter-spacing: 0;
+    letter-spacing: var(--font-ui-tracking);
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     user-select: none;

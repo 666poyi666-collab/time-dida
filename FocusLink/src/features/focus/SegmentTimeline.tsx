@@ -124,7 +124,7 @@ export function SegmentTimeline() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -3 }}
                 transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                className={`segment-chip ledger-row relative flex min-h-[76px] w-full flex-shrink-0 cursor-default items-center gap-3 rounded-[11px] py-2.5 pl-10 pr-3 ${chipBorderCls}`}
+                className={`segment-chip ledger-row relative flex min-h-[72px] w-full flex-shrink-0 cursor-default items-center gap-3 py-2.5 pl-10 pr-3 ${chipBorderCls}`}
               >
                 <span
                   className={`ledger-node ${isFocus ? 'focus' : 'pause'} ${item.isActive ? 'active' : ''}`}

@@ -292,10 +292,33 @@ async function main() {
   await delay(250);
   await evaluate('document.querySelector(\'button[aria-label="统计"]\')?.click()');
   await waitForAnyText(['时间筛选', '还没有专注记录', '加载失败']);
+  await delay(650);
   results.history = await captureScreen('history');
+  results.historyInspection = await evaluate(`(() => ({
+    cards: document.querySelectorAll('.history-insight-card').length,
+    hasRing: Boolean(document.querySelector('.history-focus-ring')),
+    columns: document.querySelectorAll('.history-column').length,
+    ranks: document.querySelectorAll('.history-rank-row').length,
+  }))()`);
   await evaluate('document.querySelector(\'button[aria-label="设置"]\')?.click()');
   await waitForAnyText(['滴答连接']);
   results.settingsLight = await captureScreen('settings-light');
+  await evaluate("window.focuslink.settings.set({ fontProfile: 'manrope' })");
+  await delay(250);
+  results.manropeFont = await evaluate(`(() => {
+    const body = getComputedStyle(document.body);
+    const preview = getComputedStyle(document.querySelector('.font-preview-manrope .settings-font-sample'));
+    return { family: body.fontFamily, weight: body.fontWeight, tracking: body.letterSpacing,
+      previewFamily: preview.fontFamily, previewTracking: preview.letterSpacing };
+  })()`);
+  await evaluate("window.focuslink.settings.set({ fontProfile: 'geist' })");
+  await delay(250);
+  results.geistFont = await evaluate(`(() => {
+    const body = getComputedStyle(document.body);
+    const preview = getComputedStyle(document.querySelector('.font-preview-geist .settings-font-sample'));
+    return { family: body.fontFamily, weight: body.fontWeight, tracking: body.letterSpacing,
+      previewFamily: preview.fontFamily, previewTracking: preview.letterSpacing };
+  })()`);
   await evaluate("window.focuslink.settings.set({ theme: 'dark' })");
   await delay(400);
   results.settingsDark = await captureScreen('settings-dark');
@@ -317,6 +340,15 @@ async function main() {
     [results.taskLightInspection.completedView, 'task completed view'],
     [!results.taskLightInspection.hasSourceSelector, 'task provider is not exposed as a source'],
     [results.taskLightInspection.shellBackdrop === 'none', 'task workspace has no backdrop filter'],
+    [results.historyInspection.cards === 3, 'history renders three insight charts'],
+    [results.historyInspection.hasRing, 'history renders focus composition ring'],
+    [results.historyInspection.columns > 0, 'history renders daily focus columns'],
+    [results.historyInspection.ranks > 0, 'history renders session ranking bars'],
+    [
+      results.manropeFont.family !== results.geistFont.family &&
+        results.manropeFont.tracking !== results.geistFont.tracking,
+      'font profiles use visibly different families and rhythm',
+    ],
     [
       results.taskLightInspection.bodyScroll[0] === results.taskLightInspection.viewport[0],
       'task workspace no horizontal overflow',
@@ -349,5 +381,10 @@ main()
     }
     await delay(300);
     if (!app.killed) app.kill();
-    fs.rmSync(userDataDir, { recursive: true, force: true });
+    fs.rmSync(userDataDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
   });

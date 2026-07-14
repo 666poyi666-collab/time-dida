@@ -33,15 +33,15 @@ const ACCENT_OPTIONS = [
 const FONT_OPTIONS = [
   {
     id: 'manrope',
-    label: '澄澈',
-    detail: '更舒展、更温润',
-    sample: '专注 Focus 24:16',
+    label: '舒展',
+    detail: '圆润舒展 · Noto Sans SC',
+    sample: '专注节奏 Focus 24:16',
   },
   {
     id: 'geist',
-    label: '精准',
-    detail: '保留当前版本字体',
-    sample: '专注 Focus 24:16',
+    label: '锐界',
+    detail: '紧凑锐利 · 微软雅黑 UI',
+    sample: '专注节奏 Focus 24:16',
   },
 ] as const satisfies ReadonlyArray<{
   id: AppSettings['fontProfile'];
@@ -599,7 +599,7 @@ export function SettingsPanel() {
                     </ChoiceBtn>
                   </div>
                 </Row>
-                <Row label="字体气质" desc="澄澈更适合长时间阅读；精准完整保留这一版字体">
+                <Row label="字体气质" desc="舒展强调阅读呼吸；锐界使用更紧凑的中文字面与数字节奏">
                   <div className="settings-font-choices" aria-label="字体气质">
                     {FONT_OPTIONS.map((font) => (
                       <button

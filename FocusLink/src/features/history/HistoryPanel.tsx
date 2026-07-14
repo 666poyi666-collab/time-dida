@@ -38,6 +38,7 @@ import {
   BatchLinkPanel,
   type SessionDetail,
 } from './HistoryBadges';
+import { HistoryInsights } from './HistoryInsights';
 
 function buildSegmentSyncStateMap(queue: SyncQueueItem[]): Record<string, SessionSyncState> {
   const latest = new Map<string, SyncQueueItem>();
@@ -725,6 +726,10 @@ export function HistoryPanel() {
             </div>
           )}
         </div>
+
+        {filteredSessions.length > 0 && (
+          <HistoryInsights sessions={filteredSessions} summary={rangeStats} range={range} />
+        )}
 
         {/* 筛选范围内无数据 */}
         {filteredSessions.length === 0 && (

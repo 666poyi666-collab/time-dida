@@ -396,6 +396,16 @@ export function TimerPanel() {
       </div>
 
       <div className="timer-face relative flex flex-1 flex-col items-center justify-center py-3 text-center">
+        <div className="timer-orbit-system" aria-hidden="true">
+          <span className="timer-orbit timer-orbit-outer" />
+          <span className="timer-orbit timer-orbit-middle" />
+          <span className="timer-orbit timer-orbit-inner" />
+          <span className="timer-orbit-axis timer-orbit-axis-a" />
+          <span className="timer-orbit-axis timer-orbit-axis-b" />
+          <span className="timer-orbit-node timer-orbit-node-a" />
+          <span className="timer-orbit-node timer-orbit-node-b" />
+          <span className="timer-orbit-node timer-orbit-node-c" />
+        </div>
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
             key={state}
@@ -421,7 +431,11 @@ export function TimerPanel() {
         >
           <FlipDigits value={formatDurationPadded(currentSegmentMs)} />
         </motion.div>
-        <div className="timer-focus-rule" aria-hidden="true">
+        <div className="timer-state-signal" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+          <i />
           <i />
         </div>
       </div>
