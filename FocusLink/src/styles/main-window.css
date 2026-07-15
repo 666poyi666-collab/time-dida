@@ -2619,7 +2619,15 @@
   }
 
   .focus-console {
-    max-width: 700px;
+    max-width: 760px;
+  }
+
+  .focus-console-header {
+    padding: 0 38px;
+  }
+
+  .focus-console-header .timer-context-strip {
+    max-width: none;
   }
 
   .timer-face {
@@ -2782,6 +2790,32 @@
     border-radius: 50%;
     background: rgb(var(--state-color));
     box-shadow: 0 0 0 4px rgb(var(--state-color) / 0.1);
+  }
+
+  .timer-controls {
+    justify-content: flex-start;
+    max-width: none !important;
+    margin-right: 0 !important;
+    margin-left: 0 !important;
+    padding: 0 38px;
+  }
+
+  .timer-controls > .btn-pause-action,
+  .timer-controls > .btn-focus-action,
+  .timer-controls > .btn-primary {
+    max-width: 310px;
+    flex: 0 0 310px;
+  }
+
+  .timer-controls > .btn-pause-action {
+    border-color: rgb(var(--app-border-strong) / 0.72);
+    background: rgb(var(--app-elevated) / 0.76);
+  }
+
+  .timer-stats {
+    max-width: none !important;
+    margin-right: 38px !important;
+    margin-left: 38px !important;
   }
 
   .focus-console[data-state='running'] .timer-activity-rail > span {
