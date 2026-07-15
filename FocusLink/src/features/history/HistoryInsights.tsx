@@ -49,6 +49,26 @@ export function HistoryInsights({ sessions, summary, range }: HistoryInsightsPro
 
   return (
     <section className="history-insights-grid" aria-label="专注数据图表">
+      <header className="history-visual-header">
+        <div>
+          <span>专注脉络</span>
+          <small>从时间构成到每日节奏</small>
+        </div>
+        <div className="history-visual-summary">
+          <span>
+            <small>有效专注</small>
+            <strong>{formatMinutes(summary.active)}</strong>
+          </span>
+          <span>
+            <small>会话</small>
+            <strong>{summary.count}</strong>
+          </span>
+          <span>
+            <small>专注率</small>
+            <strong>{Math.round(focusRatio)}%</strong>
+          </span>
+        </div>
+      </header>
       <article className="history-insight-card history-focus-ring-card">
         <header className="history-insight-header">
           <span>

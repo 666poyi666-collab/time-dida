@@ -141,6 +141,7 @@ export function TimerPanel() {
 
   const state = snapshot?.state ?? 'idle';
   const isRunning = state === 'running' || state === 'paused';
+  const segmentOrdinal = Math.max(1, snapshot?.segments.length ?? 1);
 
   const currentSegmentTaskId = useMemo(() => {
     if (!snapshot?.currentSegmentId || !snapshot.segments) return null;
@@ -395,48 +396,47 @@ export function TimerPanel() {
         </motion.div>
       </div>
 
-      <div className="timer-face relative flex flex-1 flex-col items-center justify-center py-3 text-center">
-        <div className="timer-orbit-system" aria-hidden="true">
-          <span className="timer-orbit timer-orbit-outer" />
-          <span className="timer-orbit timer-orbit-middle" />
-          <span className="timer-orbit timer-orbit-inner" />
-          <span className="timer-orbit-axis timer-orbit-axis-a" />
-          <span className="timer-orbit-axis timer-orbit-axis-b" />
-          <span className="timer-orbit-node timer-orbit-node-a" />
-          <span className="timer-orbit-node timer-orbit-node-b" />
-          <span className="timer-orbit-node timer-orbit-node-c" />
+      <div className="timer-face relative flex flex-1 flex-col justify-center">
+        <div className="timer-light-field" aria-hidden="true">
+          <span className="timer-light-plane timer-light-plane-primary" />
+          <span className="timer-light-plane timer-light-plane-secondary" />
+          <span className="timer-light-grain" />
         </div>
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.span
-            key={state}
-            className="timer-mode-caption relative z-10"
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        <div className="timer-readout">
+          <div className="timer-readout-kicker">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={state}
+                className="timer-mode-caption"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -3 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              >
+                {state === 'running'
+                  ? '正在记录专注'
+                  : state === 'paused'
+                    ? '记录已暂停'
+                    : state === 'finished'
+                      ? '本轮专注完成'
+                      : '准备开始记录'}
+              </motion.span>
+            </AnimatePresence>
+            <span className="timer-segment-index">
+              片段 {String(segmentOrdinal).padStart(2, '0')}
+            </span>
+          </div>
+          <motion.div
+            className={`timer-digit timer-primary relative z-10 text-[clamp(72px,7.6vw,108px)] font-medium leading-none tracking-[-0.065em] ${timeColorCls}`}
+            animate={{ opacity: state === 'paused' ? 0.82 : 1, y: state === 'paused' ? 2 : 0 }}
+            transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
           >
-            {state === 'running'
-              ? '保持专注'
-              : state === 'paused'
-                ? '暂停计时'
-                : state === 'finished'
-                  ? '本轮完成'
-                  : '准备进入专注'}
-          </motion.span>
-        </AnimatePresence>
-        <motion.div
-          className={`timer-digit timer-primary relative z-10 text-[clamp(72px,7.6vw,108px)] font-medium leading-none tracking-[-0.065em] ${timeColorCls}`}
-          animate={{ scale: state === 'paused' ? 0.985 : 1, y: state === 'paused' ? 1 : 0 }}
-          transition={{ type: 'spring', stiffness: 360, damping: 30 }}
-        >
-          <FlipDigits value={formatDurationPadded(currentSegmentMs)} />
-        </motion.div>
-        <div className="timer-state-signal" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-          <i />
-          <i />
+            <FlipDigits value={formatDurationPadded(currentSegmentMs)} />
+          </motion.div>
+          <div className="timer-activity-rail" aria-hidden="true">
+            <span />
+            <i />
+          </div>
         </div>
       </div>
 
