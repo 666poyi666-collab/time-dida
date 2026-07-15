@@ -2623,11 +2623,12 @@
   }
 
   .focus-console-header {
+    justify-content: flex-start !important;
     padding: 0 38px;
   }
 
   .focus-console-header .timer-context-strip {
-    max-width: none;
+    max-width: 520px;
   }
 
   .timer-face {
@@ -2804,7 +2805,7 @@
   .timer-controls > .btn-focus-action,
   .timer-controls > .btn-primary {
     max-width: 310px;
-    flex: 0 0 310px;
+    flex: 0 0 310px !important;
   }
 
   .timer-controls > .btn-pause-action {
