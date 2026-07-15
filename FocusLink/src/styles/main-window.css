@@ -2578,8 +2578,8 @@
 /* v0.11.3 — editorial focus console and one-piece analytics canvas */
 @layer components {
   .session-workspace.with-ledger {
-    grid-template-columns: minmax(570px, 1.9fr) minmax(300px, 0.92fr);
-    height: min(568px, calc(100% - 26px)) !important;
+    grid-template-columns: minmax(600px, 2.08fr) minmax(286px, 0.82fr);
+    height: min(536px, calc(100% - 32px)) !important;
     border-radius: 22px;
     background: rgb(var(--app-surface) / 0.94);
     box-shadow:
@@ -2624,11 +2624,11 @@
 
   .timer-face {
     position: relative;
-    min-height: 278px;
+    min-height: 252px;
     overflow: hidden;
     isolation: isolate;
     align-items: stretch !important;
-    padding: 34px 38px 30px !important;
+    padding: 28px 38px 24px !important;
     text-align: left;
   }
 
@@ -2642,7 +2642,10 @@
     z-index: 0;
     overflow: hidden;
     pointer-events: none;
-    mask-image: linear-gradient(90deg, #000 0 68%, transparent 100%);
+    mask-image: linear-gradient(90deg, #000 0 76%, transparent 100%);
+    background:
+      radial-gradient(circle at 19% 52%, rgb(var(--state-color) / 0.09), transparent 24%),
+      repeating-linear-gradient(90deg, transparent 0 79px, rgb(var(--app-border) / 0.11) 80px);
   }
 
   .timer-light-plane {
@@ -2663,10 +2666,10 @@
     width: 68%;
     height: 34%;
     background: linear-gradient(
-      90deg,
+      112deg,
       transparent,
-      rgb(var(--state-color) / 0.2),
-      rgb(var(--app-accent-companion) / 0.08),
+      rgb(var(--state-color) / 0.27),
+      rgb(var(--app-accent-companion) / 0.13),
       transparent
     );
   }
@@ -2753,10 +2756,13 @@
   .timer-activity-rail {
     position: relative;
     width: 100%;
-    height: 2px;
+    height: 3px;
     overflow: hidden;
     margin-top: 23px;
-    background: rgb(var(--app-border) / 0.64);
+    border-radius: 999px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 38px, rgb(var(--app-surface)) 38px 40px),
+      rgb(var(--app-border) / 0.64);
   }
 
   .timer-activity-rail > span {
@@ -2799,6 +2805,47 @@
     padding: 0 14px 18px !important;
   }
 
+  .ledger-session-footer {
+    margin: auto 18px 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgb(var(--app-border) / 0.5);
+  }
+
+  .ledger-session-footer > div:first-child {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    color: rgb(var(--app-subtle));
+    font-size: 10.5px;
+  }
+
+  .ledger-session-footer strong {
+    color: rgb(var(--app-text));
+    font-family: var(--font-number);
+    font-size: 13px;
+  }
+
+  .ledger-session-progress {
+    height: 3px;
+    overflow: hidden;
+    margin: 9px 0 7px;
+    border-radius: 999px;
+    background: rgb(var(--app-border) / 0.38);
+  }
+
+  .ledger-session-progress i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgb(var(--app-success)), rgb(var(--app-accent)));
+    transition: width 500ms var(--ease-fluid);
+  }
+
+  .ledger-session-footer small {
+    color: rgb(var(--app-subtle));
+    font-size: 10px;
+  }
+
   .timeline-ledger-row {
     border-bottom-color: rgb(var(--app-border) / 0.48);
   }
@@ -2811,7 +2858,7 @@
   .history-insights-grid {
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
-    grid-template-rows: auto minmax(160px, auto) minmax(154px, auto);
+    grid-template-rows: auto 132px 132px;
     gap: 0;
     overflow: hidden;
     margin: 0 0 14px;
@@ -2887,49 +2934,100 @@
   .history-insights-grid .history-daily-card {
     grid-column: 1 / span 7;
     grid-row: 2 / span 2;
-    padding: 18px 20px 16px;
+    padding: 14px 20px 12px;
     border-right: 1px solid rgb(var(--app-border) / 0.58);
   }
 
   .history-insights-grid .history-focus-ring-card {
     grid-column: 8 / -1;
     grid-row: 2;
-    padding: 16px 18px;
+    padding: 11px 18px;
     border-bottom: 1px solid rgb(var(--app-border) / 0.58);
   }
 
   .history-insights-grid .history-session-rank-card {
     grid-column: 8 / -1;
     grid-row: 3;
-    padding: 16px 18px;
+    padding: 11px 18px;
   }
 
   .history-column-chart {
-    height: 266px;
-    gap: clamp(5px, 0.7vw, 11px);
-    padding-top: 20px;
+    position: relative;
+    height: 206px;
+    padding: 4px 0 0;
   }
 
-  .history-column-track {
-    max-width: 26px;
-    border-radius: 3px 3px 1px 1px;
-    background: rgb(var(--app-border) / 0.18);
+  .history-column-chart svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
   }
 
-  .history-column.has-data .history-column-track i {
-    background: linear-gradient(180deg, rgb(var(--app-accent)), rgb(var(--app-accent) / 0.38));
-    box-shadow: none;
+  .history-chart-gridline {
+    stroke: rgb(var(--app-border) / 0.46);
+    stroke-width: 1;
+    stroke-dasharray: 3 7;
+  }
+
+  .history-chart-area {
+    fill: url('#focus-chart-area');
+  }
+
+  .history-chart-bar {
+    fill: rgb(var(--app-border-strong) / 0.28);
+  }
+
+  .history-column.has-data .history-chart-bar {
+    fill: url('#focus-chart-bar');
+  }
+
+  .history-chart-trend {
+    fill: none;
+    stroke: rgb(var(--app-accent));
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .history-chart-point {
+    fill: rgb(var(--app-surface));
+    stroke: rgb(var(--app-accent));
+    stroke-width: 3;
+  }
+
+  .history-chart-label,
+  .history-chart-scale {
+    fill: rgb(var(--app-subtle));
+    color: rgb(var(--app-subtle));
+    font-family: var(--font-number);
+    font-size: 9px;
+  }
+
+  .history-chart-scale {
+    position: absolute;
+    right: 0;
+    padding-left: 5px;
+    background: rgb(var(--app-surface) / 0.86);
+  }
+
+  .history-chart-scale.top {
+    top: 3px;
+  }
+
+  .history-chart-scale.bottom {
+    bottom: 30px;
   }
 
   .history-focus-ring-wrap {
-    min-height: 112px;
+    min-height: 76px;
     justify-content: flex-start;
     gap: 20px;
   }
 
   .history-focus-ring {
-    width: 94px;
-    height: 94px;
+    width: 72px;
+    height: 72px;
     box-shadow: none;
   }
 
@@ -2939,7 +3037,7 @@
   }
 
   .history-focus-ring strong {
-    font-size: 21px;
+    font-size: 18px;
   }
 
   .history-ring-legend {
@@ -2951,8 +3049,8 @@
   .history-rank-list {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 11px 18px;
-    margin-top: 12px;
+    gap: 9px 18px;
+    margin-top: 9px;
   }
 
   .history-rank-track {

@@ -42,6 +42,18 @@ export function HistoryInsights({ sessions, summary, range }: HistoryInsightsPro
   const maxDaily = Math.max(1, ...daily.map((item) => item.active));
   const maxSession = Math.max(1, ...longestSessions.map((item) => item.activeElapsedMs));
   const labelStep = daily.length > 16 ? 5 : daily.length > 9 ? 3 : 1;
+  const chartCeiling = Math.max(1, maxDaily * 1.24);
+  const chartPoints = daily.map((item, index) => {
+    const x = daily.length === 1 ? 360 : 48 + index * (624 / Math.max(1, daily.length - 1));
+    const y = 184 - (item.active / chartCeiling) * 144;
+    return { ...item, x, y };
+  });
+  const trendPath = chartPoints
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .join(' ');
+  const areaPath = chartPoints.length
+    ? `${trendPath} L ${chartPoints.at(-1)?.x ?? 672} 184 L ${chartPoints[0]?.x ?? 48} 184 Z`
+    : '';
   const ringStyle = {
     '--focus-angle': `${focusRatio * 3.6}deg`,
     '--pause-angle': `${(focusRatio + pauseRatio) * 3.6}deg`,
@@ -111,33 +123,84 @@ export function HistoryInsights({ sessions, summary, range }: HistoryInsightsPro
           </span>
           <small>最高 {formatMinutes(maxDaily)}</small>
         </header>
-        <div className="history-column-chart" role="img" aria-label="每日专注时长柱状图">
-          <div className="history-chart-guide top" />
-          <div className="history-chart-guide middle" />
-          {daily.map((item, index) => {
-            const height = item.active > 0 ? Math.max(7, (item.active / maxDaily) * 100) : 2;
-            const showLabel = index % labelStep === 0 || index === daily.length - 1;
-            return (
-              <div
-                key={item.label}
-                className={`history-column ${item.active > 0 ? 'has-data' : ''}`}
-                title={`${item.label} · ${formatMinutes(item.active)} · ${item.count} 次`}
-              >
-                <div className="history-column-track">
-                  <motion.i
-                    initial={{ height: 0, opacity: 0.25 }}
-                    animate={{ height: `${height}%`, opacity: 1 }}
+        <div className="history-column-chart" role="img" aria-label="每日专注时长柱线组合图">
+          <svg viewBox="0 0 720 224" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="focus-chart-area" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="rgb(var(--app-accent))" stopOpacity="0.2" />
+                <stop offset="100%" stopColor="rgb(var(--app-accent))" stopOpacity="0" />
+              </linearGradient>
+              <linearGradient id="focus-chart-bar" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="rgb(var(--app-accent))" />
+                <stop
+                  offset="100%"
+                  stopColor="rgb(var(--app-accent-companion))"
+                  stopOpacity="0.54"
+                />
+              </linearGradient>
+            </defs>
+            {[40, 112, 184].map((y) => (
+              <line key={y} className="history-chart-gridline" x1="48" x2="672" y1={y} y2={y} />
+            ))}
+            {areaPath && <path className="history-chart-area" d={areaPath} />}
+            {chartPoints.map((point, index) => {
+              const showLabel = index % labelStep === 0 || index === chartPoints.length - 1;
+              const barWidth = Math.max(8, Math.min(28, 410 / Math.max(7, chartPoints.length)));
+              const barHeight = point.active > 0 ? Math.max(5, 184 - point.y) : 2;
+              return (
+                <g
+                  key={point.label}
+                  className={`history-column ${point.active > 0 ? 'has-data' : ''}`}
+                >
+                  <title>{`${point.label} · ${formatMinutes(point.active)} · ${point.count} 次`}</title>
+                  <motion.rect
+                    className="history-chart-bar"
+                    x={point.x - barWidth / 2}
+                    width={barWidth}
+                    rx={barWidth / 2}
+                    initial={{ y: 184, height: 0, opacity: 0.28 }}
+                    animate={{
+                      y: 184 - barHeight,
+                      height: barHeight,
+                      opacity: point.active > 0 ? 1 : 0.34,
+                    }}
                     transition={{
-                      duration: 0.48,
+                      duration: 0.58,
                       delay: Math.min(index * 0.018, 0.22),
                       ease: [0.16, 1, 0.3, 1],
                     }}
                   />
-                </div>
-                <span>{showLabel ? shortDay(item.label) : ''}</span>
-              </div>
-            );
-          })}
+                  {showLabel && (
+                    <text className="history-chart-label" x={point.x} y="214" textAnchor="middle">
+                      {shortDay(point.label)}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+            {trendPath && (
+              <motion.path
+                className="history-chart-trend"
+                d={trendPath}
+                initial={{ pathLength: 0, opacity: 0 }}
+                animate={{ pathLength: 1, opacity: 1 }}
+                transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+              />
+            )}
+            {chartPoints
+              .filter((point) => point.active > 0)
+              .map((point) => (
+                <circle
+                  key={`${point.label}-point`}
+                  className="history-chart-point"
+                  cx={point.x}
+                  cy={point.y}
+                  r="4"
+                />
+              ))}
+          </svg>
+          <span className="history-chart-scale top">{formatMinutes(chartCeiling)}</span>
+          <span className="history-chart-scale bottom">0</span>
         </div>
       </article>
 

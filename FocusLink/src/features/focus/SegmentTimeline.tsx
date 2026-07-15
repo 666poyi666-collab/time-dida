@@ -52,6 +52,16 @@ export function SegmentTimeline() {
     return item.durationMs;
   };
 
+  const focusDuration = items.reduce(
+    (total, item) => total + (item.type === 'focus' ? getDisplayDuration(item) : 0),
+    0,
+  );
+  const pauseDuration = items.reduce(
+    (total, item) => total + (item.type === 'pause' ? getDisplayDuration(item) : 0),
+    0,
+  );
+  const focusShare = Math.round((focusDuration / Math.max(1, focusDuration + pauseDuration)) * 100);
+
   if (items.length === 0) {
     return (
       <div className="timeline-container timeline-empty flex h-full min-h-0 flex-col overflow-hidden rounded-[18px]">
@@ -163,6 +173,16 @@ export function SegmentTimeline() {
           })}
         </AnimatePresence>
       </div>
+      <footer className="ledger-session-footer">
+        <div>
+          <span>本轮连续性</span>
+          <strong>{focusShare}%</strong>
+        </div>
+        <div className="ledger-session-progress" aria-hidden="true">
+          <i style={{ width: `${focusShare}%` }} />
+        </div>
+        <small>{pauseCount === 0 ? '保持连续专注' : `经历 ${pauseCount} 次暂停`}</small>
+      </footer>
     </div>
   );
 }

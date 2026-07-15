@@ -297,8 +297,13 @@ async function main() {
   results.historyInspection = await evaluate(`(() => ({
     cards: document.querySelectorAll('.history-insight-card').length,
     hasRing: Boolean(document.querySelector('.history-focus-ring')),
+    hasUnifiedCanvas: Boolean(document.querySelector('.history-visual-header')),
+    hasCombinationChart: Boolean(document.querySelector('.history-chart-trend')) &&
+      Boolean(document.querySelector('.history-chart-area')),
     columns: document.querySelectorAll('.history-column').length,
     ranks: document.querySelectorAll('.history-rank-row').length,
+    cardBorders: [...document.querySelectorAll('.history-insight-card')]
+      .map((card) => getComputedStyle(card).borderTopWidth),
   }))()`);
   await evaluate('document.querySelector(\'button[aria-label="设置"]\')?.click()');
   await waitForAnyText(['滴答连接']);
@@ -350,6 +355,9 @@ async function main() {
     [!results.taskLightInspection.hasSourceSelector, 'task provider is not exposed as a source'],
     [results.taskLightInspection.shellBackdrop === 'none', 'task workspace has no backdrop filter'],
     [results.historyInspection.cards === 3, 'history renders three insight charts'],
+    [results.historyInspection.hasUnifiedCanvas, 'history charts share one analytics canvas'],
+    [results.historyInspection.hasCombinationChart, 'history renders the bar-line-area trend'],
+    [results.historyInspection.cardBorders.every((width) => width === '0px'), 'history charts avoid nested card borders'],
     [results.historyInspection.hasRing, 'history renders focus composition ring'],
     [results.historyInspection.columns > 0, 'history renders daily focus columns'],
     [results.historyInspection.ranks > 0, 'history renders session ranking bars'],
