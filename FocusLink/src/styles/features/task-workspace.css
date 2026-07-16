@@ -429,6 +429,18 @@
     background: rgb(var(--app-accent) / 0.055);
   }
 
+  .task-workbench-row.current::before {
+    content: '';
+    position: absolute;
+    top: 9px;
+    bottom: 9px;
+    left: 0;
+    width: 3px;
+    border-radius: 0 999px 999px 0;
+    background: rgb(var(--app-accent));
+    box-shadow: 0 0 0 3px rgb(var(--app-accent) / 0.07);
+  }
+
   .task-workbench-row.completed {
     color: rgb(var(--app-muted));
   }
@@ -521,6 +533,7 @@
 
   .task-row-title-line strong {
     min-width: 0;
+    flex: 0 1 auto;
     overflow: hidden;
     color: rgb(var(--app-text));
     font-size: 13.5px;
@@ -531,7 +544,8 @@
   }
 
   .task-current-chip,
-  .task-child-chip {
+  .task-child-chip,
+  .task-priority-chip {
     flex: 0 0 auto;
     border-radius: 5px;
     padding: 2px 6px;
@@ -544,6 +558,31 @@
   .task-child-chip {
     color: rgb(var(--app-subtle));
     background: rgb(var(--app-surface-2));
+  }
+
+  .task-current-chip.paused {
+    color: rgb(var(--app-pause));
+    background: rgb(var(--app-pause) / 0.08);
+  }
+
+  .task-priority-chip {
+    border: 1px solid currentColor;
+    background: transparent;
+  }
+
+  .task-priority-chip.priority-high {
+    color: rgb(var(--app-danger));
+    background: rgb(var(--app-danger) / 0.07);
+  }
+
+  .task-priority-chip.priority-medium {
+    color: rgb(var(--app-warning));
+    background: rgb(var(--app-warning) / 0.07);
+  }
+
+  .task-priority-chip.priority-low {
+    color: rgb(var(--app-info));
+    background: rgb(var(--app-info) / 0.065);
   }
 
   .task-row-meta {
@@ -567,21 +606,13 @@
     white-space: nowrap;
   }
 
-  .task-row-meta > span > i {
-    width: 6px;
-    height: 6px;
-    flex: 0 0 6px;
-    border-radius: 2px;
-    background: rgb(var(--app-border-strong));
-  }
-
   .task-row-meta .overdue {
     color: rgb(var(--app-danger));
   }
 
   .task-focus-action,
   .task-restore-action {
-    min-width: 58px;
+    min-width: 80px;
     height: 30px;
     flex: 0 0 auto;
     display: inline-flex;
@@ -602,6 +633,11 @@
       color var(--motion-fast) ease,
       border-color var(--motion-fast) ease,
       background-color var(--motion-fast) ease;
+  }
+
+  .task-focus-action {
+    opacity: 0.72;
+    transform: translateX(0);
   }
 
   .task-workbench-row:hover .task-focus-action,

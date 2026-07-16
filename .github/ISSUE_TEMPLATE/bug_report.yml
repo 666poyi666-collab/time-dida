@@ -13,7 +13,7 @@ body:
     attributes:
       label: FocusLink 版本
       description: 在「设置 → 关于」中可查看，或查看 FocusLink/package.json。
-      placeholder: "0.11.4"
+      placeholder: "0.11.5"
     validations:
       required: true
 

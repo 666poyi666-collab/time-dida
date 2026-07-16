@@ -7,7 +7,11 @@ import { formatDuration, formatDateTime, formatRelative, formatMinutes } from '.
 import {
   filterSessionsByRange,
   formatShortDate,
+  getDayRange,
   getRange,
+  isSameLocalDay,
+  shiftLocalDay,
+  startOfDay,
   summarizeSessions,
   toDateInput,
   type RangePreset,
@@ -67,8 +71,7 @@ type PickerTarget =
   | { kind: 'batch-all'; sessionId: string; title: string };
 
 const RANGE_PRESETS: Array<{ id: RangePreset; label: string }> = [
-  { id: 'today', label: '今天' },
-  { id: 'yesterday', label: '昨天' },
+  { id: 'today', label: '单日' },
   { id: '7d', label: '近 7 天' },
   { id: '15d', label: '半个月' },
   { id: '30d', label: '1 个月' },
@@ -108,15 +111,19 @@ export function HistoryPanel() {
   const [tomatodoStatusBySession, setTomatodoStatusBySession] = useState<
     Record<string, Record<string, TomatodoSegmentStatus>>
   >({});
-  const [rangePreset, setRangePreset] = useState<RangePreset>('7d');
+  const [rangePreset, setRangePreset] = useState<RangePreset>('today');
+  const [dayCursor, setDayCursor] = useState(() => startOfDay(Date.now()));
   const [customStart, setCustomStart] = useState(toDateInput(Date.now()));
   const [customEnd, setCustomEnd] = useState(toDateInput(Date.now()));
   const [segmentFilter, setSegmentFilter] = useState<Record<string, SegmentFilter>>({});
   const tomatodoDefaultSubject: TomatodoSubject = settings?.tomatodo.defaultSubject ?? '学习';
 
   const range = useMemo(
-    () => getRange(rangePreset, customStart, customEnd),
-    [rangePreset, customStart, customEnd],
+    () =>
+      rangePreset === 'today'
+        ? getDayRange(dayCursor)
+        : getRange(rangePreset, customStart, customEnd),
+    [rangePreset, customStart, customEnd, dayCursor],
   );
   const filteredSessions = useMemo(() => filterSessionsByRange(sessions, range), [sessions, range]);
   const rangeStats = useMemo(() => summarizeSessions(filteredSessions), [filteredSessions]);
@@ -127,6 +134,28 @@ export function HistoryPanel() {
     sessionSyncMeta[sessionId] ?? persistedSyncStates[sessionId] ?? NOT_SYNCED_STATE;
 
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  const dayCursorIsToday = isSameLocalDay(dayCursor, Date.now());
+  const dayCursorDate = new Date(dayCursor);
+  const dayCursorLabel = dayCursorDate.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  const dayCursorWeekday = dayCursorDate.toLocaleDateString('zh-CN', { weekday: 'short' });
+  const dayCursorFullLabel = `${dayCursorLabel} · ${dayCursorWeekday}`;
+
+  const selectRangePreset = (next: RangePreset) => {
+    if (next === 'today') setDayCursor(startOfDay(Date.now()));
+    setRangePreset(next);
+  };
+
+  const moveSingleDay = (amount: -1 | 1) => {
+    setDayCursor((current) => {
+      const next = startOfDay(shiftLocalDay(current, amount));
+      return Math.min(next, startOfDay(Date.now()));
+    });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -645,20 +674,6 @@ export function HistoryPanel() {
     );
   }
 
-  if (sessions.length === 0) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 text-fg-subtle">
-        <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-bg-subtle/60">
-          <Icon.Inbox size="xl" className="opacity-50" />
-        </div>
-        <div className="text-center">
-          <p className="text-[13px] font-medium text-fg-muted">还没有专注记录</p>
-          <p className="mt-1 text-[11px] text-fg-subtle">开始第一次专注后会出现在这里</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="history-page h-full overflow-y-auto px-6 py-4">
       <div className="history-shell mx-auto max-w-5xl">
@@ -667,17 +682,58 @@ export function HistoryPanel() {
           <div className="mb-2.5 flex items-center justify-between gap-3">
             <div className="flex items-center gap-1.5 text-[14px] font-semibold text-fg">
               <Icon.Calendar size="sm" tone="accent" />
-              时间筛选
+              时间范围
             </div>
             <div className="flex items-center gap-2 text-[12px] text-fg-subtle">
-              <span>
-                {formatShortDate(range.start)} - {formatShortDate(range.end)}
-              </span>
-              <span className="rounded-md border border-border/60 bg-bg-subtle/40 px-1.5 py-0.5">
-                {filteredSessions.length} / {sessions.length} 条
-              </span>
+              {rangePreset === 'today' ? (
+                <span className="rounded-md border border-border/60 bg-bg-subtle/40 px-2 py-0.5">
+                  {filteredSessions.length} 条记录
+                </span>
+              ) : (
+                <>
+                  <span>
+                    {formatShortDate(range.start)} - {formatShortDate(range.end)}
+                  </span>
+                  <span className="rounded-md border border-border/60 bg-bg-subtle/40 px-1.5 py-0.5">
+                    {filteredSessions.length} / {sessions.length} 条
+                  </span>
+                </>
+              )}
             </div>
           </div>
+          {rangePreset === 'today' && (
+            <div className="history-day-navigator" aria-label="单日日期导航">
+              <button
+                type="button"
+                className="motion-press"
+                onClick={() => moveSingleDay(-1)}
+                aria-label="前一天"
+                title="前一天"
+              >
+                <Icon.ChevronLeft size="sm" />
+              </button>
+              <button
+                type="button"
+                className="history-day-current motion-press"
+                onClick={() => setDayCursor(startOfDay(Date.now()))}
+                aria-label={dayCursorIsToday ? `当前日期：${dayCursorFullLabel}` : '回到今天'}
+                title={dayCursorIsToday ? dayCursorFullLabel : '回到今天'}
+              >
+                <strong>{dayCursorFullLabel}</strong>
+                <span>{dayCursorIsToday ? '今天' : '单日数据'}</span>
+              </button>
+              <button
+                type="button"
+                className="motion-press"
+                onClick={() => moveSingleDay(1)}
+                disabled={dayCursorIsToday}
+                aria-label="后一天"
+                title={dayCursorIsToday ? '今天之后没有统计数据' : '后一天'}
+              >
+                <Icon.ChevronRight size="sm" />
+              </button>
+            </div>
+          )}
           <div className="history-filter-row flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap gap-1">
               {RANGE_PRESETS.map((item) => (
@@ -688,7 +744,8 @@ export function HistoryPanel() {
                       ? 'bg-accent text-accent-fg'
                       : 'border border-border/60 bg-bg-subtle/50 text-fg-muted hover:bg-bg-subtle hover:text-fg'
                   }`}
-                  onClick={() => setRangePreset(item.id)}
+                  onClick={() => selectRangePreset(item.id)}
+                  aria-pressed={rangePreset === item.id}
                 >
                   {item.label}
                 </button>
@@ -746,7 +803,7 @@ export function HistoryPanel() {
                 <button
                   key={preset}
                   className="motion-press rounded-md border border-border/60 bg-bg-card/50 px-3 py-1 text-[11.5px] font-medium text-fg-muted hover:text-fg"
-                  onClick={() => setRangePreset(preset)}
+                  onClick={() => selectRangePreset(preset)}
                 >
                   {preset === '7d' ? '近7天' : preset === '15d' ? '半个月' : '1个月'}
                 </button>

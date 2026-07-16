@@ -660,6 +660,7 @@ export function SettingsPanel() {
             <Section title="专注小窗" desc="主题、透明度、显示策略和手动收纳控制">
               <Row label="跟随主界面主题">
                 <Toggle
+                  label="跟随主界面主题"
                   checked={settings.miniWindow.followMainTheme}
                   onChange={(v) =>
                     update({ miniWindow: { ...settings.miniWindow, followMainTheme: v } })
@@ -703,12 +704,13 @@ export function SettingsPanel() {
                   max="1"
                   step="0.02"
                   value={settings.miniWindow.opacity}
+                  aria-label="小窗透明度"
                   onChange={(e) => {
                     const v = Number(e.target.value);
                     window.focuslink.mini.setOpacity(v);
                     update({ miniWindow: { ...settings.miniWindow, opacity: v } });
                   }}
-                  className="w-40"
+                  className="settings-opacity-slider w-40"
                 />
               </Row>
               <Row
@@ -716,6 +718,7 @@ export function SettingsPanel() {
                 desc="主窗口最小化或隐藏到托盘时，自动弹出专注小窗"
               >
                 <Toggle
+                  label="主窗口隐藏时自动显示小窗"
                   checked={settings.miniWindow.autoShowOnMainHide}
                   onChange={(v) =>
                     update({ miniWindow: { ...settings.miniWindow, autoShowOnMainHide: v } })
@@ -724,6 +727,7 @@ export function SettingsPanel() {
               </Row>
               <Row label="专注开始时自动显示小窗" desc="开始专注时若主窗口不在前台，自动显示小窗">
                 <Toggle
+                  label="专注开始时自动显示小窗"
                   checked={settings.miniWindow.autoShowOnFocusStart}
                   onChange={(v) =>
                     update({ miniWindow: { ...settings.miniWindow, autoShowOnFocusStart: v } })
@@ -732,6 +736,7 @@ export function SettingsPanel() {
               </Row>
               <Row label="专注结束后自动隐藏小窗" desc="专注结束时自动隐藏小窗（默认关）">
                 <Toggle
+                  label="专注结束后自动隐藏小窗"
                   checked={settings.miniWindow.autoHideOnFocusEnd}
                   onChange={(v) =>
                     update({ miniWindow: { ...settings.miniWindow, autoHideOnFocusEnd: v } })
@@ -1084,6 +1089,7 @@ export function SettingsPanel() {
               >
                 <Row label="启用番茄 Todo 同步" desc="自动匹配六大学科；未识别时使用下方默认分类">
                   <Toggle
+                    label="启用番茄 Todo 同步"
                     checked={settings.tomatodo.enabled}
                     onChange={(v) => update({ tomatodo: { ...settings.tomatodo, enabled: v } })}
                   />
@@ -1201,30 +1207,38 @@ export function SettingsPanel() {
               <Section title="系统与后台运行">
                 <Row label="最小化到托盘">
                   <Toggle
+                    label="最小化到托盘"
                     checked={settings.minimizeToTray}
                     onChange={(v) => update({ minimizeToTray: v })}
                   />
                 </Row>
                 <Row label="关闭窗口时最小化到托盘">
                   <Toggle
+                    label="关闭窗口时最小化到托盘"
                     checked={settings.closeToTray}
                     onChange={(v) => update({ closeToTray: v })}
                   />
                 </Row>
                 <Row label="启动后最小化到托盘" desc="手动启动也隐藏主界面；开机自启动会自动进托盘">
                   <Toggle
+                    label="启动后最小化到托盘"
                     checked={settings.startMinimizedToTray}
                     onChange={(v) => update({ startMinimizedToTray: v })}
                   />
                 </Row>
                 <Row label="启动时显示专注小窗">
                   <Toggle
+                    label="启动时显示专注小窗"
                     checked={settings.showMiniOnStart}
                     onChange={(v) => update({ showMiniOnStart: v })}
                   />
                 </Row>
                 <Row label="开机自启动" desc="系统登录时带隐藏参数启动，不弹出主界面">
-                  <Toggle checked={settings.autoStart} onChange={(v) => update({ autoStart: v })} />
+                  <Toggle
+                    label="开机自启动"
+                    checked={settings.autoStart}
+                    onChange={(v) => update({ autoStart: v })}
+                  />
                 </Row>
               </Section>
             </>
@@ -1394,19 +1408,26 @@ function SyncModeChoice({
   );
 }
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
     <button
+      type="button"
       onClick={() => onChange(!checked)}
-      className={`motion-press toggle-track ${
-        checked ? 'bg-accent' : 'bg-bg-subtle border border-border/50'
-      }`}
-      style={{ boxShadow: checked ? 'inset 0 1px 0 rgb(255 255 255 / 0.12)' : 'none' }}
+      className={`motion-press toggle-track ${checked ? 'checked' : ''}`}
+      role="switch"
+      aria-checked={checked}
+      aria-label={`${label}：${checked ? '已开启，点击关闭' : '已关闭，点击开启'}`}
+      title={`${label}：${checked ? '已开启' : '已关闭'}`}
     >
-      <span
-        className={`toggle-thumb ${checked ? 'translate-x-4' : 'translate-x-0.5'}`}
-        style={{ boxShadow: '0 1px 3px rgb(0 0 0 / 0.15), 0 0 0 0.5px rgb(0 0 0 / 0.05)' }}
-      />
+      <span className="toggle-thumb" />
     </button>
   );
 }

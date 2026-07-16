@@ -40,10 +40,9 @@ export function getRange(
   customEnd: string,
   now = Date.now(),
 ): TimeRange {
-  if (preset === 'today') return { start: startOfDay(now), end: endOfDay(now) };
+  if (preset === 'today') return getDayRange(now);
   if (preset === 'yesterday') {
-    const y = now - DAY_MS;
-    return { start: startOfDay(y), end: endOfDay(y) };
+    return getDayRange(shiftLocalDay(now, -1));
   }
   if (preset === 'custom') {
     const start = Date.parse(customStart + 'T00:00:00');
@@ -55,6 +54,21 @@ export function getRange(
   }
   const days = preset === '7d' ? 7 : preset === '15d' ? 15 : 30;
   return { start: startOfDay(now - (days - 1) * DAY_MS), end: endOfDay(now) };
+}
+
+/** Build a local-calendar-day range. Date#setDate keeps the navigation correct across DST. */
+export function getDayRange(day: number): TimeRange {
+  return { start: startOfDay(day), end: endOfDay(day) };
+}
+
+export function shiftLocalDay(day: number, amount: number): number {
+  const next = new Date(day);
+  next.setDate(next.getDate() + amount);
+  return next.getTime();
+}
+
+export function isSameLocalDay(left: number, right: number): boolean {
+  return formatDayLabel(left) === formatDayLabel(right);
 }
 
 export function filterSessionsByRange(sessions: FocusSession[], range: TimeRange): FocusSession[] {

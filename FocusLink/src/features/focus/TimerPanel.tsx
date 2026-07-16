@@ -14,6 +14,15 @@ import {
 import type { TimerSnapshot, Task } from '@shared/types';
 import { TaskPicker } from '../tasks/TaskPicker';
 
+function formatClockTime(timestamp: number | null | undefined): string | null {
+  if (!timestamp) return null;
+  return new Date(timestamp).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
 function useDisplayValues(snapshot: TimerSnapshot | null) {
   const [now, setNow] = useState(Date.now());
 
@@ -43,7 +52,7 @@ function StateBadge({ state }: { state: string }) {
     { label: string; dotCls: string; pillCls: string; pulse?: boolean }
   > = {
     idle: {
-      label: '未开始',
+      label: '准备专注',
       dotCls: 'bg-fg-subtle',
       pillCls: 'border-border/50 bg-bg-subtle/40 text-fg-muted',
     },
@@ -78,6 +87,8 @@ function StateBadge({ state }: { state: string }) {
       exit={{ opacity: 0, scale: 0.94, y: 2 }}
       transition={{ type: 'spring', stiffness: 520, damping: 34 }}
       className={`status-chip px-2.5 py-1 text-[11.5px] ${c.pillCls}`}
+      role="status"
+      aria-live="polite"
     >
       <span className="relative flex h-1.5 w-1.5">
         <span
@@ -196,6 +207,15 @@ export function TimerPanel() {
       }
       const snap = await window.focuslink.timer.toggle();
       useStore.getState().setSnapshot(snap);
+      if (state === 'idle') {
+        addToast('已开始专注 · 未关联任务', 'success');
+      } else if (state === 'running') {
+        useStore.setState((store) => ({
+          toasts: store.toasts.filter((toast) => !/^已开始(?:新一轮)?专注/.test(toast.message)),
+        }));
+      } else if (state === 'paused') {
+        addToast('已继续专注', 'success');
+      }
     } catch (e) {
       addToast('操作失败：' + (e as Error).message, 'error');
     }
@@ -282,9 +302,9 @@ export function TimerPanel() {
 
   const toggleLabel =
     state === 'running'
-      ? '暂停'
+      ? '暂停专注'
       : state === 'paused'
-        ? '继续'
+        ? '继续专注'
         : state === 'finished'
           ? '开始新专注'
           : '开始专注';
@@ -325,6 +345,14 @@ export function TimerPanel() {
       : state === 'paused' || state === 'idle' || state === 'finished'
         ? 'btn-focus-action'
         : 'btn-primary';
+  const sessionStartedAt = snapshot?.segments[0]?.startedAt ?? null;
+  const stateMoment =
+    state === 'running'
+      ? formatClockTime(sessionStartedAt)
+      : state === 'paused'
+        ? formatClockTime(snapshot?.currentPauseStartedAt)
+        : null;
+  const stateMomentLabel = state === 'paused' ? '暂停于' : '开始于';
 
   return (
     <div
@@ -416,14 +444,22 @@ export function TimerPanel() {
                 {state === 'running'
                   ? '正在记录专注'
                   : state === 'paused'
-                    ? '记录已暂停'
+                    ? '本次暂停已持续'
                     : state === 'finished'
                       ? '本轮专注完成'
                       : '准备开始记录'}
               </motion.span>
             </AnimatePresence>
-            <span className="timer-segment-index">
-              片段 {String(segmentOrdinal).padStart(2, '0')}
+            <span className="timer-readout-meta">
+              {stateMoment && (
+                <span className="timer-state-time">
+                  <Icon.Clock size="xs" />
+                  {stateMomentLabel} {stateMoment}
+                </span>
+              )}
+              <span className="timer-segment-index">
+                片段 {String(segmentOrdinal).padStart(2, '0')}
+              </span>
             </span>
           </div>
           <motion.div

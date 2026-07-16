@@ -1936,6 +1936,73 @@
     border-bottom: 1px solid rgb(var(--app-border) / 0.52);
   }
 
+  .history-day-navigator {
+    width: min(100%, 440px);
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) 36px;
+    align-items: stretch;
+    gap: 7px;
+    margin: 0 auto 12px;
+    padding: 6px;
+    border: 1px solid rgb(var(--app-border) / 0.82);
+    border-radius: 12px;
+    background:
+      linear-gradient(180deg, rgb(var(--app-elevated) / 0.9), rgb(var(--app-surface) / 0.84)),
+      rgb(var(--app-surface));
+    box-shadow: 0 8px 24px -22px rgb(var(--app-text) / 0.4);
+  }
+
+  .history-day-navigator > button {
+    min-width: 0;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgb(var(--app-border) / 0.76);
+    border-radius: 8px;
+    color: rgb(var(--app-muted));
+    background: rgb(var(--app-surface-2) / 0.56);
+    transition:
+      color var(--motion-fast) ease,
+      border-color var(--motion-fast) ease,
+      background-color var(--motion-fast) ease;
+  }
+
+  .history-day-navigator > button:hover:not(:disabled) {
+    border-color: rgb(var(--app-accent) / 0.42);
+    color: rgb(var(--app-accent));
+    background: rgb(var(--app-accent) / 0.08);
+  }
+
+  .history-day-navigator > button:disabled {
+    border-color: transparent;
+    color: rgb(var(--app-subtle) / 0.48);
+    background: rgb(var(--app-surface-2) / 0.28);
+  }
+
+  .history-day-navigator > .history-day-current {
+    flex-direction: column;
+    gap: 1px;
+    border-color: rgb(var(--app-accent) / 0.28);
+    color: rgb(var(--app-text));
+    background: rgb(var(--app-accent) / 0.075);
+  }
+
+  .history-day-current strong {
+    overflow: hidden;
+    font-size: 12.5px;
+    font-weight: 650;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .history-day-current span {
+    color: rgb(var(--app-accent));
+    font-size: 10.5px;
+    font-weight: 650;
+  }
+
   .history-insights-grid {
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -2542,20 +2609,48 @@
   .toggle-track {
     position: relative;
     display: inline-flex;
-    width: 36px;
-    height: 20px;
+    width: 42px;
+    height: 24px;
     flex: 0 0 auto;
     align-items: center;
+    border: 1px solid rgb(var(--app-border-strong) / 0.82);
     border-radius: 99px;
-    transition: background-color var(--motion-fast) ease;
+    background: rgb(var(--app-surface-3) / 0.9);
+    box-shadow:
+      0 1px 2px rgb(var(--app-text) / 0.08) inset,
+      0 1px 0 rgb(255 255 255 / 0.62);
+    transition:
+      border-color var(--motion-fast) ease,
+      background-color var(--motion-fast) ease,
+      box-shadow var(--motion-fast) ease;
+  }
+
+  .toggle-track.checked {
+    border-color: rgb(var(--app-accent));
+    background: rgb(var(--app-accent));
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.22) inset,
+      0 0 0 2px rgb(var(--app-accent) / 0.08);
   }
 
   .toggle-thumb {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
     background: white;
+    box-shadow:
+      0 1px 3px rgb(0 0 0 / 0.2),
+      0 0 0 0.5px rgb(0 0 0 / 0.08);
+    transform: translateX(2px);
     transition: transform var(--motion-normal) var(--ease-out);
+  }
+
+  .toggle-track.checked .toggle-thumb {
+    transform: translateX(20px);
+  }
+
+  .settings-opacity-slider {
+    accent-color: rgb(var(--app-accent));
   }
 
   .eyebrow,
@@ -2742,6 +2837,34 @@
     font-size: 10px;
     font-weight: 560;
     letter-spacing: 0.08em;
+  }
+
+  .timer-readout-meta,
+  .timer-state-time {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .timer-readout-meta {
+    flex: 0 0 auto;
+    gap: 10px;
+  }
+
+  .timer-state-time {
+    gap: 4px;
+    color: rgb(var(--app-muted));
+    font-family: var(--font-number);
+    font-size: 11px;
+    font-weight: 620;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .focus-console[data-state='running'] .timer-state-time {
+    color: rgb(var(--app-success));
+  }
+
+  .focus-console[data-state='paused'] .timer-state-time {
+    color: rgb(var(--app-pause));
   }
 
   .timer-primary {

@@ -19,7 +19,7 @@ const outputDir = path.resolve(
   process.argv[3] || path.join(os.tmpdir(), `focuslink-ui-states-${Date.now()}`),
 );
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'focuslink-ui-smoke-'));
-const port = 9400 + Math.floor(Math.random() * 400);
+let port = 0;
 
 if (!fs.existsSync(executable)) {
   throw new Error(`FocusLink executable not found: ${executable}`);
@@ -48,6 +48,17 @@ async function waitForPage() {
   let lastError;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
+      if (!port) {
+        const activePortFile = path.join(userDataDir, 'DevToolsActivePort');
+        if (fs.existsSync(activePortFile)) {
+          const [rawPort] = fs.readFileSync(activePortFile, 'utf8').split(/\r?\n/);
+          const discoveredPort = Number.parseInt(rawPort, 10);
+          if (Number.isInteger(discoveredPort) && discoveredPort > 0) {
+            port = discoveredPort;
+          }
+        }
+      }
+      if (!port) throw new Error('DevToolsActivePort is not ready');
       const response = await fetch(`http://127.0.0.1:${port}/json/list`);
       const targets = await response.json();
       const page = targets.find(
@@ -62,12 +73,27 @@ async function waitForPage() {
   throw new Error(`Timed out waiting for Electron page: ${lastError?.message || 'unknown error'}`);
 }
 
-function send(method, params = {}) {
+function attachMessageHandler(connection) {
+  connection.on('message', (raw) => {
+    const message = JSON.parse(raw.toString());
+    if (!message.id || !pending.has(message.id)) return;
+    const request = pending.get(message.id);
+    pending.delete(message.id);
+    if (message.error) request.reject(new Error(message.error.message));
+    else request.resolve(message.result);
+  });
+}
+
+function sendTo(connection, method, params = {}) {
   const id = ++commandId;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
-    socket.send(JSON.stringify({ id, method, params }));
+    connection.send(JSON.stringify({ id, method, params }));
   });
+}
+
+function send(method, params = {}) {
+  return sendTo(socket, method, params);
 }
 
 async function evaluate(expression) {
@@ -88,6 +114,9 @@ async function inspectState(expectedState) {
       const consoleElement = document.querySelector('.focus-console');
       const workspace = document.querySelector('.session-workspace');
       const primary = document.querySelector('.timer-controls button');
+      const status = document.querySelector('.status-chip');
+      const stateMoment = document.querySelector('.timer-state-time');
+      const activity = document.querySelector('.timer-activity-rail > i');
       const rootStyle = getComputedStyle(document.documentElement);
       return {
         state: consoleElement?.dataset.state || null,
@@ -98,6 +127,11 @@ async function inspectState(expectedState) {
         workspaceShadow: workspace ? getComputedStyle(workspace).boxShadow : null,
         primaryBackground: primary ? getComputedStyle(primary).backgroundImage + ' ' + getComputedStyle(primary).backgroundColor : null,
         primaryText: primary?.textContent?.trim() || null,
+        primaryTime: document.querySelector('.timer-primary')?.textContent?.trim() || null,
+        statusText: status?.textContent?.trim() || null,
+        stateMomentText: stateMoment?.textContent?.trim() || null,
+        activityAnimation: activity ? getComputedStyle(activity).animationName : null,
+        ledgerVisible: Boolean(document.querySelector('.session-ledger-pane')),
         viewport: [window.innerWidth, window.innerHeight],
         bodyScroll: [document.body.scrollWidth, document.body.scrollHeight],
       };
@@ -157,6 +191,40 @@ async function waitForSelector(selector, attempts = 40) {
   );
 }
 
+async function inspectMainWindowSize(width, height) {
+  await evaluate(`window.resizeTo(${width}, ${height})`);
+  await delay(400);
+  const layout = await evaluate(`(() => ({
+    outer: [window.outerWidth, window.outerHeight],
+    viewport: [window.innerWidth, window.innerHeight],
+    bodyScroll: [document.body.scrollWidth, document.body.scrollHeight],
+  }))()`);
+  return {
+    requested: [width, height],
+    ...layout,
+  };
+}
+
+async function inspectToggle(selector) {
+  return evaluate(`(() => {
+    const toggle = document.querySelector(${JSON.stringify(selector)});
+    if (!toggle) return null;
+    const style = getComputedStyle(toggle);
+    const thumb = toggle.querySelector('.toggle-thumb');
+    return {
+      role: toggle.getAttribute('role'),
+      ariaChecked: toggle.getAttribute('aria-checked'),
+      ariaLabel: toggle.getAttribute('aria-label'),
+      checkedClass: toggle.classList.contains('checked'),
+      size: [Math.round(toggle.getBoundingClientRect().width), Math.round(toggle.getBoundingClientRect().height)],
+      borderWidth: style.borderTopWidth,
+      borderColor: style.borderTopColor,
+      backgroundColor: style.backgroundColor,
+      thumbTransform: thumb ? getComputedStyle(thumb).transform : null,
+    };
+  })()`);
+}
+
 async function main() {
   process.stderr.write('[ui-smoke] waiting for renderer\n');
   const page = await waitForPage();
@@ -165,14 +233,7 @@ async function main() {
     socket.once('open', resolve);
     socket.once('error', reject);
   });
-  socket.on('message', (raw) => {
-    const message = JSON.parse(raw.toString());
-    if (!message.id || !pending.has(message.id)) return;
-    const request = pending.get(message.id);
-    pending.delete(message.id);
-    if (message.error) request.reject(new Error(message.error.message));
-    else request.resolve(message.result);
-  });
+  attachMessageHandler(socket);
 
   await send('Page.enable');
   await send('Runtime.enable');
@@ -189,6 +250,13 @@ async function main() {
       commit: document.documentElement.dataset.appCommit || ''
     }))()`),
   };
+  const originalWindowSize = await evaluate('[window.outerWidth, window.outerHeight]');
+  results.windowSizes = {
+    large: await inspectMainWindowSize(1280, 720),
+    minimum: await inspectMainWindowSize(980, 660),
+  };
+  await evaluate(`window.resizeTo(${originalWindowSize[0]}, ${originalWindowSize[1]})`);
+  await delay(400);
   process.stderr.write('[ui-smoke] capture idle\n');
   results.idle = await capture('idle', 'idle');
   process.stderr.write('[ui-smoke] verify all accent action contrasts\n');
@@ -279,19 +347,33 @@ async function main() {
   await evaluate(`(async () => {
     const before = await window.focuslink.timer.getSnapshot();
     if (before.state !== 'idle') await window.focuslink.timer.reset();
-    return window.focuslink.timer.toggle();
+    return true;
   })()`);
+  await inspectState('idle');
+  const startClicked = await evaluate(`(() => {
+    const button = document.querySelector('.timer-controls button');
+    if (!button || !button.textContent.includes('开始专注')) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!startClicked) throw new Error('Start focus button was not clickable');
   await delay(900);
   process.stderr.write('[ui-smoke] capture running\n');
   results.running = await capture('running', 'running');
-  await evaluate('window.focuslink.timer.toggle()');
+  const pauseClicked = await evaluate(`(() => {
+    const button = document.querySelector('.timer-controls button');
+    if (!button || !button.textContent.includes('暂停专注')) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!pauseClicked) throw new Error('Pause focus button was not clickable');
   await delay(500);
   process.stderr.write('[ui-smoke] capture paused\n');
   results.paused = await capture('paused', 'paused');
   await evaluate('window.focuslink.timer.stop()');
   await delay(250);
   await evaluate('document.querySelector(\'button[aria-label="统计"]\')?.click()');
-  await waitForAnyText(['时间筛选', '还没有专注记录', '加载失败']);
+  await waitForAnyText(['时间范围', '当前时间范围没有专注记录', '加载失败']);
   await delay(650);
   results.history = await captureScreen('history');
   results.historyInspection = await evaluate(`(() => ({
@@ -302,8 +384,61 @@ async function main() {
       Boolean(document.querySelector('.history-chart-area')),
     columns: document.querySelectorAll('.history-column').length,
     ranks: document.querySelectorAll('.history-rank-row').length,
+    hasDayNavigator: Boolean(document.querySelector('.history-day-navigator')),
+    activeRange: [...document.querySelectorAll('.history-filter-row button')]
+      .find((button) => button.classList.contains('bg-accent'))?.textContent?.trim() || null,
+    nextDayDisabled: Boolean(document.querySelector('.history-day-navigator > button:last-child')?.disabled),
     cardBorders: [...document.querySelectorAll('.history-insight-card')]
       .map((card) => getComputedStyle(card).borderTopWidth),
+  }))()`);
+  results.historyTodayLabel = await evaluate(
+    `document.querySelector('.history-day-current strong')?.textContent?.trim() || null`,
+  );
+  await evaluate(`document.querySelector('.history-day-navigator > button:first-child')?.click()`);
+  await delay(220);
+  results.historyPreviousDay = await evaluate(`(() => ({
+    label: document.querySelector('.history-day-current strong')?.textContent?.trim() || null,
+    nextDisabled: Boolean(document.querySelector('.history-day-navigator > button:last-child')?.disabled),
+  }))()`);
+  await evaluate(`document.querySelector('.history-day-navigator > button:last-child')?.click()`);
+  await delay(220);
+  results.historyReturnedToday = await evaluate(`(() => ({
+    label: document.querySelector('.history-day-current strong')?.textContent?.trim() || null,
+    nextDisabled: Boolean(document.querySelector('.history-day-navigator > button:last-child')?.disabled),
+  }))()`);
+  results.historyRanges = {};
+  for (const label of ['近 7 天', '半个月', '1 个月']) {
+    const clicked = await evaluate(`(() => {
+      const button = [...document.querySelectorAll('.history-filter-row button')]
+        .find((item) => item.textContent?.trim() === ${JSON.stringify(label)});
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    if (!clicked) throw new Error(`History range button was not found: ${label}`);
+    await delay(260);
+    results.historyRanges[label] = await evaluate(`(() => ({
+      activeRange: [...document.querySelectorAll('.history-filter-row button')]
+        .find((button) => button.getAttribute('aria-pressed') === 'true')?.textContent?.trim() || null,
+      hasDayNavigator: Boolean(document.querySelector('.history-day-navigator')),
+      columns: document.querySelectorAll('.history-column').length,
+    }))()`);
+  }
+  const singleDayClicked = await evaluate(`(() => {
+    const button = [...document.querySelectorAll('.history-filter-row button')]
+      .find((item) => item.textContent?.trim() === '单日');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!singleDayClicked) throw new Error('Single-day history range button was not found');
+  await delay(260);
+  results.historyReturnedSingleDay = await evaluate(`(() => ({
+    activeRange: [...document.querySelectorAll('.history-filter-row button')]
+      .find((button) => button.getAttribute('aria-pressed') === 'true')?.textContent?.trim() || null,
+    label: document.querySelector('.history-day-current strong')?.textContent?.trim() || null,
+    nextDisabled: Boolean(document.querySelector('.history-day-navigator > button:last-child')?.disabled),
+    columns: document.querySelectorAll('.history-column').length,
   }))()`);
   await evaluate('document.querySelector(\'button[aria-label="设置"]\')?.click()');
   await waitForAnyText(['滴答连接']);
@@ -315,6 +450,22 @@ async function main() {
     tab.click();
   })()`);
   await waitForAnyText(['字体气质']);
+  const toggleSelector = '.toggle-track[aria-label^="跟随主界面主题："]';
+  results.toggleInspection = {
+    before: await inspectToggle(toggleSelector),
+  };
+  const toggleClicked = await evaluate(`(() => {
+    const toggle = document.querySelector(${JSON.stringify(toggleSelector)});
+    if (!toggle) return false;
+    toggle.click();
+    return true;
+  })()`);
+  if (!toggleClicked) throw new Error('Theme-following settings toggle was not clickable');
+  await delay(280);
+  results.toggleInspection.after = await inspectToggle(toggleSelector);
+  await evaluate(`document.querySelector(${JSON.stringify(toggleSelector)})?.click()`);
+  await delay(280);
+  results.toggleInspection.restored = await inspectToggle(toggleSelector);
   await evaluate("window.focuslink.settings.set({ fontProfile: 'manrope' })");
   await delay(250);
   results.settingsFontManrope = await captureScreen('settings-font-manrope');
@@ -341,15 +492,40 @@ async function main() {
     [results.buildIdentity.version === packageVersion, 'packaged version matches package.json'],
     [results.buildIdentity.commit === expectedCommit, 'packaged commit matches generated metadata'],
     [results.running.workspaceClass.includes('state-running'), 'running workspace state class'],
-    [results.running.primaryText === '暂停', 'running primary action'],
+    [results.running.primaryText === '暂停专注', 'running primary action'],
+    [results.running.statusText === '专注中', 'running status is explicit'],
+    [
+      Boolean(results.running.stateMomentText?.startsWith('开始于')),
+      'running start time is visible',
+    ],
+    [results.running.primaryTime !== '00:00', 'visible timer advances after UI start'],
+    [results.running.activityAnimation !== 'none', 'running activity rail is animated'],
+    [results.running.ledgerVisible, 'running ledger opens after UI start'],
     [results.paused.workspaceClass.includes('state-paused'), 'paused workspace state class'],
-    [results.paused.primaryText === '继续', 'paused primary action'],
+    [results.paused.primaryText === '继续专注', 'paused primary action'],
+    [Boolean(results.paused.stateMomentText?.startsWith('暂停于')), 'pause time is visible'],
     [results.idle.primaryBackground.includes('78, 78, 178'), 'idle primary uses brand accent'],
     [results.paused.primaryBackground.includes('78, 78, 178'), 'resume uses brand accent'],
     [results.running.successToken === '19 132 89', 'focus green token'],
     [results.paused.pauseToken === '194 75 91', 'pause red token'],
     [results.idle.bodyScroll[0] === results.idle.viewport[0], 'no horizontal overflow'],
     [results.idle.bodyScroll[1] === results.idle.viewport[1], 'no vertical overflow'],
+    [
+      results.windowSizes.large.outer[0] === 1280 && results.windowSizes.large.outer[1] === 720,
+      'main window accepts 1280 by 720 bounds',
+    ],
+    [
+      results.windowSizes.large.bodyScroll[0] <= results.windowSizes.large.viewport[0],
+      'main window has no horizontal overflow at 1280 by 720',
+    ],
+    [
+      results.windowSizes.minimum.outer[0] >= 980 && results.windowSizes.minimum.outer[1] >= 660,
+      'main window enforces its 980 by 660 minimum bounds',
+    ],
+    [
+      results.windowSizes.minimum.bodyScroll[0] <= results.windowSizes.minimum.viewport[0],
+      'main window has no horizontal overflow at minimum size',
+    ],
     [results.taskLightInspection.theme === 'light', 'task workspace light theme'],
     [results.taskLightInspection.completedView, 'task completed view'],
     [!results.taskLightInspection.hasSourceSelector, 'task provider is not exposed as a source'],
@@ -364,6 +540,75 @@ async function main() {
     [results.historyInspection.hasRing, 'history renders focus composition ring'],
     [results.historyInspection.columns > 0, 'history renders daily focus columns'],
     [results.historyInspection.ranks > 0, 'history renders session ranking bars'],
+    [results.historyInspection.hasDayNavigator, 'history defaults to single-day navigation'],
+    [results.historyInspection.activeRange === '单日', 'history defaults to today'],
+    [results.historyInspection.nextDayDisabled, 'history cannot navigate beyond today'],
+    [
+      results.historyPreviousDay.label !== results.historyTodayLabel,
+      'history previous-day control changes the selected day',
+    ],
+    [!results.historyPreviousDay.nextDisabled, 'history can navigate forward from a previous day'],
+    [
+      results.historyReturnedToday.label === results.historyTodayLabel &&
+        results.historyReturnedToday.nextDisabled,
+      'history next-day control returns to today and stops at the future boundary',
+    ],
+    [
+      results.historyRanges['近 7 天']?.activeRange === '近 7 天' &&
+        results.historyRanges['近 7 天']?.columns === 7 &&
+        !results.historyRanges['近 7 天']?.hasDayNavigator,
+      'history switches to a real seven-day chart',
+    ],
+    [
+      results.historyRanges['半个月']?.activeRange === '半个月' &&
+        results.historyRanges['半个月']?.columns === 15 &&
+        !results.historyRanges['半个月']?.hasDayNavigator,
+      'history switches to a real fifteen-day chart',
+    ],
+    [
+      results.historyRanges['1 个月']?.activeRange === '1 个月' &&
+        results.historyRanges['1 个月']?.columns === 30 &&
+        !results.historyRanges['1 个月']?.hasDayNavigator,
+      'history switches to a real thirty-day chart',
+    ],
+    [
+      results.historyReturnedSingleDay.activeRange === '单日' &&
+        results.historyReturnedSingleDay.label === results.historyTodayLabel &&
+        results.historyReturnedSingleDay.nextDisabled &&
+        results.historyReturnedSingleDay.columns === 1,
+      'history returns from range presets to today single-day data',
+    ],
+    [results.toggleInspection.before?.role === 'switch', 'settings toggle uses switch semantics'],
+    [
+      results.toggleInspection.before?.size?.[0] === 42 &&
+        results.toggleInspection.before?.size?.[1] === 24,
+      'settings toggle keeps a clear 42 by 24 pixel shape',
+    ],
+    [
+      Number.parseFloat(results.toggleInspection.before?.borderWidth || '0') > 0,
+      'settings toggle keeps a visible border',
+    ],
+    [
+      results.toggleInspection.before?.ariaChecked !==
+        results.toggleInspection.after?.ariaChecked &&
+        results.toggleInspection.before?.checkedClass !==
+          results.toggleInspection.after?.checkedClass,
+      'settings toggle click updates aria-checked and checked styling',
+    ],
+    [
+      results.toggleInspection.before?.backgroundColor !==
+        results.toggleInspection.after?.backgroundColor &&
+        results.toggleInspection.before?.thumbTransform !==
+          results.toggleInspection.after?.thumbTransform,
+      'settings toggle click visibly changes its track and thumb',
+    ],
+    [
+      results.toggleInspection.restored?.ariaChecked ===
+        results.toggleInspection.before?.ariaChecked &&
+        results.toggleInspection.restored?.checkedClass ===
+          results.toggleInspection.before?.checkedClass,
+      'settings toggle can restore its original state',
+    ],
     [
       results.manropeFont.family !== results.geistFont.family &&
         results.manropeFont.tracking !== results.geistFont.tracking,
@@ -401,10 +646,14 @@ main()
     }
     await delay(300);
     if (!app.killed) app.kill();
-    fs.rmSync(userDataDir, {
-      recursive: true,
-      force: true,
-      maxRetries: 10,
-      retryDelay: 100,
-    });
+    try {
+      fs.rmSync(userDataDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
+    } catch (cleanupError) {
+      process.stderr.write(`[ui-smoke] cleanup warning: ${cleanupError.message}\n`);
+    }
   });

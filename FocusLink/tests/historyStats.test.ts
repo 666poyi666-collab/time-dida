@@ -3,9 +3,12 @@ import type { FocusSession } from '@shared/types';
 import {
   filterSessionsByRange,
   formatDayLabel,
+  getDayRange,
   getRange,
   groupByDay,
   groupByWeek,
+  isSameLocalDay,
+  shiftLocalDay,
   summarizeSessions,
 } from '../src/features/history/historyStats';
 
@@ -33,6 +36,16 @@ function session(id: string, startedAt: number, activeMinutes: number): FocusSes
 }
 
 describe('history stats and range grouping', () => {
+  it('builds and moves an exact local day without allowing range spillover', () => {
+    const selected = at(2026, 7, 17, 19);
+    const range = getDayRange(selected);
+
+    expect(formatDayLabel(range.start)).toBe('2026-07-17');
+    expect(formatDayLabel(range.end)).toBe('2026-07-17');
+    expect(isSameLocalDay(shiftLocalDay(selected, -1), at(2026, 7, 16))).toBe(true);
+    expect(isSameLocalDay(shiftLocalDay(selected, 1), at(2026, 7, 18))).toBe(true);
+  });
+
   it('builds an inclusive recent 7 day range', () => {
     const range = getRange('7d', '', '', at(2026, 6, 30));
 

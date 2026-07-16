@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { Project, Task } from '@shared/types';
+import type { Project, Task, TimerState } from '@shared/types';
 import { useStore } from '../../app/store';
 import { Icon, Spinner } from '../../ui/Icon';
 import { TaskTree, type TaskTreeRowContext } from './TaskTree';
@@ -40,7 +40,6 @@ export function TaskWorkspace() {
     useStore();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [provider, setProvider] = useState<'local' | 'dida-cli' | 'ticktick-oauth' | null>(null);
   const [selectedProject, setSelectedProject] = useState('');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<TaskFilter>('open');
@@ -75,7 +74,6 @@ export function TaskWorkspace() {
         if (!result.ok) throw new Error(result.error);
         setTasks(result.data.tasks);
         setProjects(result.data.projects);
-        setProvider(result.data.provider);
         setLastRefresh(result.data.refreshedAt);
         setCompletedLoaded(includeCompleted);
         setTicktickTasks(result.data.tasks);
@@ -281,7 +279,7 @@ export function TaskWorkspace() {
             </span>
             <div>
               <strong>滴答清单</strong>
-              <span>{providerLabel(provider)}</span>
+              <span>按清单浏览任务</span>
             </div>
           </div>
 
@@ -330,7 +328,7 @@ export function TaskWorkspace() {
           <div className="task-navigation-status">
             <span className={loadError ? 'error' : 'ready'} />
             <div>
-              <strong>{loadError ? '连接需要检查' : '云端状态可用'}</strong>
+              <strong>{loadError ? '连接需要检查' : '滴答连接正常'}</strong>
               <small>{lastRefresh ? `${formatRefreshTime(lastRefresh)} 更新` : '正在连接'}</small>
             </div>
           </div>
@@ -462,6 +460,7 @@ export function TaskWorkspace() {
                       }
                       mutating={mutatingTaskIds.has(context.task.id)}
                       currentTaskId={snapshot?.currentTaskId ?? null}
+                      timerState={snapshot?.state ?? 'idle'}
                       onToggleCompleted={() => toggleCompleted(context.task)}
                       onFocus={() => focusTask(context.task)}
                     />
@@ -530,12 +529,14 @@ function WorkbenchTaskRow({
   project,
   mutating,
   currentTaskId,
+  timerState,
   onToggleCompleted,
   onFocus,
 }: TaskTreeRowContext & {
   project?: Project;
   mutating: boolean;
   currentTaskId: string | null;
+  timerState: TimerState;
   onToggleCompleted: () => void;
   onFocus: () => void;
 }) {
@@ -571,14 +572,27 @@ function WorkbenchTaskRow({
       </button>
       <div className="task-row-copy">
         <div className="task-row-title-line">
-          <strong>{task.title}</strong>
-          {current && <span className="task-current-chip">当前专注</span>}
-          {hasChildren && <span className="task-child-chip">{childCount}</span>}
+          <strong title={task.title}>{task.title}</strong>
+          {current && (
+            <span className={`task-current-chip ${timerState === 'paused' ? 'paused' : ''}`}>
+              {timerState === 'running' ? '专注中' : timerState === 'paused' ? '已暂停' : '已关联'}
+            </span>
+          )}
+          {hasChildren && (
+            <span className="task-child-chip" title={`${childCount} 个直接子任务`}>
+              {childCount} 项
+            </span>
+          )}
+          {(task.priority ?? 0) > 0 && (
+            <span className={`task-priority-chip priority-${priorityTone(task.priority)}`}>
+              {priorityLabel(task.priority)}
+            </span>
+          )}
         </div>
         <div className="task-row-meta">
           {project && (
             <span>
-              <i style={{ background: project.color ?? undefined }} />
+              <Icon.ListTree size="xs" />
               {project.name}
             </span>
           )}
@@ -588,18 +602,12 @@ function WorkbenchTaskRow({
               {formatDueDate(task.dueDate)}
             </span>
           )}
-          {(task.priority ?? 0) > 0 && (
-            <span>
-              <Icon.Flag size="xs" />
-              {priorityLabel(task.priority)}
-            </span>
-          )}
         </div>
       </div>
       {!task.isCompleted && (
         <button type="button" className="task-focus-action" onClick={onFocus}>
           <Icon.Play size="xs" />
-          {current ? '已关联' : '专注'}
+          {current ? '已关联' : '开始专注'}
         </button>
       )}
     </div>
@@ -648,7 +656,7 @@ function CompletedTaskList({
                   {parentTitle && <span>{parentTitle}</span>}
                   {project && (
                     <span>
-                      <i style={{ background: project.color ?? undefined }} />
+                      <Icon.ListTree size="xs" />
                       {project.name}
                     </span>
                   )}
@@ -888,11 +896,10 @@ function priorityLabel(priority: number | null): string {
   return '低优先级';
 }
 
-function providerLabel(provider: 'local' | 'dida-cli' | 'ticktick-oauth' | null): string {
-  if (provider === 'dida-cli') return 'CLI 已连接';
-  if (provider === 'ticktick-oauth') return 'OAuth 已连接';
-  if (provider === 'local') return '正在寻找滴答连接';
-  return '正在连接';
+function priorityTone(priority: number | null): 'high' | 'medium' | 'low' {
+  if ((priority ?? 0) >= 5) return 'high';
+  if ((priority ?? 0) >= 3) return 'medium';
+  return 'low';
 }
 
 function toErrorMessage(value: unknown): string {

@@ -6,3 +6,4 @@
 *.exe binary
 *.woff binary
 *.woff2 binary
+release-v*/FocusLink-*-x64*.exe filter=lfs diff=lfs merge=lfs -text
