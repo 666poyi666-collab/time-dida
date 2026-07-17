@@ -1,13 +1,6 @@
-/* Main-window shell, focus console, ledger, picker, toast and shared controls.
-   Design language "安静的桌面时间仪器" (Quiet Desktop Time Instrument): matte
-   warm-neutral canvas, hairline rules instead of chrome, a 58/42 stage with a
-   matte tick dial, 84px IBM Plex Mono hero numerals, solid instrument keys
-   (teal = start/resume, red = pause, ink = stop), and a plain-text session
-   ledger. Accent is a sparing highlight. Owns: app shell + ambient field,
-   global rail/nav, button system, inputs, toast, error surfaces, focus timer
-   panel, segment ledger, task picker overlay, and all main-window responsive
-   rules. History, settings and toggle styles live in src/styles/features
-   (other owners). No backdrop-filter, no glow, no gradient borders. */
+/* Main-window shell and stage-1 focus instrument for v0.12. Quiet remains
+   typographically restrained while the shared canvas, optical edges and
+   state-aware highlights provide the expressive material layer. */
 
 @layer components {
   /* ─── Shared primitives ─────────────────────────────────── */
@@ -52,6 +45,45 @@
     z-index: 0;
     overflow: hidden;
     pointer-events: none;
+  }
+
+  .ambient-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 700ms var(--ease-fluid);
+  }
+
+  .ambient-field[data-renderer='canvas'] .ambient-canvas {
+    opacity: 1;
+  }
+
+  .ambient-field[data-renderer='canvas'] .ambient-glow {
+    opacity: 0;
+  }
+
+  .ambient-grain {
+    position: absolute;
+    inset: -30%;
+    opacity: 0.075;
+    background-image:
+      repeating-radial-gradient(
+        circle at 30% 40%,
+        rgb(var(--app-text) / 0.13) 0 0.45px,
+        transparent 0.7px 3px
+      ),
+      repeating-linear-gradient(112deg, rgb(var(--material-edge) / 0.08) 0 1px, transparent 1px 5px);
+    background-size:
+      5px 5px,
+      11px 11px;
+    mix-blend-mode: soft-light;
+    transform: rotate(0.001deg);
+  }
+
+  .dark .ambient-grain {
+    opacity: 0.045;
   }
 
   .ambient-field::before {
@@ -151,7 +183,11 @@
     width: 78px;
     padding: 18px 0 16px;
     border-right: 1px solid rgb(var(--app-border));
-    background: rgb(var(--app-bg));
+    background:
+      linear-gradient(180deg, rgb(var(--material-edge) / 0.2), transparent 32%),
+      rgb(var(--app-bg) / 0.76);
+    box-shadow: 1px 0 0 rgb(var(--material-edge) / 0.3) inset;
+    backdrop-filter: blur(var(--material-blur)) saturate(var(--material-saturation));
   }
 
   .global-brand {
@@ -291,8 +327,17 @@
     z-index: 0;
     height: auto;
     border-radius: inherit;
-    background: rgb(var(--app-ink));
-    box-shadow: var(--shadow-xs);
+    border: 1px solid rgb(var(--material-edge) / 0.18);
+    background:
+      radial-gradient(
+        circle at var(--pointer-x) var(--pointer-y),
+        rgb(var(--app-accent) / 0.25),
+        transparent 64%
+      ),
+      linear-gradient(145deg, rgb(var(--app-ink)), rgb(var(--app-ink) / 0.88));
+    box-shadow:
+      0 1px 0 rgb(var(--material-edge) / 0.18) inset,
+      var(--shadow-sm);
   }
 
   /* Bottom timer status capsule */
@@ -512,9 +557,11 @@
     width: 100%;
     height: 100%;
     min-height: 0;
+    isolation: isolate;
   }
 
   .focus-instrument {
+    position: relative;
     display: flex;
     min-width: 0;
     min-height: 0;
@@ -522,6 +569,34 @@
     flex-direction: column;
     align-items: center;
     padding: 18px 48px 20px;
+  }
+
+  .focus-instrument::before {
+    content: '';
+    position: absolute;
+    inset: 4% 5% 3%;
+    z-index: -1;
+    border-radius: 42% 58% 48% 52% / 56% 46% 54% 44%;
+    background:
+      radial-gradient(circle at 50% 38%, rgb(var(--material-edge) / 0.5), transparent 42%),
+      radial-gradient(circle at 62% 48%, rgb(var(--app-accent) / 0.08), transparent 54%);
+    filter: blur(24px);
+    opacity: 0.64;
+    transform: translateZ(0);
+    transition:
+      opacity 600ms var(--ease-fluid),
+      background 600ms var(--ease-fluid);
+  }
+
+  .focus-console[data-state='running'] .focus-instrument::before {
+    opacity: 0.92;
+  }
+
+  .focus-console[data-state='paused'] .focus-instrument::before {
+    background:
+      radial-gradient(circle at 50% 38%, rgb(var(--material-edge) / 0.34), transparent 42%),
+      radial-gradient(circle at 62% 48%, rgb(var(--app-pause) / 0.1), transparent 54%);
+    opacity: 0.76;
   }
 
   .focus-console.with-ledger .focus-instrument {
@@ -546,7 +621,7 @@
   }
 
   .timer-context-label {
-    color: rgb(var(--app-subtle));
+    color: rgb(var(--app-muted) / 0.8);
     font-size: 10.5px;
     font-weight: 500;
     letter-spacing: 0.14em;
@@ -565,7 +640,7 @@
   }
 
   .timer-context-title.is-empty {
-    color: rgb(var(--app-subtle));
+    color: rgb(var(--app-muted));
     font-weight: 450;
   }
 
@@ -695,6 +770,7 @@
 
   /* ── Instrument: matte tick dial, hero numerals, quiet meta line ── */
   .timer-instrument {
+    position: relative;
     display: flex;
     min-height: 0;
     flex: 1 1 auto;
@@ -704,12 +780,61 @@
     padding: 8px 0 2px;
   }
 
+  .timer-instrument::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(46vh, 390px);
+    aspect-ratio: 1;
+    border: 1px solid rgb(var(--material-edge) / 0.32);
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 50% 44%, rgb(var(--material-edge) / 0.24), transparent 44%),
+      radial-gradient(circle at 50% 50%, rgb(var(--app-accent) / 0.045), transparent 68%);
+    box-shadow:
+      0 1px 0 rgb(var(--material-edge) / 0.46) inset,
+      0 24px 70px -54px rgb(var(--app-accent) / 0.64);
+    pointer-events: none;
+    transform: translate(-50%, -58%);
+  }
+
+  .dark .timer-instrument::before {
+    border-color: rgb(var(--material-edge) / 0.1);
+    background:
+      radial-gradient(circle at 50% 44%, rgb(var(--material-edge) / 0.07), transparent 44%),
+      radial-gradient(circle at 50% 50%, rgb(var(--app-accent) / 0.06), transparent 68%);
+    box-shadow:
+      0 1px 0 rgb(var(--material-edge) / 0.08) inset,
+      0 24px 70px -54px rgb(var(--app-accent) / 0.54);
+  }
+
   /* Matte tick dial: hairline ticks only, no glow, no gradient. */
   .timer-dial {
+    position: relative;
+    z-index: 1;
     display: block;
     width: clamp(228px, 36vh, 300px);
     height: auto;
     flex: 0 0 auto;
+  }
+
+  .timer-dial-atmosphere {
+    fill: rgb(var(--app-surface) / 0.2);
+    stroke: rgb(var(--material-edge) / 0.24);
+    stroke-width: 1;
+  }
+
+  .timer-dial-orbit {
+    fill: none;
+    stroke: rgb(var(--app-border-strong) / 0.12);
+    stroke-width: 0.75;
+    stroke-dasharray: 1 8;
+  }
+
+  .timer-dial-orbit.orbit-inner {
+    stroke-dasharray: 0.7 11;
+    opacity: 0.72;
   }
 
   .timer-dial-base {
@@ -751,6 +876,7 @@
     stroke: rgb(var(--app-accent));
     stroke-width: 2;
     stroke-linecap: round;
+    filter: drop-shadow(0 3px 6px rgb(var(--app-accent) / 0.28));
   }
 
   .timer-dial-needle circle {
@@ -759,6 +885,7 @@
 
   .focus-console[data-state='paused'] .timer-dial-needle line {
     stroke: rgb(var(--app-pause));
+    filter: drop-shadow(0 3px 6px rgb(var(--app-pause) / 0.26));
   }
 
   .focus-console[data-state='paused'] .timer-dial-needle circle {
@@ -773,6 +900,12 @@
   .focus-console[data-state='finished'] .timer-dial-needle circle,
   .focus-console[data-state='stopping'] .timer-dial-needle circle {
     fill: rgb(var(--app-subtle));
+  }
+
+  .timer-dial-pin {
+    fill: rgb(var(--material-edge) / 0.9);
+    stroke: rgb(var(--app-ink) / 0.24);
+    stroke-width: 0.8;
   }
 
   .timer-readout-meta {
@@ -939,6 +1072,7 @@
      active 落 --app-*-active + 压下 translateY(1px)，spring 回弹 130ms。 */
   .timer-btn-main,
   .timer-btn-stop {
+    position: relative;
     display: inline-flex;
     min-height: 44px;
     align-items: center;
@@ -955,6 +1089,36 @@
       background-color var(--motion-fast) var(--ease-out),
       border-color var(--motion-fast) var(--ease-out),
       transform var(--motion-fast) var(--ease-spring);
+    overflow: hidden;
+    box-shadow:
+      0 1px 0 rgb(var(--material-edge) / 0.2) inset,
+      var(--shadow-sm);
+  }
+
+  .timer-btn-main::before,
+  .timer-btn-stop::before {
+    content: '';
+    position: absolute;
+    inset: 1px;
+    border-radius: calc(var(--radius-md) - 1px);
+    background: linear-gradient(
+      112deg,
+      transparent 12%,
+      rgb(var(--material-edge) / 0.28) 44%,
+      transparent 72%
+    );
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-78%);
+    transition:
+      opacity 100ms ease,
+      transform 460ms var(--ease-fluid);
+  }
+
+  .timer-btn-main:hover:not(:disabled)::before,
+  .timer-btn-stop:hover:not(:disabled)::before {
+    opacity: 1;
+    transform: translateX(72%);
   }
 
   /* Start / resume: solid deep-teal accent key. */
@@ -968,6 +1132,7 @@
     border-color: rgb(var(--app-accent-hover));
     background-color: rgb(var(--app-accent-hover));
     transform: translateY(-1px);
+    box-shadow: var(--shadow-glow-accent);
   }
 
   .timer-btn-main.is-start:active:not(:disabled) {
@@ -987,6 +1152,7 @@
     border-color: rgb(var(--app-pause-hover));
     background-color: rgb(var(--app-pause-hover));
     transform: translateY(-1px);
+    box-shadow: var(--shadow-glow-pause);
   }
 
   .timer-btn-main.is-pause:active:not(:disabled) {
@@ -1017,6 +1183,7 @@
     border-color: transparent;
     color: rgb(var(--app-subtle));
     background: rgb(var(--app-surface-3));
+    box-shadow: none;
   }
 
   /* ── Cumulative rows: one shared left axis under a hairline ── */
@@ -1076,7 +1243,11 @@
     flex: 1 1 42%;
     flex-direction: column;
     border-left: 1px solid rgb(var(--app-border));
-    background: transparent;
+    background:
+      linear-gradient(180deg, rgb(var(--material-edge) / 0.16), transparent 18%),
+      rgb(var(--app-surface) / 0.56);
+    box-shadow: 1px 0 0 rgb(var(--material-edge) / 0.24) inset;
+    backdrop-filter: blur(calc(var(--material-blur) * 0.72)) saturate(var(--material-saturation));
   }
 
   .timeline-container {
@@ -1159,6 +1330,21 @@
     border-bottom: 1px solid rgb(var(--app-border));
     padding: 12px 22px 12px 20px;
     background: transparent;
+    transition:
+      background-color var(--motion-normal) var(--ease-fluid),
+      border-color var(--motion-normal) var(--ease-fluid);
+  }
+
+  .ledger-row:hover {
+    background: rgb(var(--material-edge) / 0.13);
+  }
+
+  .ledger-row.is-current {
+    background: linear-gradient(90deg, rgb(var(--app-accent) / 0.075), transparent 68%);
+  }
+
+  .ledger-row.is-current.row-pause {
+    background: linear-gradient(90deg, rgb(var(--app-pause) / 0.075), transparent 68%);
   }
 
   .ledger-row:last-child {

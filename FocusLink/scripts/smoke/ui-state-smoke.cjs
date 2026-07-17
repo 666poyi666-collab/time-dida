@@ -116,6 +116,8 @@ async function inspectState(expectedState) {
       const status = document.querySelector('.status-chip');
       const stateMoment = document.querySelector('.timer-state-time');
       const activity = document.querySelector('.timer-activity-rail > i');
+      const ambient = document.querySelector('.ambient-field');
+      const ambientCanvas = document.querySelector('.ambient-canvas');
       const rootStyle = getComputedStyle(document.documentElement);
       return {
         state: consoleElement?.dataset.state || null,
@@ -130,6 +132,10 @@ async function inspectState(expectedState) {
         statusText: status?.textContent?.trim() || null,
         stateMomentText: stateMoment?.textContent?.trim() || null,
         activityAnimation: activity ? getComputedStyle(activity).animationName : null,
+        themeFamily: document.documentElement.dataset.themeFamily || null,
+        ambientRenderer: ambient?.dataset.renderer || null,
+        ambientCanvasSize: ambientCanvas ? [ambientCanvas.width, ambientCanvas.height] : null,
+        ambientFallbackGlows: document.querySelectorAll('.ambient-glow').length,
         ledgerVisible: Boolean(document.querySelector('.session-ledger-pane')),
         viewport: [window.innerWidth, window.innerHeight],
         bodyScroll: [document.body.scrollWidth, document.body.scrollHeight],
@@ -344,13 +350,57 @@ async function main() {
     return true;
   })()`);
   await inspectState('idle');
-  const startClicked = await evaluate(`(() => {
-    const button = document.querySelector('.timer-controls button');
-    if (!button || !button.textContent.includes('开始专注')) return false;
-    button.click();
-    return true;
+  results.focusActionStates = {};
+  results.focusActionStates.focus = await evaluate(`(() => {
+    document.documentElement.classList.add('kb-nav');
+    const button = document.querySelector('.timer-btn-main');
+    const stop = document.querySelector('.timer-btn-stop');
+    if (!button || !stop) return null;
+    button.focus();
+    const style = getComputedStyle(button);
+    return {
+      outlineWidth: style.outlineWidth,
+      outlineColor: style.outlineColor,
+      stopDisabled: stop.disabled,
+      stopOpacity: getComputedStyle(stop).opacity,
+    };
   })()`);
-  if (!startClicked) throw new Error('Start focus button was not clickable');
+  const startRect = await evaluate(`(() => {
+    const button = document.querySelector('.timer-btn-main');
+    if (!button) return null;
+    const rect = button.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()`);
+  if (!startRect) throw new Error('Start focus button was not found');
+  await send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: startRect.x,
+    y: startRect.y,
+  });
+  await delay(180);
+  results.focusActionStates.hover = await evaluate(`(() => {
+    const style = getComputedStyle(document.querySelector('.timer-btn-main'));
+    return { background: style.backgroundColor, transform: style.transform, shadow: style.boxShadow };
+  })()`);
+  await send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x: startRect.x,
+    y: startRect.y,
+    button: 'left',
+    clickCount: 1,
+  });
+  await delay(150);
+  results.focusActionStates.active = await evaluate(`(() => {
+    const style = getComputedStyle(document.querySelector('.timer-btn-main'));
+    return { background: style.backgroundColor, transform: style.transform };
+  })()`);
+  await send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: startRect.x,
+    y: startRect.y,
+    button: 'left',
+    clickCount: 1,
+  });
   await delay(900);
   process.stderr.write('[ui-smoke] capture running\n');
   results.running = await capture('running', 'running');
@@ -495,6 +545,28 @@ async function main() {
     [results.running.primaryTime !== '00:00', 'visible timer advances after UI start'],
     [results.running.activityAnimation !== 'none', 'running activity rail is animated'],
     [results.running.ledgerVisible, 'running ledger opens after UI start'],
+    [results.running.themeFamily === 'quiet', 'quiet is the default visual theme'],
+    [results.running.ambientRenderer === 'canvas', 'ambient field uses the canvas renderer'],
+    [
+      results.running.ambientCanvasSize?.[0] > 0 && results.running.ambientCanvasSize?.[1] > 0,
+      'ambient canvas matches a real viewport',
+    ],
+    [results.running.ambientFallbackGlows === 3, 'ambient CSS fallback remains available'],
+    [
+      Number.parseFloat(results.focusActionStates.focus?.outlineWidth || '0') > 0,
+      'keyboard focus exposes a visible primary-action outline',
+    ],
+    [
+      results.focusActionStates.focus?.stopDisabled &&
+        Number.parseFloat(results.focusActionStates.focus?.stopOpacity || '1') < 1,
+      'idle stop action has an explicit disabled state',
+    ],
+    [
+      results.focusActionStates.hover?.background !==
+        results.focusActionStates.active?.background ||
+        results.focusActionStates.hover?.transform !== results.focusActionStates.active?.transform,
+      'primary action has distinct hover and active feedback',
+    ],
     [results.paused.workspaceClass.includes('state-paused'), 'paused workspace state class'],
     [results.paused.primaryText === '继续专注', 'paused primary action'],
     [Boolean(results.paused.stateMomentText?.startsWith('暂停于')), 'pause time is visible'],

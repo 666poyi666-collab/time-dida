@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { AppSettings, TimerSnapshot } from '@shared/types';
+import { resolveThemeAppearance, resolveThemeFamily, THEME_FAMILIES } from '@shared/theme';
 import { FlipDigits } from '../../ui/FlipDigits';
 import { Icon } from '../../ui/Icon';
 import { formatDuration, formatDurationPadded } from '../../lib/time';
@@ -84,7 +85,10 @@ function applyThemeClass(settings: AppSettings): void {
   const root = document.documentElement;
   let effectiveTheme: 'dark' | 'light' = 'dark';
   if (settings.miniWindow.followMainTheme) {
-    effectiveTheme = settings.theme;
+    effectiveTheme = resolveThemeAppearance(
+      settings.theme,
+      window.matchMedia('(prefers-color-scheme: dark)').matches,
+    );
   } else if (settings.miniWindow.themeMode === 'dark') {
     effectiveTheme = 'dark';
   } else if (settings.miniWindow.themeMode === 'light') {
@@ -95,11 +99,15 @@ function applyThemeClass(settings: AppSettings): void {
 
   root.classList.toggle('light', effectiveTheme === 'light');
   root.classList.toggle('dark', effectiveTheme === 'dark');
+  THEME_FAMILIES.forEach((family) => root.classList.remove(`theme-${family}`));
+  const family = resolveThemeFamily(settings.themeFamily);
+  root.classList.add(`theme-${family}`);
+  root.dataset.themeFamily = family;
   root.classList.toggle('font-profile-geist', settings.fontProfile !== 'manrope');
   root.classList.toggle('font-profile-manrope', settings.fontProfile === 'manrope');
   Object.values(ACCENT_CLASS).forEach((className) => root.classList.remove(className));
   const accentClass = ACCENT_CLASS[settings.accentColor];
-  if (accentClass) root.classList.add(accentClass);
+  if (family !== 'quiet' && accentClass) root.classList.add(accentClass);
 }
 
 function MiniStateBadge({ state }: { state: TimerSnapshot['state'] }) {
@@ -203,7 +211,10 @@ export function MiniWindow() {
   useEffect(() => {
     if (!settings) return;
     applyThemeClass(settings);
-    if (settings.miniWindow.followMainTheme || settings.miniWindow.themeMode !== 'system') return;
+    const followsSystem =
+      (settings.miniWindow.followMainTheme && settings.theme === 'system') ||
+      (!settings.miniWindow.followMainTheme && settings.miniWindow.themeMode === 'system');
+    if (!followsSystem) return;
 
     const media = window.matchMedia('(prefers-color-scheme: light)');
     const handleSystemTheme = () => applyThemeClass(settings);

@@ -13,6 +13,7 @@ import { FlipDigits } from '../ui/FlipDigits';
 import { formatDurationPadded } from '../lib/time';
 import { getMainDisplayMs } from '@shared/focus/selectors';
 import type { AppSettings } from '@shared/types';
+import { resolveThemeAppearance, resolveThemeFamily, THEME_FAMILIES } from '@shared/theme';
 
 type View = 'timer' | 'tasks' | 'history' | 'settings';
 
@@ -154,7 +155,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (settings) applyTheme(settings);
+    if (!settings) return;
+    applyTheme(settings);
+    if (settings.theme !== 'system') return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const syncSystemTheme = () => applyTheme(settings);
+    media.addEventListener('change', syncSystemTheme);
+    return () => media.removeEventListener('change', syncSystemTheme);
   }, [settings]);
 
   return (
@@ -163,7 +170,7 @@ export default function App() {
         <div
           className={`app-shell view-${view} state-${timerState} flex h-screen w-screen flex-row overflow-hidden text-fg antialiased`}
         >
-          <AmbientField />
+          <AmbientField view={view} state={timerState} />
           <aside className="global-rail relative z-40 flex h-full shrink-0 flex-col items-center">
             <button
               type="button"
@@ -386,14 +393,18 @@ function BrandMark({ state }: { state: string }) {
 
 function applyTheme(settings: AppSettings): void {
   const root = document.documentElement;
-  root.classList.toggle('dark', settings.theme === 'dark');
-  root.classList.toggle('light', settings.theme === 'light');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const effectiveTheme = resolveThemeAppearance(settings.theme, prefersDark);
+  root.classList.toggle('dark', effectiveTheme === 'dark');
+  root.classList.toggle('light', effectiveTheme === 'light');
+  THEME_FAMILIES.forEach((family) => root.classList.remove(`theme-${family}`));
+  const family = resolveThemeFamily(settings.themeFamily);
+  root.classList.add(`theme-${family}`);
+  root.dataset.themeFamily = family;
   const accents = ['indigo', 'violet', 'emerald', 'rose', 'amber', 'sky'];
   accents.forEach((a) => root.classList.remove(`accent-${a}`));
-  if (accents.includes(settings.accentColor)) {
+  if (family !== 'quiet' && accents.includes(settings.accentColor)) {
     root.classList.add(`accent-${settings.accentColor}`);
-  } else {
-    root.classList.add('accent-indigo');
   }
   root.classList.toggle('font-profile-geist', settings.fontProfile !== 'manrope');
   root.classList.toggle('font-profile-manrope', settings.fontProfile === 'manrope');

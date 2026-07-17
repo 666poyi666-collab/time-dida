@@ -240,7 +240,10 @@ export interface AppSettings {
     linkTask: string;
     toggleMiniWindow: string;
   };
-  theme: 'dark' | 'light';
+  /** 视觉主题家族；quiet 是默认的“安静的桌面时间仪器”。 */
+  themeFamily: 'quiet' | 'dawn' | 'bloom';
+  /** 主窗口外观；system 跟随系统颜色方案。 */
+  theme: 'dark' | 'light' | 'system';
   accentColor: string;
   /** 主界面字体气质；geist 是 Lumen 默认的锐利风格，manrope 提供更温润的阅读节奏。 */
   fontProfile: 'geist' | 'manrope';
@@ -354,6 +357,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     linkTask: 'CommandOrControl+Alt+T',
     toggleMiniWindow: 'CommandOrControl+Alt+M',
   },
+  themeFamily: 'quiet',
   theme: 'light',
   accentColor: 'indigo',
   fontProfile: 'geist',

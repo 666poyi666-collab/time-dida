@@ -7,12 +7,14 @@ import {
   mergeSettings,
   resolveTickTickTaskProvider,
 } from '../shared/settingsPolicy';
+import { resolveThemeAppearance, resolveThemeFamily } from '../shared/theme';
 
 describe('settings partial update policy', () => {
   it('preserves the full settings object when the task drawer only changes taskSource', () => {
     const next = mergeSettings(DEFAULT_SETTINGS, { taskSource: 'ticktick-cli' });
 
     expect(next.taskSource).toBe('ticktick-cli');
+    expect(next.themeFamily).toBe('quiet');
     expect(next.theme).toBe(DEFAULT_SETTINGS.theme);
     expect(next.hotkeys).toEqual(DEFAULT_SETTINGS.hotkeys);
     expect(next.miniWindow).toEqual(DEFAULT_SETTINGS.miniWindow);
@@ -50,6 +52,17 @@ describe('settings partial update policy', () => {
 
     expect(detectSettingsChangedDomains(DEFAULT_SETTINGS, next)).toEqual(['theme']);
   });
+
+  it('adds the quiet light theme defaults to legacy settings and routes family changes', () => {
+    const legacySettings = { ...DEFAULT_SETTINGS } as Partial<AppSettings>;
+    delete legacySettings.themeFamily;
+    const migrated = mergeSettings(DEFAULT_SETTINGS, legacySettings);
+    const dawn = mergeSettings(migrated, { themeFamily: 'dawn', theme: 'system' });
+
+    expect(migrated.themeFamily).toBe('quiet');
+    expect(migrated.theme).toBe('light');
+    expect(detectSettingsChangedDomains(migrated, dawn)).toEqual(['theme']);
+  });
 });
 
 describe('cloud task provider policy', () => {
@@ -68,5 +81,14 @@ describe('cloud task provider policy', () => {
       'ticktick-oauth',
     );
     expect(resolveTickTickTaskProvider('ticktick-cli', { cli: false, oauth: true })).toBeNull();
+  });
+});
+
+describe('theme compatibility policy', () => {
+  it('defaults unknown families to quiet and resolves system appearance', () => {
+    expect(resolveThemeFamily(undefined)).toBe('quiet');
+    expect(resolveThemeFamily('bloom')).toBe('bloom');
+    expect(resolveThemeAppearance('system', false)).toBe('light');
+    expect(resolveThemeAppearance('system', true)).toBe('dark');
   });
 });

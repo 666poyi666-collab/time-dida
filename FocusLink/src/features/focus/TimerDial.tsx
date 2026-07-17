@@ -1,7 +1,7 @@
 // 细刻度计时仪表：一圈 60 根哑光发丝刻度（每 5 格一根稍长刻度），
 // 运行中 accent 沿刻度环填充推进，暂停态填充转 pause 红，当前位置细针标记。
 // 语义：当前片段的秒针盘 —— 每分钟一圈 60 秒，细针持续顺时针推进。
-// 纯 SVG + token 描边，无发光、无渐变、无滤镜。
+// 纯 SVG + token 描边；材质与光效由 CSS 语义 token 驱动。
 
 const SIZE = 300;
 const CENTER = SIZE / 2;
@@ -39,6 +39,9 @@ export function TimerDial({ state, displayMs }: { state: string; displayMs: numb
       role="img"
       aria-label="专注计时仪表"
     >
+      <circle className="timer-dial-atmosphere" cx={CENTER} cy={CENTER} r={R_TICK_MAJOR - 9} />
+      <circle className="timer-dial-orbit orbit-outer" cx={CENTER} cy={CENTER} r={R_BASE - 20} />
+      <circle className="timer-dial-orbit orbit-inner" cx={CENTER} cy={CENTER} r={R_NEEDLE - 30} />
       <circle className="timer-dial-base" cx={CENTER} cy={CENTER} r={R_BASE} />
       {TICKS.map((tick, i) => (
         <line
@@ -64,6 +67,7 @@ export function TimerDial({ state, displayMs }: { state: string; displayMs: numb
           <circle cx={CENTER} cy={CENTER} r={3} />
         </g>
       )}
+      <circle className="timer-dial-pin" cx={CENTER} cy={CENTER} r={1.35} />
     </svg>
   );
 }

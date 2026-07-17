@@ -37,6 +37,7 @@ export function detectSettingsChangedDomains(
 ): SettingsDomain[] {
   const domains: SettingsDomain[] = [];
   if (
+    prev.themeFamily !== next.themeFamily ||
     prev.theme !== next.theme ||
     prev.accentColor !== next.accentColor ||
     prev.fontProfile !== next.fontProfile
