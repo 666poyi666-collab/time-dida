@@ -1,62 +1,9 @@
-/* Main renderer style entry. Feature styles currently share the same token system. */
+/* Main renderer style entry. Each surface owns its own material:
+   main-window.css carries the shell/focus console, features/* carry their pages.
+   No cross-surface overrides here — keep feature recipes self-contained. */
 @import './foundation.css';
 @import './motion.css';
 @import './main-window.css';
 @import './features/task-workspace.css';
-
-/* Final main-window material pass. Kept after feature imports so every workspace shares one shell. */
-@layer components {
-  .task-workspace-shell {
-    overflow: hidden;
-    border-color: rgb(var(--app-border) / 0.72);
-    border-radius: 20px;
-    background:
-      linear-gradient(145deg, rgb(var(--app-elevated) / 0.64), transparent 44%),
-      rgb(var(--app-surface));
-    box-shadow: var(--shadow-material);
-  }
-
-  .task-workspace-shell::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 8%;
-    left: 8%;
-    z-index: 3;
-    height: 1px;
-    pointer-events: none;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgb(var(--app-accent) / 0.42),
-      rgb(var(--app-accent-companion) / 0.32),
-      transparent
-    );
-  }
-
-  .task-navigation {
-    background:
-      linear-gradient(180deg, rgb(var(--app-accent) / 0.035), transparent 34%),
-      rgb(var(--app-surface-2) / 0.4);
-  }
-
-  .task-workbench {
-    background: rgb(var(--app-surface) / 0.64);
-  }
-
-  .task-view-list button.active,
-  .task-project-list button.active {
-    border-color: rgb(var(--app-accent) / 0.1);
-    background:
-      linear-gradient(90deg, rgb(var(--app-accent) / 0.11), transparent 88%),
-      rgb(var(--app-elevated) / 0.38);
-    box-shadow: 0 8px 20px -18px rgb(var(--app-accent) / 0.48);
-  }
-
-  .task-row-linear:hover,
-  .history-session:hover {
-    background:
-      linear-gradient(90deg, rgb(var(--app-accent) / 0.055), transparent 78%),
-      rgb(var(--app-surface-2) / 0.36);
-  }
-}
+@import './features/history.css';
+@import './features/settings.css';

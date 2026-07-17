@@ -38,15 +38,15 @@ describe('settings partial update policy', () => {
     const legacySettings = { ...DEFAULT_SETTINGS } as Partial<AppSettings>;
     delete legacySettings.fontProfile;
     const migrated = mergeSettings(DEFAULT_SETTINGS, legacySettings);
-    const chosen = mergeSettings(migrated, { fontProfile: 'geist' });
+    const chosen = mergeSettings(migrated, { fontProfile: 'manrope' });
 
-    expect(migrated.fontProfile).toBe('manrope');
-    expect(chosen.fontProfile).toBe('geist');
-    expect(mergeSettings(chosen, { theme: 'dark' }).fontProfile).toBe('geist');
+    expect(migrated.fontProfile).toBe('geist');
+    expect(chosen.fontProfile).toBe('manrope');
+    expect(mergeSettings(chosen, { theme: 'dark' }).fontProfile).toBe('manrope');
   });
 
   it('routes a font-only update through the theme domain without unrelated side effects', () => {
-    const next = mergeSettings(DEFAULT_SETTINGS, { fontProfile: 'geist' });
+    const next = mergeSettings(DEFAULT_SETTINGS, { fontProfile: 'manrope' });
 
     expect(detectSettingsChangedDomains(DEFAULT_SETTINGS, next)).toEqual(['theme']);
   });

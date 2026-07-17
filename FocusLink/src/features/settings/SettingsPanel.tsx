@@ -5,7 +5,7 @@ import type { AppSettings } from '@shared/types';
 import type { TomatodoBridgeStatus } from '@shared/ipc/api';
 import { APP_VERSION } from '@shared/version';
 import { TOMATODO_SUBJECT_OPTIONS } from '@shared/tomatodoPolicy';
-import { Icon } from '../../ui/Icon';
+import { Icon, type IconProps } from '../../ui/Icon';
 
 const HOTKEY_LABELS: Record<keyof AppSettings['hotkeys'], string> = {
   toggleTimer: '开始 / 暂停 / 继续',
@@ -22,25 +22,25 @@ const TABS = [
 ] as const;
 
 const ACCENT_OPTIONS = [
-  { id: 'indigo', label: '静谧靛蓝', color: '#4e4eb2' },
-  { id: 'violet', label: '柔雾紫', color: '#71549c' },
-  { id: 'emerald', label: '松针绿', color: '#23845f' },
-  { id: 'sky', label: '湖水蓝', color: '#2f7597' },
-  { id: 'rose', label: '莓果红', color: '#b54c69' },
-  { id: 'amber', label: '暖陶金', color: '#a6692b' },
+  { id: 'indigo', label: '鸢尾靛蓝', color: '#4c58d0' },
+  { id: 'violet', label: '堇青紫', color: '#7c52c4' },
+  { id: 'emerald', label: '松石绿', color: '#0c8e5e' },
+  { id: 'rose', label: '蔷薇红', color: '#c84464' },
+  { id: 'amber', label: '琥珀金', color: '#ba6e1a' },
+  { id: 'sky', label: '晴空蓝', color: '#247ab4' },
 ] as const;
 
 const FONT_OPTIONS = [
   {
     id: 'manrope',
     label: '舒展',
-    detail: '圆润舒展 · Noto Sans SC',
+    detail: '圆润舒展 · Manrope 字面',
     sample: '专注节奏 Focus 24:16',
   },
   {
     id: 'geist',
     label: '锐界',
-    detail: '紧凑锐利 · 微软雅黑 UI',
+    detail: '紧凑锐利 · Geist 字面',
     sample: '专注节奏 Focus 24:16',
   },
 ] as const satisfies ReadonlyArray<{
@@ -456,6 +456,7 @@ export function SettingsPanel() {
 
   const oauthConnection = (
     <Section
+      icon={Icon.Lock}
       title="TickTick OAuth（备用）"
       desc="dida CLI 不可用时再使用开发者应用连接；日常使用无需配置。"
     >
@@ -470,11 +471,9 @@ export function SettingsPanel() {
         </div>
       </Row>
       {!connected ? (
-        <details className="rounded-lg border border-border/60 bg-bg-subtle/25">
-          <summary className="motion-press cursor-pointer list-none px-3 py-2 text-[11px] font-medium text-fg-muted hover:text-fg">
-            配置 OAuth 凭据
-          </summary>
-          <div className="space-y-3 border-t border-border/50 p-3">
+        <details className="settings-disclosure mt-2.5">
+          <summary className="motion-press">配置 OAuth 凭据</summary>
+          <div className="space-y-3">
             <Row label="Client ID">
               <input
                 className="input"
@@ -505,8 +504,14 @@ export function SettingsPanel() {
           </div>
         </details>
       ) : (
-        <div className="flex items-center justify-between rounded-lg border border-success/20 bg-success/10 px-4 py-3">
-          <span className="text-sm text-success">已连接（{region}）</span>
+        <div className="mt-2.5 flex items-center justify-between rounded-lg border border-success/20 bg-success/10 px-4 py-3">
+          <span className="flex items-center gap-2.5">
+            <span className="settings-status-badge tone-success">
+              <Icon.CheckCircleFilled size="xs" />
+              已连接
+            </span>
+            <span className="text-[11.5px] text-fg-muted">{region}</span>
+          </span>
           <button className="btn-ghost text-xs" onClick={handleLogout}>
             <Icon.LogOut size="sm" />
             断开
@@ -549,19 +554,43 @@ export function SettingsPanel() {
     !tomatodoBridge ||
     tomatodoBridge.state === 'not-installed' ||
     (!tomatodoBridge.connected && !tomatodoCanConnect);
+  const tomatodoBadge = (() => {
+    if (
+      tomatodoPendingError ||
+      tomatodoBridge?.state === 'launch-failed' ||
+      tomatodoBridge?.state === 'launch-timeout'
+    ) {
+      return { tone: 'tone-danger', label: '连接失败' };
+    }
+    if (tomatodoBridge?.state === 'not-installed') {
+      return { tone: 'tone-neutral', label: '未安装' };
+    }
+    if (tomatodoBridge?.state === 'restart-required') {
+      return { tone: 'tone-warning', label: '需重启' };
+    }
+    if (tomatodoBridge?.connected) {
+      return { tone: 'tone-success', label: '已连接' };
+    }
+    if (tomatodoBridge?.state === 'stopped') {
+      return { tone: 'tone-neutral', label: '未连接' };
+    }
+    return { tone: 'tone-neutral', label: '检测中' };
+  })();
 
   return (
-    <div className="settings-page flex h-full flex-col">
+    <div className="settings-page">
       {/* 设置域切换 */}
-      <div className="settings-tabs-shell shrink-0 px-6">
-        <div className="mx-auto max-w-5xl">
-          <div className="settings-tabs-bar inline-flex flex-wrap">
+      <div className="settings-tabs-shell">
+        <div className="settings-container">
+          <div className="settings-tabs-bar" role="tablist" aria-label="设置分类">
             {TABS.map((tab) => {
               const TabIcon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
+                  role="tab"
+                  aria-selected={isActive}
                   onClick={() => setActiveTab(tab.id)}
                   className={`settings-tab ${isActive ? 'active' : ''}`}
                 >
@@ -575,12 +604,16 @@ export function SettingsPanel() {
       </div>
 
       {/* Tab 内容 */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
-        <div className="mx-auto max-w-5xl">
+      <div className="settings-scroll">
+        <div className="settings-container settings-stack">
           {activeTab === 'experience' && (
             <>
               {/* 外观 */}
-              <Section title="外观" desc="明亮主题强调通透与层次；原深色主题完整保留。">
+              <Section
+                icon={Icon.Palette}
+                title="外观"
+                desc="主题、字体与强调色即时生效，并同步到跟随主界面的小窗。"
+              >
                 <Row label="界面主题" desc="切换后主窗口与跟随主题的小窗会立即更新">
                   <div className="settings-theme-choices">
                     <ChoiceBtn
@@ -599,7 +632,7 @@ export function SettingsPanel() {
                     </ChoiceBtn>
                   </div>
                 </Row>
-                <Row label="字体气质" desc="舒展强调阅读呼吸；锐界使用更紧凑的中文字面与数字节奏">
+                <Row label="字体气质" desc="舒展强调阅读呼吸；锐界收紧字面与数字节奏">
                   <div className="settings-font-choices" aria-label="字体气质">
                     {FONT_OPTIONS.map((font) => (
                       <button
@@ -648,7 +681,7 @@ export function SettingsPanel() {
                     >
                       <i />
                       {activeAccent.label}
-                      <small>动态光场</small>
+                      <small>全局生效</small>
                     </span>
                   </div>
                 </Row>
@@ -657,7 +690,11 @@ export function SettingsPanel() {
           )}
 
           {activeTab === 'experience' && (
-            <Section title="专注小窗" desc="主题、透明度、显示策略和手动收纳控制">
+            <Section
+              icon={Icon.Maximize}
+              title="专注小窗"
+              desc="主题、透明度、显示策略和手动收纳控制"
+            >
               <Row label="跟随主界面主题">
                 <Toggle
                   label="跟随主界面主题"
@@ -710,7 +747,7 @@ export function SettingsPanel() {
                     window.focuslink.mini.setOpacity(v);
                     update({ miniWindow: { ...settings.miniWindow, opacity: v } });
                   }}
-                  className="settings-opacity-slider w-40"
+                  className="settings-opacity-slider"
                 />
               </Row>
               <Row
@@ -749,7 +786,11 @@ export function SettingsPanel() {
           {activeTab === 'experience' && (
             <>
               {/* 快捷键 */}
-              <Section title="全局快捷键" desc="点击捕获新组合键；冲突时会提示并保留旧快捷键">
+              <Section
+                icon={Icon.Keyboard}
+                title="全局快捷键"
+                desc="点击捕获新组合键；冲突时会提示并保留旧快捷键"
+              >
                 {(Object.keys(HOTKEY_LABELS) as HotkeyKey[]).map((key) => {
                   const status = getHotkeyBadgeState(key, settings.hotkeys[key], hotkeyStatus);
                   const activeAccelerator = hotkeyStatus?.registered[key]?.accelerator ?? null;
@@ -806,6 +847,7 @@ export function SettingsPanel() {
             <>
               {/* 滴答清单连接方式。任务产品语义保持唯一，CLI/OAuth 只是传输实现。 */}
               <Section
+                icon={Icon.Link}
                 title="滴答连接"
                 desc="任务固定来自滴答清单；这里只选择连接方式，默认使用本机 CLI。"
               >
@@ -828,13 +870,11 @@ export function SettingsPanel() {
                 </div>
 
                 <div className="settings-provider-status">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
+                  <div className="settings-provider-status-head">
+                    <div className="settings-provider-status-title">
                       <span
-                        className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-                          cliDetected?.found
-                            ? 'bg-success/12 text-success'
-                            : 'bg-warning/12 text-warning'
+                        className={`settings-provider-status-icon ${
+                          cliDetected?.found ? 'tone-success' : 'tone-warning'
                         }`}
                       >
                         {cliDetected?.found ? (
@@ -843,8 +883,17 @@ export function SettingsPanel() {
                           <Icon.AlertCircle size="sm" />
                         )}
                       </span>
-                      <div>
-                        <p className="text-[12px] font-semibold text-fg">滴答 CLI 连接</p>
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-2 text-[12.5px] font-semibold text-fg">
+                          滴答 CLI 连接
+                          <span
+                            className={`settings-status-badge ${
+                              cliDetected?.found ? 'tone-success' : 'tone-warning'
+                            }`}
+                          >
+                            {cliDetected?.found ? '已连接' : '未连接'}
+                          </span>
+                        </p>
                         <p className="mt-0.5 text-[11.5px] text-fg-subtle">
                           {cliDetected?.found
                             ? '已就绪，可读取任务与同步专注'
@@ -861,8 +910,8 @@ export function SettingsPanel() {
                       重新探测
                     </button>
                   </div>
-                  <details className="settings-provider-advanced mt-2">
-                    <summary className="motion-press cursor-pointer list-none px-3 py-2 text-[11px] font-medium text-fg-muted hover:text-fg">
+                  <details className="settings-provider-advanced">
+                    <summary className="motion-press">
                       <span>
                         高级 CLI 配置
                         <span className="ml-2 font-normal text-fg-subtle">
@@ -1002,8 +1051,12 @@ export function SettingsPanel() {
 
           {activeTab === 'sync' && (
             <>
-              <Section title="滴答清单同步" desc="选择专注结束后的唯一主同步去向。">
-                <div className="grid grid-cols-3 gap-3 max-[760px]:grid-cols-1">
+              <Section
+                icon={Icon.Refresh}
+                title="滴答清单同步"
+                desc="选择专注结束后的唯一主同步去向。"
+              >
+                <div className="settings-sync-grid">
                   <SyncModeChoice
                     active={settings.syncMode === 'focus-record'}
                     onClick={() => update({ syncMode: 'focus-record' })}
@@ -1029,7 +1082,7 @@ export function SettingsPanel() {
                 </div>
                 {settings.syncMode !== 'local-only' && (
                   <div
-                    className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 ${
+                    className={`mt-3 flex items-center justify-between gap-4 rounded-lg border px-4 py-3 ${
                       didaFailedCount > 0
                         ? 'border-danger/25 bg-danger/8'
                         : didaPendingCount > 0
@@ -1084,6 +1137,7 @@ export function SettingsPanel() {
               </Section>
 
               <Section
+                icon={Icon.Upload}
                 title="番茄 Todo 同步"
                 desc="专注结束后先安全写入本地；待传记录由你按需连接并上传。"
               >
@@ -1117,11 +1171,9 @@ export function SettingsPanel() {
                         ))}
                       </select>
                     </Row>
-                    <details className="rounded-xl border border-border/45 bg-bg-subtle/20">
-                      <summary className="motion-press cursor-pointer list-none px-3 py-2.5 text-[11px] font-medium text-fg-muted hover:text-fg">
-                        高级：自定义数据库路径
-                      </summary>
-                      <div className="border-t border-border/40 p-3">
+                    <details className="settings-disclosure mt-2.5">
+                      <summary className="motion-press">高级：自定义数据库路径</summary>
+                      <div>
                         <input
                           className="input w-full font-mono text-xs"
                           value={settings.tomatodo.dbPath}
@@ -1136,7 +1188,7 @@ export function SettingsPanel() {
                       </div>
                     </details>
                     <div
-                      className="flex min-h-11 items-center justify-between gap-4 border-t border-border/45 pt-3"
+                      className="mt-1 flex min-h-11 items-center justify-between gap-4 border-t border-border/45 pt-3"
                       aria-live="polite"
                     >
                       <div className="flex min-w-0 items-start gap-2.5">
@@ -1156,7 +1208,7 @@ export function SettingsPanel() {
                         />
                         <div className="min-w-0">
                           <p
-                            className={`text-[12px] font-semibold ${
+                            className={`flex flex-wrap items-center gap-2 text-[12.5px] font-semibold ${
                               tomatodoPendingError ? 'text-danger' : 'text-fg'
                             }`}
                           >
@@ -1165,6 +1217,9 @@ export function SettingsPanel() {
                               : tomatodoPending > 0
                                 ? `${tomatodoPending} 条记录待上传`
                                 : '当前无待上传'}
+                            <span className={`settings-status-badge ${tomatodoBadge.tone}`}>
+                              {tomatodoBadge.label}
+                            </span>
                           </p>
                           <p className="mt-0.5 text-[11px] leading-4 text-fg-subtle">
                             {tomatodoPendingError
@@ -1204,7 +1259,7 @@ export function SettingsPanel() {
           {activeTab === 'experience' && (
             <>
               {/* 系统与后台运行 */}
-              <Section title="系统与后台运行">
+              <Section icon={Icon.Power} title="系统与后台运行">
                 <Row label="最小化到托盘">
                   <Toggle
                     label="最小化到托盘"
@@ -1246,7 +1301,11 @@ export function SettingsPanel() {
 
           {activeTab === 'experience' && (
             <>
-              <Section title="FocusLink" desc="全局快捷键驱动的专注计时器 + 滴答清单任务关联工具">
+              <Section
+                icon={Icon.Sparkles}
+                title="FocusLink"
+                desc="全局快捷键驱动的专注计时器 + 滴答清单任务关联工具"
+              >
                 <Row label="当前版本">
                   <span className="rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs font-mono text-fg-muted">
                     v{APP_VERSION}
@@ -1290,19 +1349,16 @@ function getHotkeyBadgeState(
 }
 
 function HotkeyStatusBadge({ state }: { state: HotkeyBadgeState }) {
-  const cls =
+  const tone =
     state.tone === 'ok'
-      ? 'border-success/25 bg-success/10 text-success'
+      ? 'tone-success'
       : state.tone === 'warn'
-        ? 'border-warning/25 bg-warning/10 text-warning'
+        ? 'tone-warning'
         : state.tone === 'error'
-          ? 'border-danger/25 bg-danger/10 text-danger'
-          : 'border-border bg-bg-subtle text-fg-subtle';
+          ? 'tone-danger'
+          : 'tone-neutral';
   return (
-    <span
-      className={`inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${cls}`}
-      title={state.title}
-    >
+    <span className={`settings-status-badge ${tone}`} title={state.title}>
       {state.tone === 'ok' ? <Icon.CheckCircleFilled size="xs" /> : <Icon.AlertCircle size="xs" />}
       {state.label}
     </span>
@@ -1310,10 +1366,12 @@ function HotkeyStatusBadge({ state }: { state: HotkeyBadgeState }) {
 }
 
 function Section({
+  icon: SectionIcon,
   title,
   desc,
   children,
 }: {
+  icon?: React.ComponentType<IconProps>;
   title: string;
   desc?: string;
   children: React.ReactNode;
@@ -1321,8 +1379,15 @@ function Section({
   return (
     <section className="settings-section">
       <div className="settings-section-heading">
-        <h3 className="text-[13px] font-semibold text-fg">{title}</h3>
-        {desc && <p className="mt-1 text-[11.5px] leading-relaxed text-fg-subtle">{desc}</p>}
+        {SectionIcon ? (
+          <span className="settings-section-icon" aria-hidden="true">
+            <SectionIcon size="sm" />
+          </span>
+        ) : null}
+        <div className="settings-section-copy">
+          <h3>{title}</h3>
+          {desc ? <p>{desc}</p> : null}
+        </div>
       </div>
       <div className="settings-section-content">{children}</div>
     </section>
@@ -1339,12 +1404,12 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="settings-row flex min-h-[48px] items-center justify-between gap-4">
-      <div className="min-w-0">
-        <span className="block text-[13px] text-fg">{label}</span>
-        {desc && <span className="block text-[11px] text-fg-subtle">{desc}</span>}
+    <div className="settings-row">
+      <div className="settings-row-label">
+        <span className="settings-row-title">{label}</span>
+        {desc ? <span className="settings-row-desc">{desc}</span> : null}
       </div>
-      {children}
+      <div className="settings-row-control">{children}</div>
     </div>
   );
 }

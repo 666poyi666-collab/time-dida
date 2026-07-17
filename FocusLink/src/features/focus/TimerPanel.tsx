@@ -1,4 +1,4 @@
-// 专注控制台：任务上下文、计时与账本数据保持在同一视觉层级。
+// 专注控制台：hero 式计时排版 —— 状态字幕、超大数字、克制的控制组与三格统计。
 import { useEffect, useState, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
@@ -49,58 +49,40 @@ function useDisplayValues(snapshot: TimerSnapshot | null) {
 function StateBadge({ state }: { state: string }) {
   const config: Record<
     string,
-    { label: string; dotCls: string; pillCls: string; pulse?: boolean }
+    { label: string; dotCls: string; toneCls: string; pulse?: boolean }
   > = {
-    idle: {
-      label: '准备专注',
-      dotCls: 'bg-fg-subtle',
-      pillCls: 'border-border/50 bg-bg-subtle/40 text-fg-muted',
-    },
+    idle: { label: '准备专注', dotCls: 'bg-fg-subtle', toneCls: '' },
     running: {
       label: '专注中',
       dotCls: 'bg-success',
-      pillCls: 'border-success/18 bg-success/7 text-success',
+      toneCls: 'tone-running',
       pulse: true,
     },
-    paused: {
-      label: '已暂停',
-      dotCls: 'bg-pause',
-      pillCls: 'border-pause/20 bg-pause/8 text-pause',
-    },
-    finished: {
-      label: '已结束',
-      dotCls: 'bg-success',
-      pillCls: 'border-success/18 bg-success/7 text-success',
-    },
-    stopping: {
-      label: '结束中',
-      dotCls: 'bg-fg-subtle',
-      pillCls: 'border-accent/12 bg-accent/7 text-accent',
-    },
+    paused: { label: '已暂停', dotCls: 'bg-pause', toneCls: 'tone-paused' },
+    finished: { label: '已结束', dotCls: 'bg-success', toneCls: 'tone-finished' },
+    stopping: { label: '结束中', dotCls: 'bg-fg-subtle', toneCls: 'tone-stopping' },
   };
   const c = config[state] ?? config.idle;
 
   return (
     <motion.span
-      initial={{ opacity: 0, scale: 0.92, y: -3 }}
+      initial={{ opacity: 0, scale: 0.94, y: -2 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.94, y: 2 }}
-      transition={{ type: 'spring', stiffness: 520, damping: 34 }}
-      className={`status-chip px-2.5 py-1 text-[11.5px] ${c.pillCls}`}
+      exit={{ opacity: 0, scale: 0.96, y: 2 }}
+      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      className={`status-chip ${c.toneCls}`}
       role="status"
       aria-live="polite"
     >
-      <span className="relative flex h-1.5 w-1.5">
-        <span
-          className={`relative inline-flex h-1.5 w-1.5 rounded-full ${c.dotCls} ${c.pulse ? 'motion-dot-breathe' : ''}`}
-        />
-      </span>
+      <span
+        className={`inline-flex h-1.5 w-1.5 rounded-full ${c.dotCls} ${c.pulse ? 'motion-dot-breathe' : ''}`}
+      />
       {c.label}
     </motion.span>
   );
 }
 
-// ─── 累计统计胶囊 ─────────────────────────────────────────────
+// ─── 累计统计格 ───────────────────────────────────────────────
 
 function StatPill({
   label,
@@ -123,12 +105,12 @@ function StatPill({
     danger: 'text-danger',
   }[tone];
   return (
-    <div className="stat-pill min-w-0 border-l border-border/60 px-4 first:border-l-0 first:pl-0 last:pr-0">
+    <div className="stat-pill min-w-0">
       <div className={`flex items-center gap-1.5 ${toneCls}`}>
         {icon}
-        <span className="text-[11.5px] font-medium text-fg-subtle">{label}</span>
+        <span className="text-[11px] font-medium tracking-[0.02em] text-fg-subtle">{label}</span>
       </div>
-      <span className="timer-digit motion-digit mt-1 block text-[16px] font-semibold text-fg">
+      <span className="stat-pill-value timer-digit mt-1.5 block text-[17px] font-semibold text-fg">
         {value}
       </span>
     </div>
@@ -321,9 +303,6 @@ export function TimerPanel() {
           ? { onPick: handlePickPreselect, title: '选择即将专注的任务' }
           : null;
 
-  const timeColorCls =
-    state === 'paused' ? 'text-pause' : state === 'running' ? 'text-fg' : 'text-fg-muted';
-
   const contextTitle = isRunning
     ? (currentSegmentTaskId?.title ?? sessionDefaultTitle)
     : (pendingTask?.title ?? null);
@@ -356,29 +335,31 @@ export function TimerPanel() {
 
   return (
     <div
-      className="focus-console mx-auto flex h-full w-full max-w-[720px] flex-col"
+      className="focus-console mx-auto flex h-full w-full max-w-[680px] flex-col"
       data-state={state}
     >
-      <div className="focus-console-header flex items-center justify-between gap-4">
+      <div className="focus-console-header flex items-center justify-between gap-3">
         <AnimatePresence mode="wait" initial={false}>
           <StateBadge key={state} state={state} />
         </AnimatePresence>
         <motion.div
           layout
-          className="timer-context-strip relative flex min-w-0 flex-1 items-center gap-2.5 rounded-[14px] px-2.5 py-2"
+          className="timer-context-strip relative flex min-w-0 flex-1 items-center gap-2.5 rounded-[12px] px-2.5 py-1.5"
           transition={{ type: 'spring', stiffness: 420, damping: 34 }}
         >
           <span
-            className={`timer-context-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] ${
+            className={`timer-context-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] ${
               hasContextTask ? 'text-fg-muted' : 'text-fg-subtle'
             }`}
           >
             {hasContextTask ? <Icon.Target size="sm" /> : <Icon.Inbox size="sm" />}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="text-[11.5px] font-medium text-fg-subtle">{contextSourceLabel}</div>
+            <div className="text-[10.5px] font-medium tracking-[0.02em] text-fg-subtle">
+              {contextSourceLabel}
+            </div>
             <div
-              className={`mt-0.5 truncate text-[13.5px] font-medium ${hasContextTask ? 'text-fg' : 'text-fg-subtle'}`}
+              className={`truncate text-[12.5px] font-medium ${hasContextTask ? 'text-fg' : 'text-fg-subtle'}`}
             >
               {contextTitle ?? '未选择任务'}
             </div>
@@ -425,11 +406,7 @@ export function TimerPanel() {
       </div>
 
       <div className="timer-face relative flex flex-1 flex-col justify-center">
-        <div className="timer-light-field" aria-hidden="true">
-          <span className="timer-light-plane timer-light-plane-primary" />
-          <span className="timer-light-plane timer-light-plane-secondary" />
-          <span className="timer-light-grain" />
-        </div>
+        <span className="timer-hero-glow" aria-hidden="true" />
         <div className="timer-readout">
           <div className="timer-readout-kicker">
             <AnimatePresence mode="wait" initial={false}>
@@ -439,7 +416,7 @@ export function TimerPanel() {
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -3 }}
-                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
               >
                 {state === 'running'
                   ? '正在记录专注'
@@ -463,8 +440,8 @@ export function TimerPanel() {
             </span>
           </div>
           <motion.div
-            className={`timer-digit timer-primary relative z-10 text-[clamp(72px,7.6vw,108px)] font-medium leading-none tracking-[-0.065em] ${timeColorCls}`}
-            animate={{ opacity: state === 'paused' ? 0.82 : 1, y: state === 'paused' ? 2 : 0 }}
+            className="timer-digit timer-primary relative z-10"
+            animate={{ opacity: state === 'paused' ? 0.84 : 1, y: state === 'paused' ? 2 : 0 }}
             transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
           >
             <FlipDigits value={formatDurationPadded(currentSegmentMs)} />
@@ -476,9 +453,9 @@ export function TimerPanel() {
         </div>
       </div>
 
-      <div className="timer-controls mx-auto flex w-full max-w-[500px] items-center gap-2">
+      <div className="timer-controls mx-auto flex w-full max-w-[520px] items-center gap-2.5">
         <button
-          className={`${mainActionClass} motion-press flex min-h-[46px] flex-1 items-center justify-center gap-2 text-[12.5px]`}
+          className={`${mainActionClass} motion-press flex flex-1 items-center justify-center gap-2`}
           onClick={handleToggle}
           disabled={state === 'stopping'}
         >
@@ -486,7 +463,7 @@ export function TimerPanel() {
           {toggleLabel}
         </button>
         <button
-          className="btn-outline timer-stop-action motion-press flex min-h-[46px] items-center gap-2 px-4 text-[11.5px]"
+          className="btn-outline timer-stop-action motion-press flex min-h-[50px] items-center gap-2 px-5 text-[12px]"
           onClick={handleStop}
           disabled={isIdle || isFinished || state === 'stopping'}
         >
@@ -495,7 +472,7 @@ export function TimerPanel() {
         </button>
       </div>
 
-      <div className="timer-stats mx-auto mt-6 grid w-full max-w-[560px] grid-cols-3">
+      <div className="timer-stats mx-auto mt-7 grid w-full max-w-[560px] grid-cols-3">
         <StatPill
           label="累计专注"
           value={formatDuration(cumulativeActiveMs)}

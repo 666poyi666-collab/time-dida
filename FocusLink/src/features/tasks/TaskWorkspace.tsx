@@ -346,15 +346,15 @@ export function TaskWorkspace() {
             </div>
             <div className="task-workbench-actions">
               {pendingSyncCount > 0 && (
-                <span className="task-pending-label">{pendingSyncCount} 待同步</span>
+                <span className="task-pending-label">{pendingSyncCount} 条未同步</span>
               )}
               <button
                 type="button"
                 className="task-icon-action"
                 onClick={syncAll}
                 disabled={syncing}
-                aria-label="同步专注记录"
-                title="同步专注记录"
+                aria-label="同步到滴答清单与番茄 Todo"
+                title="同步到滴答清单与番茄 Todo"
               >
                 {syncing ? <Spinner size="sm" /> : <Icon.Cloud size="sm" />}
               </button>
@@ -425,11 +425,7 @@ export function TaskWorkspace() {
 
           <div className="task-workbench-list" aria-busy={loading || refreshing}>
             {loading ? (
-              <TaskEmpty
-                icon={<Spinner size="lg" />}
-                title="正在读取滴答清单"
-                detail="只加载当前需要的任务。"
-              />
+              <TaskSkeletonList />
             ) : loadError ? (
               <TaskEmpty
                 danger
@@ -584,8 +580,12 @@ function WorkbenchTaskRow({
             </span>
           )}
           {(task.priority ?? 0) > 0 && (
-            <span className={`task-priority-chip priority-${priorityTone(task.priority)}`}>
-              {priorityLabel(task.priority)}
+            <span
+              className={`task-priority-flag priority-${priorityTone(task.priority)}`}
+              title={priorityLabel(task.priority)}
+              aria-label={priorityLabel(task.priority)}
+            >
+              <Icon.Flag size="xs" />
             </span>
           )}
         </div>
@@ -699,6 +699,26 @@ function ProjectButton({
       <span>{label}</span>
       <small>{count}</small>
     </button>
+  );
+}
+
+function TaskSkeletonList() {
+  const widths = [72, 58, 80, 64, 76, 52];
+  return (
+    <div className="task-skeleton-list" aria-label="正在读取滴答清单">
+      {widths.map((width, index) => (
+        <div className="task-skeleton-row" key={index}>
+          <span className="task-skeleton-dot" />
+          <div className="task-skeleton-lines">
+            <span className="task-skeleton-line" style={{ width: `${width}%` }} />
+            <span
+              className="task-skeleton-line"
+              style={{ width: `${Math.max(width - 34, 24)}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

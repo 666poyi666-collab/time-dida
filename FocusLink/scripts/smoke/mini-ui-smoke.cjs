@@ -30,10 +30,10 @@ function readSharedSize(exportName) {
 }
 const EXPANDED_SIZE = readSharedSize('MINI_WINDOW_EXPANDED_SIZE');
 const COLLAPSED_SIZE = readSharedSize('MINI_WINDOW_COLLAPSED_SIZE');
-const FOCUS_TOKEN = '82 190 141';
-const PAUSE_TOKEN = '224 104 119';
-const LIGHT_FOCUS_TOKEN = '19 132 89';
-const LIGHT_PAUSE_TOKEN = '194 75 91';
+const FOCUS_TOKEN = '76 192 142';
+const PAUSE_TOKEN = '255 92 104';
+const LIGHT_FOCUS_TOKEN = '12 138 91';
+const LIGHT_PAUSE_TOKEN = '224 49 60';
 const THEME_TOKENS = {
   dark: { focus: FOCUS_TOKEN, pause: PAUSE_TOKEN },
   light: { focus: LIGHT_FOCUS_TOKEN, pause: LIGHT_PAUSE_TOKEN },
@@ -877,7 +877,7 @@ function assertResult(name, result, expected) {
     [result.hasMaterialGlow, 'material glow layer'],
     [result.hasMaterialGrain, 'material grain layer'],
     [result.hasFocusAura, 'focus aura layer'],
-    [!result.hasSignal, 'no decorative signal bars'],
+    [result.hasSignal, 'signal beam layer'],
     [isTransparent(result.bodyBackground), 'transparent body'],
     [result.timeComplete, 'complete unclipped primary time'],
     [

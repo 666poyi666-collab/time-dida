@@ -1,5 +1,5 @@
 # Generate FocusLink product icons.
-# Design: quiet material tile + FocusLink focus ring + task-link dots.
+# Design: Lumen ink-navy porcelain tile + iris focus ring + task-link dots.
 # Outputs:
 # - build/icon.ico, build/icon.png
 # - build/tray.ico, build/tray.png
@@ -88,34 +88,34 @@ function Draw-AppIcon($g, $size) {
   $cy = $s / 2
 
   $shadowPath = New-RoundedRectPath ($tile + $s * 0.012) ($tile + $s * 0.018) $tileSize $tileSize $radius
-  $shadowBrush = New-Object System.Drawing.SolidBrush (New-Color "#20202C" 42)
+  $shadowBrush = New-Object System.Drawing.SolidBrush (New-Color "#0B0E1D" 96)
   $g.FillPath($shadowBrush, $shadowPath)
 
   $tilePath = New-RoundedRectPath $tile $tile $tileSize $tileSize $radius
-  $tileBrush = New-Object System.Drawing.SolidBrush (New-Color "#4E4EB2")
+  $tileBrush = New-Object System.Drawing.SolidBrush (New-Color "#181C33")
   $g.FillPath($tileBrush, $tilePath)
-  $borderPen = New-Object System.Drawing.Pen (New-Color "#8585CE" 215), ([Math]::Max(1.0, $s * 0.014))
+  $borderPen = New-Object System.Drawing.Pen (New-Color "#8D98F6" 150), ([Math]::Max(1.0, $s * 0.012))
   $g.DrawPath($borderPen, $tilePath)
 
   # Focus + link glyph. The same geometry is used in the renderer wordmark.
   $ringR = $s * 0.235
   $trackW = [Math]::Max(1.7, $s * 0.044)
-  $trackPen = New-Object System.Drawing.Pen (New-Color "#FFFFFF" 135), $trackW
+  $trackPen = New-Object System.Drawing.Pen (New-Color "#E9EDFA" 104), $trackW
   $trackPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
   $trackPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
   $g.DrawArc($trackPen, $cx - $ringR, $cy - $ringR, $ringR * 2, $ringR * 2, 198, 202)
 
-  $progressPen = New-Object System.Drawing.Pen (New-Color "#FFFFFF" 248), ([Math]::Max(2.0, $s * 0.056))
+  $progressPen = New-Object System.Drawing.Pen (New-Color "#8D98F6" 255), ([Math]::Max(2.0, $s * 0.056))
   $progressPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
   $progressPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
   $g.DrawArc($progressPen, $cx - $ringR, $cy - $ringR, $ringR * 2, $ringR * 2, 18, 202)
 
-  $linkPen = New-Object System.Drawing.Pen (New-Color "#FFFFFF" 225), ([Math]::Max(1.4, $s * 0.035))
+  $linkPen = New-Object System.Drawing.Pen (New-Color "#F2F4FC" 235), ([Math]::Max(1.4, $s * 0.035))
   $linkPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
   $linkPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
   $g.DrawLine($linkPen, $cx - $s * 0.13, $cy, $cx + $s * 0.13, $cy)
 
-  $nodeBrush = New-Object System.Drawing.SolidBrush (New-Color "#A6FFD7")
+  $nodeBrush = New-Object System.Drawing.SolidBrush (New-Color "#DCE1FF")
   $nodeR = $s * 0.052
   $g.FillEllipse($nodeBrush, $cx + $s * 0.19 - $nodeR, $cy - $s * 0.19 - $nodeR, $nodeR * 2, $nodeR * 2)
 }
@@ -126,18 +126,18 @@ function Draw-TrayIcon($g, $size) {
   $cy = $s / 2
   $ringR = $s * 0.32
   $ringW = [Math]::Max(1.6, $s * 0.115)
-  $ringPen = New-Object System.Drawing.Pen (New-Color "#4B514D"), $ringW
+  $ringPen = New-Object System.Drawing.Pen (New-Color "#3E4460"), $ringW
   $ringPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
   $ringPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
   $g.DrawEllipse($ringPen, $cx - $ringR, $cy - $ringR, $ringR * 2, $ringR * 2)
 
-  $arcPen = New-Object System.Drawing.Pen (New-Color "#4E4EB2"), $ringW
+  $arcPen = New-Object System.Drawing.Pen (New-Color "#4C58D0"), $ringW
   $arcPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
   $arcPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
   $g.DrawArc($arcPen, $cx - $ringR, $cy - $ringR, $ringR * 2, $ringR * 2, -90, 210)
 
   $coreR = $s * 0.105
-  $coreBrush = New-Object System.Drawing.SolidBrush (New-Color "#4E4EB2")
+  $coreBrush = New-Object System.Drawing.SolidBrush (New-Color "#4C58D0")
   $g.FillEllipse($coreBrush, $cx - $coreR, $cy - $coreR, $coreR * 2, $coreR * 2)
 }
 

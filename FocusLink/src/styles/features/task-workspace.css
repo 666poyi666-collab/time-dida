@@ -1,129 +1,235 @@
-/* Dida task workspace: calm, bounded and optimized for long lists. */
+/* Task workspace — Aurora Ink material pass.
+   One porcelain hero card: accent edge light on the top hairline, a soft iris
+   aura bleeding from the top, a quiet left navigation rail with glowing active
+   items, and Linear-grade rows with circular complete controls and a
+   success-lit current focus row. Deep ink dark theme carries the same light
+   with denser glow. No backdrop-filter anywhere. */
 @layer components {
   .task-workspace-page {
     background: transparent;
   }
 
+  /* ── Porcelain shell card ─────────────────────────────────────────── */
+
   .task-workspace-shell {
     position: relative;
-    grid-template-columns: 232px minmax(0, 1fr);
-    border: 1px solid rgb(var(--app-border) / 0.88);
-    border-radius: 16px;
-    background: rgb(var(--app-surface));
-    box-shadow: var(--shadow-md);
+    isolation: isolate;
+    grid-template-columns: 236px minmax(0, 1fr);
+    overflow: hidden;
+    border: 1px solid rgb(var(--app-border) / 0.55);
+    border-radius: var(--radius-2xl);
+    background: linear-gradient(
+      180deg,
+      rgb(var(--app-elevated) / 0.95),
+      rgb(var(--app-surface) / 0.9) 30%,
+      rgb(var(--app-surface) / 0.95)
+    );
+    box-shadow: var(--shadow-material);
   }
 
+  .dark .task-workspace-shell {
+    border-color: rgb(var(--app-border) / 0.7);
+    background: linear-gradient(
+      180deg,
+      rgb(var(--app-surface-2) / 0.72),
+      rgb(var(--app-surface) / 0.9) 34%
+    );
+  }
+
+  /* Iris aura bleeding from the top edge of the card. */
+  .task-workspace-shell::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      90% 56% at 50% -12%,
+      rgb(var(--app-accent) / 0.13),
+      transparent 62%
+    );
+    opacity: 0.5;
+  }
+
+  /* Gradient edge light along the top hairline. */
+  .task-workspace-shell::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 36px;
+    left: 36px;
+    z-index: 2;
+    height: 1px;
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgb(var(--app-accent) / 0.45), transparent);
+    opacity: 0.8;
+  }
+
+  .dark .task-workspace-shell::before {
+    opacity: 0.7;
+  }
+
+  .dark .task-workspace-shell::after {
+    opacity: 1;
+  }
+
+  /* ── Left navigation rail ─────────────────────────────────────────── */
+
   .task-navigation {
+    position: relative;
+    z-index: 1;
     min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    border-right: 1px solid rgb(var(--app-border));
-    background: rgb(var(--app-surface-2) / 0.44);
+    border-right: 1px solid rgb(var(--app-border) / 0.5);
+    background: linear-gradient(
+      180deg,
+      rgb(var(--app-surface-2) / 0.42),
+      rgb(var(--app-surface-2) / 0.18) 34%,
+      rgb(var(--app-surface-2) / 0.08)
+    );
+  }
+
+  .dark .task-navigation {
+    border-right-color: rgb(var(--app-border) / 0.6);
+    background: linear-gradient(
+      180deg,
+      rgb(var(--app-surface) / 0.4),
+      rgb(var(--app-bg) / 0.2) 42%
+    );
   }
 
   .task-navigation-heading {
-    min-height: 76px;
+    min-height: 64px;
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 14px 16px;
-    border-bottom: 1px solid rgb(var(--app-border) / 0.76);
+    padding: 12px 16px;
+    border-bottom: 1px solid rgb(var(--app-border) / 0.5);
   }
 
   .task-product-mark {
-    width: 34px;
-    height: 34px;
-    flex: 0 0 34px;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
     display: grid;
     place-items: center;
-    border: 1px solid rgb(var(--app-accent) / 0.24);
-    border-radius: 10px;
-    color: rgb(var(--app-accent));
-    background: rgb(var(--app-accent) / 0.075);
-    box-shadow: 0 1px 0 rgb(255 255 255 / 0.7) inset;
+    border: 1px solid rgb(var(--app-accent) / 0.4);
+    border-radius: 9px;
+    color: rgb(255 255 255);
+    background:
+      linear-gradient(150deg, rgb(255 255 255 / 0.24), transparent 46%),
+      linear-gradient(145deg, rgb(var(--app-accent-companion)), rgb(var(--app-accent)) 72%);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.28) inset,
+      0 6px 16px -6px rgb(var(--app-accent) / 0.55);
   }
 
   .dark .task-product-mark {
-    box-shadow: 0 1px 0 rgb(255 255 255 / 0.035) inset;
+    color: rgb(var(--app-accent-fg));
+    box-shadow:
+      0 0 0 1px rgb(var(--app-accent) / 0.28),
+      0 8px 20px -8px rgb(var(--app-accent) / 0.7);
   }
 
   .task-navigation-heading > div {
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
   }
 
   .task-navigation-heading strong {
     color: rgb(var(--app-text));
-    font-size: 15px;
-    font-weight: 620;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
   }
 
   .task-navigation-heading span:not(.task-product-mark) {
+    overflow: hidden;
     color: rgb(var(--app-subtle));
-    font-size: 11.5px;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .task-view-list,
   .task-project-list {
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    padding: 10px;
+    gap: 2px;
+    padding: 8px 10px;
   }
 
   .task-view-list button,
   .task-project-list button {
     position: relative;
     width: 100%;
-    min-height: 36px;
+    min-height: 32px;
     display: grid;
-    grid-template-columns: 18px minmax(0, 1fr) auto;
+    grid-template-columns: 16px minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
     border: 1px solid transparent;
-    border-radius: 9px;
-    padding: 0 9px;
-    color: rgb(var(--app-muted));
+    border-radius: var(--radius-md);
+    padding: 0 10px;
+    color: rgb(var(--app-subtle));
     text-align: left;
     background: transparent;
     transition:
-      color var(--motion-fast) ease,
-      border-color var(--motion-fast) ease,
-      background-color var(--motion-fast) ease,
-      transform var(--motion-fast) var(--ease-out);
+      color var(--motion-fast) var(--ease-out),
+      border-color var(--motion-fast) var(--ease-out),
+      background-color var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-fast) var(--ease-out);
   }
 
   .task-view-list button:hover,
   .task-project-list button:hover {
     color: rgb(var(--app-text));
-    background: rgb(var(--app-surface) / 0.72);
+    background: rgb(var(--app-surface) / 0.8);
   }
 
-  .task-view-list button:active,
-  .task-project-list button:active {
-    transform: scale(0.99);
-  }
-
+  /* Active view/project: accent wash, inset hairline, leading light bar. */
   .task-view-list button.active,
   .task-project-list button.active {
-    border-color: transparent;
-    color: rgb(var(--app-text));
-    background: rgb(var(--app-accent) / 0.065);
-    box-shadow: none;
+    color: rgb(var(--app-accent));
+    background: linear-gradient(
+      180deg,
+      rgb(var(--app-accent) / 0.13),
+      rgb(var(--app-accent) / 0.07)
+    );
+    box-shadow:
+      inset 0 0 0 1px rgb(var(--app-accent) / 0.16),
+      0 8px 18px -12px rgb(var(--app-accent) / 0.55);
   }
 
-  .task-view-list button.active::before {
+  .task-view-list button.active::before,
+  .task-project-list button.active::before {
     content: '';
     position: absolute;
-    top: 9px;
-    bottom: 9px;
-    left: -1px;
-    width: 2px;
-    border-radius: 0 4px 4px 0;
+    top: 50%;
+    left: 2px;
+    width: 3px;
+    height: 14px;
+    border-radius: var(--radius-pill);
     background: rgb(var(--app-accent));
+    box-shadow: 0 0 10px rgb(var(--app-accent) / 0.55);
+    transform: translateY(-50%);
+  }
+
+  .dark .task-view-list button.active,
+  .dark .task-project-list button.active {
+    background: linear-gradient(
+      180deg,
+      rgb(var(--app-accent) / 0.19),
+      rgb(var(--app-accent) / 0.1)
+    );
+    box-shadow:
+      inset 0 0 0 1px rgb(var(--app-accent) / 0.26),
+      0 10px 24px -10px rgb(var(--app-accent) / 0.66);
   }
 
   .task-view-list button > span,
@@ -136,51 +242,68 @@
     white-space: nowrap;
   }
 
+  .task-view-list button.active > span,
+  .task-project-list button.active > span {
+    font-weight: 600;
+  }
+
   .task-view-list button small,
   .task-project-list button small {
-    min-width: 22px;
+    min-width: 20px;
     color: rgb(var(--app-subtle));
+    font-family: var(--font-number);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
     text-align: right;
   }
 
+  .task-view-list button.active small,
+  .task-project-list button.active small {
+    color: rgb(var(--app-accent) / 0.85);
+  }
+
   .task-project-list {
     min-height: 0;
     overflow-y: auto;
-    padding-top: 5px;
+    padding-top: 4px;
   }
 
   .task-project-list button > i {
     width: 7px;
     height: 7px;
     justify-self: center;
-    border-radius: 2px;
+    border-radius: 2.5px;
     background: rgb(var(--app-border-strong));
+  }
+
+  .task-project-list button.active > i {
+    background: rgb(var(--app-accent));
+    box-shadow: 0 0 8px rgb(var(--app-accent) / 0.5);
   }
 
   .task-navigation-divider {
     height: 1px;
-    margin: 2px 14px 0;
-    background: rgb(var(--app-border) / 0.54);
+    margin: 2px 16px 0;
+    background: rgb(var(--app-border) / 0.5);
   }
 
   .task-navigation-label {
-    padding: 13px 18px 3px;
+    padding: 12px 20px 2px;
     color: rgb(var(--app-subtle));
-    font-size: 11px;
-    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.09em;
   }
 
   .task-navigation-status {
-    min-height: 58px;
+    min-height: 54px;
     display: flex;
     align-items: center;
     gap: 9px;
     margin-top: auto;
-    padding: 11px 16px;
-    border-top: 1px solid rgb(var(--app-border) / 0.76);
-    background: rgb(var(--app-surface) / 0.58);
+    padding: 10px 16px;
+    border-top: 1px solid rgb(var(--app-border) / 0.5);
   }
 
   .task-navigation-status > span {
@@ -193,10 +316,16 @@
 
   .task-navigation-status > span.ready {
     background: rgb(var(--app-success));
+    box-shadow:
+      0 0 0 3px rgb(var(--app-success) / 0.14),
+      0 0 10px rgb(var(--app-success) / 0.4);
   }
 
   .task-navigation-status > span.error {
     background: rgb(var(--app-danger));
+    box-shadow:
+      0 0 0 3px rgb(var(--app-danger) / 0.14),
+      0 0 10px rgb(var(--app-danger) / 0.4);
   }
 
   .task-navigation-status > div {
@@ -218,14 +347,19 @@
   .task-navigation-status small {
     color: rgb(var(--app-subtle));
     font-size: 11px;
+    font-variant-numeric: tabular-nums;
   }
 
+  /* ── Workbench: header + toolbar ──────────────────────────────────── */
+
   .task-workbench {
+    position: relative;
+    z-index: 1;
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-rows: 76px 50px minmax(0, 1fr);
-    background: rgb(var(--app-surface));
+    grid-template-rows: auto auto minmax(0, 1fr);
+    background: transparent;
   }
 
   .task-workbench-header {
@@ -233,9 +367,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 20px;
-    padding: 13px 18px 12px 22px;
-    border-bottom: 1px solid rgb(var(--app-border) / 0.76);
+    gap: 16px;
+    padding: 14px 18px 12px 24px;
+    border-bottom: 1px solid rgb(var(--app-border) / 0.5);
   }
 
   .task-workbench-title {
@@ -245,18 +379,21 @@
   .task-workbench-title h1 {
     margin: 0;
     color: rgb(var(--app-text));
-    font-size: 23px;
+    font-size: 16px;
     font-family: var(--font-display);
-    font-weight: 650;
-    line-height: 1.2;
+    font-weight: 600;
+    line-height: 1.25;
     letter-spacing: -0.02em;
   }
 
   .task-workbench-title p {
-    margin: 3px 0 0;
+    margin: 2px 0 0;
+    overflow: hidden;
     color: rgb(var(--app-subtle));
-    font-size: 12px;
+    font-size: 11.5px;
     line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .task-workbench-actions {
@@ -265,37 +402,41 @@
     gap: 6px;
   }
 
+  /* Sync queue state: 未同步 stays on the warning token. */
   .task-pending-label {
     margin-right: 4px;
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgb(var(--app-warning) / 0.22);
+    border-radius: var(--radius-pill);
+    padding: 2px 8px;
     color: rgb(var(--app-warning));
-    font-size: 11.5px;
-    font-weight: 500;
+    background: rgb(var(--app-warning) / 0.08);
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   .task-icon-action {
-    width: 34px;
-    height: 34px;
+    width: 32px;
+    height: 32px;
     display: inline-grid;
     place-items: center;
-    border: 1px solid rgb(var(--app-border));
-    border-radius: 9px;
-    color: rgb(var(--app-muted));
-    background: rgb(var(--app-surface-2) / 0.46);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    color: rgb(var(--app-subtle));
+    background: transparent;
     transition:
-      color var(--motion-fast) ease,
-      border-color var(--motion-fast) ease,
-      background-color var(--motion-fast) ease,
-      transform var(--motion-fast) ease;
+      color var(--motion-fast) var(--ease-out),
+      border-color var(--motion-fast) var(--ease-out),
+      background-color var(--motion-fast) var(--ease-out);
   }
 
   .task-icon-action:hover {
-    border-color: rgb(var(--app-border-strong));
+    border-color: rgb(var(--app-border) / 0.7);
     color: rgb(var(--app-text));
-    background: rgb(var(--app-surface-2));
-  }
-
-  .task-icon-action:active {
-    transform: scale(0.98);
+    background: rgb(var(--app-surface-2) / 0.7);
   }
 
   .task-workbench-toolbar {
@@ -303,32 +444,33 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 18px 8px 22px;
-    border-bottom: 1px solid rgb(var(--app-border) / 0.72);
-    background: rgb(var(--app-surface-2) / 0.26);
+    padding: 8px 18px 8px 24px;
+    border-bottom: 1px solid rgb(var(--app-border) / 0.5);
   }
 
   .task-workspace-search {
-    min-width: 180px;
-    max-width: 440px;
-    height: 34px;
+    min-width: 160px;
+    max-width: 420px;
+    height: 32px;
     display: flex;
     flex: 1;
     align-items: center;
-    gap: 8px;
-    border: 1px solid rgb(var(--app-border));
-    border-radius: 9px;
+    gap: 7px;
+    border: 1px solid rgb(var(--app-border) / 0.8);
+    border-radius: var(--radius-md);
     padding: 0 9px;
     color: rgb(var(--app-subtle));
-    background: rgb(var(--app-surface));
+    background: rgb(var(--app-surface-2) / 0.4);
     transition:
-      border-color var(--motion-fast) ease,
-      box-shadow var(--motion-fast) ease;
+      border-color var(--motion-fast) var(--ease-out),
+      background-color var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-fast) var(--ease-out);
   }
 
   .task-workspace-search:focus-within {
-    border-color: rgb(var(--app-accent) / 0.62);
-    box-shadow: 0 0 0 3px rgb(var(--app-accent) / 0.08);
+    border-color: rgb(var(--app-accent) / 0.6);
+    background: rgb(var(--app-elevated));
+    box-shadow: 0 0 0 3px rgb(var(--app-accent) / 0.15);
   }
 
   .task-workspace-search input {
@@ -346,30 +488,43 @@
   }
 
   .task-workspace-search button {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     display: grid;
     place-items: center;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     color: rgb(var(--app-subtle));
+    transition:
+      color var(--motion-fast) var(--ease-out),
+      background-color var(--motion-fast) var(--ease-out);
   }
 
   .task-workspace-search button:hover {
     color: rgb(var(--app-text));
-    background: rgb(var(--app-surface-2));
+    background: rgb(var(--app-surface-3) / 0.6);
   }
 
   .task-control-select {
-    height: 34px;
+    height: 32px;
     display: flex;
     align-items: center;
     gap: 6px;
-    border: 1px solid rgb(var(--app-border));
-    border-radius: 9px;
-    padding: 0 7px 0 9px;
+    border: 1px solid rgb(var(--app-border) / 0.8);
+    border-radius: var(--radius-md);
+    padding: 0 8px 0 10px;
     color: rgb(var(--app-subtle));
-    background: rgb(var(--app-surface));
-    font-size: 11.5px;
+    background: rgb(var(--app-surface-2) / 0.4);
+    font-size: 11px;
+    transition:
+      border-color var(--motion-fast) var(--ease-out),
+      background-color var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-fast) var(--ease-out);
+  }
+
+  .task-control-select:focus-within {
+    border-color: rgb(var(--app-accent) / 0.6);
+    background: rgb(var(--app-elevated));
+    box-shadow: 0 0 0 3px rgb(var(--app-accent) / 0.15);
   }
 
   .task-control-select select {
@@ -384,49 +539,67 @@
   .task-result-count {
     margin-left: auto;
     color: rgb(var(--app-subtle));
-    font-size: 11.5px;
+    font-family: var(--font-number);
+    font-size: 11px;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
+
+  /* ── Task rows ────────────────────────────────────────────────────── */
 
   .task-workbench-list {
     min-width: 0;
     min-height: 0;
     overflow-y: auto;
-    padding: 7px 14px 20px 18px;
+    padding: 0 0 24px;
     overscroll-behavior: contain;
   }
 
   .task-workbench-tree,
-  .task-completed-list {
+  .task-completed-list,
+  .task-skeleton-list {
     max-width: 920px;
     margin: 0 auto;
   }
 
   .task-workbench-row,
-  .task-completed-row {
+  .task-completed-row,
+  .task-skeleton-row {
     position: relative;
     min-width: 0;
-    min-height: 52px;
+    min-height: 46px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    border-bottom: 1px solid rgb(var(--app-border) / 0.4);
-    padding: 7px 8px 7px 0;
+    gap: 9px;
+    border-bottom: 1px solid rgb(var(--app-border) / 0.45);
+    padding: 6px 20px 6px 22px;
     color: rgb(var(--app-text));
     background: transparent;
-    transition:
-      background-color var(--motion-fast) ease,
-      color var(--motion-fast) ease;
+    transition: background-color var(--motion-fast) var(--ease-out);
   }
 
   .task-workbench-row:hover,
   .task-completed-row:hover {
-    background: rgb(var(--app-surface-2) / 0.46);
+    background: linear-gradient(90deg, rgb(var(--app-surface-2) / 0.55), transparent 88%);
   }
 
+  /* Current focus task: success light on the leading edge. */
   .task-workbench-row.current {
-    background: rgb(var(--app-accent) / 0.055);
+    background: linear-gradient(
+      90deg,
+      rgb(var(--app-success) / 0.06),
+      rgb(var(--app-success) / 0.02) 55%,
+      transparent 85%
+    );
+  }
+
+  .task-workbench-row.current:hover {
+    background: linear-gradient(
+      90deg,
+      rgb(var(--app-success) / 0.09),
+      rgb(var(--app-success) / 0.03) 55%,
+      transparent 85%
+    );
   }
 
   .task-workbench-row.current::before {
@@ -435,85 +608,102 @@
     top: 9px;
     bottom: 9px;
     left: 0;
-    width: 3px;
-    border-radius: 0 999px 999px 0;
-    background: rgb(var(--app-accent));
-    box-shadow: 0 0 0 3px rgb(var(--app-accent) / 0.07);
+    width: 2px;
+    border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+    background: rgb(var(--app-success));
+    box-shadow: 0 0 10px rgb(var(--app-success) / 0.45);
   }
 
-  .task-workbench-row.completed {
-    color: rgb(var(--app-muted));
+  .dark .task-workbench-row.current {
+    background: linear-gradient(
+      90deg,
+      rgb(var(--app-success) / 0.1),
+      rgb(var(--app-success) / 0.03) 55%,
+      transparent 85%
+    );
+  }
+
+  .dark .task-workbench-row.current::before {
+    box-shadow: 0 0 12px rgb(var(--app-success) / 0.6);
+  }
+
+  .task-workbench-row.current .task-row-title-line strong {
+    font-weight: 600;
+  }
+
+  .task-workbench-row.completed .task-row-copy,
+  .task-completed-row .task-row-copy {
+    opacity: 0.62;
   }
 
   .task-workbench-row.completed .task-row-title-line strong,
   .task-completed-row .task-row-title-line strong {
     color: rgb(var(--app-muted));
     text-decoration: line-through;
-    text-decoration-color: rgb(var(--app-subtle) / 0.72);
+    text-decoration-color: rgb(var(--app-subtle) / 0.65);
   }
 
   .task-row-indent {
-    width: calc(var(--task-depth, 0) * 20px);
-    flex: 0 0 calc(var(--task-depth, 0) * 20px);
+    width: calc(var(--task-depth, 0) * 18px);
+    flex: 0 0 calc(var(--task-depth, 0) * 18px);
   }
 
   .task-workbench-chevron,
   .task-workbench-chevron-spacer {
-    width: 24px;
-    height: 24px;
-    flex: 0 0 24px;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
   }
 
   .task-workbench-chevron {
     display: grid;
     place-items: center;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     color: rgb(var(--app-subtle));
     transition:
-      color var(--motion-fast) ease,
-      background-color var(--motion-fast) ease,
+      color var(--motion-fast) var(--ease-out),
+      background-color var(--motion-fast) var(--ease-out),
       transform var(--motion-normal) var(--ease-out);
   }
 
   .task-workbench-chevron:hover {
     color: rgb(var(--app-text));
-    background: rgb(var(--app-surface-2));
+    background: rgb(var(--app-surface-3) / 0.65);
   }
 
   .task-workbench-chevron.expanded {
     transform: rotate(90deg);
   }
 
+  /* Complete control: circular hairline, success fill when checked. */
   .task-complete-control {
-    width: 19px;
-    height: 19px;
-    flex: 0 0 19px;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
     display: grid;
     place-items: center;
-    border: 1.5px solid rgb(var(--app-border-strong));
-    border-radius: 6px;
-    color: rgb(var(--app-surface));
+    border: 1.5px solid rgb(var(--app-border-strong) / 0.85);
+    border-radius: 50%;
+    color: transparent;
     background: transparent;
     transition:
-      color var(--motion-fast) ease,
-      border-color var(--motion-fast) ease,
-      background-color var(--motion-fast) ease,
-      transform var(--motion-fast) ease;
+      color var(--motion-fast) var(--ease-out),
+      border-color var(--motion-fast) var(--ease-out),
+      background-color var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-fast) var(--ease-out);
   }
 
   .task-complete-control:hover {
-    border-color: rgb(var(--app-success));
-    transform: scale(1.04);
-  }
-
-  .task-complete-control:active {
-    transform: scale(0.96);
+    border-color: rgb(var(--app-success) / 0.75);
+    background: rgb(var(--app-success) / 0.08);
+    box-shadow: 0 0 0 3px rgb(var(--app-success) / 0.1);
   }
 
   .task-complete-control.checked {
     border-color: rgb(var(--app-success));
     color: rgb(var(--app-accent-fg));
     background: rgb(var(--app-success));
+    box-shadow: 0 2px 8px -2px rgb(var(--app-success) / 0.5);
   }
 
   .task-row-copy {
@@ -521,7 +711,8 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
+    transition: opacity var(--motion-fast) var(--ease-out);
   }
 
   .task-row-title-line {
@@ -536,64 +727,71 @@
     flex: 0 1 auto;
     overflow: hidden;
     color: rgb(var(--app-text));
-    font-size: 13.5px;
+    font-size: 13px;
     font-weight: 500;
-    line-height: 1.25;
+    line-height: 1.3;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  /* Association chip: 已关联 stays on the accent token, 已暂停 on pause red. */
   .task-current-chip,
-  .task-child-chip,
-  .task-priority-chip {
+  .task-child-chip {
     flex: 0 0 auto;
-    border-radius: 5px;
-    padding: 2px 6px;
+    border: 1px solid rgb(var(--app-accent) / 0.22);
+    border-radius: var(--radius-pill);
+    padding: 1px 7px;
     color: rgb(var(--app-accent));
     background: rgb(var(--app-accent) / 0.08);
-    font-size: 11px;
+    box-shadow: 0 0 12px -6px rgb(var(--app-accent) / 0.55);
+    font-size: 10.5px;
     font-weight: 600;
-  }
-
-  .task-child-chip {
-    color: rgb(var(--app-subtle));
-    background: rgb(var(--app-surface-2));
+    letter-spacing: 0.02em;
   }
 
   .task-current-chip.paused {
+    border-color: rgb(var(--app-pause) / 0.24);
     color: rgb(var(--app-pause));
-    background: rgb(var(--app-pause) / 0.08);
+    background: rgb(var(--app-pause) / 0.09);
+    box-shadow: 0 0 12px -6px rgb(var(--app-pause) / 0.55);
   }
 
-  .task-priority-chip {
-    border: 1px solid currentColor;
-    background: transparent;
+  .task-child-chip {
+    border-color: rgb(var(--app-border) / 0.7);
+    color: rgb(var(--app-subtle));
+    background: rgb(var(--app-surface-2) / 0.6);
+    box-shadow: none;
+    font-variant-numeric: tabular-nums;
   }
 
-  .task-priority-chip.priority-high {
+  .task-priority-flag {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+  }
+
+  .task-priority-flag.priority-high {
     color: rgb(var(--app-danger));
-    background: rgb(var(--app-danger) / 0.07);
   }
 
-  .task-priority-chip.priority-medium {
+  .task-priority-flag.priority-medium {
     color: rgb(var(--app-warning));
-    background: rgb(var(--app-warning) / 0.07);
   }
 
-  .task-priority-chip.priority-low {
+  .task-priority-flag.priority-low {
     color: rgb(var(--app-info));
-    background: rgb(var(--app-info) / 0.065);
   }
 
   .task-row-meta {
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 11px;
+    gap: 10px;
     overflow: hidden;
     color: rgb(var(--app-subtle));
     font-size: 11.5px;
-    line-height: 1.25;
+    line-height: 1.3;
   }
 
   .task-row-meta > span {
@@ -612,32 +810,29 @@
 
   .task-focus-action,
   .task-restore-action {
-    min-width: 80px;
-    height: 30px;
+    height: 28px;
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 5px;
-    border: 1px solid rgb(var(--app-border));
-    border-radius: 8px;
+    border: 1px solid rgb(var(--app-border) / 0.85);
+    border-radius: var(--radius-md);
+    padding: 0 10px;
     color: rgb(var(--app-muted));
-    background: rgb(var(--app-surface));
+    background: rgb(var(--app-elevated) / 0.8);
     font-size: 11.5px;
     font-weight: 500;
+    white-space: nowrap;
     opacity: 0;
     transform: translateX(3px);
     transition:
-      opacity var(--motion-fast) ease,
+      opacity var(--motion-fast) var(--ease-out),
       transform var(--motion-fast) var(--ease-out),
-      color var(--motion-fast) ease,
-      border-color var(--motion-fast) ease,
-      background-color var(--motion-fast) ease;
-  }
-
-  .task-focus-action {
-    opacity: 0.72;
-    transform: translateX(0);
+      color var(--motion-fast) var(--ease-out),
+      border-color var(--motion-fast) var(--ease-out),
+      background-color var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-fast) var(--ease-out);
   }
 
   .task-workbench-row:hover .task-focus-action,
@@ -651,70 +846,140 @@
 
   .task-focus-action:hover,
   .task-restore-action:hover {
-    border-color: rgb(var(--app-accent) / 0.5);
+    border-color: rgb(var(--app-accent) / 0.55);
     color: rgb(var(--app-accent));
-    background: rgb(var(--app-accent) / 0.055);
+    background: rgb(var(--app-accent) / 0.08);
+    box-shadow: 0 4px 14px -6px rgb(var(--app-accent) / 0.5);
   }
 
   .task-children-wrap {
     transform-origin: top;
   }
 
+  /* ── Completed list ───────────────────────────────────────────────── */
+
   .task-completed-group {
     position: sticky;
-    top: -7px;
+    top: 0;
     z-index: 2;
-    padding: 13px 0 7px;
-    border-bottom: 1px solid rgb(var(--app-border) / 0.72);
-    color: rgb(var(--app-muted));
+    padding: 12px 22px 6px;
+    border-bottom: 1px solid rgb(var(--app-border) / 0.45);
+    color: rgb(var(--app-subtle));
     background: rgb(var(--app-surface));
-    font-size: 12px;
-    font-weight: 600;
-  }
-
-  .task-completed-row {
-    padding-left: 8px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.09em;
   }
 
   .task-completed-row .task-complete-control {
-    margin-right: 25px;
+    margin-left: 31px;
   }
 
+  /* ── Loading skeleton ─────────────────────────────────────────────── */
+
+  .task-skeleton-row {
+    animation: task-skeleton-pulse 1.6s var(--ease-in-out) infinite;
+  }
+
+  .task-skeleton-row:nth-child(2) {
+    animation-delay: 90ms;
+  }
+
+  .task-skeleton-row:nth-child(3) {
+    animation-delay: 180ms;
+  }
+
+  .task-skeleton-row:nth-child(4) {
+    animation-delay: 270ms;
+  }
+
+  .task-skeleton-row:nth-child(5) {
+    animation-delay: 360ms;
+  }
+
+  .task-skeleton-row:nth-child(n + 6) {
+    animation-delay: 450ms;
+  }
+
+  .task-skeleton-dot {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, rgb(var(--app-surface-2)), rgb(var(--app-surface-3) / 0.7));
+  }
+
+  .task-skeleton-lines {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .task-skeleton-line {
+    height: 9px;
+    border-radius: var(--radius-pill);
+    background: linear-gradient(180deg, rgb(var(--app-surface-2)), rgb(var(--app-surface-3) / 0.7));
+  }
+
+  @keyframes task-skeleton-pulse {
+    0%,
+    100% {
+      opacity: 0.5;
+    }
+    50% {
+      opacity: 0.95;
+    }
+  }
+
+  /* ── Empty / error state ──────────────────────────────────────────── */
+
   .task-empty-state {
-    min-height: 330px;
+    min-height: 320px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-direction: column;
+    padding: 24px;
     color: rgb(var(--app-subtle));
     text-align: center;
   }
 
   .task-empty-state > span {
-    width: 46px;
-    height: 46px;
+    width: 44px;
+    height: 44px;
     display: grid;
     place-items: center;
-    margin-bottom: 13px;
-    border: 1px solid rgb(var(--app-border));
-    border-radius: 13px;
-    color: rgb(var(--app-accent));
-    background: rgb(var(--app-surface-2) / 0.5);
+    margin-bottom: 12px;
+    border: 1px solid rgb(var(--app-border) / 0.7);
+    border-radius: var(--radius-lg);
+    color: rgb(var(--app-subtle));
+    background: linear-gradient(
+      180deg,
+      rgb(var(--app-elevated) / 0.9),
+      rgb(var(--app-surface-2) / 0.6)
+    );
+    box-shadow: var(--shadow-xs);
   }
 
   .task-empty-state.danger > span {
+    border-color: rgb(var(--app-danger) / 0.25);
     color: rgb(var(--app-danger));
+    background: rgb(var(--app-danger) / 0.06);
   }
 
   .task-empty-state strong {
     color: rgb(var(--app-muted));
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
+    letter-spacing: -0.01em;
   }
 
   .task-empty-state p {
-    max-width: 460px;
-    margin: 5px 20px 0;
+    max-width: 400px;
+    margin: 4px 20px 0;
     color: rgb(var(--app-subtle));
     font-size: 12px;
     line-height: 1.55;
@@ -722,46 +987,59 @@
 
   .task-empty-state button,
   .task-load-more {
-    min-height: 32px;
-    margin-top: 13px;
-    border: 1px solid rgb(var(--app-border));
-    border-radius: 8px;
+    min-height: 30px;
+    margin-top: 12px;
+    border: 1px solid rgb(var(--app-border-strong) / 0.85);
+    border-radius: var(--radius-md);
     padding: 0 12px;
     color: rgb(var(--app-muted));
-    background: rgb(var(--app-surface-2) / 0.48);
+    background: transparent;
     font-size: 12px;
     font-weight: 500;
+    transition:
+      color var(--motion-fast) var(--ease-out),
+      border-color var(--motion-fast) var(--ease-out),
+      background-color var(--motion-fast) var(--ease-out);
   }
 
   .task-load-more {
-    width: min(420px, 80%);
+    width: min(400px, calc(100% - 48px));
     display: block;
     margin: 14px auto 0;
   }
 
   .task-empty-state button:hover,
   .task-load-more:hover {
+    border-color: rgb(var(--app-border-strong));
     color: rgb(var(--app-text));
-    background: rgb(var(--app-surface-2));
+    background: rgb(var(--app-surface-2) / 0.7);
   }
+
+  /* ── Undo bar ─────────────────────────────────────────────────────── */
 
   .task-undo-bar {
     position: absolute;
-    right: 20px;
-    bottom: 18px;
+    right: 18px;
+    bottom: 16px;
     z-index: 10;
-    max-width: min(460px, calc(100% - 40px));
-    min-height: 46px;
+    max-width: min(440px, calc(100% - 36px));
+    min-height: 44px;
     display: flex;
     align-items: center;
     gap: 9px;
-    border: 1px solid rgb(var(--app-border-strong));
-    border-radius: 11px;
-    padding: 7px 8px 7px 12px;
+    border: 1px solid rgb(var(--app-border) / 0.8);
+    border-radius: var(--radius-lg);
+    padding: 6px 8px 6px 12px;
     color: rgb(var(--app-muted));
     background: rgb(var(--app-elevated));
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-md);
     font-size: 12.5px;
+  }
+
+  .dark .task-undo-bar {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.05),
+      var(--shadow-md);
   }
 
   .task-undo-bar > svg {
@@ -783,23 +1061,26 @@
   }
 
   .task-undo-bar button {
-    min-width: 52px;
-    height: 30px;
+    min-width: 50px;
+    height: 28px;
     flex: 0 0 auto;
-    border-radius: 7px;
+    border-radius: var(--radius-sm);
     color: rgb(var(--app-accent));
-    background: rgb(var(--app-accent) / 0.08);
+    background: rgb(var(--app-accent) / 0.09);
     font-size: 12px;
     font-weight: 600;
+    transition: background-color var(--motion-fast) var(--ease-out);
   }
 
   .task-undo-bar button:hover {
-    background: rgb(var(--app-accent) / 0.13);
+    background: rgb(var(--app-accent) / 0.15);
   }
+
+  /* ── Responsive ───────────────────────────────────────────────────── */
 
   @media (max-width: 900px) {
     .task-workspace-shell {
-      grid-template-columns: 184px minmax(0, 1fr);
+      grid-template-columns: 188px minmax(0, 1fr);
     }
 
     .task-control-select > span,
@@ -814,16 +1095,33 @@
     .task-workbench-toolbar {
       padding-left: 16px;
     }
+
+    .task-workbench-row,
+    .task-completed-row,
+    .task-skeleton-row {
+      padding-right: 14px;
+      padding-left: 16px;
+    }
+
+    .task-completed-group {
+      padding-left: 16px;
+    }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .task-view-list button,
-    .task-project-list button,
-    .task-workbench-chevron,
-    .task-complete-control,
-    .task-focus-action,
-    .task-restore-action {
-      transition-duration: 0.01ms !important;
+  @media (max-height: 690px) {
+    .task-navigation-heading {
+      min-height: 54px;
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
+
+    .task-workbench-header {
+      padding-top: 10px;
+      padding-bottom: 9px;
+    }
+
+    .task-empty-state {
+      min-height: 240px;
     }
   }
 }

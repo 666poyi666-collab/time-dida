@@ -228,7 +228,7 @@ export function TinyStat({
         tone === 'warning'
           ? 'border-warning/25 bg-warning/10'
           : tone === 'pause'
-            ? 'border-pause/20 bg-pause/8'
+            ? 'border-pause/20 bg-pause/10'
             : 'border-border/60 bg-bg-card/50'
       }`}
     >
@@ -257,7 +257,7 @@ export function DetailStat({
     tone === 'warn'
       ? 'border-warning/25 bg-warning/10'
       : tone === 'pause'
-        ? 'border-pause/20 bg-pause/8'
+        ? 'border-pause/20 bg-pause/10'
         : 'border-border/60 bg-bg-subtle/30';
   const textCls = tone === 'warn' ? 'text-warning' : tone === 'pause' ? 'text-pause' : 'text-fg';
   return (

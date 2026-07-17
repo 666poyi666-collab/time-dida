@@ -247,7 +247,7 @@ function HistoryFocusTimelineRow({
         {hasTask && (
           <>
             <button
-              className="motion-press rounded-md border border-border/50 bg-bg-card/50 px-1.5 py-1 text-[10.5px] text-rose-400 hover:bg-rose-500/10 disabled:opacity-40"
+              className="motion-press rounded-md border border-danger/25 bg-danger/10 px-1.5 py-1 text-[10.5px] text-danger hover:bg-danger/15 disabled:opacity-40"
               disabled={linking}
               onClick={onClear}
             >

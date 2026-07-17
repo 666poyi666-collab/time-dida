@@ -3,9 +3,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
 import { useStore } from '../../app/store';
-import { formatDuration, formatDateTime, formatRelative, formatMinutes } from '../../lib/time';
+import { formatClock, formatDuration, formatRelative, formatMinutes } from '../../lib/time';
 import {
   filterSessionsByRange,
+  formatDayLabel,
   formatShortDate,
   getDayRange,
   getRange,
@@ -129,6 +130,35 @@ export function HistoryPanel() {
   const rangeStats = useMemo(() => summarizeSessions(filteredSessions), [filteredSessions]);
   const persistedSyncStates = useMemo(() => buildSessionSyncStateMap(syncQueue), [syncQueue]);
   const segmentSyncStates = useMemo(() => buildSegmentSyncStateMap(syncQueue), [syncQueue]);
+
+  // 时间线按自然日分组（保持原有倒序，最新的一天在最上面）。
+  const sessionGroups = useMemo(() => {
+    const groups: Array<{
+      key: string;
+      label: string;
+      weekday: string;
+      sessions: FocusSession[];
+      activeMs: number;
+    }> = [];
+    for (const session of filteredSessions) {
+      const key = formatDayLabel(session.startedAt);
+      let group = groups.find((item) => item.key === key);
+      if (!group) {
+        const date = new Date(session.startedAt);
+        group = {
+          key,
+          label: date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' }),
+          weekday: date.toLocaleDateString('zh-CN', { weekday: 'short' }),
+          sessions: [],
+          activeMs: 0,
+        };
+        groups.push(group);
+      }
+      group.sessions.push(session);
+      group.activeMs += session.activeElapsedMs;
+    }
+    return groups;
+  }, [filteredSessions]);
 
   const getDisplayedSyncState = (sessionId: string) =>
     sessionSyncMeta[sessionId] ?? persistedSyncStates[sessionId] ?? NOT_SYNCED_STATE;
@@ -676,114 +706,117 @@ export function HistoryPanel() {
 
   return (
     <div className="history-page h-full overflow-y-auto px-6 py-4">
-      <div className="history-shell mx-auto max-w-5xl">
-        {/* 筛选 */}
-        <div className="history-toolbar mb-3 pb-3">
-          <div className="mb-2.5 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5 text-[14px] font-semibold text-fg">
-              <Icon.Calendar size="sm" tone="accent" />
-              时间范围
-            </div>
-            <div className="flex items-center gap-2 text-[12px] text-fg-subtle">
+      <div className="history-shell">
+        {/* 页面头：标题 + 范围筛选 + 单日导航 */}
+        <header className="history-header">
+          <div className="history-header-lead">
+            <h1 className="history-title">统计</h1>
+            <p className="history-subtitle">
               {rangePreset === 'today' ? (
-                <span className="rounded-md border border-border/60 bg-bg-subtle/40 px-2 py-0.5">
-                  {filteredSessions.length} 条记录
-                </span>
+                <>
+                  <span>单日视图</span>
+                  <i />
+                  <span>{filteredSessions.length} 条记录</span>
+                </>
               ) : (
                 <>
                   <span>
-                    {formatShortDate(range.start)} - {formatShortDate(range.end)}
+                    {formatShortDate(range.start)} – {formatShortDate(range.end)}
                   </span>
-                  <span className="rounded-md border border-border/60 bg-bg-subtle/40 px-1.5 py-0.5">
-                    {filteredSessions.length} / {sessions.length} 条
+                  <i />
+                  <span>
+                    {filteredSessions.length} / {sessions.length} 条记录
                   </span>
                 </>
               )}
-            </div>
+            </p>
           </div>
-          {rangePreset === 'today' && (
-            <div className="history-day-navigator" aria-label="单日日期导航">
-              <button
-                type="button"
-                className="motion-press"
-                onClick={() => moveSingleDay(-1)}
-                aria-label="前一天"
-                title="前一天"
-              >
-                <Icon.ChevronLeft size="sm" />
-              </button>
-              <button
-                type="button"
-                className="history-day-current motion-press"
-                onClick={() => setDayCursor(startOfDay(Date.now()))}
-                aria-label={dayCursorIsToday ? `当前日期：${dayCursorFullLabel}` : '回到今天'}
-                title={dayCursorIsToday ? dayCursorFullLabel : '回到今天'}
-              >
-                <strong>{dayCursorFullLabel}</strong>
-                <span>{dayCursorIsToday ? '今天' : '单日数据'}</span>
-              </button>
-              <button
-                type="button"
-                className="motion-press"
-                onClick={() => moveSingleDay(1)}
-                disabled={dayCursorIsToday}
-                aria-label="后一天"
-                title={dayCursorIsToday ? '今天之后没有统计数据' : '后一天'}
-              >
-                <Icon.ChevronRight size="sm" />
-              </button>
+          <div className="history-header-controls">
+            <div className="history-filter-row">
+              <span className="history-filter-label">时间范围</span>
+              <div className="history-filter-buttons" role="group" aria-label="时间范围筛选">
+                {RANGE_PRESETS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`motion-press ${
+                      rangePreset === item.id ? 'bg-accent text-accent-fg' : ''
+                    }`}
+                    onClick={() => selectRangePreset(item.id)}
+                    aria-pressed={rangePreset === item.id}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              {filteredSessions.length > 0 && (
+                <div className="history-inline-stats" aria-label="筛选范围统计">
+                  <span>
+                    专注 <strong>{formatDuration(rangeStats.active)}</strong>
+                  </span>
+                  <span className="pause">
+                    暂停 <strong>{formatDuration(rangeStats.pause)}</strong>
+                  </span>
+                  <span>
+                    <strong>{rangeStats.count}</strong> 次
+                  </span>
+                </div>
+              )}
             </div>
-          )}
-          <div className="history-filter-row flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-1">
-              {RANGE_PRESETS.map((item) => (
+            {rangePreset === 'today' && (
+              <div className="history-day-navigator" aria-label="单日日期导航">
                 <button
-                  key={item.id}
-                  className={`motion-press rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
-                    rangePreset === item.id
-                      ? 'bg-accent text-accent-fg'
-                      : 'border border-border/60 bg-bg-subtle/50 text-fg-muted hover:bg-bg-subtle hover:text-fg'
-                  }`}
-                  onClick={() => selectRangePreset(item.id)}
-                  aria-pressed={rangePreset === item.id}
+                  type="button"
+                  className="motion-press"
+                  onClick={() => moveSingleDay(-1)}
+                  aria-label="前一天"
+                  title="前一天"
                 >
-                  {item.label}
+                  <Icon.ChevronLeft size="sm" />
                 </button>
-              ))}
-            </div>
-            {filteredSessions.length > 0 && (
-              <div className="history-inline-stats" aria-label="筛选范围统计">
-                <span>
-                  专注 <strong>{formatDuration(rangeStats.active)}</strong>
-                </span>
-                <span className="pause">
-                  暂停 <strong>{formatDuration(rangeStats.pause)}</strong>
-                </span>
-                <span>
-                  <strong>{rangeStats.count}</strong> 次
-                </span>
+                <button
+                  type="button"
+                  className="history-day-current motion-press"
+                  onClick={() => setDayCursor(startOfDay(Date.now()))}
+                  aria-label={dayCursorIsToday ? `当前日期：${dayCursorFullLabel}` : '回到今天'}
+                  title={dayCursorIsToday ? dayCursorFullLabel : '回到今天'}
+                >
+                  <strong>{dayCursorFullLabel}</strong>
+                  <span>{dayCursorIsToday ? '今天' : '回到今天'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="motion-press"
+                  onClick={() => moveSingleDay(1)}
+                  disabled={dayCursorIsToday}
+                  aria-label="后一天"
+                  title={dayCursorIsToday ? '今天之后没有统计数据' : '后一天'}
+                >
+                  <Icon.ChevronRight size="sm" />
+                </button>
+              </div>
+            )}
+            {rangePreset === 'custom' && (
+              <div className="history-custom-range">
+                <input
+                  type="date"
+                  className="input"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                />
+                <span>至</span>
+                <input
+                  type="date"
+                  className="input"
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                />
               </div>
             )}
           </div>
-          {rangePreset === 'custom' && (
-            <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-border/50 pt-2.5">
-              <input
-                type="date"
-                className="input !w-auto !py-1.5 text-[12px]"
-                value={customStart}
-                onChange={(e) => setCustomStart(e.target.value)}
-              />
-              <span className="text-[12px] text-fg-subtle">至</span>
-              <input
-                type="date"
-                className="input !w-auto !py-1.5 text-[12px]"
-                value={customEnd}
-                onChange={(e) => setCustomEnd(e.target.value)}
-              />
-            </div>
-          )}
-        </div>
+        </header>
 
+        {/* 统一分析画布 */}
         {filteredSessions.length > 0 && (
           <HistoryInsights sessions={filteredSessions} summary={rangeStats} range={range} />
         )}
@@ -812,306 +845,338 @@ export function HistoryPanel() {
           </div>
         )}
 
-        {/* Session 列表 */}
+        {/* 会话时间线（按日分组） */}
         {filteredSessions.length > 0 && (
-          <div className="space-y-1.5">
-            {filteredSessions.map((session) => {
-              const syncState = getDisplayedSyncState(session.id);
-              const rowSegments =
-                detail?.session.id === session.id
-                  ? detail.segments
-                  : sessionSegmentsById[session.id];
-              const hasTicktickSegments = rowSegments
-                ? rowSegments.some((segment) => segment.taskId && segment.taskSource === 'ticktick')
-                : (session.ticktickLinkedSegmentCount ?? 0) > 0;
-              const measuredMs = Math.max(
-                1,
-                session.wallElapsedMs,
-                session.activeElapsedMs + session.pauseElapsedMs,
-              );
-              const activeRatio = Math.min(100, (session.activeElapsedMs / measuredMs) * 100);
-              const pauseRatio = Math.min(
-                100 - activeRatio,
-                (session.pauseElapsedMs / measuredMs) * 100,
-              );
-              return (
-                <motion.div key={session.id} className="history-session overflow-hidden">
-                  <button
-                    className="motion-base flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-bg-subtle/40"
-                    onClick={() => toggleExpand(session.id)}
-                  >
-                    <Icon.ChevronRight
-                      size="sm"
-                      tone="subtle"
-                      className={`shrink-0 text-fg-subtle transition-transform duration-[var(--motion-normal)] ease-[var(--ease-out)] ${
-                        expanded === session.id ? 'rotate-90' : ''
-                      }`}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline gap-2">
-                        <span className="timer-digit text-[14px] font-semibold text-fg">
-                          {formatMinutes(session.activeElapsedMs)}
-                        </span>
-                        <span className="text-[12px] text-fg-subtle">
-                          {formatRelative(session.startedAt)}
-                        </span>
-                      </div>
-                      {session.endedAt &&
-                      session.wallElapsedMs > session.activeElapsedMs + 60000 ? (
-                        <div className="mt-0.5 text-[12px] leading-relaxed text-fg-subtle">
-                          {formatDateTime(session.startedAt)} 开始 · 专注{' '}
-                          {formatDuration(session.activeElapsedMs)}
-                        </div>
-                      ) : (
-                        <div className="mt-0.5 text-[12px] leading-relaxed text-fg-subtle">
-                          {formatDateTime(session.startedAt)}
-                          {session.endedAt && ` → ${formatDateTime(session.endedAt)}`}
-                        </div>
-                      )}
-                      <div className="history-ratio-track" aria-hidden="true">
-                        <span className="focus" style={{ width: `${activeRatio}%` }} />
-                        <span className="pause" style={{ width: `${pauseRatio}%` }} />
-                      </div>
-                      {session.defaultTaskTitle && (
-                        <div className="mt-0.5 flex items-center gap-1 text-[11px] text-emerald-400/80">
-                          <Icon.Star size="xs" />
-                          <span className="truncate">{session.defaultTaskTitle}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="hidden items-center gap-2 text-[11px] text-fg-muted sm:flex">
-                      <SessionLinkPreview session={session} segments={rowSegments} />
-                      {hasTicktickSegments && settings?.syncMode !== 'local-only' && (
-                        <SessionSyncBadge state={syncState} />
-                      )}
-                      {hasTicktickSegments && settings?.syncMode === 'local-only' && (
-                        <span className="status-chip border-border/60 bg-bg-subtle/60 text-fg-subtle">
-                          仅本地
-                        </span>
-                      )}
-                      <span>专注 {formatDuration(session.activeElapsedMs)}</span>
-                      {session.pauseElapsedMs > 0 && (
-                        <span>暂停 {formatDuration(session.pauseElapsedMs)}</span>
-                      )}
-                    </div>
-                  </button>
-
-                  <AnimatePresence initial={false} mode="sync">
-                    {expanded === session.id &&
-                      detailLoadingId === session.id &&
-                      detail?.session.id !== session.id && (
-                        <motion.div
-                          key={`detail-loading-${session.id}`}
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                          className="overflow-hidden border-t border-border/60"
+          <section className="history-timeline" aria-label="历史会话时间线">
+            <header className="history-timeline-header">
+              <span className="history-section-title">
+                <Icon.History size="sm" tone="accent" />
+                会话时间线
+              </span>
+              <span className="history-timeline-meta">
+                {filteredSessions.length} 次会话 · 展开查看片段与同步状态
+              </span>
+            </header>
+            {sessionGroups.map((group) => (
+              <div className="history-day-group" key={group.key}>
+                <header className="history-day-header">
+                  <span className="history-day-title">
+                    {group.label}
+                    <small>{group.weekday}</small>
+                  </span>
+                  <span className="history-day-meta">
+                    专注 <strong>{formatMinutes(group.activeMs)}</strong> · {group.sessions.length}{' '}
+                    次
+                  </span>
+                </header>
+                <div className="history-day-sessions">
+                  {group.sessions.map((session) => {
+                    const syncState = getDisplayedSyncState(session.id);
+                    const rowSegments =
+                      detail?.session.id === session.id
+                        ? detail.segments
+                        : sessionSegmentsById[session.id];
+                    const hasTicktickSegments = rowSegments
+                      ? rowSegments.some(
+                          (segment) => segment.taskId && segment.taskSource === 'ticktick',
+                        )
+                      : (session.ticktickLinkedSegmentCount ?? 0) > 0;
+                    const measuredMs = Math.max(
+                      1,
+                      session.wallElapsedMs,
+                      session.activeElapsedMs + session.pauseElapsedMs,
+                    );
+                    const activeRatio = Math.min(100, (session.activeElapsedMs / measuredMs) * 100);
+                    const pauseRatio = Math.min(
+                      100 - activeRatio,
+                      (session.pauseElapsedMs / measuredMs) * 100,
+                    );
+                    return (
+                      <div key={session.id} className="history-session">
+                        <button
+                          type="button"
+                          className="history-session-row"
+                          onClick={() => toggleExpand(session.id)}
                         >
-                          <div className="flex items-center gap-2 px-4 py-4 text-[11.5px] text-fg-subtle">
-                            <Icon.Loader size="sm" className="motion-spin text-accent" />
-                            正在读取这次专注的片段与同步状态…
-                          </div>
-                        </motion.div>
-                      )}
-                    {expanded === session.id && detailLoadError?.sessionId === session.id && (
-                      <motion.div
-                        key={`detail-error-${session.id}`}
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                        className="overflow-hidden border-t border-danger/20"
-                      >
-                        <div className="flex items-center gap-2.5 px-4 py-3 text-[11.5px] text-danger">
-                          <Icon.AlertCircle size="sm" />
-                          <span className="min-w-0 flex-1 break-words">
-                            详情读取失败：{detailLoadError.message}
-                          </span>
-                          <button
-                            type="button"
-                            className="btn-outline motion-press !min-h-[28px] !px-2 !py-1 !text-[11px]"
-                            onClick={() => void reloadDetail(session.id)}
-                          >
-                            <Icon.Refresh size="xs" />
-                            重试
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
-                    {expanded === session.id && detail?.session.id === session.id && (
-                      <motion.div
-                        key={`detail-${session.id}`}
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                        className="border-t border-border/60"
-                      >
-                        <div className="space-y-3 p-4">
-                          <SessionDetailHeader
-                            detail={detail}
-                            syncState={syncState}
-                            syncing={syncingSessionId === session.id}
-                            syncMode={settings?.syncMode ?? 'local-only'}
+                          <Icon.ChevronRight
+                            size="sm"
+                            tone="subtle"
+                            className={`shrink-0 text-fg-subtle transition-transform duration-[var(--motion-normal)] ease-[var(--ease-out)] ${
+                              expanded === session.id ? 'rotate-90' : ''
+                            }`}
                           />
-                          <HistoryTimelineList
-                            sessionId={session.id}
-                            segments={detail.segments}
-                            pauses={detail.pauses}
-                            filter={segmentFilter[session.id] ?? 'all'}
-                            linking={linking}
-                            defaultSubject={tomatodoDefaultSubject}
-                            onLink={(segId, idx) =>
-                              setPickerTarget({
-                                kind: 'segment',
-                                segmentId: segId,
-                                title: `专注片段 ${idx + 1} 关联任务`,
-                              })
-                            }
-                            onClear={handleClearSegment}
-                            onComplete={handleCompleteTask}
-                            onResync={handleResyncSegment}
-                            onSetSubject={handleSetSubject}
-                            tomatodoStatus={tomatodoStatusBySession[session.id] ?? {}}
-                            syncStates={segmentSyncStates}
-                            syncMode={settings?.syncMode ?? 'local-only'}
-                            tomatodoEnabled={settings?.tomatodo.enabled === true}
-                            completedTaskIds={completedTaskIds}
-                          />
-                          <div className="rounded-lg border border-border/50 bg-bg-subtle/20 px-3 py-2.5">
-                            <BatchLinkPanel
-                              segments={detail.segments}
-                              linking={linking}
-                              filter={segmentFilter[session.id] ?? 'all'}
-                              onFilterChange={(f) =>
-                                setSegmentFilter((prev) => ({ ...prev, [session.id]: f }))
-                              }
-                              onBatchUnlinked={() =>
-                                setPickerTarget({
-                                  kind: 'batch-unlinked',
-                                  sessionId: session.id,
-                                  title: '把所有未关联片段关联到某任务',
-                                })
-                              }
-                              onBatchAll={() =>
-                                setPickerTarget({
-                                  kind: 'batch-all',
-                                  sessionId: session.id,
-                                  title: '把所有片段改为同一任务',
-                                })
-                              }
-                            />
-                            <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border/40 pt-2 text-[11px]">
-                              <span className="text-fg-subtle">本次默认任务</span>
-                              <span className="max-w-[280px] truncate font-medium text-fg">
-                                {detail.session.defaultTaskTitle ?? '未设置'}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-baseline gap-2">
+                              <span className="timer-digit text-[14px] font-semibold text-fg">
+                                {formatMinutes(session.activeElapsedMs)}
                               </span>
-                              <button
-                                className="btn-ghost motion-press !min-h-[26px] !px-2 !py-0.5 !text-[11px]"
-                                disabled={linking}
-                                onClick={() =>
-                                  setPickerTarget({
-                                    kind: 'session-default',
-                                    sessionId: session.id,
-                                    title: '设置本次专注默认任务',
-                                  })
-                                }
-                              >
-                                {detail.session.defaultTaskTitle ? '更换' : '关联'}
-                              </button>
-                              {detail.session.defaultTaskTitle && (
-                                <button
-                                  className="btn-ghost motion-press !min-h-[26px] !px-2 !py-0.5 !text-[11px] text-danger"
-                                  disabled={linking}
-                                  onClick={() => handleClearSessionDefault(session.id)}
-                                >
-                                  清除
-                                </button>
-                              )}
+                              <span className="text-[12px] text-fg-subtle">
+                                {formatRelative(session.startedAt)}
+                              </span>
                             </div>
+                            {session.endedAt &&
+                            session.wallElapsedMs > session.activeElapsedMs + 60000 ? (
+                              <div className="mt-0.5 text-[12px] leading-relaxed text-fg-subtle">
+                                {formatClock(session.startedAt)} 开始 · 专注{' '}
+                                {formatDuration(session.activeElapsedMs)}
+                              </div>
+                            ) : (
+                              <div className="mt-0.5 text-[12px] leading-relaxed text-fg-subtle">
+                                {formatClock(session.startedAt)}
+                                {session.endedAt && ` → ${formatClock(session.endedAt)}`}
+                              </div>
+                            )}
+                            <div className="history-ratio-track" aria-hidden="true">
+                              <span className="focus" style={{ width: `${activeRatio}%` }} />
+                              <span className="pause" style={{ width: `${pauseRatio}%` }} />
+                            </div>
+                            {session.defaultTaskTitle && (
+                              <div className="mt-1 flex items-center gap-1 text-[11px] text-success">
+                                <Icon.Star size="xs" />
+                                <span className="truncate">{session.defaultTaskTitle}</span>
+                              </div>
+                            )}
                           </div>
-                          <div className="flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-2">
-                            {settings?.syncMode !== 'local-only' && (
-                              <button
-                                className="btn-primary motion-press !min-h-[30px] !px-3 !py-1.5 !text-[12px]"
-                                disabled={linking || syncingSessionId === session.id}
-                                onClick={() => handleSyncSession(session.id)}
-                                title="把本次已关联滴答任务的专注时间同步到滴答清单"
-                              >
-                                <Icon.Refresh
-                                  size="xs"
-                                  className={
-                                    syncingSessionId === session.id && syncingKind === 'dida'
-                                      ? 'animate-spin'
-                                      : ''
-                                  }
-                                />
-                                {syncingSessionId === session.id && syncingKind === 'dida'
-                                  ? '同步中'
-                                  : '同步到滴答清单'}
-                              </button>
+                          <div className="hidden items-center gap-2 text-[11px] text-fg-muted sm:flex">
+                            <SessionLinkPreview session={session} segments={rowSegments} />
+                            {hasTicktickSegments && settings?.syncMode !== 'local-only' && (
+                              <SessionSyncBadge state={syncState} />
                             )}
-                            {settings?.tomatodo.enabled && (
-                              <button
-                                className="btn-outline motion-press !min-h-[30px] !px-3 !py-1.5 !text-[12px]"
-                                disabled={linking || syncingSessionId === session.id}
-                                onClick={() => handleSyncTomatodo(session.id)}
-                                title="补写入或重试番茄 Todo 同步"
-                              >
-                                <Icon.Refresh
-                                  size="xs"
-                                  className={
-                                    syncingSessionId === session.id && syncingKind === 'tomatodo'
-                                      ? 'animate-spin'
-                                      : ''
-                                  }
-                                />
-                                {syncingSessionId === session.id && syncingKind === 'tomatodo'
-                                  ? '写入中'
-                                  : '补写入番茄 Todo'}
-                              </button>
+                            {hasTicktickSegments && settings?.syncMode === 'local-only' && (
+                              <span className="status-chip border-border/60 bg-bg-subtle/60 text-fg-subtle">
+                                仅本地
+                              </span>
                             )}
-                            {settings?.syncMode !== 'local-only' &&
-                              detail.segments.some(
-                                (segment) => segment.taskId && segment.taskSource === 'ticktick',
-                              ) && <SessionSyncBadge state={syncState} />}
-                            <div className="ml-auto flex items-center gap-1.5">
-                              <details className="relative">
-                                <summary className="btn-ghost motion-press flex min-h-[28px] cursor-pointer list-none items-center gap-1 px-2 py-1 text-[11px]">
-                                  <Icon.Download size="xs" />
-                                  导出
-                                </summary>
-                                <div className="absolute bottom-full right-0 z-20 mb-1 w-32 rounded-lg border border-border/60 bg-bg-elevated p-1 shadow-lg">
-                                  {(['markdown', 'csv', 'json'] as const).map((format) => (
-                                    <button
-                                      key={format}
-                                      className="block w-full rounded-md px-2 py-1.5 text-left text-[11px] text-fg-muted hover:bg-bg-subtle hover:text-fg"
-                                      onClick={() => handleExport(session.id, format)}
-                                    >
-                                      {format === 'markdown' ? 'Markdown' : format.toUpperCase()}
-                                    </button>
-                                  ))}
+                            <span>专注 {formatDuration(session.activeElapsedMs)}</span>
+                            {session.pauseElapsedMs > 0 && (
+                              <span>暂停 {formatDuration(session.pauseElapsedMs)}</span>
+                            )}
+                          </div>
+                        </button>
+
+                        <AnimatePresence initial={false} mode="sync">
+                          {expanded === session.id &&
+                            detailLoadingId === session.id &&
+                            detail?.session.id !== session.id && (
+                              <motion.div
+                                key={`detail-loading-${session.id}`}
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                                className="history-session-detail"
+                              >
+                                <div className="flex items-center gap-2 px-4 py-4 text-[11.5px] text-fg-subtle">
+                                  <Icon.Loader size="sm" className="motion-spin text-accent" />
+                                  正在读取这次专注的片段与同步状态…
                                 </div>
-                              </details>
-                              <button
-                                className="history-icon-action danger motion-press"
-                                onClick={() => handleDelete(session.id)}
-                                title="删除记录"
-                                aria-label="删除记录"
-                              >
-                                <Icon.Trash size="xs" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              );
-            })}
-          </div>
+                              </motion.div>
+                            )}
+                          {expanded === session.id && detailLoadError?.sessionId === session.id && (
+                            <motion.div
+                              key={`detail-error-${session.id}`}
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                              className="history-session-detail error"
+                            >
+                              <div className="flex items-center gap-2.5 px-4 py-3 text-[11.5px] text-danger">
+                                <Icon.AlertCircle size="sm" />
+                                <span className="min-w-0 flex-1 break-words">
+                                  详情读取失败：{detailLoadError.message}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="btn-outline motion-press !min-h-[28px] !px-2 !py-1 !text-[11px]"
+                                  onClick={() => void reloadDetail(session.id)}
+                                >
+                                  <Icon.Refresh size="xs" />
+                                  重试
+                                </button>
+                              </div>
+                            </motion.div>
+                          )}
+                          {expanded === session.id && detail?.session.id === session.id && (
+                            <motion.div
+                              key={`detail-${session.id}`}
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                              className="history-session-detail"
+                            >
+                              <div className="history-session-detail-body">
+                                <SessionDetailHeader
+                                  detail={detail}
+                                  syncState={syncState}
+                                  syncing={syncingSessionId === session.id}
+                                  syncMode={settings?.syncMode ?? 'local-only'}
+                                />
+                                <HistoryTimelineList
+                                  sessionId={session.id}
+                                  segments={detail.segments}
+                                  pauses={detail.pauses}
+                                  filter={segmentFilter[session.id] ?? 'all'}
+                                  linking={linking}
+                                  defaultSubject={tomatodoDefaultSubject}
+                                  onLink={(segId, idx) =>
+                                    setPickerTarget({
+                                      kind: 'segment',
+                                      segmentId: segId,
+                                      title: `专注片段 ${idx + 1} 关联任务`,
+                                    })
+                                  }
+                                  onClear={handleClearSegment}
+                                  onComplete={handleCompleteTask}
+                                  onResync={handleResyncSegment}
+                                  onSetSubject={handleSetSubject}
+                                  tomatodoStatus={tomatodoStatusBySession[session.id] ?? {}}
+                                  syncStates={segmentSyncStates}
+                                  syncMode={settings?.syncMode ?? 'local-only'}
+                                  tomatodoEnabled={settings?.tomatodo.enabled === true}
+                                  completedTaskIds={completedTaskIds}
+                                />
+                                <div className="rounded-lg border border-border/50 bg-bg-card/40 px-3 py-2.5">
+                                  <BatchLinkPanel
+                                    segments={detail.segments}
+                                    linking={linking}
+                                    filter={segmentFilter[session.id] ?? 'all'}
+                                    onFilterChange={(f) =>
+                                      setSegmentFilter((prev) => ({ ...prev, [session.id]: f }))
+                                    }
+                                    onBatchUnlinked={() =>
+                                      setPickerTarget({
+                                        kind: 'batch-unlinked',
+                                        sessionId: session.id,
+                                        title: '把所有未关联片段关联到某任务',
+                                      })
+                                    }
+                                    onBatchAll={() =>
+                                      setPickerTarget({
+                                        kind: 'batch-all',
+                                        sessionId: session.id,
+                                        title: '把所有片段改为同一任务',
+                                      })
+                                    }
+                                  />
+                                  <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border/40 pt-2 text-[11px]">
+                                    <span className="text-fg-subtle">本次默认任务</span>
+                                    <span className="max-w-[280px] truncate font-medium text-fg">
+                                      {detail.session.defaultTaskTitle ?? '未设置'}
+                                    </span>
+                                    <button
+                                      className="btn-ghost motion-press !min-h-[26px] !px-2 !py-0.5 !text-[11px]"
+                                      disabled={linking}
+                                      onClick={() =>
+                                        setPickerTarget({
+                                          kind: 'session-default',
+                                          sessionId: session.id,
+                                          title: '设置本次专注默认任务',
+                                        })
+                                      }
+                                    >
+                                      {detail.session.defaultTaskTitle ? '更换' : '关联'}
+                                    </button>
+                                    {detail.session.defaultTaskTitle && (
+                                      <button
+                                        className="btn-ghost motion-press !min-h-[26px] !px-2 !py-0.5 !text-[11px] text-danger"
+                                        disabled={linking}
+                                        onClick={() => handleClearSessionDefault(session.id)}
+                                      >
+                                        清除
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-2.5">
+                                  {settings?.syncMode !== 'local-only' && (
+                                    <button
+                                      className="btn-primary motion-press !min-h-[30px] !px-3 !py-1.5 !text-[12px]"
+                                      disabled={linking || syncingSessionId === session.id}
+                                      onClick={() => handleSyncSession(session.id)}
+                                      title="把本次已关联滴答任务的专注时间同步到滴答清单"
+                                    >
+                                      <Icon.Refresh
+                                        size="xs"
+                                        className={
+                                          syncingSessionId === session.id && syncingKind === 'dida'
+                                            ? 'animate-spin'
+                                            : ''
+                                        }
+                                      />
+                                      {syncingSessionId === session.id && syncingKind === 'dida'
+                                        ? '同步中'
+                                        : '同步到滴答清单'}
+                                    </button>
+                                  )}
+                                  {settings?.tomatodo.enabled && (
+                                    <button
+                                      className="btn-outline motion-press !min-h-[30px] !px-3 !py-1.5 !text-[12px]"
+                                      disabled={linking || syncingSessionId === session.id}
+                                      onClick={() => handleSyncTomatodo(session.id)}
+                                      title="补写入或重试番茄 Todo 同步"
+                                    >
+                                      <Icon.Refresh
+                                        size="xs"
+                                        className={
+                                          syncingSessionId === session.id &&
+                                          syncingKind === 'tomatodo'
+                                            ? 'animate-spin'
+                                            : ''
+                                        }
+                                      />
+                                      {syncingSessionId === session.id && syncingKind === 'tomatodo'
+                                        ? '写入中'
+                                        : '补写入番茄 Todo'}
+                                    </button>
+                                  )}
+                                  {settings?.syncMode !== 'local-only' &&
+                                    detail.segments.some(
+                                      (segment) =>
+                                        segment.taskId && segment.taskSource === 'ticktick',
+                                    ) && <SessionSyncBadge state={syncState} />}
+                                  <div className="ml-auto flex items-center gap-1.5">
+                                    <details className="relative">
+                                      <summary className="btn-ghost motion-press flex min-h-[28px] cursor-pointer list-none items-center gap-1 px-2 py-1 text-[11px]">
+                                        <Icon.Download size="xs" />
+                                        导出
+                                      </summary>
+                                      <div className="absolute bottom-full right-0 z-20 mb-1 w-32 rounded-lg border border-border/60 bg-bg-elevated p-1">
+                                        {(['markdown', 'csv', 'json'] as const).map((format) => (
+                                          <button
+                                            key={format}
+                                            className="block w-full rounded-md px-2 py-1.5 text-left text-[11px] text-fg-muted hover:bg-bg-subtle hover:text-fg"
+                                            onClick={() => handleExport(session.id, format)}
+                                          >
+                                            {format === 'markdown'
+                                              ? 'Markdown'
+                                              : format.toUpperCase()}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </details>
+                                    <button
+                                      className="history-icon-action danger motion-press"
+                                      onClick={() => handleDelete(session.id)}
+                                      title="删除记录"
+                                      aria-label="删除记录"
+                                    >
+                                      <Icon.Trash size="xs" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </section>
         )}
       </div>
 

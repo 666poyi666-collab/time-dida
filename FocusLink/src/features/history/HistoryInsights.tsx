@@ -127,16 +127,12 @@ export function HistoryInsights({ sessions, summary, range }: HistoryInsightsPro
           <svg viewBox="0 0 720 224" preserveAspectRatio="none" aria-hidden="true">
             <defs>
               <linearGradient id="focus-chart-area" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="rgb(var(--app-accent))" stopOpacity="0.2" />
+                <stop offset="0%" stopColor="rgb(var(--app-accent))" stopOpacity="0.12" />
                 <stop offset="100%" stopColor="rgb(var(--app-accent))" stopOpacity="0" />
               </linearGradient>
               <linearGradient id="focus-chart-bar" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="rgb(var(--app-accent))" />
-                <stop
-                  offset="100%"
-                  stopColor="rgb(var(--app-accent-companion))"
-                  stopOpacity="0.54"
-                />
+                <stop offset="0%" stopColor="rgb(var(--app-accent-companion))" />
+                <stop offset="100%" stopColor="rgb(var(--app-accent))" stopOpacity="0.35" />
               </linearGradient>
             </defs>
             {[40, 112, 184].map((y) => (

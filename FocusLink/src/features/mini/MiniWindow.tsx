@@ -294,6 +294,7 @@ export function MiniWindow() {
         <span className="mini-material-glow" />
         <span className="mini-material-grain" />
         <span className="mini-focus-aura" />
+        <span className="mini-signal" />
       </div>
       <span className="mini-state-rail" aria-hidden="true" />
       <span className="mini-dock-cue" aria-hidden="true" />

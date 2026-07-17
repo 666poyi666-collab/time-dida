@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
 import { AnimatePresence, MotionConfig, motion, useIsPresent } from 'framer-motion';
 import { useStore } from './store';
 import { TimerPanel } from '../features/focus/TimerPanel';
@@ -10,6 +9,9 @@ import { TaskWorkspace } from '../features/tasks/TaskWorkspace';
 import { Toast } from '../ui/Toast';
 import { Icon } from '../ui/Icon';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
+import { FlipDigits } from '../ui/FlipDigits';
+import { formatDurationPadded } from '../lib/time';
+import { getMainDisplayMs } from '@shared/focus/selectors';
 import type { AppSettings } from '@shared/types';
 
 type View = 'timer' | 'tasks' | 'history' | 'settings';
@@ -34,21 +36,6 @@ const VIEW_ORDER: Record<View, number> = {
   history: 2,
   settings: 3,
 };
-
-const AMBIENT_PARTICLES = [
-  { x: '7%', y: '18%', size: 3, delay: -1.2, duration: 13, drift: 18 },
-  { x: '14%', y: '72%', size: 2, delay: -7.8, duration: 16, drift: 12 },
-  { x: '23%', y: '38%', size: 4, delay: -3.4, duration: 18, drift: 20 },
-  { x: '31%', y: '84%', size: 2, delay: -10.2, duration: 14, drift: 14 },
-  { x: '39%', y: '12%', size: 2, delay: -5.1, duration: 17, drift: 16 },
-  { x: '48%', y: '64%', size: 3, delay: -12.4, duration: 19, drift: 21 },
-  { x: '57%', y: '28%', size: 2, delay: -4.6, duration: 15, drift: 13 },
-  { x: '66%', y: '78%', size: 4, delay: -9.5, duration: 20, drift: 22 },
-  { x: '74%', y: '17%', size: 2, delay: -2.7, duration: 16, drift: 15 },
-  { x: '82%', y: '54%', size: 3, delay: -11.6, duration: 18, drift: 19 },
-  { x: '91%', y: '31%', size: 2, delay: -6.3, duration: 14, drift: 12 },
-  { x: '95%', y: '82%', size: 3, delay: -14.1, duration: 21, drift: 18 },
-] as const;
 
 export default function App() {
   // Subscribe to stable slices instead of the entire store. A running timer publishes a fresh
@@ -155,6 +142,19 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Electron hands initial DOM focus to the first focusable element when the window is
+  // shown; only reveal focus rings after the user actually navigates by keyboard.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Tab') {
+        document.documentElement.classList.add('kb-nav');
+        window.removeEventListener('keydown', onKeyDown, true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
+
   useEffect(() => {
     if (settings) applyTheme(settings);
   }, [settings]);
@@ -163,67 +163,56 @@ export default function App() {
     <ErrorBoundary>
       <MotionConfig reducedMotion="user">
         <div
-          className={`app-shell view-${view} state-${timerState} flex h-screen w-screen flex-col overflow-hidden text-fg antialiased`}
+          className={`app-shell view-${view} state-${timerState} flex h-screen w-screen flex-row overflow-hidden text-fg antialiased`}
         >
           <AmbientField />
-          <header className="global-header relative z-40 shrink-0">
-            <div className="global-header-inner mx-auto flex h-full w-full max-w-[1440px] items-center">
-              <button
-                type="button"
-                className="global-brand flex items-center gap-2"
+          <aside className="global-rail relative z-40 flex h-full shrink-0 flex-col items-center">
+            <button
+              type="button"
+              className="global-brand flex flex-col items-center gap-1.5"
+              onClick={() => setView('timer')}
+              aria-label="返回专注"
+            >
+              <BrandMark state={timerState} />
+              <span className="brand-wordmark font-display font-semibold text-fg">
+                <span>Focus</span>
+                <span>Link</span>
+              </span>
+            </button>
+
+            <nav className="global-nav" aria-label="主导航">
+              <TopNavBtn
+                active={view === 'timer'}
                 onClick={() => setView('timer')}
-                aria-label="返回专注"
-              >
-                <BrandMark state={timerState} />
-                <span className="brand-wordmark font-display text-[15px] font-semibold tracking-[-0.035em] text-fg">
-                  <span>Focus</span>
-                  <span>Link</span>
-                </span>
-              </button>
+                icon={<Icon.Target size="xl" />}
+                label="专注"
+              />
+              <TopNavBtn
+                active={view === 'tasks'}
+                onClick={() => setView('tasks')}
+                icon={<Icon.ListChecks size="xl" />}
+                label="任务"
+              />
+              <TopNavBtn
+                active={view === 'history'}
+                onClick={() => setView('history')}
+                icon={<Icon.BarChart size="xl" />}
+                label="统计"
+              />
+              <TopNavBtn
+                active={view === 'settings'}
+                onClick={() => setView('settings')}
+                icon={<Icon.Settings size="xl" />}
+                label="设置"
+              />
+            </nav>
 
-              <nav className="global-nav" aria-label="主导航">
-                <TopNavBtn
-                  active={view === 'timer'}
-                  onClick={() => setView('timer')}
-                  icon={<Icon.Target size="xs" />}
-                  label="专注"
-                />
-                <TopNavBtn
-                  active={view === 'tasks'}
-                  onClick={() => setView('tasks')}
-                  icon={<Icon.ListChecks size="xs" />}
-                  label="任务"
-                />
-                <TopNavBtn
-                  active={view === 'history'}
-                  onClick={() => setView('history')}
-                  icon={<Icon.BarChart size="xs" />}
-                  label="统计"
-                />
-                <TopNavBtn
-                  active={view === 'settings'}
-                  onClick={() => setView('settings')}
-                  icon={<Icon.Settings size="xs" />}
-                  label="设置"
-                />
-              </nav>
-
-              <div className="ml-auto flex items-center gap-2">
-                {view !== 'timer' && (
-                  <span className={`header-state state-${timerState}`}>
-                    <i />
-                    {timerState === 'running'
-                      ? '专注中'
-                      : timerState === 'paused'
-                        ? '已暂停'
-                        : '就绪'}
-                  </span>
-                )}
-              </div>
+            <div className="mt-auto flex flex-col items-center">
+              <HeaderTimerChip onOpenTimer={() => setView('timer')} />
             </div>
-          </header>
+          </aside>
 
-          <main className="relative z-10 min-h-0 flex-1 overflow-hidden">
+          <main className="relative z-10 min-h-0 min-w-0 flex-1 overflow-hidden">
             <AnimatePresence mode="sync" initial={false} custom={navigationDirection}>
               {view === 'timer' && (
                 <ViewPage key="view-timer" direction={navigationDirection}>
@@ -285,7 +274,7 @@ function ViewPage({ children, direction }: { children: React.ReactNode; directio
 
 function BootErrorNotice({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="absolute bottom-4 left-[68px] z-50 max-w-[420px] rounded-lg border border-danger/25 bg-bg-card/95 p-3 text-fg shadow-lg">
+    <div className="absolute bottom-4 left-[88px] z-50 max-w-[420px] rounded-lg border border-danger/25 bg-bg-card/95 p-3 text-fg shadow-lg">
       <div className="flex items-start gap-2.5">
         <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-danger/10 text-danger">
           <Icon.AlertCircle size="sm" />
@@ -320,12 +309,12 @@ function TimerStage({
       <div className="min-w-0 flex-1 overflow-hidden px-5 py-4 max-[900px]:overflow-y-auto">
         <motion.div
           layout
-          className={`session-workspace state-${state} ${showLedger ? 'with-ledger' : 'solo'} ${compactLedger ? 'compact-ledger' : ''} ledger-items-${Math.min(ledgerItemCount, 4)} mx-auto grid h-full max-w-[1260px] gap-4 max-[900px]:h-auto max-[900px]:grid-cols-1`}
+          className={`session-workspace state-${state} ${showLedger ? 'with-ledger' : 'solo'} ${compactLedger ? 'compact-ledger' : ''} ledger-items-${Math.min(ledgerItemCount, 4)} mx-auto grid h-full max-w-[1260px] max-[900px]:h-auto`}
           transition={{ layout: { type: 'spring', stiffness: 310, damping: 34, mass: 0.82 } }}
         >
           <motion.section
             layout
-            className="focus-workspace-panel flex min-h-0 items-stretch justify-center overflow-hidden px-10 py-8 max-[1100px]:px-7 max-[900px]:min-h-[560px]"
+            className="focus-workspace-panel flex min-h-0 items-stretch justify-center overflow-hidden px-10 py-7 max-[1100px]:px-7 max-[900px]:min-h-[500px]"
             transition={{ layout: { type: 'spring', stiffness: 310, damping: 34, mass: 0.82 } }}
           >
             <TimerPanel />
@@ -334,7 +323,7 @@ function TimerStage({
             {showLedger && (
               <motion.section
                 layout
-                className="session-ledger-pane min-h-0 overflow-hidden max-[900px]:min-h-[360px]"
+                className="session-ledger-pane min-h-0 overflow-hidden max-[900px]:min-h-[340px]"
                 initial={{ opacity: 0, x: 14, scale: 0.985 }}
                 animate={{ opacity: 1, x: 0, scale: 1 }}
                 exit={{ opacity: 0, x: 10, scale: 0.99 }}
@@ -368,13 +357,54 @@ function TopNavBtn({
   return (
     <button
       onClick={onClick}
-      className={`global-nav-button motion-press relative flex items-center gap-2 px-3 ${active ? 'active' : ''}`}
+      className={`global-nav-button motion-press relative flex flex-col items-center justify-center gap-1 ${active ? 'active' : ''}`}
       title={label}
       aria-label={label}
     >
       {active && <span className="global-nav-active-indicator" />}
       <span className="relative z-10 inline-flex items-center">{icon}</span>
-      <span className="relative z-10 text-[13.5px] font-semibold">{label}</span>
+      <span className="global-nav-label relative z-10">{label}</span>
+    </button>
+  );
+}
+
+/** 头部右侧计时状态芯片：任何页面都能看到计时状态，点击回到专注页。 */
+function HeaderTimerChip({ onOpenTimer }: { onOpenTimer: () => void }) {
+  const snapshot = useStore((state) => state.snapshot);
+  const state = snapshot?.state ?? 'idle';
+  const isActive = state === 'running' || state === 'paused';
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!isActive) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isActive, snapshot?.lastTick, snapshot?.currentPauseStartedAt]);
+
+  const label =
+    state === 'running'
+      ? '专注中'
+      : state === 'paused'
+        ? '已暂停'
+        : state === 'finished'
+          ? '已结束'
+          : '就绪';
+
+  return (
+    <button
+      type="button"
+      className={`header-state state-${state} motion-press`}
+      onClick={onOpenTimer}
+      title="回到专注"
+      aria-label={`计时状态：${label}，点击回到专注`}
+    >
+      <i />
+      <span>{label}</span>
+      {isActive && (
+        <span className="header-state-time">
+          <FlipDigits value={formatDurationPadded(getMainDisplayMs(snapshot, now))} />
+        </span>
+      )}
     </button>
   );
 }
@@ -395,32 +425,14 @@ function BrandMark({ state }: { state: string }) {
   );
 }
 
+/** 克制的环境层：两片超大柔和光斑慢速漂移 + 极淡网格；运行中才出现状态呼吸光。 */
 function AmbientField() {
   return (
     <div className="ambient-field" aria-hidden="true">
       <span className="ambient-glow ambient-glow-primary" />
       <span className="ambient-glow ambient-glow-secondary" />
       <span className="ambient-glow ambient-glow-state" />
-      <span className="ambient-contour ambient-contour-a" />
-      <span className="ambient-contour ambient-contour-b" />
-      <span className="ambient-light-sweep" />
-      <div className="ambient-particles">
-        {AMBIENT_PARTICLES.map((particle, index) => (
-          <i
-            key={index}
-            style={
-              {
-                '--particle-x': particle.x,
-                '--particle-y': particle.y,
-                '--particle-size': `${particle.size}px`,
-                '--particle-delay': `${particle.delay}s`,
-                '--particle-duration': `${particle.duration}s`,
-                '--particle-drift': `${particle.drift}px`,
-              } as CSSProperties
-            }
-          />
-        ))}
-      </div>
+      <span className="ambient-grid" />
     </div>
   );
 }

@@ -38,7 +38,7 @@ export function TomatodoSubjectChips({
               compact ? 'min-w-[24px] px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-[11px]'
             } ${
               active
-                ? 'border-accent/35 bg-accent/12 text-accent'
+                ? 'border-accent/35 bg-accent/10 text-accent'
                 : 'border-border/50 bg-bg-card/50 text-fg-muted hover:bg-bg-subtle hover:text-fg'
             }`}
           >

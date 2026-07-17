@@ -242,7 +242,7 @@ export interface AppSettings {
   };
   theme: 'dark' | 'light';
   accentColor: string;
-  /** 主界面字体气质；geist 保留 v0.10.0 的精确风格，manrope 提供更温润的阅读节奏。 */
+  /** 主界面字体气质；geist 是 Lumen 默认的锐利风格，manrope 提供更温润的阅读节奏。 */
   fontProfile: 'geist' | 'manrope';
   segmentBehavior: 'new-segment' | 'continue-segment';
   syncMode: 'focus-record' | 'comment' | 'local-only';
@@ -356,7 +356,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   theme: 'light',
   accentColor: 'indigo',
-  fontProfile: 'manrope',
+  fontProfile: 'geist',
   segmentBehavior: 'new-segment',
   syncMode: 'focus-record',
   experimentalFocusEnabled: false,
