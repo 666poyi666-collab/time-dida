@@ -1,16 +1,18 @@
 /* Shared visual system for both the main workspace and the fixed mini window.
-   Design language "曦光控制台 Bloom Console": luminous dawn-bloom light theme,
-   aurora dark theme, Space Grotesk numerals, MiSans CJK, frosted glass craft,
-   comet progress rail and real motion everywhere. */
-@import '@fontsource-variable/geist/wght.css';
-@import '@fontsource-variable/manrope/wght.css';
-@import '@fontsource-variable/space-grotesk/wght.css';
-@import 'misans/lib/Normal/MiSans-Regular.min.css';
-@import 'misans/lib/Normal/MiSans-Medium.min.css';
-@import 'misans/lib/Normal/MiSans-Demibold.min.css';
-@import 'misans/lib/Normal/MiSans-Bold.min.css';
-@import '@fontsource/jetbrains-mono/400.css';
-@import '@fontsource/jetbrains-mono/500.css';
+   Design language "安静的桌面时间仪器" (Quiet Desktop Time Instrument):
+   matte warm-neutral canvas, deep teal accent, hairline rules, IBM Plex Sans
+   UI with Microsoft YaHei UI / Noto Sans SC CJK fallback, IBM Plex Mono
+   tabular numerals. One accent, used sparingly; state colors stay semantic
+   (accent = running/resume, red = pause — when accent itself were red, pause
+   would switch to a contrast color; current accent is teal so pause stays red).
+   No backdrop-filter, no neon, no gradient borders, no glow shadows. */
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-sans/700.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/ibm-plex-mono/600.css';
 
 @tailwind base;
 @tailwind components;
@@ -18,12 +20,12 @@
 
 @layer base {
   :root {
-    --font-ui: 'Geist Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
-    --font-display: 'Space Grotesk Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
-    --font-number: 'Space Grotesk Variable', 'MiSans', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-    --font-ui-weight: 440;
-    --font-ui-tracking: -0.011em;
+    --font-ui: 'IBM Plex Sans', 'Microsoft YaHei UI', 'Noto Sans SC', sans-serif;
+    --font-display: 'IBM Plex Sans', 'Microsoft YaHei UI', 'Noto Sans SC', sans-serif;
+    --font-number: 'IBM Plex Mono', 'Microsoft YaHei UI', 'Noto Sans SC', monospace;
+    --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --font-ui-weight: 400;
+    --font-ui-tracking: 0em;
     --motion-fast: 130ms;
     --motion-normal: 210ms;
     --motion-slow: 340ms;
@@ -32,54 +34,59 @@
     --ease-fluid: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-spring: cubic-bezier(0.34, 1.32, 0.44, 1);
     --radius-xs: 4px;
-    --radius-sm: 7px;
-    --radius-md: 10px;
-    --radius-lg: 14px;
-    --radius-xl: 18px;
-    --radius-2xl: 22px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --radius-xl: 14px;
+    --radius-2xl: 18px;
     --radius-pill: 999px;
 
-    --app-bg: 242 244 249;
-    --app-surface: 252 253 255;
-    --app-surface-2: 236 239 246;
-    --app-surface-3: 225 230 240;
-    --app-elevated: 255 255 255;
-    --app-text: 15 20 31;
-    --app-muted: 71 81 101;
-    --app-subtle: 117 127 147;
-    --app-border: 220 225 234;
-    --app-border-strong: 194 202 217;
-    --app-success: 12 138 91;
-    --app-pause: 224 49 60;
-    --app-warning: 176 106 30;
-    --app-danger: 196 58 74;
-    --app-info: 51 107 186;
-    --app-accent: 76 88 208;
-    --app-accent-hover: 61 72 186;
-    --app-accent-companion: 112 124 232;
-    --app-action-start: var(--app-accent-hover);
-    --app-action-end: var(--app-accent);
+    /* 亮色 · canvas/surface/text 按规范直译；subtle/border-strong 由规范色推导 */
+    --app-bg: 243 241 236; /* canvas #F3F1EC */
+    --app-surface: 250 249 246; /* surface #FAF9F6 */
+    --app-surface-2: 240 238 232;
+    --app-surface-3: 232 230 223;
+    --app-elevated: 255 255 255; /* surface-raised #FFFFFF */
+    --app-text: 32 34 31; /* text-primary #20221F */
+    --app-muted: 116 120 113; /* text-secondary #747871 */
+    --app-subtle: 152 155 148;
+    --app-border: 220 221 215; /* border #DCDDD7 */
+    --app-border-strong: 198 199 191;
+    --app-accent: 40 108 99; /* accent #286C63 */
+    --app-accent-hover: 32 88 80;
+    --app-accent-active: 26 72 66;
+    --app-accent-companion: 120 197 181;
     --app-accent-fg: 255 255 255;
-    --accent-muted: 230 233 250;
+    --app-accent-soft: 221 234 230; /* accent-soft #DDEAE6 */
+    --accent-muted: 221 234 230;
+    --app-success: 40 108 99; /* 语义成功并入 accent 深 teal */
+    --app-pause: 204 81 69; /* pause #CC5145 */
+    --app-pause-hover: 178 68 57;
+    --app-pause-active: 152 58 48;
+    --app-warning: 180 122 43; /* warning #B47A2B */
+    --app-danger: 204 81 69; /* 危险操作与暂停同族红，靠填充层级区分 */
+    --app-info: 40 108 99;
 
-    /* Bloom field palette (曦光花田) */
-    --bloom-peach: 255 159 122;
-    --bloom-iris: 99 102 241;
-    --bloom-sky: 56 189 248;
-    --bloom-mint: 52 211 153;
+    /* Ink action: 仪器感的实心墨按钮 */
+    --app-ink: 32 34 31;
+    --app-ink-fg: 250 249 246;
+    --app-action-start: var(--app-ink);
+    --app-action-end: var(--app-ink);
 
-    --shadow-xs: 0 1px 2px rgb(23 32 54 / 0.05);
-    --shadow-sm: 0 10px 26px -20px rgb(23 32 54 / 0.28), 0 1px 3px rgb(23 32 54 / 0.05);
-    --shadow-md: 0 26px 64px -38px rgb(23 32 54 / 0.34), 0 2px 8px rgb(23 32 54 / 0.05);
-    --shadow-lg: 0 32px 84px -36px rgb(23 32 54 / 0.4), 0 4px 12px rgb(23 32 54 / 0.06);
-    --shadow-modal: 0 24px 70px rgb(15 22 40 / 0.22), 0 0 0 1px rgb(23 32 54 / 0.06);
-    --shadow-material:
-      0 1px 0 rgb(255 255 255 / 0.85) inset, 0 24px 68px -46px rgb(23 32 54 / 0.5),
-      0 8px 24px -20px rgb(var(--app-accent) / 0.16);
-    --shadow-glow-accent:
-      0 6px 24px -6px rgb(var(--app-accent) / 0.4), 0 0 48px -10px rgb(var(--app-accent) / 0.24);
-    --shadow-glow-pause:
-      0 6px 24px -6px rgb(var(--app-pause) / 0.38), 0 0 48px -10px rgb(var(--app-pause) / 0.22);
+    /* Ambient field neutralized: 仅比画布略亮的哑光中性斑 */
+    --bloom-peach: 238 236 229;
+    --bloom-iris: 234 232 225;
+    --bloom-sky: 240 238 232;
+    --bloom-mint: 236 234 227;
+
+    --shadow-xs: 0 1px 2px rgb(32 34 31 / 0.05);
+    --shadow-sm: 0 1px 3px rgb(32 34 31 / 0.07);
+    --shadow-md: 0 4px 14px -6px rgb(32 34 31 / 0.12);
+    --shadow-lg: 0 10px 28px -12px rgb(32 34 31 / 0.16);
+    --shadow-modal: 0 16px 48px -12px rgb(32 34 31 / 0.22);
+    --shadow-material: 0 1px 3px rgb(32 34 31 / 0.06);
+    --shadow-glow-accent: none;
+    --shadow-glow-pause: none;
 
     --bg-base: var(--app-bg);
     --bg-card: var(--app-surface);
@@ -100,62 +107,58 @@
   }
 
   .dark {
-    --app-bg: 6 8 14;
-    --app-surface: 13 17 27;
-    --app-surface-2: 19 25 38;
-    --app-surface-3: 26 33 50;
-    --app-elevated: 21 27 41;
-    --app-text: 232 236 246;
-    --app-muted: 158 168 190;
-    --app-subtle: 112 123 146;
-    --app-border: 34 42 61;
-    --app-border-strong: 54 64 88;
-    --app-success: 76 192 142;
-    --app-pause: 255 92 104;
-    --app-warning: 214 156 82;
-    --app-danger: 232 102 116;
-    --app-info: 118 160 214;
-    --app-accent: 140 150 250;
-    --app-accent-hover: 166 174 255;
-    --app-accent-companion: 116 138 246;
-    --app-action-start: var(--app-accent);
-    --app-action-end: var(--app-accent-companion);
-    --app-accent-fg: 10 12 20;
-    --accent-muted: 28 33 52;
+    /* 暗色 · 按规范直译 */
+    --app-bg: 17 20 17; /* canvas #111411 */
+    --app-surface: 23 27 24; /* surface #171B18 */
+    --app-surface-2: 28 33 29;
+    --app-surface-3: 36 41 37;
+    --app-elevated: 32 37 33; /* surface-raised #202521 */
+    --app-text: 240 241 237; /* text-primary #F0F1ED */
+    --app-muted: 150 157 150; /* text-secondary #969D96 */
+    --app-subtle: 110 116 110;
+    --app-border: 43 49 45; /* border #2B312D */
+    --app-border-strong: 60 67 62;
+    --app-accent: 120 197 181; /* accent #78C5B5 */
+    --app-accent-hover: 150 214 200;
+    --app-accent-active: 170 222 208;
+    --app-accent-companion: 40 108 99;
+    --app-accent-fg: 17 20 17;
+    --app-accent-soft: 32 60 54; /* accent-soft #203C36 */
+    --accent-muted: 32 60 54;
+    --app-success: 120 197 181;
+    --app-pause: 239 106 92; /* pause #EF6A5C */
+    --app-pause-hover: 244 130 118;
+    --app-pause-active: 248 150 140;
+    --app-warning: 216 170 87; /* warning #D8AA57 */
+    --app-danger: 239 106 92;
+    --app-info: 120 197 181;
 
-    /* Bloom field palette — dark theme carries the same hues deeper */
-    --bloom-peach: 255 138 96;
-    --bloom-iris: 124 110 255;
-    --bloom-sky: 34 211 238;
-    --bloom-mint: 52 211 153;
-    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.2);
-    --shadow-sm: 0 4px 14px rgb(0 0 0 / 0.24);
-    --shadow-md: 0 14px 38px rgb(0 0 0 / 0.32);
-    --shadow-lg: 0 22px 62px rgb(0 0 0 / 0.4);
-    --shadow-modal: 0 28px 86px rgb(0 0 0 / 0.56), 0 0 0 1px rgb(255 255 255 / 0.05);
-    --shadow-material:
-      0 1px 0 rgb(255 255 255 / 0.055) inset, 0 28px 74px -42px rgb(0 0 0 / 0.8),
-      0 10px 28px -24px rgb(var(--app-accent) / 0.26);
-    --shadow-glow-accent:
-      0 6px 28px -4px rgb(var(--app-accent) / 0.55), 0 0 64px -8px rgb(var(--app-accent) / 0.35);
-    --shadow-glow-pause:
-      0 6px 28px -4px rgb(var(--app-pause) / 0.5), 0 0 64px -8px rgb(var(--app-pause) / 0.3);
+    /* Ink action inverts: paper button, ink glyph */
+    --app-ink: 240 241 237;
+    --app-ink-fg: 23 27 24;
+
+    --bloom-peach: 24 28 25;
+    --bloom-iris: 22 26 23;
+    --bloom-sky: 26 30 27;
+    --bloom-mint: 23 27 24;
+
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.24);
+    --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 14px -6px rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 10px 28px -12px rgb(0 0 0 / 0.48);
+    --shadow-modal: 0 16px 48px -12px rgb(0 0 0 / 0.6);
+    --shadow-material: 0 1px 3px rgb(0 0 0 / 0.3);
+    --shadow-glow-accent: none;
+    --shadow-glow-pause: none;
   }
 
-  .font-profile-geist {
-    --font-ui: 'Geist Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
-    --font-display: 'Space Grotesk Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
-    --font-number: 'Space Grotesk Variable', 'MiSans', system-ui, sans-serif;
-    --font-ui-weight: 440;
-    --font-ui-tracking: -0.011em;
-  }
-
+  /* 单一字体方案：旧字体档保持类名兼容，统一回落到 IBM Plex 栈。
+     阶段 4 重做设置页时将移除该选择器。 */
+  .font-profile-geist,
   .font-profile-manrope {
-    --font-ui: 'Manrope Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
-    --font-display: 'Space Grotesk Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
-    --font-number: 'Space Grotesk Variable', 'MiSans', system-ui, sans-serif;
-    --font-ui-weight: 430;
-    --font-ui-tracking: 0.002em;
+    --font-ui: 'IBM Plex Sans', 'Microsoft YaHei UI', 'Noto Sans SC', sans-serif;
+    --font-display: 'IBM Plex Sans', 'Microsoft YaHei UI', 'Noto Sans SC', sans-serif;
+    --font-number: 'IBM Plex Mono', 'Microsoft YaHei UI', 'Noto Sans SC', monospace;
   }
 
   .light {
@@ -166,65 +169,27 @@
     color-scheme: dark;
   }
 
-  .accent-indigo {
-    --app-accent: 76 88 208;
-    --app-accent-hover: 61 72 186;
-    --app-accent-companion: 112 124 232;
-  }
-  .dark.accent-indigo {
-    --app-accent: 141 152 246;
-    --app-accent-hover: 164 173 250;
-    --app-accent-companion: 118 140 240;
-  }
-  .accent-violet {
-    --app-accent: 124 82 196;
-    --app-accent-hover: 105 66 176;
-    --app-accent-companion: 168 116 224;
-  }
-  .dark.accent-violet {
-    --app-accent: 190 152 240;
-    --app-accent-hover: 208 172 250;
-    --app-accent-companion: 172 128 232;
-  }
-  .accent-emerald {
-    --app-accent: 10 132 86;
-    --app-accent-hover: 8 118 76;
-    --app-accent-companion: 34 172 132;
-  }
-  .dark.accent-emerald {
-    --app-accent: 78 196 146;
-    --app-accent-hover: 104 212 168;
-    --app-accent-companion: 64 178 158;
-  }
-  .accent-rose {
-    --app-accent: 200 68 100;
-    --app-accent-hover: 176 52 82;
-    --app-accent-companion: 224 108 138;
-  }
-  .dark.accent-rose {
-    --app-accent: 240 138 158;
-    --app-accent-hover: 248 162 178;
-    --app-accent-companion: 232 116 152;
-  }
-  .accent-amber {
-    --app-accent: 168 98 22;
-    --app-accent-hover: 158 90 16;
-    --app-accent-companion: 214 146 52;
-  }
-  .dark.accent-amber {
-    --app-accent: 232 172 92;
-    --app-accent-hover: 244 192 124;
-    --app-accent-companion: 222 148 70;
-  }
+  /* 新语言禁止蓝紫主强调：旧六色 accent 选择器全部归一到新 accent，
+     保持类名兼容直到阶段 4 重做设置页 accent 选择器。 */
+  .accent-indigo,
+  .accent-violet,
+  .accent-emerald,
+  .accent-rose,
+  .accent-amber,
   .accent-sky {
-    --app-accent: 36 122 180;
-    --app-accent-hover: 26 100 152;
-    --app-accent-companion: 56 158 210;
+    --app-accent: 40 108 99;
+    --app-accent-hover: 32 88 80;
+    --app-accent-companion: 120 197 181;
   }
+  .dark.accent-indigo,
+  .dark.accent-violet,
+  .dark.accent-emerald,
+  .dark.accent-rose,
+  .dark.accent-amber,
   .dark.accent-sky {
-    --app-accent: 110 180 224;
-    --app-accent-hover: 140 198 238;
-    --app-accent-companion: 84 160 210;
+    --app-accent: 120 197 181;
+    --app-accent-hover: 150 214 200;
+    --app-accent-companion: 40 108 99;
   }
 
   * {

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion, useIsPresent } from 'framer-motion';
 import { useStore } from './store';
 import { TimerPanel } from '../features/focus/TimerPanel';
-import { SegmentTimeline } from '../features/focus/SegmentTimeline';
 import { HistoryPanel } from '../features/history/HistoryPanel';
 import { SettingsPanel } from '../features/settings/SettingsPanel';
 import { TaskWorkspace } from '../features/tasks/TaskWorkspace';
@@ -44,8 +43,6 @@ export default function App() {
   const settings = useStore((state) => state.settings);
   const view = useStore((state) => state.view);
   const timerState = useStore((state) => state.snapshot?.state ?? 'idle');
-  const segmentCount = useStore((state) => state.snapshot?.segments.length ?? 0);
-  const pauseEventCount = useStore((state) => state.snapshot?.pauseEvents.length ?? 0);
   const setView = useStore((state) => state.setView);
   const setSnapshot = useStore((state) => state.setSnapshot);
   const setSettings = useStore((state) => state.setSettings);
@@ -216,11 +213,7 @@ export default function App() {
             <AnimatePresence mode="sync" initial={false} custom={navigationDirection}>
               {view === 'timer' && (
                 <ViewPage key="view-timer" direction={navigationDirection}>
-                  <TimerStage
-                    state={timerState}
-                    showLedger={segmentCount > 0}
-                    ledgerItemCount={segmentCount + pauseEventCount}
-                  />
+                  <TimerStage state={timerState} />
                 </ViewPage>
               )}
               {view === 'history' && (
@@ -294,52 +287,15 @@ function BootErrorNotice({ message, onRetry }: { message: string; onRetry: () =>
     </div>
   );
 }
-function TimerStage({
-  state,
-  showLedger,
-  ledgerItemCount,
-}: {
-  state: string;
-  showLedger: boolean;
-  ledgerItemCount: number;
-}) {
-  const compactLedger = showLedger && ledgerItemCount <= 3;
+function TimerStage({ state }: { state: string }) {
   return (
     <div className="relative flex h-full w-full">
-      <div
-        className={`min-w-0 flex-1 overflow-hidden ${showLedger ? '' : 'px-5 py-4'} max-[900px]:overflow-y-auto`}
-      >
-        <motion.div
-          layout
-          className={`session-workspace state-${state} ${showLedger ? 'with-ledger' : 'solo'} ${compactLedger ? 'compact-ledger' : ''} ledger-items-${Math.min(ledgerItemCount, 4)} mx-auto grid h-full ${showLedger ? '' : 'max-w-[1260px]'} max-[900px]:h-auto`}
-          transition={{ layout: { type: 'spring', stiffness: 310, damping: 34, mass: 0.82 } }}
+      <div className="min-w-0 flex-1 overflow-hidden max-[900px]:overflow-y-auto">
+        <div
+          className={`session-workspace state-${state} mx-auto h-full max-w-[1360px] max-[900px]:h-auto`}
         >
-          <motion.section
-            layout
-            className="focus-workspace-panel flex min-h-0 items-stretch justify-center overflow-hidden px-10 py-7 max-[1100px]:px-7 max-[900px]:min-h-[500px]"
-            transition={{ layout: { type: 'spring', stiffness: 310, damping: 34, mass: 0.82 } }}
-          >
-            <TimerPanel />
-          </motion.section>
-          <AnimatePresence initial={false} mode="popLayout">
-            {showLedger && (
-              <motion.section
-                layout
-                className="session-ledger-pane min-h-0 overflow-hidden max-[900px]:min-h-[340px]"
-                initial={{ opacity: 0, x: 14, scale: 0.985 }}
-                animate={{ opacity: 1, x: 0, scale: 1 }}
-                exit={{ opacity: 0, x: 10, scale: 0.99 }}
-                transition={{
-                  layout: { type: 'spring', stiffness: 310, damping: 34, mass: 0.82 },
-                  opacity: { duration: 0.2 },
-                  x: { duration: 0.24, ease: [0.16, 1, 0.3, 1] },
-                }}
-              >
-                <SegmentTimeline />
-              </motion.section>
-            )}
-          </AnimatePresence>
-        </motion.div>
+          <TimerPanel />
+        </div>
       </div>
     </div>
   );
