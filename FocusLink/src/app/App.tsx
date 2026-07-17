@@ -306,10 +306,12 @@ function TimerStage({
   const compactLedger = showLedger && ledgerItemCount <= 3;
   return (
     <div className="relative flex h-full w-full">
-      <div className="min-w-0 flex-1 overflow-hidden px-5 py-4 max-[900px]:overflow-y-auto">
+      <div
+        className={`min-w-0 flex-1 overflow-hidden ${showLedger ? '' : 'px-5 py-4'} max-[900px]:overflow-y-auto`}
+      >
         <motion.div
           layout
-          className={`session-workspace state-${state} ${showLedger ? 'with-ledger' : 'solo'} ${compactLedger ? 'compact-ledger' : ''} ledger-items-${Math.min(ledgerItemCount, 4)} mx-auto grid h-full max-w-[1260px] max-[900px]:h-auto`}
+          className={`session-workspace state-${state} ${showLedger ? 'with-ledger' : 'solo'} ${compactLedger ? 'compact-ledger' : ''} ledger-items-${Math.min(ledgerItemCount, 4)} mx-auto grid h-full ${showLedger ? '' : 'max-w-[1260px]'} max-[900px]:h-auto`}
           transition={{ layout: { type: 'spring', stiffness: 310, damping: 34, mass: 0.82 } }}
         >
           <motion.section
@@ -431,6 +433,7 @@ function AmbientField() {
     <div className="ambient-field" aria-hidden="true">
       <span className="ambient-glow ambient-glow-primary" />
       <span className="ambient-glow ambient-glow-secondary" />
+      <span className="ambient-glow ambient-glow-peach" />
       <span className="ambient-glow ambient-glow-state" />
       <span className="ambient-grid" />
     </div>

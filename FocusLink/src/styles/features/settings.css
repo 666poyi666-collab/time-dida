@@ -474,12 +474,12 @@
   }
 
   .font-preview-geist {
-    font-family: 'Geist Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
+    font-family: 'Geist Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
     letter-spacing: -0.011em;
   }
 
   .font-preview-manrope {
-    font-family: 'Manrope Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
+    font-family: 'Manrope Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
     letter-spacing: 0.002em;
   }
 

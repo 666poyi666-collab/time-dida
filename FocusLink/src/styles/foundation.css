@@ -1,9 +1,14 @@
 /* Shared visual system for both the main workspace and the fixed mini window.
-   Design language "Lumen": cool porcelain light theme, deep ink-navy dark theme,
-   iris accent, Geist-led typography, layered hairline materials. */
+   Design language "曦光控制台 Bloom Console": luminous dawn-bloom light theme,
+   aurora dark theme, Space Grotesk numerals, MiSans CJK, frosted glass craft,
+   comet progress rail and real motion everywhere. */
 @import '@fontsource-variable/geist/wght.css';
 @import '@fontsource-variable/manrope/wght.css';
-@import '@fontsource-variable/noto-sans-sc/wght.css';
+@import '@fontsource-variable/space-grotesk/wght.css';
+@import 'misans/lib/Normal/MiSans-Regular.min.css';
+@import 'misans/lib/Normal/MiSans-Medium.min.css';
+@import 'misans/lib/Normal/MiSans-Demibold.min.css';
+@import 'misans/lib/Normal/MiSans-Bold.min.css';
 @import '@fontsource/jetbrains-mono/400.css';
 @import '@fontsource/jetbrains-mono/500.css';
 
@@ -13,9 +18,9 @@
 
 @layer base {
   :root {
-    --font-ui: 'Geist Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
-    --font-display: 'Geist Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
-    --font-number: 'Geist Variable', 'Noto Sans SC Variable', system-ui, sans-serif;
+    --font-ui: 'Geist Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
+    --font-display: 'Space Grotesk Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
+    --font-number: 'Space Grotesk Variable', 'MiSans', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, monospace;
     --font-ui-weight: 440;
     --font-ui-tracking: -0.011em;
@@ -56,6 +61,12 @@
     --app-action-end: var(--app-accent);
     --app-accent-fg: 255 255 255;
     --accent-muted: 230 233 250;
+
+    /* Bloom field palette (曦光花田) */
+    --bloom-peach: 255 159 122;
+    --bloom-iris: 99 102 241;
+    --bloom-sky: 56 189 248;
+    --bloom-mint: 52 211 153;
 
     --shadow-xs: 0 1px 2px rgb(23 32 54 / 0.05);
     --shadow-sm: 0 10px 26px -20px rgb(23 32 54 / 0.28), 0 1px 3px rgb(23 32 54 / 0.05);
@@ -111,6 +122,12 @@
     --app-action-end: var(--app-accent-companion);
     --app-accent-fg: 10 12 20;
     --accent-muted: 28 33 52;
+
+    /* Bloom field palette — dark theme carries the same hues deeper */
+    --bloom-peach: 255 138 96;
+    --bloom-iris: 124 110 255;
+    --bloom-sky: 34 211 238;
+    --bloom-mint: 52 211 153;
     --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.2);
     --shadow-sm: 0 4px 14px rgb(0 0 0 / 0.24);
     --shadow-md: 0 14px 38px rgb(0 0 0 / 0.32);
@@ -126,17 +143,17 @@
   }
 
   .font-profile-geist {
-    --font-ui: 'Geist Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
-    --font-display: 'Geist Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
-    --font-number: 'Geist Variable', 'Noto Sans SC Variable', system-ui, sans-serif;
+    --font-ui: 'Geist Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
+    --font-display: 'Space Grotesk Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
+    --font-number: 'Space Grotesk Variable', 'MiSans', system-ui, sans-serif;
     --font-ui-weight: 440;
     --font-ui-tracking: -0.011em;
   }
 
   .font-profile-manrope {
-    --font-ui: 'Manrope Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
-    --font-display: 'Manrope Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
-    --font-number: 'Manrope Variable', 'Noto Sans SC Variable', system-ui, sans-serif;
+    --font-ui: 'Manrope Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
+    --font-display: 'Space Grotesk Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
+    --font-number: 'Space Grotesk Variable', 'MiSans', system-ui, sans-serif;
     --font-ui-weight: 430;
     --font-ui-tracking: 0.002em;
   }

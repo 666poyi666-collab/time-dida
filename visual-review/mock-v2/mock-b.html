@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>FocusLink v2 · B 编辑分栏</title>
+    <link rel="stylesheet" href="mock-shared.css" />
+    <style>
+      .split {
+        position: relative;
+        flex: 1;
+        display: grid;
+        grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr);
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .hero {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        padding: 30px 44px 38px 52px;
+      }
+
+      .hero header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .hero .spacer {
+        flex: 1;
+      }
+
+      .hero .meta {
+        color: rgb(var(--muted));
+        font-size: 12px;
+        letter-spacing: 0.06em;
+      }
+
+      .hero .meta em {
+        color: rgb(var(--success));
+        font-style: normal;
+      }
+
+      .digits {
+        margin-top: 4px;
+        color: rgb(13 18 29);
+        font-size: 172px;
+        font-weight: 600;
+        letter-spacing: -0.042em;
+        line-height: 0.92;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .track {
+        position: relative;
+        width: 100%;
+        height: 4px;
+        margin-top: 26px;
+        border-radius: 99px;
+        background: rgb(var(--border) / 0.5);
+      }
+
+      .track::before {
+        content: '';
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 58%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgb(var(--success)), rgb(var(--mint) / 0.35));
+        box-shadow: 0 0 16px rgb(var(--success) / 0.45);
+      }
+
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 26px;
+      }
+
+      .controls .note {
+        margin-left: 6px;
+        color: rgb(var(--subtle));
+        font-size: 11.5px;
+      }
+
+      .panel {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        border-left: 1px solid rgb(var(--border) / 0.55);
+        background: linear-gradient(180deg, rgb(var(--elevated) / 0.55), rgb(var(--surface) / 0.2));
+        padding: 26px 26px 24px;
+      }
+
+      .panel h4 {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 12px;
+      }
+
+      .panel h4 span {
+        color: rgb(var(--subtle));
+        font-size: 10px;
+      }
+
+      .task-block {
+        padding: 12px 0 14px;
+        border-bottom: 1px solid rgb(var(--border) / 0.5);
+      }
+
+      .task-block .label {
+        color: rgb(var(--subtle));
+        font-size: 10.5px;
+      }
+
+      .task-block .title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 3px;
+        font-size: 13px;
+        font-weight: 550;
+      }
+
+      .task-block .title a {
+        color: rgb(var(--accent));
+        font-size: 11px;
+        font-weight: 550;
+        text-decoration: none;
+      }
+
+      .seg {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 0;
+        border-bottom: 1px solid rgb(var(--border) / 0.4);
+      }
+
+      .seg .node {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: rgb(var(--success));
+        box-shadow: 0 0 8px rgb(var(--success) / 0.5);
+      }
+
+      .seg .t {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .seg .t b {
+        display: block;
+        font-size: 12px;
+        font-weight: 550;
+      }
+
+      .seg .t small {
+        color: rgb(var(--subtle));
+        font-size: 10.5px;
+      }
+
+      .seg .d {
+        font-variant-numeric: tabular-nums;
+        font-size: 12.5px;
+        font-weight: 560;
+      }
+
+      .stats {
+        margin-top: auto;
+        padding-top: 16px;
+      }
+
+      .stat {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        padding: 9px 0;
+        border-top: 1px solid rgb(var(--border) / 0.5);
+      }
+
+      .stat span {
+        color: rgb(var(--subtle));
+        font-size: 11px;
+      }
+
+      .stat strong {
+        font-size: 19px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .stat.pause strong {
+        color: rgb(var(--pause));
+      }
+
+      .stat.focus strong {
+        color: rgb(var(--success));
+      }
+    </style>
+  </head>
+  <body>
+    <aside class="rail">
+      <div class="brand">
+        <span class="brand-mark">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6.6 12a5.4 5.4 0 0 1 9.62-3.36" stroke-width="1.8" opacity="0.6" />
+            <path d="M17.4 12a5.4 5.4 0 0 1-9.62 3.36" stroke-width="2.2" />
+            <path d="M9.3 12h5.4" stroke-width="1.7" opacity="0.9" />
+            <circle cx="17.65" cy="6.35" r="1.35" fill="currentColor" stroke="none" />
+          </svg>
+        </span>
+        <span class="brand-word">Focus<em>Link</em></span>
+      </div>
+      <nav class="nav">
+        <button class="active">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <circle cx="12" cy="12" r="8.2" />
+            <circle cx="12" cy="12" r="3.4" />
+          </svg>
+          <span>专注</span>
+        </button>
+        <button>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9.5 6h10M9.5 12h10M9.5 18h10" />
+            <path d="M4 6.2l1.3 1.3L7.6 5.2M4 12.2l1.3 1.3 2.3-2.3M4 18.2l1.3 1.3 2.3-2.3" />
+          </svg>
+          <span>任务</span>
+        </button>
+        <button>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M6 19v-6M11 19V6M16 19v-3M21 19v-9" />
+          </svg>
+          <span>统计</span>
+        </button>
+        <button>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M4.5 8h8M18.5 8h1M4.5 16h3M13.5 16h6" />
+            <circle cx="15.5" cy="8" r="2.1" />
+            <circle cx="10.5" cy="16" r="2.1" />
+          </svg>
+          <span>设置</span>
+        </button>
+      </nav>
+      <div class="state-capsule">
+        <i></i>
+        专注中
+        <time>12:47</time>
+      </div>
+    </aside>
+
+    <main class="split">
+      <div class="ambient">
+        <span class="glow glow-a"></span>
+        <span class="glow glow-b"></span>
+        <span class="glow glow-state"></span>
+        <span class="grain"></span>
+      </div>
+
+      <section class="hero">
+        <header>
+          <span class="chip success"><i></i>专注中</span>
+          <span class="eyebrow">FOCUS 01</span>
+        </header>
+        <div class="spacer"></div>
+        <div class="meta mono">开始于 <em>11:26</em> · 正在记录专注</div>
+        <div class="digits">12:47</div>
+        <div class="track"></div>
+        <div class="controls">
+          <button class="btn-primary btn-pause">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M8 5h3v14H8zM13.5 5H17v14h-3.5z"/></svg>
+            暂停专注
+          </button>
+          <button class="btn-ghost">结束</button>
+          <span class="note">当前任务 · 未选择任务 — <b style="color: rgb(var(--accent))">关联</b></span>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <h4 class="eyebrow">本次片段<span>2 条</span></h4>
+        <div class="task-block">
+          <div class="label">当前任务</div>
+          <div class="title">未选择任务 <a href="#">关联</a></div>
+        </div>
+        <div class="seg">
+          <span class="node"></span>
+          <div class="t"><b>专注片段 1</b><small>11:26 · 进行中</small></div>
+          <span class="d">12:47</span>
+        </div>
+        <div class="seg">
+          <span class="node" style="background: rgb(var(--pause)); box-shadow: 0 0 8px rgb(var(--pause) / 0.5)"></span>
+          <div class="t"><b>暂停片段 1</b><small>11:39 — 11:41</small></div>
+          <span class="d" style="color: rgb(var(--pause))">1:32</span>
+        </div>
+        <div class="stats">
+          <div class="stat focus"><span>累计专注</span><strong>2:41:18</strong></div>
+          <div class="stat pause"><span>累计暂停</span><strong>0:18:44</strong></div>
+          <div class="stat"><span>总历时</span><strong>3:05:02</strong></div>
+        </div>
+      </aside>
+    </main>
+  </body>
+</html>

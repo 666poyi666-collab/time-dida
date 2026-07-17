@@ -13,3 +13,7 @@ focuslink-data/
 /FocusLink/*-result.json
 .DS_Store
 design-pack/
+
+# design workshop assets
+visual-review/mock-v2/fonts/
+visual-review/styles-v3/frames/
