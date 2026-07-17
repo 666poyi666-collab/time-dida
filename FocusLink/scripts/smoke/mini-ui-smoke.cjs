@@ -30,10 +30,10 @@ function readSharedSize(exportName) {
 }
 const EXPANDED_SIZE = readSharedSize('MINI_WINDOW_EXPANDED_SIZE');
 const COLLAPSED_SIZE = readSharedSize('MINI_WINDOW_COLLAPSED_SIZE');
-const FOCUS_TOKEN = '76 192 142';
-const PAUSE_TOKEN = '255 92 104';
-const LIGHT_FOCUS_TOKEN = '12 138 91';
-const LIGHT_PAUSE_TOKEN = '224 49 60';
+const FOCUS_TOKEN = '120 197 181';
+const PAUSE_TOKEN = '239 106 92';
+const LIGHT_FOCUS_TOKEN = '40 108 99';
+const LIGHT_PAUSE_TOKEN = '204 81 69';
 const THEME_TOKENS = {
   dark: { focus: FOCUS_TOKEN, pause: PAUSE_TOKEN },
   light: { focus: LIGHT_FOCUS_TOKEN, pause: LIGHT_PAUSE_TOKEN },

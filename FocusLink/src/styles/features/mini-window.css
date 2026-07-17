@@ -541,18 +541,18 @@
     font-weight: 600;
   }
 
-  /* Ink primary: solid warm ink, paper glyph, one quiet shadow. */
+  /* Accent primary: start/resume ride the single accent system. */
   .mini-action-focus {
-    border-color: rgb(var(--app-ink));
-    color: rgb(var(--app-ink-fg));
-    background-color: rgb(var(--app-ink));
+    border-color: rgb(var(--app-accent));
+    color: rgb(var(--app-accent-fg));
+    background-color: rgb(var(--app-accent));
     box-shadow: var(--shadow-xs);
   }
 
   .mini-action-focus:hover {
-    border-color: rgb(var(--app-ink));
-    color: rgb(var(--app-ink-fg));
-    background-color: rgb(var(--app-ink) / 0.85);
+    border-color: rgb(var(--app-accent-hover));
+    color: rgb(var(--app-accent-fg));
+    background-color: rgb(var(--app-accent-hover));
     box-shadow: var(--shadow-sm);
   }
 
