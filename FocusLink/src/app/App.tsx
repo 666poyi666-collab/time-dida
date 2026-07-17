@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion, useIsPresent } from 'framer-motion';
 import { useStore } from './store';
+import { AmbientField } from './AmbientField';
 import { TimerPanel } from '../features/focus/TimerPanel';
 import { HistoryPanel } from '../features/history/HistoryPanel';
 import { SettingsPanel } from '../features/settings/SettingsPanel';
@@ -379,19 +380,6 @@ function BrandMark({ state }: { state: string }) {
         <path className="brand-mark-link" d="M9.3 12h5.4" />
         <circle className="brand-mark-node" cx="17.65" cy="6.35" r="1.35" />
       </svg>
-    </div>
-  );
-}
-
-/** 克制的环境层：两片超大柔和光斑慢速漂移 + 极淡网格；运行中才出现状态呼吸光。 */
-function AmbientField() {
-  return (
-    <div className="ambient-field" aria-hidden="true">
-      <span className="ambient-glow ambient-glow-primary" />
-      <span className="ambient-glow ambient-glow-secondary" />
-      <span className="ambient-glow ambient-glow-peach" />
-      <span className="ambient-glow ambient-glow-state" />
-      <span className="ambient-grid" />
     </div>
   );
 }

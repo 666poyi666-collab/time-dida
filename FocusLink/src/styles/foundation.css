@@ -79,6 +79,12 @@
     --bloom-sky: 240 238 232;
     --bloom-mint: 236 234 227;
 
+    /* Ambient glow: 比画布略亮的哑光中性柔光（1/2）+ 一点极淡 accent 色温（3，
+       由 accent-soft #DDEAE6 略加深推导，保证可感知但安静）；暗色同语义微调。 */
+    --app-glow-1: 252 250 245;
+    --app-glow-2: 246 244 238;
+    --app-glow-3: 209 230 224;
+
     --shadow-xs: 0 1px 2px rgb(32 34 31 / 0.05);
     --shadow-sm: 0 1px 3px rgb(32 34 31 / 0.07);
     --shadow-md: 0 4px 14px -6px rgb(32 34 31 / 0.12);
@@ -141,6 +147,11 @@
     --bloom-iris: 22 26 23;
     --bloom-sky: 26 30 27;
     --bloom-mint: 23 27 24;
+
+    /* 暗色 ambient glow：同语义微调 —— 比画布略亮的哑光中性 + accent-soft 色温 */
+    --app-glow-1: 31 37 32;
+    --app-glow-2: 26 31 27;
+    --app-glow-3: 36 62 54;
 
     --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.24);
     --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.3);

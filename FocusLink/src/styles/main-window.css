@@ -38,22 +38,13 @@
   /* ─── App shell ─────────────────────────────────────────── */
 
   .app-shell {
-    --shell-state: var(--bloom-sky);
     position: relative;
     isolation: isolate;
     background: rgb(var(--app-bg));
     transition: background-color 500ms var(--ease-fluid);
   }
 
-  .app-shell.state-running {
-    --shell-state: var(--app-success);
-  }
-
-  .app-shell.state-paused {
-    --shell-state: var(--app-pause);
-  }
-
-  /* ─── Dawn field: one warm light drifting over paper ────── */
+  /* ─── Ambient field: three matte glows, one quiet accent tint ── */
 
   .ambient-field {
     position: absolute;
@@ -64,116 +55,94 @@
   }
 
   .ambient-field::before {
-    /* faint warm wash from the top edge, like low morning sun */
+    /* 顶部一层极轻的暖白薄纱，托住整体亮度 */
     content: '';
     position: absolute;
     inset: 0;
     background: linear-gradient(
-      172deg,
-      rgb(var(--bloom-peach) / 0.06),
-      transparent 38%,
-      rgb(var(--bloom-sky) / 0.05) 92%
+      168deg,
+      rgb(var(--app-glow-1) / 0.55),
+      transparent 42%,
+      rgb(var(--app-glow-2) / 0.4) 96%
     );
   }
 
+  /* 外层 span 只承载定位与 JS 惯性位移（transform-only）；
+     内层 i 承载哑光渐变与 CSS 慢漂移，两条 transform 链互不打架。 */
   .ambient-glow {
     position: absolute;
     display: block;
+    will-change: transform;
+  }
+
+  .ambient-glow > i {
+    display: block;
+    width: 100%;
+    height: 100%;
     border-radius: 50%;
     will-change: transform;
   }
 
   .ambient-glow-primary {
-    top: -30%;
-    left: -10%;
-    width: 58vw;
-    height: 58vw;
-    background: radial-gradient(circle, rgb(var(--bloom-iris) / 0.22), transparent 64%);
-    filter: blur(56px);
-    animation: bloom-drift-a 27s var(--ease-in-out) infinite alternate;
+    top: -20%;
+    left: -14%;
+    width: 52vmax;
+    height: 52vmax;
+  }
+
+  .ambient-glow-primary > i {
+    background: radial-gradient(
+      circle,
+      rgb(var(--app-glow-1) / 0.85),
+      rgb(var(--app-glow-1) / 0.34) 44%,
+      transparent 68%
+    );
+    animation: ambient-drift-a 74s var(--ease-in-out) infinite alternate;
   }
 
   .ambient-glow-secondary {
     right: -16%;
-    bottom: -36%;
-    width: 56vw;
-    height: 56vw;
-    background: radial-gradient(circle, rgb(var(--bloom-peach) / 0.18), transparent 66%);
-    filter: blur(54px);
-    animation: bloom-drift-b 25s var(--ease-in-out) infinite alternate;
+    bottom: -24%;
+    width: 46vmax;
+    height: 46vmax;
   }
 
-  .ambient-glow-peach {
-    top: -26%;
-    right: -8%;
-    width: 50vw;
-    height: 50vw;
-    background: radial-gradient(circle, rgb(var(--bloom-sky) / 0.14), transparent 62%);
-    filter: blur(50px);
-    animation: bloom-drift-c 22s var(--ease-in-out) infinite alternate;
+  .ambient-glow-secondary > i {
+    background: radial-gradient(
+      circle,
+      rgb(var(--app-glow-2) / 0.8),
+      rgb(var(--app-glow-2) / 0.3) 46%,
+      transparent 70%
+    );
+    animation: ambient-drift-b 86s var(--ease-in-out) infinite alternate;
   }
 
-  .ambient-glow-state {
+  .ambient-glow-accent {
     top: -16%;
-    left: 50%;
-    width: 60vw;
-    height: 44vw;
-    background: radial-gradient(
-      ellipse,
-      rgb(var(--shell-state) / 0.12),
-      rgb(var(--shell-state) / 0.035) 52%,
-      transparent 72%
-    );
-    filter: blur(30px);
-    opacity: 0;
-    transform: translateX(-50%);
-    transition:
-      opacity 800ms var(--ease-fluid),
-      background 800ms var(--ease-fluid);
+    right: 8%;
+    width: 40vmax;
+    height: 40vmax;
   }
 
-  .state-running .ambient-glow-state {
+  .ambient-glow-accent > i {
+    background: radial-gradient(
+      circle,
+      rgb(var(--app-glow-3) / 0.5),
+      rgb(var(--app-glow-3) / 0.2) 46%,
+      transparent 70%
+    );
+    opacity: 0.6;
+    animation: ambient-drift-c 96s var(--ease-in-out) infinite alternate;
+    transition: opacity 900ms var(--ease-fluid);
+  }
+
+  /* 运行中 accent 斑略微提亮，延续「状态呼吸光」的安静版本 */
+  .app-shell.state-running .ambient-glow-accent > i {
     opacity: 1;
-    animation: bloom-state-breathe 9.5s var(--ease-in-out) infinite;
   }
 
-  .state-paused .ambient-glow-state {
+  .app-shell.state-paused .ambient-glow-accent > i {
     opacity: 0.85;
-  }
-
-  /* Editorial paper carries no grid; the span stays for DOM stability. */
-  .ambient-grid {
-    display: none;
-  }
-
-  .dark .ambient-field::before {
-    background: linear-gradient(
-      172deg,
-      rgb(var(--bloom-peach) / 0.05),
-      transparent 38%,
-      rgb(var(--bloom-sky) / 0.04) 92%
-    );
-  }
-
-  .dark .ambient-glow-primary {
-    background: radial-gradient(circle, rgb(var(--bloom-iris) / 0.26), transparent 64%);
-  }
-
-  .dark .ambient-glow-secondary {
-    background: radial-gradient(circle, rgb(var(--bloom-peach) / 0.2), transparent 66%);
-  }
-
-  .dark .ambient-glow-peach {
-    background: radial-gradient(circle, rgb(var(--bloom-sky) / 0.12), transparent 62%);
-  }
-
-  .dark .ambient-glow-state {
-    background: radial-gradient(
-      ellipse,
-      rgb(var(--shell-state) / 0.16),
-      rgb(var(--shell-state) / 0.05) 52%,
-      transparent 72%
-    );
   }
 
   /* ─── Global rail: flat paper, hairline edge, ink active pill ── */
@@ -532,16 +501,7 @@
   /* ─── Session workspace: quiet time instrument + text ledger ── */
 
   .session-workspace {
-    --state-color: var(--bloom-iris);
     position: relative;
-  }
-
-  .session-workspace.state-running {
-    --state-color: var(--app-accent);
-  }
-
-  .session-workspace.state-paused {
-    --state-color: var(--app-pause);
   }
 
   /* 58% instrument | 42% ledger, separated by one hairline. */
@@ -614,7 +574,7 @@
     min-height: 26px;
     align-items: center;
     gap: 4px;
-    margin-top: 6px;
+    margin-top: 8px;
   }
 
   /* Ghost action: accent text on bare canvas, tint only on hover. */
@@ -637,7 +597,7 @@
   }
 
   .timer-context-action:hover {
-    background: rgb(var(--app-accent) / 0.08);
+    background: rgb(var(--app-surface-2) / 0.6);
   }
 
   .timer-icon-action {
@@ -658,12 +618,12 @@
 
   .timer-icon-action:hover {
     color: rgb(var(--app-text));
-    background: rgb(var(--app-surface-2) / 0.8);
+    background: rgb(var(--app-surface-2) / 0.6);
   }
 
   .timer-icon-action.danger:hover {
     color: rgb(var(--app-danger));
-    background: rgb(var(--app-danger) / 0.08);
+    background: rgb(var(--app-surface-2) / 0.6);
   }
 
   .status-chip {
@@ -822,7 +782,7 @@
     align-items: center;
     justify-content: center;
     gap: 12px;
-    margin-top: 8px;
+    margin-top: 12px;
   }
 
   .timer-state-time {
@@ -852,11 +812,12 @@
     letter-spacing: 0.08em;
   }
 
-  /* Hero numerals: 84px IBM Plex Mono below the dial, tabular figures. */
+  /* Hero numerals: 84px IBM Plex Mono below the dial, tabular figures.
+     数字贴近仪表下缘（8px），保持仪器读数的对位感。 */
   .timer-primary {
     width: max-content;
     max-width: 100%;
-    margin-top: 12px;
+    margin-top: 8px;
     color: rgb(var(--app-ink));
     font-family: var(--font-number);
     font-variant-numeric: tabular-nums;
@@ -971,27 +932,29 @@
     align-items: stretch;
     justify-content: center;
     gap: 10px;
-    margin-top: 14px;
+    margin-top: 24px;
   }
 
+  /* 三态统一：hover 加深档 + 轻浮 translateY(-1px)；
+     active 落 --app-*-active + 压下 translateY(1px)，spring 回弹 130ms。 */
   .timer-btn-main,
   .timer-btn-stop {
     display: inline-flex;
-    min-height: 48px;
+    min-height: 44px;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 7px;
     border: 1px solid transparent;
-    border-radius: var(--radius-lg);
-    padding: 8px 26px;
-    font-size: 13.5px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
+    border-radius: var(--radius-md);
+    padding: 6px 22px;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
     transition:
       color var(--motion-fast) var(--ease-out),
       background-color var(--motion-fast) var(--ease-out),
       border-color var(--motion-fast) var(--ease-out),
-      transform var(--motion-fast) var(--ease-out);
+      transform var(--motion-fast) var(--ease-spring);
   }
 
   /* Start / resume: solid deep-teal accent key. */
@@ -1004,6 +967,7 @@
   .timer-btn-main.is-start:hover:not(:disabled) {
     border-color: rgb(var(--app-accent-hover));
     background-color: rgb(var(--app-accent-hover));
+    transform: translateY(-1px);
   }
 
   .timer-btn-main.is-start:active:not(:disabled) {
@@ -1022,6 +986,7 @@
   .timer-btn-main.is-pause:hover:not(:disabled) {
     border-color: rgb(var(--app-pause-hover));
     background-color: rgb(var(--app-pause-hover));
+    transform: translateY(-1px);
   }
 
   .timer-btn-main.is-pause:active:not(:disabled) {
@@ -1039,6 +1004,7 @@
 
   .timer-btn-stop:hover:not(:disabled) {
     background-color: rgb(var(--app-ink) / 0.86);
+    transform: translateY(-1px);
   }
 
   .timer-btn-stop:active:not(:disabled) {
@@ -1059,10 +1025,10 @@
     width: 208px;
     flex: 0 0 auto;
     flex-direction: column;
-    gap: 5px;
-    margin-top: 16px;
+    gap: 8px;
+    margin-top: 24px;
     border-top: 1px solid rgb(var(--app-border));
-    padding-top: 12px;
+    padding-top: 16px;
   }
 
   .timer-total-row {
@@ -1075,6 +1041,7 @@
     flex: 0 0 64px;
     font-size: 11px;
     font-weight: 500;
+    line-height: 20px;
     letter-spacing: 0.04em;
   }
 
@@ -1096,6 +1063,7 @@
     font-variant-numeric: tabular-nums;
     font-size: 13px;
     font-weight: 550;
+    line-height: 20px;
     letter-spacing: -0.01em;
   }
 
@@ -1126,11 +1094,11 @@
     justify-content: space-between;
     gap: 12px;
     border-bottom: 1px solid rgb(var(--app-border));
-    padding: 16px 22px 12px;
+    padding: 18px 22px 12px;
   }
 
   .ledger-title {
-    color: rgb(var(--app-subtle));
+    color: rgb(var(--app-muted));
     font-size: 11px;
     font-weight: 550;
     letter-spacing: 0.12em;
@@ -1138,7 +1106,7 @@
 
   .ledger-summary {
     flex: 0 0 auto;
-    color: rgb(var(--app-muted));
+    color: rgb(var(--app-subtle));
     font-family: var(--font-number);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
@@ -1151,7 +1119,7 @@
     gap: 8px;
     overflow: hidden;
     border-bottom: 1px solid rgb(var(--app-border));
-    padding: 9px 22px;
+    padding: 10px 22px;
   }
 
   .ledger-task-label {
@@ -1189,7 +1157,7 @@
     flex-direction: column;
     gap: 3px;
     border-bottom: 1px solid rgb(var(--app-border));
-    padding: 10px 22px 10px 20px;
+    padding: 12px 22px 12px 20px;
     background: transparent;
   }
 
@@ -1201,8 +1169,8 @@
   .ledger-row.is-current::before {
     content: '';
     position: absolute;
-    top: 11px;
-    bottom: 11px;
+    top: 13px;
+    bottom: 13px;
     left: 0;
     width: 2px;
     border-radius: 1px;
@@ -1220,37 +1188,52 @@
     gap: 12px;
   }
 
+  /* 权重分层：历史段 90% 墨色，当前段全墨色 + accent 竖条，暂停行再弱一档。 */
   .ledger-row-title {
     overflow: hidden;
-    color: rgb(var(--app-text));
+    color: rgb(var(--app-text) / 0.9);
     font-size: 12.5px;
-    font-weight: 550;
+    font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  .ledger-row.is-current .ledger-row-title {
+    color: rgb(var(--app-text));
+    font-weight: 550;
+  }
+
   .ledger-row-duration {
     flex: 0 0 auto;
-    color: rgb(var(--app-text));
+    color: rgb(var(--app-text) / 0.9);
     font-family: var(--font-number);
     font-size: 13px;
-    font-weight: 550;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
+  }
+
+  .ledger-row.is-current .ledger-row-duration {
+    color: rgb(var(--app-text));
+    font-weight: 550;
   }
 
   .ledger-row-sub {
     display: flex;
     align-items: baseline;
     gap: 8px;
-    color: rgb(var(--app-subtle));
+    color: rgb(var(--app-muted));
     font-size: 10.5px;
     font-variant-numeric: tabular-nums;
   }
 
-  /* Pause entries read lighter, with a red-tinted duration. */
+  /* Pause entries read one notch quieter, duration keeps the red. */
   .ledger-row.row-pause .ledger-row-title {
     color: rgb(var(--app-subtle));
     font-weight: 500;
+  }
+
+  .ledger-row.row-pause .ledger-row-sub {
+    color: rgb(var(--app-subtle) / 0.85);
   }
 
   .ledger-row.row-pause .ledger-row-duration {
@@ -1523,34 +1506,6 @@
 
 /* ─── Keyframes ───────────────────────────────────────────── */
 
-@keyframes bloom-drift-a {
-  to {
-    transform: translate3d(-7%, 6%, 0) scale(1.06);
-  }
-}
-
-@keyframes bloom-drift-b {
-  to {
-    transform: translate3d(5%, -6%, 0) scale(1.12);
-  }
-}
-
-@keyframes bloom-drift-c {
-  to {
-    transform: translate3d(6%, 7%, 0) scale(1.1);
-  }
-}
-
-@keyframes bloom-state-breathe {
-  0%,
-  100% {
-    opacity: 0.7;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
 @keyframes comet-run {
   0% {
     left: -26%;
@@ -1680,12 +1635,12 @@
   }
 
   .timer-controls {
-    margin-top: 10px;
+    margin-top: 12px;
   }
 
   .timer-btn-main,
   .timer-btn-stop {
-    min-height: 42px;
+    min-height: 40px;
   }
 
   .timer-totals {

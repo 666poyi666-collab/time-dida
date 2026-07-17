@@ -140,6 +140,34 @@
   }
 }
 
+/* Ambient field drift: transform-only，60s+ 独立慢周期，哑光不发光。 */
+@keyframes ambient-drift-a {
+  from {
+    transform: translate3d(-4%, -3%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(5%, 4%, 0) scale(1.07);
+  }
+}
+
+@keyframes ambient-drift-b {
+  from {
+    transform: translate3d(4%, 5%, 0) scale(1.05);
+  }
+  to {
+    transform: translate3d(-5%, -4%, 0) scale(1);
+  }
+}
+
+@keyframes ambient-drift-c {
+  from {
+    transform: translate3d(3%, -4%, 0) scale(1.03);
+  }
+  to {
+    transform: translate3d(-4%, 5%, 0) scale(1.08);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
