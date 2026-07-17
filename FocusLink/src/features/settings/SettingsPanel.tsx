@@ -24,9 +24,9 @@ const TABS = [
 const ACCENT_OPTIONS = [
   { id: 'indigo', label: '鸢尾靛蓝', color: '#4c58d0' },
   { id: 'violet', label: '堇青紫', color: '#7c52c4' },
-  { id: 'emerald', label: '松石绿', color: '#0c8e5e' },
+  { id: 'emerald', label: '松石绿', color: '#0a8656' },
   { id: 'rose', label: '蔷薇红', color: '#c84464' },
-  { id: 'amber', label: '琥珀金', color: '#ba6e1a' },
+  { id: 'amber', label: '琥珀金', color: '#a86216' },
   { id: 'sky', label: '晴空蓝', color: '#247ab4' },
 ] as const;
 
