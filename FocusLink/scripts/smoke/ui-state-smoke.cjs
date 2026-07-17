@@ -38,7 +38,6 @@ const app = spawn(
 let socket;
 let commandId = 0;
 const pending = new Map();
-const ACCENT_COLORS = ['indigo', 'violet', 'emerald', 'rose', 'amber', 'sky'];
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -259,43 +258,38 @@ async function main() {
   await delay(400);
   process.stderr.write('[ui-smoke] capture idle\n');
   results.idle = await capture('idle', 'idle');
-  process.stderr.write('[ui-smoke] verify all accent action contrasts\n');
+  process.stderr.write('[ui-smoke] verify accent action contrasts\n');
+  // 时间仪器主题为单一 accent 体系：不再逐 accentColor 循环，只验证真实操作面
+  // （accent / accent-hover 上的 accent-fg 文字对比度）。
   results.actionContrast = {};
   for (const theme of ['light', 'dark']) {
-    results.actionContrast[theme] = {};
-    for (const accentColor of ACCENT_COLORS) {
-      await evaluate(`window.focuslink.settings.set(${JSON.stringify({ theme, accentColor })})`);
-      await delay(90);
-      const contrast = await evaluate(`(() => {
-        const style = getComputedStyle(document.documentElement);
-        const parse = (name) => style.getPropertyValue(name).trim().split(/\\s+/).map(Number);
-        const luminance = (rgb) => {
-          const linear = rgb.map((channel) => {
-            const value = channel / 255;
-            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-          });
-          return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
-        };
-        const ratio = (left, right) => {
-          const a = luminance(left);
-          const b = luminance(right);
-          return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-        };
-        const foreground = parse('--app-accent-fg');
-        const start = parse(${JSON.stringify(theme === 'dark' ? '--app-accent' : '--app-accent-hover')});
-        const end = parse(${JSON.stringify(theme === 'dark' ? '--app-accent-companion' : '--app-accent')});
-        return {
-          start: Number(ratio(foreground, start).toFixed(2)),
-          end: Number(ratio(foreground, end).toFixed(2)),
-        };
-      })()`);
-      if (Math.min(contrast.start, contrast.end) < 4.5) {
-        throw new Error(
-          `${theme}/${accentColor} action contrast is below 4.5: ${JSON.stringify(contrast)}`,
-        );
-      }
-      results.actionContrast[theme][accentColor] = contrast;
+    await evaluate(`window.focuslink.settings.set(${JSON.stringify({ theme })})`);
+    await delay(90);
+    const contrast = await evaluate(`(() => {
+      const style = getComputedStyle(document.documentElement);
+      const parse = (name) => style.getPropertyValue(name).trim().split(/\\s+/).map(Number);
+      const luminance = (rgb) => {
+        const linear = rgb.map((channel) => {
+          const value = channel / 255;
+          return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+      };
+      const ratio = (left, right) => {
+        const a = luminance(left);
+        const b = luminance(right);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      };
+      const foreground = parse('--app-accent-fg');
+      return {
+        accent: Number(ratio(foreground, parse('--app-accent')).toFixed(2)),
+        hover: Number(ratio(foreground, parse('--app-accent-hover')).toFixed(2)),
+      };
+    })()`);
+    if (Math.min(contrast.accent, contrast.hover) < 4.5) {
+      throw new Error(`${theme} action contrast is below 4.5: ${JSON.stringify(contrast)}`);
     }
+    results.actionContrast[theme] = contrast;
   }
   await evaluate("window.focuslink.settings.set({ theme: 'light', accentColor: 'indigo' })");
   await delay(180);
@@ -610,9 +604,9 @@ async function main() {
       'settings toggle can restore its original state',
     ],
     [
-      results.manropeFont.family !== results.geistFont.family &&
-        results.manropeFont.tracking !== results.geistFont.tracking,
-      'font profiles use visibly different families and rhythm',
+      results.manropeFont.family.includes('IBM Plex Sans') &&
+        results.geistFont.family.includes('IBM Plex Sans'),
+      'interface font uses IBM Plex Sans',
     ],
     [
       results.taskLightInspection.bodyScroll[0] === results.taskLightInspection.viewport[0],
