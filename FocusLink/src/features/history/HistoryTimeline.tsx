@@ -328,9 +328,9 @@ function TomatodoSubjectControl({
       {cloudSynced ? (
         <span
           className="rounded-md border border-success/20 bg-success/10 px-1.5 py-0.5 text-[10px] text-success"
-          title="番茄 Todo 已确认上传云端"
+          title="番茄 Todo 客户端已确认上传；FocusLink 不做独立云端回读"
         >
-          云端已同步
+          上传已确认
         </span>
       ) : writtenLocally ? (
         <>
@@ -339,9 +339,9 @@ function TomatodoSubjectControl({
           </span>
           <span
             className="rounded-md border border-warning/25 bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning"
-            title="本地记录尚未收到番茄 Todo 云端上传确认"
+            title="记录已写入番茄 Todo 本地，等待客户端上传确认"
           >
-            云端未同步
+            待上传
           </span>
         </>
       ) : null}

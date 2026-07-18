@@ -42,7 +42,7 @@ describe('settings partial update policy', () => {
     const migrated = mergeSettings(DEFAULT_SETTINGS, legacySettings);
     const chosen = mergeSettings(migrated, { fontProfile: 'manrope' });
 
-    expect(migrated.fontProfile).toBe('geist');
+    expect(migrated.fontProfile).toBe('plex');
     expect(chosen.fontProfile).toBe('manrope');
     expect(mergeSettings(chosen, { theme: 'dark' }).fontProfile).toBe('manrope');
   });
@@ -53,15 +53,15 @@ describe('settings partial update policy', () => {
     expect(detectSettingsChangedDomains(DEFAULT_SETTINGS, next)).toEqual(['theme']);
   });
 
-  it('adds the quiet light theme defaults to legacy settings and routes family changes', () => {
+  it('adds the single-theme defaults to legacy settings and preserves appearance changes', () => {
     const legacySettings = { ...DEFAULT_SETTINGS } as Partial<AppSettings>;
     delete legacySettings.themeFamily;
     const migrated = mergeSettings(DEFAULT_SETTINGS, legacySettings);
-    const dawn = mergeSettings(migrated, { themeFamily: 'dawn', theme: 'system' });
+    const system = mergeSettings(migrated, { themeFamily: 'dawn', theme: 'system' });
 
     expect(migrated.themeFamily).toBe('quiet');
     expect(migrated.theme).toBe('light');
-    expect(detectSettingsChangedDomains(migrated, dawn)).toEqual(['theme']);
+    expect(detectSettingsChangedDomains(migrated, system)).toEqual(['theme']);
   });
 });
 
@@ -87,7 +87,7 @@ describe('cloud task provider policy', () => {
 describe('theme compatibility policy', () => {
   it('defaults unknown families to quiet and resolves system appearance', () => {
     expect(resolveThemeFamily(undefined)).toBe('quiet');
-    expect(resolveThemeFamily('bloom')).toBe('bloom');
+    expect(resolveThemeFamily('bloom')).toBe('quiet');
     expect(resolveThemeAppearance('system', false)).toBe('light');
     expect(resolveThemeAppearance('system', true)).toBe('dark');
   });

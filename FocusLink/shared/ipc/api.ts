@@ -98,6 +98,62 @@ export interface SessionDetail {
   pauses: PauseEvent[];
 }
 
+export interface SessionAnalyticsRange {
+  start: number;
+  end: number;
+  /** Optional single-day window used for the detailed mixed timeline. */
+  timelineStart?: number;
+  timelineEnd?: number;
+}
+
+export interface SessionAnalyticsDaily {
+  date: string;
+  activeMs: number;
+  pauseMs: number;
+  wallMs: number;
+  sessionCount: number;
+}
+
+export interface SessionAnalyticsTask {
+  key: string;
+  taskId: string | null;
+  title: string;
+  activeMs: number;
+  segmentCount: number;
+}
+
+export interface SessionAnalyticsTimelineItem {
+  id: string;
+  sessionId: string;
+  kind: 'focus' | 'pause';
+  title: string;
+  startedAt: number;
+  endedAt: number | null;
+  durationMs: number;
+  taskId: string | null;
+}
+
+export interface SessionAnalyticsResult {
+  range: SessionAnalyticsRange;
+  daily: SessionAnalyticsDaily[];
+  tasks: SessionAnalyticsTask[];
+  sessions: FocusSession[];
+  timeline: SessionAnalyticsTimelineItem[];
+  totals: {
+    activeMs: number;
+    pauseMs: number;
+    wallMs: number;
+    sessionCount: number;
+  };
+  stability: {
+    activeDays: number;
+    calendarDays: number;
+    averageDailyActiveMs: number;
+    standardDeviationMs: number;
+    score: number;
+  };
+}
+
 export interface SegmentDeleteResult {
   cloudDeleted: boolean;
   tomatodoDeleted: number;
@@ -287,6 +343,7 @@ export interface FocusLinkAPI {
   sessions: {
     list(limit?: number): Promise<FocusSession[]>;
     get(id: string): Promise<SessionDetail | null>;
+    analytics(range: SessionAnalyticsRange): Promise<SessionAnalyticsResult>;
     delete(id: string): Promise<TimerSnapshot>;
     export(id: string, format: 'json' | 'csv' | 'markdown'): Promise<string>;
   };
@@ -343,6 +400,9 @@ export interface FocusLinkAPI {
   };
   window: {
     minimizeToTray(): void;
+    minimize(): void;
+    toggleMaximize(): void;
+    close(): void;
     show(): void;
     quit(): void;
   };

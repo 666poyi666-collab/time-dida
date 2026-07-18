@@ -1,46 +1,224 @@
-import { useMemo, type CSSProperties } from 'react';
+// 统计洞察画布 - 每日趋势 / 时间构成 / 任务去向 / 当天混合时间轴 / 单次强度
+// 数据全部来自只读的 sessions.analytics(range) 契约；零数据时渲染明确的空状态，
+// 不用伪造柱形、环形或会话来填满画布。
+import { useMemo, useState, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import type { FocusSession } from '@shared/types';
+import type { SessionAnalyticsResult, SessionAnalyticsTimelineItem } from '@shared/ipc/api';
 import { Icon } from '../../ui/Icon';
-import { formatMinutes } from '../../lib/time';
-import { groupByDay, type SessionSummary, type TimeRange } from './historyStats';
+import { formatClock, formatMinutes } from '../../lib/time';
+import {
+  groupByDay,
+  isSameLocalDay,
+  type RangePreset,
+  type SessionSummary,
+  type TimeRange,
+} from './historyStats';
 
 interface HistoryInsightsProps {
   sessions: FocusSession[];
   summary: SessionSummary;
   range: TimeRange;
+  analytics: SessionAnalyticsResult | null;
+  /** 单日导航方向：-1 前一天 / 1 后一天 / 0 预设或自定义切换 */
+  slideDirection: -1 | 0 | 1;
+  /** 零状态里的快捷范围切换 */
+  onSelectRange: (preset: RangePreset) => void;
 }
 
-function shortDay(label: string): string {
-  const [, month, day] = label.split('-');
+interface DailyPoint {
+  label: string;
+  active: number;
+  count: number;
+}
+
+interface HourlyPoint {
+  hour: number;
+  active: number;
+  pause: number;
+}
+
+/** 轴标签：默认 M/D；范围跨年时补两位年份，保证跨年可读。 */
+function shortDay(label: string, crossYear: boolean): string {
+  const [year, month, day] = label.split('-');
+  if (crossYear) return `${year.slice(2)}/${Number(month)}/${Number(day)}`;
   return `${Number(month)}/${Number(day)}`;
 }
 
-function sessionLabel(session: FocusSession): string {
-  const date = new Date(session.startedAt);
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hour = String(date.getHours()).padStart(2, '0');
-  const minute = String(date.getMinutes()).padStart(2, '0');
-  return `${month}-${day} ${hour}:${minute}`;
+/** 无障碍与提示用的完整日期：2026年7月18日。 */
+function fullDay(label: string): string {
+  const [year, month, day] = label.split('-');
+  return `${year}年${Number(month)}月${Number(day)}日`;
 }
 
-export function HistoryInsights({ sessions, summary, range }: HistoryInsightsProps) {
-  const daily = useMemo(() => groupByDay(sessions, range).slice().reverse(), [range, sessions]);
-  const longestSessions = useMemo(
-    () =>
-      sessions
-        .slice()
-        .sort((a, b) => b.activeElapsedMs - a.activeElapsedMs)
-        .slice(0, 5),
-    [sessions],
-  );
+/** 单次强度标签：必须含完整开始–结束时间；跨年时补年份。 */
+function sessionLabel(session: FocusSession, referenceYear: number): string {
+  const start = new Date(session.startedAt);
+  const end = new Date(session.endedAt ?? session.startedAt + session.wallElapsedMs);
+  const date =
+    start.getFullYear() !== referenceYear
+      ? `${start.getFullYear()}/${start.getMonth() + 1}/${start.getDate()}`
+      : `${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+  return `${date} ${formatClock(start.getTime())}–${formatClock(end.getTime())}`;
+}
 
-  const tracked = Math.max(1, summary.active + summary.pause);
-  const focusRatio = summary.active > 0 ? (summary.active / tracked) * 100 : 0;
-  const pauseRatio = summary.pause > 0 ? (summary.pause / tracked) * 100 : 0;
+export function HistoryInsights({
+  sessions,
+  summary,
+  range,
+  analytics,
+  slideDirection,
+  onSelectRange,
+}: HistoryInsightsProps) {
+  const isEmpty = summary.count === 0;
+  const tracked = Math.max(0, summary.active + summary.pause);
+  const focusRatio = tracked > 0 ? (summary.active / tracked) * 100 : 0;
+  const pauseRatio = tracked > 0 ? (summary.pause / tracked) * 100 : 0;
+  const stability = analytics?.stability ?? null;
+  // 单日范围内方差恒为 0，稳定分没有推断意义，降级为「—」并说明，不作误导性展示。
+  const stabilityReady = !isEmpty && (stability?.calendarDays ?? 0) >= 2;
+
+  // 范围切换：图表体按范围 key 重挂载，从基线连续重绘 + 带方向感的滑动；
+  // 画布容器与表头保持挂载，避免整块闪烁。
+  const rangeKey = `${range.start}-${range.end}`;
+  const slideVars = {
+    '--slide-x': `${slideDirection * 10}px`,
+    '--slide-y': slideDirection === 0 ? '6px' : '0px',
+  } as CSSProperties;
+
+  return (
+    <section
+      className={`history-insights-grid${isEmpty ? ' is-empty' : ''}`}
+      aria-label="专注数据图表"
+    >
+      <header className="history-visual-header">
+        <div>
+          <span>时间图谱</span>
+          <small>{isEmpty ? '等待第一段时间留下刻度' : '趋势 · 构成 · 去向 · 当日轨迹'}</small>
+        </div>
+        <div className="history-visual-summary">
+          <span>
+            <small>有效专注</small>
+            <strong>{formatMinutes(summary.active)}</strong>
+          </span>
+          <span>
+            <small>暂停</small>
+            <strong className="pause">{formatMinutes(summary.pause)}</strong>
+          </span>
+          <span>
+            <small>会话</small>
+            <strong>{summary.count}</strong>
+          </span>
+          <span>
+            <small>稳定性</small>
+            <strong
+              className={stabilityReady ? '' : 'is-na'}
+              title={
+                stabilityReady
+                  ? `稳定分 = 100 × (1 − 日波动 / 日均)，σ=${formatMinutes(stability?.standardDeviationMs ?? 0)}`
+                  : '范围不足两天，暂无稳定性读数'
+              }
+            >
+              {stabilityReady ? stability?.score : '—'}
+            </strong>
+          </span>
+        </div>
+      </header>
+
+      {isEmpty && (
+        <div className="history-insights-empty state-block" role="status">
+          <div className="state-block-icon">
+            <Icon.Calendar size="lg" />
+          </div>
+          <p className="state-block-title">当前时间范围没有专注记录</p>
+          <p className="state-block-desc">
+            换一个时间范围，或回到专注页开始一次新的专注。产生记录后，节律、构成与时间轴会在这里展开。
+          </p>
+          <div className="state-block-actions">
+            <button
+              type="button"
+              className="btn-outline motion-press"
+              onClick={() => onSelectRange('7d')}
+            >
+              近 7 天
+            </button>
+            <button
+              type="button"
+              className="btn-outline motion-press"
+              onClick={() => onSelectRange('15d')}
+            >
+              半个月
+            </button>
+            <button
+              type="button"
+              className="btn-outline motion-press"
+              onClick={() => onSelectRange('30d')}
+            >
+              1 个月
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isEmpty && (
+        <>
+          <DailyTrendCard
+            sessions={sessions}
+            range={range}
+            analytics={analytics}
+            isEmpty={false}
+            rangeKey={rangeKey}
+            slideVars={slideVars}
+          />
+          <FocusRingCard
+            summary={summary}
+            analytics={analytics}
+            isEmpty={false}
+            focusRatio={focusRatio}
+            pauseRatio={pauseRatio}
+          />
+          <SessionRankCard sessions={sessions} isEmpty={false} rangeEnd={range.end} />
+          <DayTimelineBand analytics={analytics} slideVars={slideVars} />
+        </>
+      )}
+    </section>
+  );
+}
+
+/* ── 每日专注趋势（柱 + 线 + 面积） + 任务去向 ─────────────── */
+
+function DailyTrendCard({
+  sessions,
+  range,
+  analytics,
+  isEmpty,
+  rangeKey,
+  slideVars,
+}: {
+  sessions: FocusSession[];
+  range: TimeRange;
+  analytics: SessionAnalyticsResult | null;
+  isEmpty: boolean;
+  rangeKey: string;
+  slideVars: CSSProperties;
+}) {
+  const [activeDay, setActiveDay] = useState<string | null>(null);
+  const daily: DailyPoint[] = useMemo(
+    () =>
+      analytics
+        ? analytics.daily.map((item) => ({
+            label: item.date,
+            active: item.activeMs,
+            count: item.sessionCount,
+          }))
+        : groupByDay(sessions, range).slice().reverse(),
+    [analytics, range, sessions],
+  );
   const maxDaily = Math.max(1, ...daily.map((item) => item.active));
-  const maxSession = Math.max(1, ...longestSessions.map((item) => item.activeElapsedMs));
+  const averageDaily =
+    daily.length === 0 ? 0 : daily.reduce((sum, item) => sum + item.active, 0) / daily.length;
+  const crossYear =
+    daily.length > 1 && daily[0].label.slice(0, 4) !== daily[daily.length - 1].label.slice(0, 4);
   const labelStep = daily.length > 16 ? 5 : daily.length > 9 ? 3 : 1;
   const chartCeiling = Math.max(1, maxDaily * 1.24);
   const chartPoints = daily.map((item, index) => {
@@ -54,187 +232,635 @@ export function HistoryInsights({ sessions, summary, range }: HistoryInsightsPro
   const areaPath = chartPoints.length
     ? `${trendPath} L ${chartPoints.at(-1)?.x ?? 672} 184 L ${chartPoints[0]?.x ?? 48} 184 Z`
     : '';
-  const ringStyle = {
-    '--focus-angle': `${focusRatio * 3.6}deg`,
-    '--pause-angle': `${(focusRatio + pauseRatio) * 3.6}deg`,
-  } as CSSProperties;
+  const activePoint = chartPoints.find((point) => point.label === activeDay) ?? null;
+  const hourly = useMemo<HourlyPoint[]>(() => {
+    const start = new Date(range.start);
+    start.setHours(0, 0, 0, 0);
+    const dayStart = start.getTime();
+    const bins = Array.from({ length: 24 }, (_, hour) => ({ hour, active: 0, pause: 0 }));
+    for (const item of analytics?.timeline ?? []) {
+      const itemStart = Math.max(item.startedAt, dayStart);
+      const itemEnd = Math.min(
+        item.endedAt ?? item.startedAt + item.durationMs,
+        dayStart + 24 * 60 * 60_000,
+      );
+      for (let hour = 0; hour < 24; hour += 1) {
+        const hourStart = dayStart + hour * 60 * 60_000;
+        const overlap = Math.max(
+          0,
+          Math.min(itemEnd, hourStart + 60 * 60_000) - Math.max(itemStart, hourStart),
+        );
+        if (item.kind === 'focus') bins[hour].active += overlap;
+        else bins[hour].pause += overlap;
+      }
+    }
+    return bins;
+  }, [analytics?.timeline, range.start]);
+  const maxHourly = Math.max(1, ...hourly.map((item) => item.active + item.pause));
+  const isSingleDay = daily.length === 1;
+
+  // 任务去向：按任务聚合的专注时长（长任务名截断 + title 兜底）。
+  const tasks = analytics?.tasks ?? [];
+  const topTasks = tasks.slice(0, 5);
+  const restTasks = tasks.slice(5);
+  const restMs = restTasks.reduce((sum, task) => sum + task.activeMs, 0);
+  const maxTask = Math.max(1, ...topTasks.map((task) => task.activeMs));
 
   return (
-    <section className="history-insights-grid" aria-label="专注数据图表">
-      <header className="history-visual-header">
-        <div>
-          <span>专注脉络</span>
-          <small>从时间构成到每日节奏</small>
-        </div>
-        <div className="history-visual-summary">
-          <span>
-            <small>有效专注</small>
-            <strong>{formatMinutes(summary.active)}</strong>
-          </span>
-          <span>
-            <small>会话</small>
-            <strong>{summary.count}</strong>
-          </span>
-          <span>
-            <small>专注率</small>
-            <strong>{Math.round(focusRatio)}%</strong>
-          </span>
-        </div>
+    <article className="history-insight-card history-daily-card">
+      <header className="history-insight-header">
+        <span>
+          <Icon.BarChart size="sm" />
+          {isSingleDay ? '今日专注节律' : '每日专注趋势'}
+        </span>
+        <small
+          title={crossYear ? `${daily[0]?.label} ~ ${daily[daily.length - 1]?.label}` : undefined}
+        >
+          最高 {formatMinutes(maxDaily)}
+        </small>
       </header>
-      <article className="history-insight-card history-focus-ring-card">
-        <header className="history-insight-header">
-          <span>
-            <Icon.PieChart size="sm" />
-            时间构成
-          </span>
-          <small>{summary.count} 次记录</small>
-        </header>
-        <div className="history-focus-ring-wrap">
-          <motion.div
-            className="history-focus-ring"
-            style={ringStyle}
-            initial={{ rotate: -18, scale: 0.92, opacity: 0 }}
-            animate={{ rotate: 0, scale: 1, opacity: 1 }}
-            transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <div>
-              <strong>{Math.round(focusRatio)}%</strong>
-              <span>有效专注</span>
-            </div>
-          </motion.div>
-          <div className="history-ring-legend">
-            <span className="focus">
-              <i />
-              专注 <strong>{formatMinutes(summary.active)}</strong>
-            </span>
-            <span className="pause">
-              <i />
-              暂停 <strong>{formatMinutes(summary.pause)}</strong>
-            </span>
-          </div>
-        </div>
-      </article>
-
-      <article className="history-insight-card history-daily-card">
-        <header className="history-insight-header">
-          <span>
-            <Icon.BarChart size="sm" />
-            每日专注趋势
-          </span>
-          <small>最高 {formatMinutes(maxDaily)}</small>
-        </header>
-        <div className="history-column-chart" role="img" aria-label="每日专注时长柱线组合图">
-          <svg viewBox="0 0 720 224" preserveAspectRatio="none" aria-hidden="true">
-            <defs>
-              <linearGradient id="focus-chart-area" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="rgb(var(--app-accent))" stopOpacity="0.12" />
-                <stop offset="100%" stopColor="rgb(var(--app-accent))" stopOpacity="0" />
-              </linearGradient>
-              <linearGradient id="focus-chart-bar" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="rgb(var(--app-accent-companion))" />
-                <stop offset="100%" stopColor="rgb(var(--app-accent))" stopOpacity="0.35" />
-              </linearGradient>
-            </defs>
+      {isEmpty ? (
+        // 空图表骨架：仅网格与等低骨架柱，明确是占位形态而非数据。
+        <div className="history-column-chart is-skeleton" aria-hidden="true">
+          <svg viewBox="0 0 720 224" preserveAspectRatio="none">
             {[40, 112, 184].map((y) => (
               <line key={y} className="history-chart-gridline" x1="48" x2="672" y1={y} y2={y} />
             ))}
-            {areaPath && <path className="history-chart-area" d={areaPath} />}
             {chartPoints.map((point, index) => {
-              const showLabel = index % labelStep === 0 || index === chartPoints.length - 1;
               const barWidth = Math.max(8, Math.min(28, 410 / Math.max(7, chartPoints.length)));
-              const barHeight = point.active > 0 ? Math.max(5, 184 - point.y) : 2;
+              const showLabel = index % labelStep === 0 || index === chartPoints.length - 1;
               return (
-                <g
-                  key={point.label}
-                  className={`history-column ${point.active > 0 ? 'has-data' : ''}`}
-                >
-                  <title>{`${point.label} · ${formatMinutes(point.active)} · ${point.count} 次`}</title>
-                  <motion.rect
+                <g key={point.label} className="history-column is-skeleton">
+                  <rect
                     className="history-chart-bar"
                     x={point.x - barWidth / 2}
                     width={barWidth}
                     rx={barWidth / 2}
-                    initial={{ y: 184, height: 0, opacity: 0.28 }}
-                    animate={{
-                      y: 184 - barHeight,
-                      height: barHeight,
-                      opacity: point.active > 0 ? 1 : 0.34,
-                    }}
-                    transition={{
-                      duration: 0.58,
-                      delay: Math.min(index * 0.018, 0.22),
-                      ease: [0.16, 1, 0.3, 1],
-                    }}
+                    y={174}
+                    height={10}
                   />
                   {showLabel && (
                     <text className="history-chart-label" x={point.x} y="214" textAnchor="middle">
-                      {shortDay(point.label)}
+                      {shortDay(point.label, crossYear)}
                     </text>
                   )}
                 </g>
               );
             })}
-            {trendPath && (
-              <motion.path
-                className="history-chart-trend"
-                d={trendPath}
-                initial={{ pathLength: 0, opacity: 0 }}
-                animate={{ pathLength: 1, opacity: 1 }}
-                transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-              />
-            )}
-            {chartPoints
-              .filter((point) => point.active > 0)
-              .map((point) => (
-                <circle
-                  key={`${point.label}-point`}
-                  className="history-chart-point"
-                  cx={point.x}
-                  cy={point.y}
-                  r="4"
-                />
-              ))}
           </svg>
-          <span className="history-chart-scale top">{formatMinutes(chartCeiling)}</span>
-          <span className="history-chart-scale bottom">0</span>
         </div>
-      </article>
+      ) : isSingleDay ? (
+        <div className="history-hourly-wrap">
+          <div className="history-hourly-chart" role="list" aria-label="当天每小时专注与暂停分布">
+            {hourly.map((point) => {
+              const total = point.active + point.pause;
+              const activeHeight = (point.active / maxHourly) * 100;
+              const pauseHeight = (point.pause / maxHourly) * 100;
+              const label = `${String(point.hour).padStart(2, '0')}:00，专注 ${formatMinutes(point.active)}，暂停 ${formatMinutes(point.pause)}`;
+              return (
+                <button
+                  type="button"
+                  className={`history-hourly-column ${total > 0 ? 'has-data' : ''}`}
+                  key={point.hour}
+                  role="listitem"
+                  aria-label={label}
+                  title={label}
+                >
+                  <span className="history-hourly-stack">
+                    <motion.i
+                      className="focus"
+                      initial={{ height: 0 }}
+                      animate={{ height: `${activeHeight}%` }}
+                      transition={{ duration: 0.48, delay: point.hour * 0.012 }}
+                    />
+                    <motion.i
+                      className="pause"
+                      initial={{ height: 0 }}
+                      animate={{ height: `${pauseHeight}%` }}
+                      transition={{ duration: 0.48, delay: point.hour * 0.012 + 0.04 }}
+                    />
+                  </span>
+                  {point.hour % 3 === 0 && <small>{String(point.hour).padStart(2, '0')}</small>}
+                </button>
+              );
+            })}
+          </div>
+          <p className="history-chart-readout">
+            24 小时真实分布 · 绿色为专注，琥珀斜纹为暂停 · 聚焦柱条读取精确值
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="history-chart-slide" key={rangeKey} style={slideVars}>
+            <div className="history-column-chart">
+              <svg
+                viewBox="0 0 720 224"
+                preserveAspectRatio="none"
+                role="list"
+                aria-label="每日专注时长柱状图，Tab 可逐日读取"
+              >
+                <defs>
+                  <linearGradient id="focus-chart-area" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="rgb(var(--app-success))" stopOpacity="0.12" />
+                    <stop offset="100%" stopColor="rgb(var(--app-success))" stopOpacity="0" />
+                  </linearGradient>
+                  <linearGradient id="focus-chart-bar" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="rgb(var(--app-success))" />
+                    <stop offset="100%" stopColor="rgb(var(--app-success))" stopOpacity="0.35" />
+                  </linearGradient>
+                </defs>
+                {[40, 112, 184].map((y) => (
+                  <line key={y} className="history-chart-gridline" x1="48" x2="672" y1={y} y2={y} />
+                ))}
+                {areaPath && <path className="history-chart-area" d={areaPath} />}
+                {chartPoints.map((point, index) => {
+                  const showLabel = index % labelStep === 0 || index === chartPoints.length - 1;
+                  const barWidth = Math.max(8, Math.min(28, 410 / Math.max(7, chartPoints.length)));
+                  const barHeight = point.active > 0 ? Math.max(5, 184 - point.y) : 2;
+                  const readout = `${fullDay(point.label)}：专注 ${formatMinutes(point.active)}，${point.count} 次会话`;
+                  return (
+                    <g
+                      key={point.label}
+                      className={`history-column ${point.active > 0 ? 'has-data' : ''}`}
+                      role="listitem"
+                      tabIndex={0}
+                      aria-label={readout}
+                      onMouseEnter={() => setActiveDay(point.label)}
+                      onMouseLeave={() => setActiveDay(null)}
+                      onFocus={() => setActiveDay(point.label)}
+                      onBlur={() => setActiveDay(null)}
+                    >
+                      <title>{readout}</title>
+                      <motion.rect
+                        className="history-chart-bar"
+                        x={point.x - barWidth / 2}
+                        width={barWidth}
+                        rx={barWidth / 2}
+                        initial={{ y: 184, height: 0, opacity: 0.28 }}
+                        animate={{
+                          y: 184 - barHeight,
+                          height: barHeight,
+                          opacity: point.active > 0 ? 1 : 0.34,
+                        }}
+                        transition={{
+                          duration: 0.58,
+                          delay: Math.min(index * 0.018, 0.22),
+                          ease: [0.16, 1, 0.3, 1],
+                        }}
+                      />
+                      {showLabel && (
+                        <text
+                          className="history-chart-label"
+                          x={point.x}
+                          y="214"
+                          textAnchor="middle"
+                        >
+                          {shortDay(point.label, crossYear)}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+                {trendPath && (
+                  <motion.path
+                    className="history-chart-trend"
+                    d={trendPath}
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={{ pathLength: 1, opacity: 1 }}
+                    transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+                  />
+                )}
+                {chartPoints
+                  .filter((point) => point.active > 0)
+                  .map((point) => (
+                    <circle
+                      key={`${point.label}-point`}
+                      className="history-chart-point"
+                      cx={point.x}
+                      cy={point.y}
+                      r="4"
+                    />
+                  ))}
+              </svg>
+              <span className="history-chart-scale top">{formatMinutes(chartCeiling)}</span>
+              <span className="history-chart-scale bottom">0</span>
+            </div>
+          </div>
+          <p className="history-chart-readout" aria-hidden="true">
+            {activePoint
+              ? `${fullDay(activePoint.label)} · 专注 ${formatMinutes(activePoint.active)} · ${activePoint.count} 次会话`
+              : daily.length > 1
+                ? `日均 ${formatMinutes(averageDaily)} · 最高 ${formatMinutes(maxDaily)} · 聚焦柱条可读精确值`
+                : '移动指针或按 Tab 聚焦柱条，读取精确数值'}
+          </p>
+        </>
+      )}
 
-      <article className="history-insight-card history-session-rank-card">
+      <div className="history-insight-divider" />
+
+      <div className="history-task-section">
         <header className="history-insight-header">
           <span>
-            <Icon.TrendingUp size="sm" />
-            单次专注强度
+            <Icon.ListTodo size="sm" />
+            时间去向
           </span>
-          <small>最长 5 次</small>
+          <small>按任务聚合 · 前 5 项</small>
         </header>
-        <div className="history-rank-list">
-          {longestSessions.map((session, index) => (
-            <div className="history-rank-row" key={session.id}>
-              <span className="history-rank-index">{String(index + 1).padStart(2, '0')}</span>
-              <div className="history-rank-content">
-                <div>
-                  <span>{sessionLabel(session)}</span>
-                  <strong>{formatMinutes(session.activeElapsedMs)}</strong>
-                </div>
-                <div className="history-rank-track">
+        {isEmpty ? (
+          <div className="history-skel-rows" aria-hidden="true">
+            {[0, 1, 2].map((index) => (
+              <span
+                key={index}
+                className="skeleton history-skel-line"
+                style={{ width: `${86 - index * 16}%` }}
+              />
+            ))}
+          </div>
+        ) : topTasks.length === 0 ? (
+          <p className="history-task-empty">范围内没有可聚合的专注片段。</p>
+        ) : (
+          <div className="history-task-distribution" role="list" aria-label="按任务聚合的专注时长">
+            {topTasks.map((task, index) => (
+              <div
+                className="history-task-row"
+                key={task.key}
+                role="listitem"
+                tabIndex={0}
+                aria-label={`${task.title}：专注 ${formatMinutes(task.activeMs)}，${task.segmentCount} 个片段`}
+              >
+                <span className="history-task-title" title={task.title}>
+                  {task.title}
+                </span>
+                <div className="history-task-track">
                   <motion.i
                     initial={{ width: 0 }}
-                    animate={{
-                      width: `${Math.max(5, (session.activeElapsedMs / maxSession) * 100)}%`,
-                    }}
+                    animate={{ width: `${Math.max(4, (task.activeMs / maxTask) * 100)}%` }}
                     transition={{
-                      duration: 0.52,
-                      delay: index * 0.045,
+                      duration: 0.5,
+                      delay: index * 0.04,
                       ease: [0.16, 1, 0.3, 1],
                     }}
                   />
                 </div>
+                <strong>{formatMinutes(task.activeMs)}</strong>
               </div>
+            ))}
+            {restTasks.length > 0 && (
+              <p className="history-task-more">
+                其余 {restTasks.length} 个任务共 {formatMinutes(restMs)}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+/* ── 专注/暂停构成环 + 稳定性读数 ──────────────────────────── */
+
+function FocusRingCard({
+  summary,
+  analytics,
+  isEmpty,
+  focusRatio,
+  pauseRatio,
+}: {
+  summary: SessionSummary;
+  analytics: SessionAnalyticsResult | null;
+  isEmpty: boolean;
+  focusRatio: number;
+  pauseRatio: number;
+}) {
+  const stability = analytics?.stability ?? null;
+  const stabilityReady = !isEmpty && (stability?.calendarDays ?? 0) >= 2;
+  const focusDash = Math.max(0, Math.min(100, focusRatio));
+  const pauseDash = Math.max(0, Math.min(100 - focusDash, pauseRatio));
+  // 构成比例变化时重挂载轨道，让数据弧线连续绘制而不是闪切。
+  const ringKey = `${Math.round(focusRatio)}-${Math.round(pauseRatio)}-${isEmpty ? '0' : '1'}`;
+
+  return (
+    <article className="history-insight-card history-focus-ring-card">
+      <header className="history-insight-header">
+        <span>
+          <Icon.PieChart size="sm" />
+          时间构成
+        </span>
+        <small>{isEmpty ? '暂无记录' : `${summary.count} 次会话`}</small>
+      </header>
+      <div className="history-focus-ring-wrap" key={ringKey}>
+        <motion.div
+          className="history-focus-ring"
+          role="img"
+          aria-label={
+            isEmpty
+              ? '时间构成：暂无数据'
+              : `时间构成：专注 ${formatMinutes(summary.active)}，占 ${Math.round(focusRatio)}%；暂停 ${formatMinutes(summary.pause)}，占 ${Math.round(pauseRatio)}%`
+          }
+          initial={{ scale: 0.94, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle className="history-orbit-track" cx="60" cy="60" r="48" pathLength="100" />
+            <motion.circle
+              className="history-orbit-focus"
+              cx="60"
+              cy="60"
+              r="48"
+              pathLength="100"
+              initial={{ strokeDasharray: '0 100' }}
+              animate={{ strokeDasharray: `${focusDash} ${100 - focusDash}` }}
+              transition={{ duration: 0.72, ease: [0.16, 1, 0.3, 1] }}
+            />
+            <motion.circle
+              className="history-orbit-pause"
+              cx="60"
+              cy="60"
+              r="38"
+              pathLength="100"
+              initial={{ strokeDasharray: '0 100' }}
+              animate={{ strokeDasharray: `${pauseDash} ${100 - pauseDash}` }}
+              transition={{ duration: 0.72, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+              style={{ opacity: pauseDash > 0 ? 1 : 0 }}
+            />
+          </svg>
+          <div>
+            <strong>{isEmpty ? '—' : `${Math.round(focusRatio)}%`}</strong>
+            <span>有效专注</span>
+          </div>
+        </motion.div>
+        <div className="history-ring-legend">
+          <span className="focus">
+            <i />
+            专注 <strong>{isEmpty ? '—' : formatMinutes(summary.active)}</strong>
+          </span>
+          <span className="pause">
+            <i />
+            暂停 <strong>{isEmpty ? '—' : formatMinutes(summary.pause)}</strong>
+          </span>
+        </div>
+      </div>
+
+      <div className="history-insight-divider" />
+
+      <div className="history-stability">
+        <header className="history-insight-header">
+          <span>
+            <Icon.Gauge size="sm" />
+            专注稳定性
+          </span>
+          <small>{stabilityReady ? '按日推导' : '需 ≥2 天'}</small>
+        </header>
+        <div className="history-stability-grid">
+          <div className="history-stability-item">
+            <strong>{stabilityReady && stability ? stability.score : '—'}</strong>
+            <span>稳定分 /100</span>
+          </div>
+          <div className="history-stability-item">
+            <strong>
+              {stabilityReady && stability ? formatMinutes(stability.standardDeviationMs) : '—'}
+            </strong>
+            <span>日波动 σ</span>
+          </div>
+          <div className="history-stability-item">
+            <strong>
+              {isEmpty || !stability ? '—' : `${stability.activeDays}/${stability.calendarDays}`}
+            </strong>
+            <span>活跃天数</span>
+          </div>
+          <div className="history-stability-item">
+            <strong>
+              {isEmpty || !stability || stability.averageDailyActiveMs <= 0
+                ? '—'
+                : formatMinutes(stability.averageDailyActiveMs)}
+            </strong>
+            <span>日均专注</span>
+          </div>
+        </div>
+        {!isEmpty && !stabilityReady && (
+          <p className="history-stability-note">
+            稳定性读数需要至少两个自然日的数据，单日不作推断。
+          </p>
+        )}
+      </div>
+    </article>
+  );
+}
+
+/* ── 单次专注强度排行 ─────────────────────────────────────── */
+
+function SessionRankCard({
+  sessions,
+  isEmpty,
+  rangeEnd,
+}: {
+  sessions: FocusSession[];
+  isEmpty: boolean;
+  rangeEnd: number;
+}) {
+  const longestSessions = useMemo(
+    () =>
+      sessions
+        .slice()
+        .sort((a, b) => b.activeElapsedMs - a.activeElapsedMs)
+        .slice(0, 5),
+    [sessions],
+  );
+  const maxSession = Math.max(1, ...longestSessions.map((item) => item.activeElapsedMs));
+  const referenceYear = new Date(rangeEnd).getFullYear();
+
+  return (
+    <article className="history-insight-card history-session-rank-card">
+      <header className="history-insight-header">
+        <span>
+          <Icon.TrendingUp size="sm" />
+          单次专注强度
+        </span>
+        <small>{isEmpty ? '暂无记录' : `最长 ${longestSessions.length} 次`}</small>
+      </header>
+      {isEmpty ? (
+        <div className="history-skel-rows" aria-hidden="true">
+          {[0, 1, 2].map((index) => (
+            <span
+              key={index}
+              className="skeleton history-skel-line"
+              style={{ width: `${92 - index * 18}%` }}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="history-rank-list" role="list" aria-label="单次专注强度排行">
+          {longestSessions.map((session, index) => {
+            const label = sessionLabel(session, referenceYear);
+            const pauseText =
+              session.pauseElapsedMs > 0 ? `，暂停 ${formatMinutes(session.pauseElapsedMs)}` : '';
+            return (
+              <div
+                className="history-rank-row"
+                key={session.id}
+                role="listitem"
+                tabIndex={0}
+                title={`${label} · 专注 ${formatMinutes(session.activeElapsedMs)}${pauseText}`}
+                aria-label={`第 ${index + 1} 名：${label}，专注 ${formatMinutes(session.activeElapsedMs)}${pauseText}`}
+              >
+                <span className="history-rank-index">{String(index + 1).padStart(2, '0')}</span>
+                <div className="history-rank-content">
+                  <div>
+                    <span>{label}</span>
+                    <strong>{formatMinutes(session.activeElapsedMs)}</strong>
+                  </div>
+                  <div className="history-rank-track">
+                    <motion.i
+                      initial={{ width: 0 }}
+                      animate={{
+                        width: `${Math.max(5, (session.activeElapsedMs / maxSession) * 100)}%`,
+                      }}
+                      transition={{
+                        duration: 0.52,
+                        delay: index * 0.045,
+                        ease: [0.16, 1, 0.3, 1],
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </article>
+  );
+}
+
+/* ── 当天 Session/Segment/暂停混合时间轴 ───────────────────── */
+
+interface TimelineEntry {
+  item: SessionAnalyticsTimelineItem;
+  start: number;
+  end: number;
+  left: number;
+  width: number;
+}
+
+function DayTimelineBand({
+  analytics,
+  slideVars,
+}: {
+  analytics: SessionAnalyticsResult | null;
+  slideVars: CSSProperties;
+}) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const timeline = analytics?.timeline ?? [];
+  const timelineStart = analytics?.range.timelineStart ?? analytics?.range.start ?? 0;
+  const timelineEnd = analytics?.range.timelineEnd ?? analytics?.range.end ?? 0;
+  const span = Math.max(1, timelineEnd - timelineStart);
+  const bandKey = `${timelineStart}-${timelineEnd}`;
+
+  const dayDate = new Date(timelineStart);
+  const dayLabel = dayDate.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
+  const weekday = dayDate.toLocaleDateString('zh-CN', { weekday: 'short' });
+  const isToday = timelineStart > 0 && isSameLocalDay(timelineStart, Date.now());
+
+  // 真实时钟定位：位置与宽度都按时间轴窗口比例计算，仅做最小可视宽度钳制。
+  const entries: TimelineEntry[] = timeline.map((item) => {
+    const start = Math.min(Math.max(item.startedAt, timelineStart), timelineEnd);
+    const rawEnd = item.endedAt ?? Math.min(Date.now(), timelineEnd);
+    const end = Math.min(Math.max(rawEnd, start), timelineEnd);
+    const left = ((start - timelineStart) / span) * 100;
+    const width = Math.min(Math.max(((end - start) / span) * 100, 0.9), 100 - left);
+    return { item, start, end, left, width };
+  });
+  const active = entries.find((entry) => entry.item.id === activeId) ?? null;
+  const focusCount = timeline.filter((item) => item.kind === 'focus').length;
+  const pauseCount = timeline.length - focusCount;
+
+  const describeEntry = (entry: TimelineEntry): string => {
+    const kind = entry.item.kind === 'focus' ? '专注' : '暂停';
+    const endText = entry.item.endedAt ? formatClock(entry.end) : '进行中';
+    return `${kind} · ${entry.item.title} · ${formatClock(entry.start)}–${endText} · ${formatMinutes(entry.item.durationMs)}`;
+  };
+
+  const tickHours = [0, 3, 6, 9, 12, 15, 18, 21, 24];
+  const tickLabelHours = new Set([0, 6, 12, 18, 24]);
+
+  return (
+    <div className="history-timeline-band">
+      <header className="history-insight-header">
+        <span>
+          <Icon.Activity size="sm" />
+          当天时间轴
+          <small className="history-timeline-day">
+            {dayLabel} · {weekday}
+            {isToday ? ' · 今天' : ''}
+          </small>
+        </span>
+        <small>
+          {entries.length > 0 ? `${focusCount} 段专注 · ${pauseCount} 次暂停` : '暂无记录'}
+        </small>
+      </header>
+      <div className="history-chart-slide" key={bandKey} style={slideVars}>
+        <div
+          className={`history-mixed-timeline${entries.length === 0 ? ' is-empty' : ''}`}
+          role="list"
+          aria-label={`${dayLabel}的专注与暂停混合时间轴，Tab 可逐段读取`}
+        >
+          <div className="history-timeline-lane" aria-hidden="true" />
+          {tickHours.map((hour) => (
+            <i
+              key={hour}
+              className="history-timeline-tick"
+              style={{ left: hour === 24 ? 'calc(100% - 1px)' : `${(hour / 24) * 100}%` }}
+              aria-hidden="true"
+            />
+          ))}
+          {tickHours
+            .filter((hour) => tickLabelHours.has(hour))
+            .map((hour) => (
+              <span
+                key={hour}
+                className={`history-timeline-tick-label${hour === 0 ? ' is-first' : ''}${hour === 24 ? ' is-last' : ''}`}
+                style={{ left: `${(hour / 24) * 100}%` }}
+                aria-hidden="true"
+              >
+                {`${String(hour).padStart(2, '0')}:00`}
+              </span>
+            ))}
+          {entries.map((entry, index) => (
+            <div
+              key={entry.item.id}
+              className={`history-timeline-item ${entry.item.kind}`}
+              role="listitem"
+              tabIndex={0}
+              style={{
+                left: `${entry.left}%`,
+                width: `${entry.width}%`,
+                animationDelay: `${Math.min(index * 45, 400)}ms`,
+              }}
+              title={describeEntry(entry)}
+              aria-label={describeEntry(entry)}
+              onMouseEnter={() => setActiveId(entry.item.id)}
+              onMouseLeave={() => setActiveId(null)}
+              onFocus={() => setActiveId(entry.item.id)}
+              onBlur={() => setActiveId(null)}
+            >
+              {entry.width > 8 && <span>{formatMinutes(entry.item.durationMs)}</span>}
             </div>
           ))}
         </div>
-      </article>
-    </section>
+        <p className="history-timeline-readout" aria-hidden="true">
+          {active ? (
+            <>
+              <i className={`kind-dot ${active.item.kind}`} />
+              {describeEntry(active)}
+            </>
+          ) : entries.length > 0 ? (
+            '移动指针或按 Tab 聚焦色块，读取每段的精确起止与时长'
+          ) : (
+            '这一天没有专注与暂停记录'
+          )}
+        </p>
+      </div>
+    </div>
   );
 }

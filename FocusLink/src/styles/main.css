@@ -1,9 +1,5 @@
-/* Main renderer style entry. Each surface owns its own material:
-   main-window.css carries the shell/focus console, features/* carry their pages.
-   No cross-surface overrides here — keep feature recipes self-contained. */
-@import './foundation.css';
-@import './motion.css';
-@import './main-window.css';
-@import './features/task-workspace.css';
-@import './features/history.css';
-@import './features/settings.css';
+/* FocusLink has one visual system. Feature recipes live in temporal-ui; the compact
+   linear workbench shell below owns layout and must remain the only presentation layer. */
+@import './temporal-foundation.css';
+@import './temporal-ui.css';
+@import './linear-workbench.css';

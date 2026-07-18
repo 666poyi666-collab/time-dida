@@ -2,6 +2,19 @@
 export default {
   content: ['./index.html', './mini.html', './src/**/*.{ts,tsx}'],
   darkMode: 'class',
+  // 运行时通过 classList 动态切换的主题/字体类：字面量不在扫描内容中，必须 safelist 防 purge
+  safelist: [
+    'dark',
+    'light',
+    'theme-quiet',
+    'theme-dawn',
+    'theme-bloom',
+    { pattern: /accent-(indigo|violet|emerald|rose|amber|sky)/ },
+    'font-profile-plex',
+    'font-profile-geist',
+    'font-profile-manrope',
+    'font-profile-sora',
+  ],
   theme: {
     extend: {
       colors: {

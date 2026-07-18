@@ -194,6 +194,38 @@ export function listSessions(limit = 100): FocusSession[] {
   }));
 }
 
+/** Read-only analytics source; unlike the history list this is range-bounded, not row-limited. */
+export function listSessionsInRange(start: number, end: number): FocusSession[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT fs.*,
+         COUNT(seg.id) AS segment_count,
+         SUM(CASE WHEN seg.task_id IS NOT NULL AND seg.task_source IS NOT NULL THEN 1 ELSE 0 END)
+           AS linked_segment_count,
+         SUM(CASE WHEN seg.task_id IS NOT NULL AND seg.task_source = 'ticktick' THEN 1 ELSE 0 END)
+           AS ticktick_linked_segment_count
+       FROM focus_sessions fs
+       LEFT JOIN focus_segments seg ON seg.session_id = fs.id
+       WHERE fs.started_at <= ?
+         AND COALESCE(fs.ended_at, fs.started_at + fs.wall_elapsed_ms) >= ?
+       GROUP BY fs.id
+       ORDER BY fs.started_at DESC`,
+    )
+    .all(end, start) as Array<
+    SessionRow & {
+      segment_count: number;
+      linked_segment_count: number;
+      ticktick_linked_segment_count: number;
+    }
+  >;
+  return rows.map((row) => ({
+    ...rowToSession(row),
+    segmentCount: Number(row.segment_count ?? 0),
+    linkedSegmentCount: Number(row.linked_segment_count ?? 0),
+    ticktickLinkedSegmentCount: Number(row.ticktick_linked_segment_count ?? 0),
+  }));
+}
+
 export function deleteSession(id: string): void {
   const db = getDb();
   const tx = db.transaction(() => {
@@ -380,6 +412,34 @@ export function listPauses(sessionId: string): PauseEvent[] {
   const rows = db
     .prepare('SELECT * FROM pause_events WHERE session_id = ? ORDER BY pause_started_at ASC')
     .all(sessionId) as PauseRow[];
+  return rows.map(rowToPause);
+}
+
+export function listSegmentsInSessionRange(start: number, end: number): FocusSegment[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT seg.*
+       FROM focus_segments seg
+       INNER JOIN focus_sessions fs ON fs.id = seg.session_id
+       WHERE fs.started_at <= ?
+         AND COALESCE(fs.ended_at, fs.started_at + fs.wall_elapsed_ms) >= ?
+       ORDER BY seg.started_at ASC`,
+    )
+    .all(end, start) as SegmentRow[];
+  return rows.map(rowToSegment);
+}
+
+export function listPausesInSessionRange(start: number, end: number): PauseEvent[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT pause.*
+       FROM pause_events pause
+       INNER JOIN focus_sessions fs ON fs.id = pause.session_id
+       WHERE fs.started_at <= ?
+         AND COALESCE(fs.ended_at, fs.started_at + fs.wall_elapsed_ms) >= ?
+       ORDER BY pause.pause_started_at ASC`,
+    )
+    .all(end, start) as PauseRow[];
   return rows.map(rowToPause);
 }
 

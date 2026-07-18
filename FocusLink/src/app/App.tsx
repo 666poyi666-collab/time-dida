@@ -9,11 +9,8 @@ import { TaskWorkspace } from '../features/tasks/TaskWorkspace';
 import { Toast } from '../ui/Toast';
 import { Icon } from '../ui/Icon';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
-import { FlipDigits } from '../ui/FlipDigits';
-import { formatDurationPadded } from '../lib/time';
-import { getMainDisplayMs } from '@shared/focus/selectors';
 import type { AppSettings } from '@shared/types';
-import { resolveThemeAppearance, resolveThemeFamily, THEME_FAMILIES } from '@shared/theme';
+import { FONT_PROFILES, resolveFontProfile, resolveThemeAppearance } from '@shared/theme';
 
 type View = 'timer' | 'tasks' | 'history' | 'settings';
 
@@ -50,8 +47,11 @@ export default function App() {
   const setSettings = useStore((state) => state.setSettings);
   const setSyncQueue = useStore((state) => state.setSyncQueue);
   const addToast = useStore((state) => state.addToast);
+  const toasts = useStore((state) => state.toasts);
 
   const [bootError, setBootError] = useState<string | null>(null);
+  const [alertTick, setAlertTick] = useState(0);
+  const consumedErrorToastIdsRef = useRef<Set<string>>(new Set());
   const previousViewRef = useRef<View>(view);
   const navigationDirection =
     Math.sign(VIEW_ORDER[view] - VIEW_ORDER[previousViewRef.current]) || 1;
@@ -59,6 +59,34 @@ export default function App() {
   useEffect(() => {
     previousViewRef.current = view;
   }, [view]);
+
+  // 窗口失焦降光：类挂在根节点，CSS 侧只压暗光场与材质饱和度，不触碰布局与内容可读性。
+  useEffect(() => {
+    const root = document.documentElement;
+    const onBlur = () => root.classList.add('window-blurred');
+    const onFocus = () => root.classList.remove('window-blurred');
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+      root.classList.remove('window-blurred');
+    };
+  }, []);
+
+  // A fresh error toast raises one ambient alert pulse. Consumed ids live in a ref so each
+  // toast fires exactly once; ids of expired toasts are pruned to keep the set bounded.
+  useEffect(() => {
+    const consumed = consumedErrorToastIdsRef.current;
+    const liveIds = new Set(toasts.map((toast) => toast.id));
+    consumed.forEach((id) => {
+      if (!liveIds.has(id)) consumed.delete(id);
+    });
+    const freshErrors = toasts.filter((toast) => toast.type === 'error' && !consumed.has(toast.id));
+    if (freshErrors.length === 0) return;
+    freshErrors.forEach((toast) => consumed.add(toast.id));
+    setAlertTick((tick) => tick + 1);
+  }, [toasts]);
 
   useEffect(() => {
     const unsubs: Array<() => void> = [];
@@ -167,57 +195,15 @@ export default function App() {
   return (
     <ErrorBoundary>
       <MotionConfig reducedMotion="user">
-        <div
-          className={`app-shell view-${view} state-${timerState} flex h-screen w-screen flex-row overflow-hidden text-fg antialiased`}
-        >
-          <AmbientField view={view} state={timerState} />
-          <aside className="global-rail relative z-40 flex h-full shrink-0 flex-col items-center">
-            <button
-              type="button"
-              className="global-brand flex flex-col items-center gap-1.5"
-              onClick={() => setView('timer')}
-              aria-label="返回专注"
-            >
-              <BrandMark state={timerState} />
-              <span className="brand-wordmark font-display font-semibold text-fg">
-                <span>Focus</span>
-                <span>Link</span>
-              </span>
-            </button>
+        <div className={`app-shell view-${view} state-${timerState}`}>
+          <AmbientField view={view} state={timerState} alertTick={alertTick} />
+          <a className="skip-link" href="#focuslink-main">
+            跳到主要内容
+          </a>
+          <EdgeDock view={view} state={timerState} onSelect={setView} />
+          <WindowControls />
 
-            <nav className="global-nav" aria-label="主导航">
-              <TopNavBtn
-                active={view === 'timer'}
-                onClick={() => setView('timer')}
-                icon={<Icon.Target size="xl" />}
-                label="专注"
-              />
-              <TopNavBtn
-                active={view === 'tasks'}
-                onClick={() => setView('tasks')}
-                icon={<Icon.ListChecks size="xl" />}
-                label="任务"
-              />
-              <TopNavBtn
-                active={view === 'history'}
-                onClick={() => setView('history')}
-                icon={<Icon.BarChart size="xl" />}
-                label="统计"
-              />
-              <TopNavBtn
-                active={view === 'settings'}
-                onClick={() => setView('settings')}
-                icon={<Icon.Settings size="xl" />}
-                label="设置"
-              />
-            </nav>
-
-            <div className="mt-auto flex flex-col items-center">
-              <HeaderTimerChip onOpenTimer={() => setView('timer')} />
-            </div>
-          </aside>
-
-          <main className="relative z-10 min-h-0 min-w-0 flex-1 overflow-hidden">
+          <main id="focuslink-main" className="app-stage">
             <AnimatePresence mode="sync" initial={false} custom={navigationDirection}>
               {view === 'timer' && (
                 <ViewPage key="view-timer" direction={navigationDirection}>
@@ -309,7 +295,7 @@ function TimerStage({ state }: { state: string }) {
   );
 }
 
-function TopNavBtn({
+function DockButton({
   active,
   onClick,
   icon,
@@ -323,55 +309,84 @@ function TopNavBtn({
   return (
     <button
       onClick={onClick}
-      className={`global-nav-button motion-press relative flex flex-col items-center justify-center gap-1 ${active ? 'active' : ''}`}
+      className={`edge-dock-button motion-press ${active ? 'active' : ''}`}
       title={label}
       aria-label={label}
+      aria-current={active ? 'page' : undefined}
     >
-      {active && <span className="global-nav-active-indicator" />}
-      <span className="relative z-10 inline-flex items-center">{icon}</span>
-      <span className="global-nav-label relative z-10">{label}</span>
+      <span className="edge-dock-icon">{icon}</span>
+      <span className="edge-dock-label">{label}</span>
     </button>
   );
 }
 
-/** 头部右侧计时状态芯片：任何页面都能看到计时状态，点击回到专注页。 */
-function HeaderTimerChip({ onOpenTimer }: { onOpenTimer: () => void }) {
-  const snapshot = useStore((state) => state.snapshot);
-  const state = snapshot?.state ?? 'idle';
-  const isActive = state === 'running' || state === 'paused';
-  const [now, setNow] = useState(Date.now());
-
-  useEffect(() => {
-    if (!isActive) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [isActive, snapshot?.lastTick, snapshot?.currentPauseStartedAt]);
-
-  const label =
-    state === 'running'
-      ? '专注中'
-      : state === 'paused'
-        ? '已暂停'
-        : state === 'finished'
-          ? '已结束'
-          : '就绪';
-
+function EdgeDock({
+  view,
+  state,
+  onSelect,
+}: {
+  view: View;
+  state: string;
+  onSelect: (view: View) => void;
+}) {
   return (
-    <button
-      type="button"
-      className={`header-state state-${state} motion-press`}
-      onClick={onOpenTimer}
-      title="回到专注"
-      aria-label={`计时状态：${label}，点击回到专注`}
-    >
-      <i />
-      <span>{label}</span>
-      {isActive && (
-        <span className="header-state-time">
-          <FlipDigits value={formatDurationPadded(getMainDisplayMs(snapshot, now))} />
+    <aside className="edge-dock">
+      <button className="edge-dock-brand" onClick={() => onSelect('timer')} aria-label="FocusLink">
+        <BrandMark state={state} />
+        <span>
+          Focus
+          <b>Link</b>
         </span>
-      )}
-    </button>
+      </button>
+      <nav aria-label="主导航">
+        <DockButton
+          active={view === 'timer'}
+          onClick={() => onSelect('timer')}
+          icon={<Icon.Target size="sm" />}
+          label="专注"
+        />
+        <DockButton
+          active={view === 'tasks'}
+          onClick={() => onSelect('tasks')}
+          icon={<Icon.ListChecks size="sm" />}
+          label="任务"
+        />
+        <DockButton
+          active={view === 'history'}
+          onClick={() => onSelect('history')}
+          icon={<Icon.BarChart size="sm" />}
+          label="统计"
+        />
+        <DockButton
+          active={view === 'settings'}
+          onClick={() => onSelect('settings')}
+          icon={<Icon.Settings size="sm" />}
+          label="设置"
+        />
+      </nav>
+      <span className={`edge-dock-state state-${state}`} aria-label={`计时状态：${state}`} />
+    </aside>
+  );
+}
+
+function WindowControls() {
+  return (
+    <div className="window-controls" aria-label="窗口控制">
+      <span className="window-drag-region" />
+      <button onClick={() => window.focuslink.window.minimize()} aria-label="最小化">
+        <Icon.Minus size="xs" />
+      </button>
+      <button onClick={() => window.focuslink.window.toggleMaximize()} aria-label="最大化或还原">
+        <Icon.Maximize size="xs" />
+      </button>
+      <button
+        className="window-close"
+        onClick={() => window.focuslink.window.close()}
+        aria-label="关闭"
+      >
+        <Icon.X size="xs" />
+      </button>
+    </div>
   );
 }
 
@@ -397,17 +412,13 @@ function applyTheme(settings: AppSettings): void {
   const effectiveTheme = resolveThemeAppearance(settings.theme, prefersDark);
   root.classList.toggle('dark', effectiveTheme === 'dark');
   root.classList.toggle('light', effectiveTheme === 'light');
-  THEME_FAMILIES.forEach((family) => root.classList.remove(`theme-${family}`));
-  const family = resolveThemeFamily(settings.themeFamily);
-  root.classList.add(`theme-${family}`);
-  root.dataset.themeFamily = family;
+  ['quiet', 'dawn', 'bloom'].forEach((family) => root.classList.remove(`theme-${family}`));
+  root.classList.add('theme-quiet');
+  root.dataset.themeFamily = 'quiet';
   const accents = ['indigo', 'violet', 'emerald', 'rose', 'amber', 'sky'];
   accents.forEach((a) => root.classList.remove(`accent-${a}`));
-  if (family !== 'quiet' && accents.includes(settings.accentColor)) {
-    root.classList.add(`accent-${settings.accentColor}`);
-  }
-  root.classList.toggle('font-profile-geist', settings.fontProfile !== 'manrope');
-  root.classList.toggle('font-profile-manrope', settings.fontProfile === 'manrope');
+  FONT_PROFILES.forEach((profile) => root.classList.remove(`font-profile-${profile}`));
+  root.classList.add(`font-profile-${resolveFontProfile(settings.fontProfile)}`);
 }
 
 function toErrorMessage(value: unknown): string {

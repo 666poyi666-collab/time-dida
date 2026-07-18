@@ -1,5 +1,5 @@
-// 专注控制台：58/42 双区 —— 左侧「安静的桌面时间仪器」（任务意图、细刻度仪表、
-// 84px 主计时数字、主操作、累计三行），右侧「本次专注账本」（SegmentTimeline）。
+// 专注控制台：58/42 双区 —— 左侧用主读数与线性时间地平线表达正在发生的时间，
+// 右侧保留本次专注账本。计时与任务语义不因视觉结构改变。
 // 计时逻辑、任务关联逻辑、状态机全部保持原样，仅重排 JSX 结构与 className。
 import { useEffect, useState, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -15,8 +15,8 @@ import {
 } from '@shared/focus/selectors';
 import type { TimerSnapshot, Task } from '@shared/types';
 import { TaskPicker } from '../tasks/TaskPicker';
-import { TimerDial } from './TimerDial';
 import { SegmentTimeline } from './SegmentTimeline';
+import { TemporalRibbon } from './TemporalRibbon';
 
 function formatClockTime(timestamp: number | null | undefined): string | null {
   if (!timestamp) return null;
@@ -39,6 +39,7 @@ function useDisplayValues(snapshot: TimerSnapshot | null) {
 
   return useMemo(
     () => ({
+      now,
       currentSegmentMs: getMainDisplayMs(snapshot, now),
       cumulativeActiveMs: getCumulativeActiveMs(snapshot, now),
       cumulativePauseMs: getCumulativePauseMs(snapshot, now),
@@ -97,7 +98,7 @@ export function TimerPanel() {
     taskPickerRequest,
     consumeTaskPickerRequest,
   } = useStore();
-  const { currentSegmentMs, cumulativeActiveMs, cumulativePauseMs, wallMs } =
+  const { now, currentSegmentMs, cumulativeActiveMs, cumulativePauseMs, wallMs } =
     useDisplayValues(snapshot);
   const [pickerMode, setPickerMode] = useState<'segment' | 'session' | 'preselect' | null>(null);
 
@@ -105,10 +106,15 @@ export function TimerPanel() {
   const isRunning = state === 'running' || state === 'paused';
   const segmentOrdinal = Math.max(1, snapshot?.segments.length ?? 1);
 
-  const currentSegmentTaskId = useMemo(() => {
+  // 当前片段信息：任务关联 + 片段起点（元信息行的「起于」锚点用）
+  const currentSegmentInfo = useMemo(() => {
     if (!snapshot?.currentSegmentId || !snapshot.segments) return null;
     const seg = snapshot.segments.find((s) => s.id === snapshot.currentSegmentId);
-    return { taskId: seg?.taskId ?? null, title: seg?.taskTitle ?? seg?.title ?? null };
+    return {
+      taskId: seg?.taskId ?? null,
+      title: seg?.taskTitle ?? seg?.title ?? null,
+      startedAt: seg?.startedAt ?? null,
+    };
   }, [snapshot?.currentSegmentId, snapshot?.segments]);
 
   const sessionDefaultTitle = snapshot?.sessionDefaultTaskTitle ?? null;
@@ -273,59 +279,68 @@ export function TimerPanel() {
           : null;
 
   const contextTitle = isRunning
-    ? (currentSegmentTaskId?.title ?? sessionDefaultTitle)
+    ? (currentSegmentInfo?.title ?? sessionDefaultTitle)
     : (pendingTask?.title ?? null);
   const contextSourceLabel = isRunning
-    ? currentSegmentTaskId?.title
+    ? currentSegmentInfo?.title
       ? '当前片段任务'
       : sessionDefaultTitle
         ? '本次默认任务'
         : '当前任务'
     : '即将专注任务';
-  const hasSegmentTask = !!currentSegmentTaskId?.title;
+  const hasSegmentTask = !!currentSegmentInfo?.title;
   const hasContextTask = !!contextTitle;
   const canClearContext = isRunning ? hasSegmentTask : !!pendingTask;
   const canSetSessionDefault = isRunning && hasSegmentTask && !sessionDefaultTitle;
   const canClearSessionDefault = isRunning && !hasSegmentTask && !!sessionDefaultTitle;
   const mainActionClass =
-    state === 'running' ? 'timer-btn-main is-pause' : 'timer-btn-main is-start';
-  const sessionStartedAt = snapshot?.segments[0]?.startedAt ?? null;
+    state === 'running' ? 'timer-btn-main btn-pause' : 'timer-btn-main btn-accent';
+  // 时间锚点：running 显示当前片段起点（区别于整场开始），paused 显示本次暂停起点
   const stateMoment =
     state === 'running'
-      ? formatClockTime(sessionStartedAt)
+      ? formatClockTime(currentSegmentInfo?.startedAt)
       : state === 'paused'
         ? formatClockTime(snapshot?.currentPauseStartedAt)
         : null;
-  const stateMomentLabel = state === 'paused' ? '暂停于' : '开始于';
+  const stateMomentLabel = state === 'paused' ? '暂停于' : '起于';
   const showLedger = (snapshot?.segments.length ?? 0) > 0;
 
   return (
     <div className={`focus-console ${showLedger ? 'with-ledger' : 'solo'}`} data-state={state}>
       <section className="focus-instrument">
-        {/* 当前任务意图区：安静小字标签 + 任务标题 + 幽灵操作 */}
+        <header className="focus-editorial-header">
+          <span className="focus-edition">FOCUS / {String(segmentOrdinal).padStart(2, '0')}</span>
+          <AnimatePresence mode="wait" initial={false}>
+            <StateBadge key={state} state={state} />
+          </AnimatePresence>
+        </header>
+
         <motion.div
           layout
           className="timer-context-strip"
-          transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+          transition={{ type: 'spring', stiffness: 380, damping: 32 }}
         >
-          <div className="timer-context-label">{contextSourceLabel}</div>
-          <div className={`timer-context-title ${hasContextTask ? '' : 'is-empty'}`}>
-            {contextTitle ?? '未选择任务'}
+          <div className="timer-context-copy">
+            <div className="timer-context-label">{contextSourceLabel}</div>
+            <div
+              className={`timer-context-title ${hasContextTask ? '' : 'is-empty'}`}
+              title={contextTitle ?? '未选择任务'}
+            >
+              {contextTitle ?? '给这一段时间一个名字'}
+            </div>
           </div>
           <div className="timer-context-actions">
             <button
               className="timer-context-action motion-press"
               onClick={() => setPickerMode(isRunning ? 'segment' : 'preselect')}
-              title={isRunning ? '关联或更换当前片段任务' : '选择即将专注的任务'}
             >
               <Icon.Search size="xs" />
-              {isRunning ? (hasContextTask ? '更换' : '关联') : '选择'}
+              {isRunning ? (hasContextTask ? '更换任务' : '关联任务') : '选择任务'}
             </button>
             {canSetSessionDefault && (
               <button
                 className="timer-icon-action motion-press"
                 onClick={() => setPickerMode('session')}
-                title="设为本次默认任务"
                 aria-label="设为本次默认任务"
               >
                 <Icon.Star size="xs" />
@@ -335,8 +350,7 @@ export function TimerPanel() {
               <button
                 className="timer-icon-action danger motion-press"
                 onClick={isRunning ? handleClearSegmentTask : handleClearPreselect}
-                title={isRunning ? '清除当前片段任务' : '清除预选任务'}
-                aria-label={isRunning ? '清除当前片段任务' : '清除预选任务'}
+                aria-label="清除任务"
               >
                 <Icon.X size="xs" />
               </button>
@@ -345,7 +359,6 @@ export function TimerPanel() {
               <button
                 className="timer-icon-action danger motion-press"
                 onClick={handleClearSessionDefault}
-                title="清除本次默认任务"
                 aria-label="清除本次默认任务"
               >
                 <Icon.Unlink size="xs" />
@@ -354,73 +367,72 @@ export function TimerPanel() {
           </div>
         </motion.div>
 
-        {/* 计时仪表 + 主计时数字 + 当前片段行 */}
         <div className="timer-instrument">
-          <TimerDial state={state} displayMs={currentSegmentMs} />
           <motion.div
-            className="timer-digit timer-primary"
-            animate={{ opacity: state === 'paused' ? 0.84 : 1, y: state === 'paused' ? 2 : 0 }}
-            transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
+            className="clock-readout"
+            animate={{ opacity: state === 'paused' ? 0.76 : 1 }}
+            transition={{ duration: 0.26 }}
           >
-            <FlipDigits value={formatDurationPadded(currentSegmentMs)} />
-          </motion.div>
-          <div className="timer-readout-meta">
-            <AnimatePresence mode="wait" initial={false}>
-              <StateBadge key={state} state={state} />
-            </AnimatePresence>
-            <span className="timer-segment-index">
-              片段 {String(segmentOrdinal).padStart(2, '0')}
-            </span>
-            {stateMoment && (
-              <span className="timer-state-time">
-                <Icon.Clock size="xs" />
-                {stateMomentLabel} {stateMoment}
+            <div className="timer-digit timer-primary">
+              <FlipDigits value={formatDurationPadded(currentSegmentMs)} />
+            </div>
+            <div className="timer-readout-meta">
+              <span>
+                {state === 'idle' ? '等待开始' : `片段 ${String(segmentOrdinal).padStart(2, '0')}`}
               </span>
-            )}
-          </div>
-          <div className="timer-activity-rail" aria-hidden="true">
-            <span />
-            <i />
-          </div>
+              {stateMoment && (
+                <span>
+                  {stateMomentLabel} {stateMoment}
+                </span>
+              )}
+            </div>
+          </motion.div>
+          <TemporalRibbon
+            snapshot={snapshot}
+            state={state}
+            now={now}
+            wallMs={wallMs}
+            activeMs={cumulativeActiveMs}
+            pauseMs={cumulativePauseMs}
+          />
         </div>
 
-        {/* 主操作区：暂停/继续 与 结束 并排 */}
-        <div className="timer-controls">
-          <button
-            className={mainActionClass}
-            onClick={handleToggle}
-            disabled={state === 'stopping'}
-          >
-            {state === 'running' ? <Icon.Pause size="sm" /> : <Icon.Play size="sm" />}
-            {toggleLabel}
-          </button>
-          <button
-            className="timer-btn-stop timer-stop-action"
-            onClick={handleStop}
-            disabled={isIdle || isFinished || state === 'stopping'}
-          >
-            <Icon.Square size="xs" />
-            结束
-          </button>
-        </div>
-
-        {/* 累计区：三行同一垂直线，发丝线分隔 */}
-        <div className="timer-totals">
-          <div className="timer-total-row tone-focus">
-            <span className="timer-total-label">累计专注</span>
-            <span className="timer-total-value timer-digit">
-              {formatDuration(cumulativeActiveMs)}
-            </span>
+        <div className="focus-footer-grid">
+          <div className="timer-controls">
+            <button
+              className={mainActionClass}
+              onClick={handleToggle}
+              disabled={state === 'stopping'}
+            >
+              {state === 'running' ? <Icon.Pause size="sm" /> : <Icon.Play size="sm" />}
+              {toggleLabel}
+            </button>
+            <button
+              className="timer-btn-stop btn-primary"
+              onClick={handleStop}
+              disabled={isIdle || isFinished || state === 'stopping'}
+            >
+              <Icon.Square size="xs" />
+              结束
+            </button>
           </div>
-          <div className="timer-total-row tone-pause">
-            <span className="timer-total-label">累计暂停</span>
-            <span className="timer-total-value timer-digit">
-              {formatDuration(cumulativePauseMs)}
-            </span>
-          </div>
-          <div className="timer-total-row tone-wall">
-            <span className="timer-total-label">总历时</span>
-            <span className="timer-total-value timer-digit">{formatDuration(wallMs)}</span>
+          <div className="timer-totals">
+            <div className="timer-total-row tone-focus">
+              <span className="timer-total-label">累计专注</span>
+              <span className="timer-total-value timer-digit">
+                {formatDuration(cumulativeActiveMs)}
+              </span>
+            </div>
+            <div className="timer-total-row tone-pause">
+              <span className="timer-total-label">累计暂停</span>
+              <span className="timer-total-value timer-digit">
+                {formatDuration(cumulativePauseMs)}
+              </span>
+            </div>
+            <div className="timer-total-row tone-wall">
+              <span className="timer-total-label">总历时</span>
+              <span className="timer-total-value timer-digit">{formatDuration(wallMs)}</span>
+            </div>
           </div>
         </div>
       </section>

@@ -245,8 +245,8 @@ export interface AppSettings {
   /** 主窗口外观；system 跟随系统颜色方案。 */
   theme: 'dark' | 'light' | 'system';
   accentColor: string;
-  /** 主界面字体气质；geist 是 Lumen 默认的锐利风格，manrope 提供更温润的阅读节奏。 */
-  fontProfile: 'geist' | 'manrope';
+  /** 主界面排版气质；所有主题均可独立选择，数字字体与正文字体成套切换。 */
+  fontProfile: 'plex' | 'geist' | 'manrope' | 'sora';
   segmentBehavior: 'new-segment' | 'continue-segment';
   syncMode: 'focus-record' | 'comment' | 'local-only';
   experimentalFocusEnabled: boolean;
@@ -360,7 +360,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   themeFamily: 'quiet',
   theme: 'light',
   accentColor: 'indigo',
-  fontProfile: 'geist',
+  fontProfile: 'plex',
   segmentBehavior: 'new-segment',
   syncMode: 'focus-record',
   experimentalFocusEnabled: false,
@@ -483,6 +483,9 @@ export interface SessionIPC {
   'sessions:get': (
     id: string,
   ) => Promise<{ session: FocusSession; segments: FocusSegment[]; pauses: PauseEvent[] } | null>;
+  'sessions:analytics': (
+    range: import('./ipc/api').SessionAnalyticsRange,
+  ) => Promise<import('./ipc/api').SessionAnalyticsResult>;
   'sessions:delete': (id: string) => Promise<TimerSnapshot>;
   'sessions:export': (id: string, format: 'json' | 'csv' | 'markdown') => Promise<string>;
 }
@@ -537,6 +540,9 @@ export interface TomatodoIPC {
 
 export interface WindowIPC {
   'window:minimize-to-tray': () => void;
+  'window:minimize': () => void;
+  'window:toggle-maximize': () => void;
+  'window:close': () => void;
   'window:show': () => void;
   'window:quit': () => void;
 }

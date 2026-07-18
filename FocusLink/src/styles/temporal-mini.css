@@ -1,0 +1,329 @@
+/* Fixed-size edge companion. Deliberately flat: no glass capsule, no decorative glow. */
+
+.mini-window-page {
+  --app-success: 5 150 105;
+  --app-pause: 217 119 6;
+}
+
+.mini-window-page.dark {
+  --app-success: 52 211 153;
+  --app-pause: 251 191 36;
+}
+
+.mini-window-shell {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(var(--app-border-strong));
+  border-radius: 3px;
+  background: rgb(var(--app-surface));
+  color: rgb(var(--app-text));
+  box-shadow: 0 6px 22px rgb(15 23 42 / 0.18);
+  transition:
+    width var(--mini-dock-transition-duration) var(--ease-fluid),
+    height var(--mini-dock-transition-duration) var(--ease-fluid);
+  -webkit-app-region: drag;
+}
+
+.mini-material-stack,
+.mini-state-rail,
+.mini-dock-cue {
+  display: none;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.mini-window-running {
+  border-top-color: rgb(var(--app-success));
+}
+
+.mini-window-paused {
+  border-top-color: rgb(var(--app-pause));
+}
+
+.mini-collapsed-content {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: minmax(0, 1fr) 27px;
+  align-items: center;
+  padding: 0 3px 0 9px;
+}
+
+.mini-collapsed-current,
+.mini-collapsed-state,
+.mini-state-badge,
+.mini-header-context,
+.mini-header-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.mini-collapsed-current {
+  gap: 7px;
+}
+
+.mini-collapsed-state,
+.mini-state-badge {
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+.mini-state-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgb(var(--app-subtle));
+}
+
+.state-dot-running,
+.bg-success {
+  background: rgb(var(--app-success));
+}
+
+.bg-pause {
+  border-radius: 1px;
+  background: rgb(var(--app-pause));
+}
+
+.mini-collapsed-label,
+.mini-state-badge,
+.mini-current-label,
+.mini-task-title {
+  color: rgb(var(--app-muted));
+  font-size: 9px;
+}
+
+.mini-window-running .mini-collapsed-label,
+.mini-window-running .mini-state-badge,
+.mini-window-running .mini-current-label {
+  color: rgb(var(--app-success));
+}
+
+.mini-window-paused .mini-collapsed-label,
+.mini-window-paused .mini-state-badge,
+.mini-window-paused .mini-current-label,
+.mini-metric-pause strong {
+  color: rgb(var(--app-pause));
+}
+
+.mini-display-time {
+  font-family: var(--font-number);
+  font-variant-numeric: tabular-nums;
+}
+
+.mini-collapsed-time {
+  margin-left: auto;
+  color: rgb(var(--app-text));
+  font-size: 25px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.mini-time-long {
+  font-size: 18px !important;
+}
+
+.mini-icon-button {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: rgb(var(--app-muted));
+}
+
+.mini-icon-button:hover {
+  background: rgb(var(--app-surface-2));
+  color: rgb(var(--app-text));
+}
+
+.mini-edge-progress {
+  position: absolute;
+  right: 4px;
+  bottom: 1px;
+  left: 4px;
+  height: 3px;
+  overflow: hidden;
+  background: rgb(var(--app-border));
+}
+
+.mini-edge-progress-fill,
+.mini-edge-progress-pause {
+  position: absolute;
+  inset-block: 0;
+}
+
+.mini-edge-progress-fill {
+  left: 0;
+  width: var(--mini-progress);
+  background: rgb(var(--app-success));
+}
+
+.mini-edge-progress-pause {
+  left: var(--mini-pause-start);
+  width: var(--mini-pause-width);
+  background: repeating-linear-gradient(
+    135deg,
+    rgb(var(--app-pause)) 0 3px,
+    rgb(var(--app-pause) / 0.45) 3px 6px
+  );
+}
+
+.mini-edge-progress-glint {
+  display: none;
+}
+
+.mini-expanded-content {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-rows: 25px 38px 29px;
+}
+
+.mini-expanded-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 0 9px;
+  border-bottom: 1px solid rgb(var(--app-border));
+}
+
+.mini-header-context {
+  gap: 7px;
+}
+
+.mini-header-actions {
+  gap: 1px;
+}
+
+.mini-header-divider {
+  width: 1px;
+  height: 10px;
+  background: rgb(var(--app-border));
+}
+
+.mini-task-title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-expanded-body {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 130px minmax(0, 1fr);
+  align-items: center;
+  padding: 0 9px;
+}
+
+.mini-expanded-time {
+  margin-top: 2px;
+  color: rgb(var(--app-text));
+  font-size: 29px;
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  line-height: 0.9;
+}
+
+.mini-metric-rail {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-left: 1px solid rgb(var(--app-border));
+}
+
+.mini-metric {
+  min-width: 0;
+  padding-left: 6px;
+}
+
+.mini-metric span,
+.mini-metric strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-metric span {
+  color: rgb(var(--app-muted));
+  font-size: 8px;
+}
+
+.mini-metric strong {
+  margin-top: 1px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.mini-expanded-footer {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  border-top: 1px solid rgb(var(--app-border));
+}
+
+.mini-action-dock {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr 62px;
+  gap: 4px;
+}
+
+.mini-primary-button,
+.mini-secondary-button {
+  display: inline-flex;
+  height: 21px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 7px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.mini-primary-button {
+  border: 1px solid rgb(var(--app-accent));
+  background: rgb(var(--app-accent));
+  color: rgb(var(--app-accent-fg));
+}
+
+.mini-action-hold {
+  border-color: rgb(var(--app-text));
+  background: rgb(var(--app-text));
+  color: rgb(var(--app-bg));
+}
+
+.mini-action-resume {
+  border-color: rgb(var(--app-accent));
+  background: rgb(var(--app-accent));
+  color: rgb(var(--app-accent-fg));
+}
+
+.mini-secondary-button {
+  border: 1px solid rgb(var(--app-border-strong));
+  background: transparent;
+  color: rgb(var(--app-text));
+}
+
+.mini-window-docking {
+  transform: scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mini-window-shell {
+    transition: none;
+  }
+}

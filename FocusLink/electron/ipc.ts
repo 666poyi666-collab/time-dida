@@ -48,15 +48,19 @@ import {
 } from './integrations/tomatodo/bridgeLifecycle.js';
 import {
   listSessions,
+  listSessionsInRange,
   getSession as getSessionDb,
   listSegments,
+  listSegmentsInSessionRange,
   listPauses,
+  listPausesInSessionRange,
   getSegment,
   deleteSession,
   deleteSegment,
   deleteSyncQueueForSegments,
 } from './db/index.js';
 import { exportSessionById } from './export.js';
+import { buildSessionAnalytics } from '@shared/sessionAnalytics';
 import { logger } from './logger.js';
 import type {
   TaskSource,
@@ -66,6 +70,7 @@ import type {
   FocusSegment,
   TaskWorkspaceRefreshOptions,
 } from '@shared/types';
+import type { SessionAnalyticsRange } from '@shared/ipc/api';
 import { DEFAULT_SETTINGS } from '@shared/types';
 import { shouldDeleteDidaFocusRecord } from '@shared/autoSyncPolicy';
 import { detectSettingsChangedDomains } from '@shared/settingsPolicy';
@@ -379,6 +384,24 @@ export function registerIpc(
     if (!session) return null;
     return { session, segments: listSegments(id), pauses: listPauses(id) };
   });
+  ipcMain.handle('sessions:analytics', (_e, range: SessionAnalyticsRange) => {
+    if (
+      !range ||
+      !Number.isFinite(range.start) ||
+      !Number.isFinite(range.end) ||
+      (range.timelineStart !== undefined && !Number.isFinite(range.timelineStart)) ||
+      (range.timelineEnd !== undefined && !Number.isFinite(range.timelineEnd))
+    ) {
+      throw new Error('统计时间范围无效');
+    }
+    const start = Math.min(range.start, range.end);
+    const end = Math.max(range.start, range.end);
+    return buildSessionAnalytics(range, {
+      sessions: listSessionsInRange(start, end),
+      segments: listSegmentsInSessionRange(start, end),
+      pauses: listPausesInSessionRange(start, end),
+    });
+  });
   ipcMain.handle('sessions:delete', async (_e, id: string) => {
     const segs = listSegments(id);
     const snapshot = timer.getSnapshot();
@@ -594,6 +617,12 @@ export function registerIpc(
 
   // ============ Window ============
   ipcMain.on('window:minimize-to-tray', () => window.hide());
+  ipcMain.on('window:minimize', () => window.minimize());
+  ipcMain.on('window:toggle-maximize', () => {
+    if (window.isMaximized()) window.unmaximize();
+    else window.maximize();
+  });
+  ipcMain.on('window:close', () => window.close());
   ipcMain.on('window:show', () => {
     window.show();
     window.focus();

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Project, Task, TimerState } from '@shared/types';
 import { useStore } from '../../app/store';
@@ -12,6 +12,13 @@ type TaskFilter = 'open' | 'completed';
 
 const TASK_PAGE_SIZE = 120;
 const COMPLETED_RANGES = [30, 90, 365] as const;
+/**
+ * 完成反馈时间线（与 task-workspace.css 同步）：
+ * 描边 0–180ms → 填充 160–360ms → 勾线 180–380ms → 文字状态变化自 380ms 过渡
+ * → 行收束 390–600ms（collapse-row，normal 档 210ms）。收束结束后再把任务移出列表。
+ * 与 6 秒撤销窗口无关。
+ */
+const COMPLETION_GRACE_MS = 620;
 const SORT_OPTIONS: Record<TaskFilter, Array<{ id: TaskSortMode; label: string }>> = {
   open: [
     { id: 'smart', label: '滴答顺序' },
@@ -182,7 +189,7 @@ export function TaskWorkspace() {
             next.delete(task.id);
             return next;
           });
-        }, 720);
+        }, COMPLETION_GRACE_MS);
         rememberUndo(updated);
       } else {
         setCompletionGraceIds((current) => {
@@ -278,8 +285,8 @@ export function TaskWorkspace() {
               <Icon.ListChecks size="sm" />
             </span>
             <div>
-              <strong>滴答清单</strong>
-              <span>按清单浏览任务</span>
+              <strong>任务索引</strong>
+              <span>从清单进入专注</span>
             </div>
           </div>
 
@@ -337,7 +344,10 @@ export function TaskWorkspace() {
         <section className="task-workbench">
           <header className="task-workbench-header">
             <div className="task-workbench-title">
-              <h1>{filter === 'open' ? '待完成' : '已完成'}</h1>
+              <span className="task-workbench-kicker">
+                {filter === 'open' ? '执行序列' : '完成档案'} · {displayedCount} 项
+              </span>
+              <h1 className="text-page-title">{filter === 'open' ? '待完成' : '已完成'}</h1>
               <p>
                 {filter === 'open'
                   ? '选择一件事，完成或直接开始专注。'
@@ -455,6 +465,7 @@ export function TaskWorkspace() {
                         context.task.projectId ? projectById.get(context.task.projectId) : undefined
                       }
                       mutating={mutatingTaskIds.has(context.task.id)}
+                      checking={completionGraceIds.has(context.task.id)}
                       currentTaskId={snapshot?.currentTaskId ?? null}
                       timerState={snapshot?.state ?? 'idle'}
                       onToggleCompleted={() => toggleCompleted(context.task)}
@@ -481,7 +492,7 @@ export function TaskWorkspace() {
             {hasMore && !loading && !loadError && (
               <button
                 type="button"
-                className="task-load-more"
+                className="btn-outline task-load-more"
                 onClick={() => setVisibleLimit((current) => current + TASK_PAGE_SIZE)}
               >
                 再显示 {Math.min(TASK_PAGE_SIZE, displayedCount - visibleLimit)} 项
@@ -524,6 +535,7 @@ function WorkbenchTaskRow({
   toggleCollapse,
   project,
   mutating,
+  checking,
   currentTaskId,
   timerState,
   onToggleCompleted,
@@ -531,16 +543,34 @@ function WorkbenchTaskRow({
 }: TaskTreeRowContext & {
   project?: Project;
   mutating: boolean;
+  checking: boolean;
   currentTaskId: string | null;
   timerState: TimerState;
   onToggleCompleted: () => void;
   onFocus: () => void;
 }) {
   const current = currentTaskId === task.id || currentTaskId === task.externalId;
+  // 仅无子任务的行收束；已完成父任务留在树中承载子任务。
+  const collapsing = checking && !hasChildren;
+  // 键盘行为：Space 切换完成（镜像复选框），Enter 开始专注/关联（行主操作）。
+  // 仅当事件落在行本体时响应，避免与行内按钮的按键重复触发。
+  const onRowKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || mutating) return;
+    if (event.key === ' ') {
+      event.preventDefault();
+      onToggleCompleted();
+    } else if (event.key === 'Enter' && !task.isCompleted) {
+      event.preventDefault();
+      onFocus();
+    }
+  };
   return (
     <div
-      className={`task-workbench-row ${task.isCompleted ? 'completed' : ''} ${current ? 'current' : ''}`}
+      className={`task-workbench-row ${task.isCompleted ? 'completed' : ''} ${current ? 'current' : ''} ${collapsing ? 'is-collapsing' : ''}`}
       style={{ '--task-depth': depth } as CSSProperties}
+      tabIndex={0}
+      aria-label={task.title}
+      onKeyDown={onRowKeyDown}
     >
       <div className="task-row-indent" />
       {hasChildren ? (
@@ -557,14 +587,14 @@ function WorkbenchTaskRow({
       )}
       <button
         type="button"
-        className={`task-complete-control ${task.isCompleted ? 'checked' : ''}`}
+        className={`task-complete-control ${task.isCompleted ? 'checked' : ''} ${checking ? 'is-checking' : ''}`}
         onClick={onToggleCompleted}
         disabled={mutating}
         role="checkbox"
         aria-checked={task.isCompleted === true}
         aria-label={task.isCompleted ? '取消完成' : '完成任务'}
       >
-        {mutating ? <Spinner size="xs" /> : task.isCompleted ? <Icon.Check size="xs" /> : null}
+        {mutating ? <Spinner size="xs" /> : <CompleteControlGlyph />}
       </button>
       <div className="task-row-copy">
         <div className="task-row-title-line">
@@ -581,11 +611,11 @@ function WorkbenchTaskRow({
           )}
           {(task.priority ?? 0) > 0 && (
             <span
-              className={`task-priority-flag priority-${priorityTone(task.priority)}`}
+              className={`task-priority-mark priority-${priorityTone(task.priority)}`}
               title={priorityLabel(task.priority)}
               aria-label={priorityLabel(task.priority)}
             >
-              <Icon.Flag size="xs" />
+              {priorityMark(task.priority)}
             </span>
           )}
         </div>
@@ -602,6 +632,7 @@ function WorkbenchTaskRow({
               {formatDueDate(task.dueDate)}
             </span>
           )}
+          <TaskRowTags tags={task.tags} />
         </div>
       </div>
       {!task.isCompleted && (
@@ -633,10 +664,23 @@ function CompletedTaskList({
         const showHeading = group !== previousGroup;
         previousGroup = group;
         const project = task.projectId ? projects.get(task.projectId) : undefined;
+        // 键盘行为与待完成行一致：Space/Enter 均为恢复（该行无主专注操作）。
+        const onRowKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+          if (event.target !== event.currentTarget || mutatingTaskIds.has(task.id)) return;
+          if (event.key === ' ' || event.key === 'Enter') {
+            event.preventDefault();
+            onRestore(task);
+          }
+        };
         return (
           <div key={task.id}>
             {showHeading && <div className="task-completed-group">{group}</div>}
-            <div className="task-completed-row">
+            <div
+              className="task-completed-row"
+              tabIndex={0}
+              aria-label={task.title}
+              onKeyDown={onRowKeyDown}
+            >
               <button
                 type="button"
                 className="task-complete-control checked"
@@ -646,11 +690,11 @@ function CompletedTaskList({
                 aria-checked="true"
                 aria-label={`取消完成 ${task.title}`}
               >
-                {mutatingTaskIds.has(task.id) ? <Spinner size="xs" /> : <Icon.Check size="xs" />}
+                {mutatingTaskIds.has(task.id) ? <Spinner size="xs" /> : <CompleteControlGlyph />}
               </button>
               <div className="task-row-copy">
                 <div className="task-row-title-line">
-                  <strong>{task.title}</strong>
+                  <strong title={task.title}>{task.title}</strong>
                 </div>
                 <div className="task-row-meta">
                   {parentTitle && <span>{parentTitle}</span>}
@@ -666,6 +710,7 @@ function CompletedTaskList({
                       {formatCompletedDate(task.completedAt)}
                     </span>
                   )}
+                  <TaskRowTags tags={task.tags} />
                 </div>
               </div>
               <button type="button" className="task-restore-action" onClick={() => onRestore(task)}>
@@ -702,17 +747,56 @@ function ProjectButton({
   );
 }
 
+/**
+ * 行内标签：低权重 #tag 文字，最多展示 2 个，其余折叠为「+N」
+ * （title 悬浮可见完整列表），随元信息行一起截断。
+ */
+function TaskRowTags({ tags }: { tags: string[] | null | undefined }) {
+  if (!tags || tags.length === 0) return null;
+  const visible = tags.slice(0, 2);
+  const hiddenCount = tags.length - visible.length;
+  return (
+    <span className="task-row-tags">
+      {visible.map((tag) => (
+        <em className="task-tag" key={tag} title={tag}>
+          #{tag}
+        </em>
+      ))}
+      {hiddenCount > 0 && (
+        <em className="task-tag task-tag-more" title={tags.join('、')}>
+          +{hiddenCount}
+        </em>
+      )}
+    </span>
+  );
+}
+
+/**
+ * 圆形完成控件的 SVG 图稿：circle 描边/填充 + check 勾线。
+ * --dash-total 按实际路径长度取值（圆周 2π·7.2≈45.2→46；勾线≈10.2→11），
+ * 共享 keyframes「checkbox-check」按各元素自己的 --dash-total 编排描边绘制；
+ * 静态选中态 dashoffset 全为 0。
+ */
+function CompleteControlGlyph() {
+  return (
+    <svg className="task-complete-glyph" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+      <circle className="task-complete-ring" cx="9" cy="9" r="7.2" />
+      <path className="task-complete-check" d="M5.5 9.4l2.3 2.3 4.7-5.1" />
+    </svg>
+  );
+}
+
 function TaskSkeletonList() {
   const widths = [72, 58, 80, 64, 76, 52];
   return (
     <div className="task-skeleton-list" aria-label="正在读取滴答清单">
       {widths.map((width, index) => (
         <div className="task-skeleton-row" key={index}>
-          <span className="task-skeleton-dot" />
+          <span className="task-skeleton-dot skeleton" />
           <div className="task-skeleton-lines">
-            <span className="task-skeleton-line" style={{ width: `${width}%` }} />
+            <span className="task-skeleton-line skeleton" style={{ width: `${width}%` }} />
             <span
-              className="task-skeleton-line"
+              className="task-skeleton-line skeleton"
               style={{ width: `${Math.max(width - 34, 24)}%` }}
             />
           </div>
@@ -722,6 +806,10 @@ function TaskSkeletonList() {
   );
 }
 
+/**
+ * 空/错误状态：统一使用全局 .state-block 契约（图标/标题/描述/操作四段式），
+ * 错误态走 tone-error 变体；task-empty-state/danger 仅保留为冒烟测试兼容标记。
+ */
 function TaskEmpty({
   icon,
   title,
@@ -738,14 +826,16 @@ function TaskEmpty({
   danger?: boolean;
 }) {
   return (
-    <div className={`task-empty-state ${danger ? 'danger' : ''}`}>
-      <span>{icon}</span>
-      <strong>{title}</strong>
-      <p>{detail}</p>
+    <div className={`state-block task-empty-state ${danger ? 'tone-error danger' : ''}`}>
+      <span className="state-block-icon">{icon}</span>
+      <strong className="state-block-title">{title}</strong>
+      <p className="state-block-desc">{detail}</p>
       {action && onAction && (
-        <button type="button" onClick={onAction}>
-          {action}
-        </button>
+        <div className="state-block-actions">
+          <button type="button" className="btn-outline" onClick={onAction}>
+            {action}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -920,6 +1010,12 @@ function priorityTone(priority: number | null): 'high' | 'medium' | 'low' {
   if ((priority ?? 0) >= 5) return 'high';
   if ((priority ?? 0) >= 3) return 'medium';
   return 'low';
+}
+
+function priorityMark(priority: number | null): string {
+  if ((priority ?? 0) >= 5) return '高';
+  if ((priority ?? 0) >= 3) return '中';
+  return '低';
 }
 
 function toErrorMessage(value: unknown): string {

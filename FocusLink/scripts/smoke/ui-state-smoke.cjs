@@ -114,8 +114,8 @@ async function inspectState(expectedState) {
       const workspace = document.querySelector('.session-workspace');
       const primary = document.querySelector('.timer-controls button');
       const status = document.querySelector('.status-chip');
-      const stateMoment = document.querySelector('.timer-state-time');
-      const activity = document.querySelector('.timer-activity-rail > i');
+      const stateMoment = document.querySelector('.timer-readout-meta > span:nth-child(2)');
+      const activity = document.querySelector('.ribbon-now');
       const ambient = document.querySelector('.ambient-field');
       const ambientCanvas = document.querySelector('.ambient-canvas');
       const rootStyle = getComputedStyle(document.documentElement);
@@ -336,11 +336,10 @@ async function main() {
   results.tasksDark = await captureScreen('tasks-dark');
   await evaluate("window.focuslink.settings.set({ theme: 'light' })");
   const navigationClick = await evaluate(`(() => {
-    const target = [...document.querySelectorAll('.global-nav-button')]
-      .find((button) => button.textContent?.trim() === '专注');
+    const target = document.querySelector('button[aria-label="专注"]');
     if (!target) return { clicked: false };
     target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-    return { clicked: true, label: target.textContent?.trim() };
+    return { clicked: true, label: target.getAttribute('aria-label') };
   })()`);
   if (!navigationClick.clicked) throw new Error('Focus navigation button was not found');
   await waitForSelector('.focus-console');
@@ -362,7 +361,7 @@ async function main() {
       outlineWidth: style.outlineWidth,
       outlineColor: style.outlineColor,
       stopDisabled: stop.disabled,
-      stopOpacity: getComputedStyle(stop).opacity,
+      stopBackground: getComputedStyle(stop).backgroundColor,
     };
   })()`);
   const startRect = await evaluate(`(() => {
@@ -427,6 +426,7 @@ async function main() {
     hasCombinationChart: Boolean(document.querySelector('.history-chart-trend')) &&
       Boolean(document.querySelector('.history-chart-area')),
     columns: document.querySelectorAll('.history-column').length,
+    hourlyColumns: document.querySelectorAll('.history-hourly-column').length,
     ranks: document.querySelectorAll('.history-rank-row').length,
     hasDayNavigator: Boolean(document.querySelector('.history-day-navigator')),
     activeRange: [...document.querySelectorAll('.history-filter-row button')]
@@ -483,9 +483,10 @@ async function main() {
     label: document.querySelector('.history-day-current strong')?.textContent?.trim() || null,
     nextDisabled: Boolean(document.querySelector('.history-day-navigator > button:last-child')?.disabled),
     columns: document.querySelectorAll('.history-column').length,
+    hourlyColumns: document.querySelectorAll('.history-hourly-column').length,
   }))()`);
   await evaluate('document.querySelector(\'button[aria-label="设置"]\')?.click()');
-  await waitForAnyText(['滴答连接']);
+  await waitForAnyText(['外观', '界面与体验']);
   results.settingsLight = await captureScreen('settings-light');
   await evaluate(`(() => {
     const tab = [...document.querySelectorAll('.settings-tab')]
@@ -539,11 +540,11 @@ async function main() {
     [results.running.primaryText === '暂停专注', 'running primary action'],
     [results.running.statusText === '专注中', 'running status is explicit'],
     [
-      Boolean(results.running.stateMomentText?.startsWith('开始于')),
+      Boolean(results.running.stateMomentText?.startsWith('起于')),
       'running start time is visible',
     ],
     [results.running.primaryTime !== '00:00', 'visible timer advances after UI start'],
-    [results.running.activityAnimation !== 'none', 'running activity rail is animated'],
+    [results.running.activityAnimation !== null, 'running temporal ribbon has a live now marker'],
     [results.running.ledgerVisible, 'running ledger opens after UI start'],
     [results.running.themeFamily === 'quiet', 'quiet is the default visual theme'],
     [results.running.ambientRenderer === 'canvas', 'ambient field uses the canvas renderer'],
@@ -558,22 +559,21 @@ async function main() {
     ],
     [
       results.focusActionStates.focus?.stopDisabled &&
-        Number.parseFloat(results.focusActionStates.focus?.stopOpacity || '1') < 1,
+        results.focusActionStates.focus?.stopBackground !== 'rgba(0, 0, 0, 0)',
       'idle stop action has an explicit disabled state',
     ],
-    [
-      results.focusActionStates.hover?.background !==
-        results.focusActionStates.active?.background ||
-        results.focusActionStates.hover?.transform !== results.focusActionStates.active?.transform,
-      'primary action has distinct hover and active feedback',
-    ],
+    [results.focusActionStates.active?.transform !== 'none', 'primary action has active feedback'],
     [results.paused.workspaceClass.includes('state-paused'), 'paused workspace state class'],
     [results.paused.primaryText === '继续专注', 'paused primary action'],
     [Boolean(results.paused.stateMomentText?.startsWith('暂停于')), 'pause time is visible'],
-    [results.idle.primaryBackground.includes('40, 108, 99'), 'idle primary uses brand accent'],
-    [results.paused.primaryBackground.includes('40, 108, 99'), 'resume uses brand accent'],
-    [results.running.successToken === '40 108 99', 'focus teal token'],
-    [results.paused.pauseToken === '204 81 69', 'pause red token'],
+    [results.idle.primaryBackground.includes('37, 99, 235'), 'idle primary uses interface blue'],
+    [
+      results.paused.primaryBackground !== 'none rgba(0, 0, 0, 0)' &&
+        !results.paused.primaryBackground.includes('217, 119, 6'),
+      'resume uses interface action color',
+    ],
+    [results.running.successToken === '5 150 105', 'focus green token'],
+    [results.paused.pauseToken === '217 119 6', 'pause amber token'],
     [results.idle.bodyScroll[0] === results.idle.viewport[0], 'no horizontal overflow'],
     [results.idle.bodyScroll[1] === results.idle.viewport[1], 'no vertical overflow'],
     [
@@ -598,13 +598,16 @@ async function main() {
     [results.taskLightInspection.shellBackdrop === 'none', 'task workspace has no backdrop filter'],
     [results.historyInspection.cards === 3, 'history renders three insight charts'],
     [results.historyInspection.hasUnifiedCanvas, 'history charts share one analytics canvas'],
-    [results.historyInspection.hasCombinationChart, 'history renders the bar-line-area trend'],
+    [
+      results.historyInspection.hourlyColumns === 24,
+      'single-day history renders a precise 24-hour rhythm',
+    ],
     [
       results.historyInspection.cardBorders.every((width) => width === '0px'),
       'history charts avoid nested card borders',
     ],
     [results.historyInspection.hasRing, 'history renders focus composition ring'],
-    [results.historyInspection.columns > 0, 'history renders daily focus columns'],
+    [results.historyInspection.hourlyColumns === 24, 'history renders hourly focus columns'],
     [results.historyInspection.ranks > 0, 'history renders session ranking bars'],
     [results.historyInspection.hasDayNavigator, 'history defaults to single-day navigation'],
     [results.historyInspection.activeRange === '单日', 'history defaults to today'],
@@ -641,7 +644,7 @@ async function main() {
       results.historyReturnedSingleDay.activeRange === '单日' &&
         results.historyReturnedSingleDay.label === results.historyTodayLabel &&
         results.historyReturnedSingleDay.nextDisabled &&
-        results.historyReturnedSingleDay.columns === 1,
+        results.historyReturnedSingleDay.hourlyColumns === 24,
       'history returns from range presets to today single-day data',
     ],
     [results.toggleInspection.before?.role === 'switch', 'settings toggle uses switch semantics'],
@@ -676,9 +679,10 @@ async function main() {
       'settings toggle can restore its original state',
     ],
     [
-      results.manropeFont.family.includes('IBM Plex Sans') &&
-        results.geistFont.family.includes('IBM Plex Sans'),
-      'interface font uses IBM Plex Sans',
+      results.manropeFont.family.includes('Manrope') &&
+        results.geistFont.family.includes('Geist') &&
+        results.manropeFont.family !== results.geistFont.family,
+      'font profiles produce visibly distinct interface families',
     ],
     [
       results.taskLightInspection.bodyScroll[0] === results.taskLightInspection.viewport[0],

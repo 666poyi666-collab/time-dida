@@ -41,19 +41,16 @@ export class ErrorBoundary extends Component<Props, State> {
       }
       return (
         <div
-          className="flex h-full w-full flex-col items-center justify-center gap-4 p-8"
+          className="state-block tone-error h-full w-full"
           style={{ background: 'rgb(var(--app-bg))' }}
+          role="alert"
         >
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-danger/10 text-danger">
+          <div className="state-block-icon">
             <Icon.AlertCircle size="lg" />
           </div>
-          <div className="text-center">
-            <h3 className="text-[14px] font-semibold text-fg">界面渲染出错</h3>
-            <p className="mt-1 max-w-[360px] text-[11px] text-fg-muted">
-              {this.state.error?.message ?? '发生了未知错误'}
-            </p>
-          </div>
-          <div className="flex gap-2">
+          <h3 className="state-block-title">界面渲染出错</h3>
+          <p className="state-block-desc">{this.state.error?.message ?? '发生了未知错误'}</p>
+          <div className="state-block-actions">
             <button className="btn-outline motion-press" onClick={this.handleRetry}>
               <Icon.Refresh size="xs" />
               重试

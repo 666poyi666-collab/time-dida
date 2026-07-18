@@ -1,11 +1,15 @@
-// 设置页 - 快捷键/主题/计时行为/任务来源/CLI/同步/滴答账号/系统
+// 设置页 - 紧凑分组列表：左侧分组导航 + 右侧连续行列表。
+// FocusLink 只有一套视觉语言；外观只切换 light/dark/system，状态色不开放自定义。
+// - 开关统一 42×24px，关闭态有清楚边界，disabled 可识别；
+// - 语义标签：已同步/未同步/同步失败仅用于同步队列；dida 描述为「同步到滴答清单」；
+//   番茄 To-do 使用「已写入本地/待上传/上传已确认」。
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../app/store';
 import type { AppSettings } from '@shared/types';
 import type { TomatodoBridgeStatus } from '@shared/ipc/api';
 import { APP_VERSION } from '@shared/version';
 import { TOMATODO_SUBJECT_OPTIONS } from '@shared/tomatodoPolicy';
-import { Icon, type IconProps } from '../../ui/Icon';
+import { Icon } from '../../ui/Icon';
 
 const HOTKEY_LABELS: Record<keyof AppSettings['hotkeys'], string> = {
   toggleTimer: '开始 / 暂停 / 继续',
@@ -16,31 +20,34 @@ const HOTKEY_LABELS: Record<keyof AppSettings['hotkeys'], string> = {
 };
 
 const TABS = [
+  { id: 'experience', label: '界面与体验', icon: Icon.Settings },
   { id: 'connections', label: '连接', icon: Icon.Link },
   { id: 'sync', label: '同步', icon: Icon.Refresh },
-  { id: 'experience', label: '体验', icon: Icon.Settings },
-] as const;
-
-const ACCENT_OPTIONS = [
-  { id: 'indigo', label: '鸢尾靛蓝', color: '#4c58d0' },
-  { id: 'violet', label: '堇青紫', color: '#7c52c4' },
-  { id: 'emerald', label: '松石绿', color: '#0a8656' },
-  { id: 'rose', label: '蔷薇红', color: '#c84464' },
-  { id: 'amber', label: '琥珀金', color: '#a86216' },
-  { id: 'sky', label: '晴空蓝', color: '#247ab4' },
 ] as const;
 
 const FONT_OPTIONS = [
   {
+    id: 'plex',
+    label: '精密',
+    detail: 'IBM Plex · 仪器感与中文秩序',
+    sample: '专注节奏 Focus 24:16',
+  },
+  {
     id: 'manrope',
-    label: '舒展',
-    detail: '圆润舒展 · Manrope 字面',
+    label: '人文',
+    detail: 'Manrope · 温润舒展，适合长读',
     sample: '专注节奏 Focus 24:16',
   },
   {
     id: 'geist',
-    label: '锐界',
-    detail: '紧凑锐利 · Geist 字面',
+    label: '现代',
+    detail: 'Geist · 利落紧凑，信息密度高',
+    sample: '专注节奏 Focus 24:16',
+  },
+  {
+    id: 'sora',
+    label: '几何',
+    detail: 'Sora · 个性鲜明，数字更醒目',
     sample: '专注节奏 Focus 24:16',
   },
 ] as const satisfies ReadonlyArray<{
@@ -49,6 +56,9 @@ const FONT_OPTIONS = [
   detail: string;
   sample: string;
 }>;
+
+// 番茄 To-do 学科下拉的可选值（与 TOMATODO_SUBJECT_OPTIONS 同源）
+const TOMATODO_SUBJECT_VALUES = TOMATODO_SUBJECT_OPTIONS.map((subject) => subject.value);
 
 type HotkeyKey = keyof AppSettings['hotkeys'];
 type HotkeyRegistrationStatus = {
@@ -93,14 +103,13 @@ export function SettingsPanel() {
     executablePath: string;
     hasStaleTicktickTemplates: boolean;
   } | null>(null);
-  const [activeTab, setActiveTab] = useState<string>('connections');
+  const [activeTab, setActiveTab] = useState<string>('experience');
   const [hotkeyStatus, setHotkeyStatus] = useState<HotkeyRegistrationStatus | null>(null);
   const [tomatodoPending, setTomatodoPending] = useState<number>(0);
   const [tomatodoPendingError, setTomatodoPendingError] = useState<string | null>(null);
   const [tomatodoBridge, setTomatodoBridge] = useState<TomatodoBridgeStatus | null>(null);
   const [tomatodoUploading, setTomatodoUploading] = useState(false);
   const [didaSyncRunning, setDidaSyncRunning] = useState(false);
-
   useEffect(() => {
     window.focuslink.ticktick.status().then((s) => {
       setConnected(s.connected);
@@ -191,14 +200,17 @@ export function SettingsPanel() {
       const result = await window.focuslink.sync.runPending();
       await refreshSyncState();
       if (result.failed > 0) {
-        addToast(`${result.failed} 条滴答同步仍失败，请检查连接页诊断`, 'error');
+        addToast(`${result.failed} 条同步失败，请检查连接页诊断`, 'error');
       } else if (result.succeeded > 0) {
         addToast(`已同步 ${result.succeeded} 条记录到滴答清单`, 'success');
       } else {
-        addToast('当前没有等待同步的滴答记录', 'info');
+        addToast('当前没有未同步的滴答记录', 'info');
       }
     } catch (error) {
-      addToast(`滴答同步失败：${error instanceof Error ? error.message : String(error)}`, 'error');
+      addToast(
+        `同步到滴答清单失败：${error instanceof Error ? error.message : String(error)}`,
+        'error',
+      );
     } finally {
       setDidaSyncRunning(false);
     }
@@ -211,13 +223,13 @@ export function SettingsPanel() {
       setTomatodoBridge(bridge);
 
       if (bridge.state === 'restart-required') {
-        addToast('请先完全退出番茄 Todo，再点击“连接并上传”', 'info');
+        addToast('请先完全退出番茄 To-do，再点击“连接并上传”', 'info');
         return;
       }
 
       if (!bridge.connected) {
         if (!bridge.installed) {
-          addToast('未找到番茄 Todo，请先安装或检查安装位置', 'error');
+          addToast('未找到番茄 To-do，请先安装或检查安装位置', 'error');
           return;
         }
         bridge = await window.focuslink.tomatodo.ensureBridge();
@@ -225,8 +237,8 @@ export function SettingsPanel() {
         if (!bridge.connected) {
           const message =
             bridge.state === 'restart-required'
-              ? '请完全退出番茄 Todo 后再点击“连接并上传”'
-              : bridge.error || '番茄 Todo 连接尚未就绪，请稍后重试';
+              ? '请完全退出番茄 To-do 后再点击“连接并上传”'
+              : bridge.error || '番茄 To-do 连接尚未就绪，请稍后重试';
           addToast(message, bridge.state === 'restart-required' ? 'info' : 'error');
           return;
         }
@@ -234,7 +246,7 @@ export function SettingsPanel() {
 
       const result = await window.focuslink.tomatodo.uploadPending();
       if (result.uploaded > 0) {
-        addToast(`番茄 Todo 已确认上传 ${result.uploaded} 条记录`, 'success');
+        addToast(`番茄 To-do 上传已确认：${result.uploaded} 条记录`, 'success');
       } else if (result.error) {
         addToast(result.error, 'info');
       } else {
@@ -312,9 +324,6 @@ export function SettingsPanel() {
   }, []);
 
   if (!settings) return null;
-
-  const activeAccent =
-    ACCENT_OPTIONS.find((accent) => accent.id === settings.accentColor) ?? ACCENT_OPTIONS[0];
 
   const persistDebouncedSettings = async () => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
@@ -454,9 +463,11 @@ export function SettingsPanel() {
     }
   };
 
+  const appearanceLabel =
+    settings.theme === 'light' ? '明亮' : settings.theme === 'dark' ? '深色' : '跟随系统';
+
   const oauthConnection = (
     <Section
-      icon={Icon.Lock}
       title="TickTick OAuth（备用）"
       desc="dida CLI 不可用时再使用开发者应用连接；日常使用无需配置。"
     >
@@ -491,11 +502,11 @@ export function SettingsPanel() {
                 placeholder="应用的 Client Secret"
               />
             </Row>
-            <button className="btn-primary" onClick={handleLogin} disabled={loginLoading}>
+            <button className="btn-accent" onClick={handleLogin} disabled={loginLoading}>
               {loginLoading ? <Icon.Loader size="sm" spin /> : null}
               连接滴答清单
             </button>
-            <p className="text-xs text-fg-subtle">
+            <p className="text-diag">
               回调地址：
               <code className="rounded bg-bg-subtle px-1 py-0.5">
                 http://localhost:18321/callback
@@ -504,18 +515,23 @@ export function SettingsPanel() {
           </div>
         </details>
       ) : (
-        <div className="mt-2.5 flex items-center justify-between rounded-lg border border-success/20 bg-success/10 px-4 py-3">
-          <span className="flex items-center gap-2.5">
-            <span className="settings-status-badge tone-success">
-              <Icon.CheckCircleFilled size="xs" />
-              已连接
-            </span>
-            <span className="text-[11.5px] text-fg-muted">{region}</span>
+        <div className="settings-status-strip tone-success mt-2.5">
+          <span className="settings-status-strip-icon">
+            <Icon.CheckCircleFilled size="sm" />
           </span>
-          <button className="btn-ghost text-xs" onClick={handleLogout}>
-            <Icon.LogOut size="sm" />
-            断开
-          </button>
+          <div className="settings-status-strip-copy">
+            <p className="settings-status-strip-title">
+              已连接
+              <span className="text-diag">{region}</span>
+            </p>
+            <p className="settings-status-strip-desc">开发者应用连接可用；日常仍推荐使用本机 CLI</p>
+          </div>
+          <ConfirmButton
+            label="断开"
+            confirmLabel="确认断开？"
+            onConfirm={handleLogout}
+            icon={<Icon.LogOut size="sm" />}
+          />
         </div>
       )}
     </Section>
@@ -524,23 +540,33 @@ export function SettingsPanel() {
   const didaPendingCount = syncQueue.filter((item) => item.status === 'pending').length;
   const didaFailedCount = syncQueue.filter((item) => item.status === 'failed').length;
   const didaNeedsAttention = didaPendingCount + didaFailedCount;
+  // 同步队列语义标签契约：已同步 / 未同步 / 同步失败
+  const didaQueueTitle =
+    didaNeedsAttention === 0
+      ? '全部已同步'
+      : [
+          didaPendingCount > 0 ? `${didaPendingCount} 条未同步` : null,
+          didaFailedCount > 0 ? `${didaFailedCount} 条同步失败` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ');
 
   const tomatodoBridgeLabel = (() => {
     switch (tomatodoBridge?.state) {
       case 'connected':
-        return '番茄 Todo 已连接';
+        return '番茄 To-do 已连接';
       case 'stopped':
-        return '需要上传时可按需启动番茄 Todo';
+        return '需要上传时可按需启动番茄 To-do';
       case 'restart-required':
-        return '请完全退出番茄 Todo，再点击“连接并上传”';
+        return '请完全退出番茄 To-do，再点击“连接并上传”';
       case 'not-installed':
-        return '未找到番茄 Todo 安装程序';
+        return '未找到番茄 To-do 安装程序';
       case 'launch-timeout':
         return '连接等待超时，可重新尝试';
       case 'launch-failed':
         return tomatodoBridge.error || '连接失败，可重新尝试';
       default:
-        return '正在检查番茄 Todo 连接';
+        return '正在检查番茄 To-do 连接';
     }
   })();
   const tomatodoCanConnect =
@@ -579,42 +605,40 @@ export function SettingsPanel() {
 
   return (
     <div className="settings-page">
-      {/* 设置域切换 */}
-      <div className="settings-tabs-shell">
-        <div className="settings-container">
-          <div className="settings-tabs-bar" role="tablist" aria-label="设置分类">
-            {TABS.map((tab) => {
-              const TabIcon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`settings-tab ${isActive ? 'active' : ''}`}
-                >
-                  <TabIcon size="sm" />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
+      {/* 左侧分组导航（Raycast 式侧栏）：域名切换 + 当前主题诊断 */}
+      <aside className="settings-nav">
+        <div className="settings-nav-head">
+          <h2 className="text-page-title">设置</h2>
+          <p className="text-diag">v{APP_VERSION}</p>
         </div>
-      </div>
+        <nav className="settings-nav-list" role="tablist" aria-label="设置分类">
+          {TABS.map((tab) => {
+            const TabIcon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setActiveTab(tab.id)}
+                className={`settings-tab ${isActive ? 'active' : ''}`}
+              >
+                <TabIcon size="sm" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="settings-nav-foot text-diag">FocusLink · {appearanceLabel}</div>
+      </aside>
 
-      {/* Tab 内容 */}
+      {/* 分组列表内容 */}
       <div className="settings-scroll">
         <div className="settings-container settings-stack">
           {activeTab === 'experience' && (
             <>
-              {/* 外观 */}
-              <Section
-                icon={Icon.Palette}
-                title="外观"
-                desc="主题、字体与强调色即时生效，并同步到跟随主界面的小窗。"
-              >
-                <Row label="界面主题" desc="切换后主窗口与跟随主题的小窗会立即更新">
+              <Section title="外观" desc="同一套 FocusLink 界面只切换明暗，不改变状态颜色和布局。">
+                <Row label="外观模式" desc="切换后主窗口与跟随主题的小窗会立即更新">
                   <div className="settings-theme-choices">
                     <ChoiceBtn
                       active={settings.theme === 'light'}
@@ -630,71 +654,60 @@ export function SettingsPanel() {
                       <Icon.Moon size="xs" />
                       深色
                     </ChoiceBtn>
+                    <ChoiceBtn
+                      active={settings.theme === 'system'}
+                      onClick={() => update({ theme: 'system' })}
+                    >
+                      <Icon.Monitor size="xs" />
+                      跟随系统
+                    </ChoiceBtn>
                   </div>
                 </Row>
-                <Row label="字体气质" desc="舒展强调阅读呼吸；锐界收紧字面与数字节奏">
-                  <div className="settings-font-choices" aria-label="字体气质">
-                    {FONT_OPTIONS.map((font) => (
-                      <button
-                        key={font.id}
-                        type="button"
-                        className={`settings-font-choice font-preview-${font.id} ${settings.fontProfile === font.id ? 'active' : ''}`}
-                        onClick={() => update({ fontProfile: font.id })}
-                        aria-pressed={settings.fontProfile === font.id}
-                      >
-                        <span className="settings-font-sample">{font.sample}</span>
-                        <span className="settings-font-meta">
-                          <strong>{font.label}</strong>
-                          <small>{font.detail}</small>
-                        </span>
-                        {settings.fontProfile === font.id && (
-                          <span className="settings-font-check">
-                            <Icon.Check size="xs" />
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </Row>
-                <Row label="强调色" desc="每种颜色会同步重塑导航、关键动作与环境光场">
-                  <div className="settings-accent-control">
-                    <div className="settings-accent-choices" aria-label="强调色">
-                      {ACCENT_OPTIONS.map((accent) => (
+              </Section>
+
+              <Section
+                title="排版"
+                desc="字体可以调整阅读气质；专注绿、暂停琥珀与界面蓝保持固定语义。"
+              >
+                <div>
+                  <Row label="字体气质" desc="四套正文、标题与数字字体组合，主窗口和小窗同步生效">
+                    <div className="settings-font-choices" aria-label="字体气质">
+                      {FONT_OPTIONS.map((font) => (
                         <button
-                          key={accent.id}
+                          key={font.id}
                           type="button"
-                          className={settings.accentColor === accent.id ? 'active' : ''}
-                          style={{ '--accent-preview': accent.color } as React.CSSProperties}
-                          onClick={() => update({ accentColor: accent.id })}
-                          aria-label={accent.label}
-                          aria-pressed={settings.accentColor === accent.id}
-                          title={accent.label}
+                          className={`settings-font-choice font-preview-${font.id} ${settings.fontProfile === font.id ? 'active' : ''}`}
+                          onClick={() => update({ fontProfile: font.id })}
+                          aria-pressed={settings.fontProfile === font.id}
                         >
-                          <span />
-                          {settings.accentColor === accent.id && <Icon.Check size="xs" />}
+                          <span className="settings-font-sample">{font.sample}</span>
+                          <span className="settings-font-meta">
+                            <strong>{font.label}</strong>
+                            <small>{font.detail}</small>
+                          </span>
+                          {settings.fontProfile === font.id && (
+                            <span className="settings-font-check">
+                              <Icon.Check size="xs" />
+                            </span>
+                          )}
                         </button>
                       ))}
                     </div>
-                    <span
-                      className="settings-accent-current"
-                      style={{ '--accent-preview': activeAccent.color } as React.CSSProperties}
-                    >
-                      <i />
-                      {activeAccent.label}
-                      <small>全局生效</small>
-                    </span>
-                  </div>
-                </Row>
+                  </Row>
+                  <Row label="状态颜色" desc="固定语义，避免同一个颜色在不同页面表达不同含义">
+                    <div className="settings-state-colors" aria-label="固定状态颜色">
+                      <span className="focus">专注</span>
+                      <span className="pause">暂停</span>
+                      <span className="interface">界面操作</span>
+                    </div>
+                  </Row>
+                </div>
               </Section>
             </>
           )}
 
           {activeTab === 'experience' && (
-            <Section
-              icon={Icon.Maximize}
-              title="专注小窗"
-              desc="主题、透明度、显示策略和手动收纳控制"
-            >
+            <Section title="专注小窗" desc="主题、透明度、显示策略和手动收纳控制">
               <Row label="跟随主界面主题">
                 <Toggle
                   label="跟随主界面主题"
@@ -786,11 +799,7 @@ export function SettingsPanel() {
           {activeTab === 'experience' && (
             <>
               {/* 快捷键 */}
-              <Section
-                icon={Icon.Keyboard}
-                title="全局快捷键"
-                desc="点击捕获新组合键；冲突时会提示并保留旧快捷键"
-              >
+              <Section title="全局快捷键" desc="点击捕获新组合键；冲突时会提示并保留旧快捷键">
                 {(Object.keys(HOTKEY_LABELS) as HotkeyKey[]).map((key) => {
                   const status = getHotkeyBadgeState(key, settings.hotkeys[key], hotkeyStatus);
                   const activeAccelerator = hotkeyStatus?.registered[key]?.accelerator ?? null;
@@ -801,14 +810,14 @@ export function SettingsPanel() {
                       <div className="flex min-w-[260px] flex-col items-end gap-1.5">
                         <div className="flex flex-wrap items-center justify-end gap-1.5">
                           <button
-                            className="btn-outline min-w-[180px] justify-between font-mono text-xs"
+                            className={`settings-hotkey-btn ${capturing === key ? 'capturing' : ''}`}
                             onClick={() => captureKey(key)}
                             title={settings.hotkeys[key]}
                           >
                             {capturing === key ? (
-                              <span className="text-accent">按下组合键...</span>
+                              <span className="settings-hotkey-capturing">按下组合键…</span>
                             ) : (
-                              <span>{formatHotkey(settings.hotkeys[key])}</span>
+                              <kbd>{formatHotkey(settings.hotkeys[key])}</kbd>
                             )}
                           </button>
                           <HotkeyStatusBadge state={status} />
@@ -847,7 +856,6 @@ export function SettingsPanel() {
             <>
               {/* 滴答清单连接方式。任务产品语义保持唯一，CLI/OAuth 只是传输实现。 */}
               <Section
-                icon={Icon.Link}
                 title="滴答连接"
                 desc="任务固定来自滴答清单；这里只选择连接方式，默认使用本机 CLI。"
               >
@@ -926,9 +934,9 @@ export function SettingsPanel() {
                     </summary>
                     <div className="space-y-2 border-t border-border/50 p-3">
                       {providerInfo && (
-                        <div className="border-l-2 border-border-strong/50 px-3 py-1.5 text-[11px]">
+                        <div className="settings-diag-block text-diag">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-fg-subtle">CLI 类型</span>
+                            <span>CLI 类型</span>
                             <strong className="font-medium text-success">
                               {providerInfo.providerType === 'dida'
                                 ? 'dida'
@@ -936,31 +944,25 @@ export function SettingsPanel() {
                                   ? 'ticktick'
                                   : '未知'}
                             </strong>
-                            <span className="text-fg-subtle">·</span>
-                            <code className="font-mono text-fg">
-                              {providerInfo.executable || '(未配置)'}
-                            </code>
+                            <span>·</span>
+                            <code>{providerInfo.executable || '(未配置)'}</code>
                           </div>
                           {providerInfo.executablePath && (
-                            <div className="mt-1 truncate font-mono text-[11px] text-fg-subtle">
-                              {providerInfo.executablePath}
-                            </div>
+                            <div className="mt-1 truncate">{providerInfo.executablePath}</div>
                           )}
                           {providerInfo.hasStaleTicktickTemplates && (
-                            <div className="mt-1.5 rounded bg-danger/10 px-2 py-1 text-[11px] text-danger">
+                            <div className="mt-1.5 rounded bg-danger/10 px-2 py-1 text-danger">
                               当前模板与 dida 不一致，请应用默认模板。
                             </div>
                           )}
                         </div>
                       )}
                       <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          className="btn-outline text-[11px]"
-                          onClick={applyDidaTemplates}
-                          title="一键写入 dida 默认命令模板"
-                        >
-                          应用 dida 默认模板
-                        </button>
+                        <ConfirmButton
+                          label="应用 dida 默认模板"
+                          confirmLabel="确认覆盖模板？"
+                          onConfirm={applyDidaTemplates}
+                        />
                         <span className="text-[11px] text-fg-subtle">
                           点击后会覆盖当前命令模板为 dida 标准模板并立即测试
                         </span>
@@ -1052,9 +1054,8 @@ export function SettingsPanel() {
           {activeTab === 'sync' && (
             <>
               <Section
-                icon={Icon.Refresh}
-                title="滴答清单同步"
-                desc="选择专注结束后的唯一主同步去向。"
+                title="同步到滴答清单"
+                desc="选择专注结束后的主同步去向；未同步与失败记录保留在本机。"
               >
                 <div className="settings-sync-grid">
                   <SyncModeChoice
@@ -1082,40 +1083,28 @@ export function SettingsPanel() {
                 </div>
                 {settings.syncMode !== 'local-only' && (
                   <div
-                    className={`mt-3 flex items-center justify-between gap-4 rounded-lg border px-4 py-3 ${
+                    className={`settings-status-strip ${
                       didaFailedCount > 0
-                        ? 'border-danger/25 bg-danger/8'
+                        ? 'tone-danger'
                         : didaPendingCount > 0
-                          ? 'border-warning/25 bg-warning/8'
-                          : 'border-success/20 bg-success/8'
+                          ? 'tone-warning'
+                          : 'tone-success'
                     }`}
                   >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                          didaFailedCount > 0
-                            ? 'bg-danger/12 text-danger'
-                            : didaPendingCount > 0
-                              ? 'bg-warning/12 text-warning'
-                              : 'bg-success/12 text-success'
-                        }`}
-                      >
-                        {didaFailedCount > 0 ? (
-                          <Icon.AlertCircle size="sm" />
-                        ) : (
-                          <Icon.CheckCircleFilled size="sm" />
-                        )}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-[12px] font-semibold text-fg">
-                          {didaNeedsAttention === 0
-                            ? '滴答同步队列已清空'
-                            : `${didaPendingCount} 条等待同步 · ${didaFailedCount} 条失败`}
-                        </p>
-                        <p className="mt-0.5 text-[11.5px] text-fg-subtle">
-                          失败记录会保留在本机，不会丢失专注数据
-                        </p>
-                      </div>
+                    <span className="settings-status-strip-icon">
+                      {didaFailedCount > 0 ? (
+                        <Icon.AlertCircle size="sm" />
+                      ) : (
+                        <Icon.CheckCircleFilled size="sm" />
+                      )}
+                    </span>
+                    <div className="settings-status-strip-copy">
+                      <p className="settings-status-strip-title">{didaQueueTitle}</p>
+                      <p className="settings-status-strip-desc">
+                        {didaNeedsAttention === 0
+                          ? '专注记录已同步到滴答清单'
+                          : '记录保留在本机，不会丢失专注数据'}
+                      </p>
                     </div>
                     {didaNeedsAttention > 0 && (
                       <button
@@ -1137,13 +1126,12 @@ export function SettingsPanel() {
               </Section>
 
               <Section
-                icon={Icon.Upload}
-                title="番茄 Todo 同步"
-                desc="专注结束后先安全写入本地；待传记录由你按需连接并上传。"
+                title="番茄 To-do 同步"
+                desc="专注结束后先安全写入本地；待上传记录由你按需连接并上传。"
               >
-                <Row label="启用番茄 Todo 同步" desc="自动匹配六大学科；未识别时使用下方默认分类">
+                <Row label="启用番茄 To-do 同步" desc="自动匹配六大学科；未识别时使用下方默认分类">
                   <Toggle
-                    label="启用番茄 Todo 同步"
+                    label="启用番茄 To-do 同步"
                     checked={settings.tomatodo.enabled}
                     onChange={(v) => update({ tomatodo: { ...settings.tomatodo, enabled: v } })}
                   />
@@ -1151,25 +1139,19 @@ export function SettingsPanel() {
                 {settings.tomatodo.enabled && (
                   <>
                     <Row label="未识别时归类">
-                      <select
-                        className="input !w-auto !py-1.5 text-xs"
+                      <SelectMenu
+                        label="未识别时归类"
                         value={settings.tomatodo.defaultSubject}
-                        onChange={(e) =>
+                        options={TOMATODO_SUBJECT_VALUES}
+                        onChange={(subject) =>
                           update({
                             tomatodo: {
                               ...settings.tomatodo,
-                              defaultSubject: e.target
-                                .value as AppSettings['tomatodo']['defaultSubject'],
+                              defaultSubject: subject as AppSettings['tomatodo']['defaultSubject'],
                             },
                           })
                         }
-                      >
-                        {TOMATODO_SUBJECT_OPTIONS.map((subject) => (
-                          <option key={subject.value} value={subject.value}>
-                            {subject.value}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </Row>
                     <details className="settings-disclosure mt-2.5">
                       <summary className="motion-press">高级：自定义数据库路径</summary>
@@ -1188,45 +1170,44 @@ export function SettingsPanel() {
                       </div>
                     </details>
                     <div
-                      className="mt-1 flex min-h-11 items-center justify-between gap-4 border-t border-border/45 pt-3"
+                      className={`settings-status-strip ${
+                        tomatodoPendingError ||
+                        tomatodoBridge?.state === 'launch-failed' ||
+                        tomatodoBridge?.state === 'launch-timeout'
+                          ? 'tone-danger'
+                          : tomatodoBridge?.state === 'restart-required' || tomatodoPending > 0
+                            ? 'tone-warning'
+                            : tomatodoBridge?.connected
+                              ? 'tone-success'
+                              : ''
+                      }`}
                       aria-live="polite"
                     >
-                      <div className="flex min-w-0 items-start gap-2.5">
-                        <span
-                          className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                            tomatodoPendingError ||
-                            tomatodoBridge?.state === 'launch-failed' ||
-                            tomatodoBridge?.state === 'launch-timeout' ||
-                            tomatodoBridge?.state === 'not-installed'
-                              ? 'bg-danger'
-                              : tomatodoBridge?.state === 'restart-required' || tomatodoPending > 0
-                                ? 'bg-warning'
-                                : tomatodoBridge?.connected
-                                  ? 'bg-success'
-                                  : 'bg-fg-subtle/55'
-                          }`}
-                        />
-                        <div className="min-w-0">
-                          <p
-                            className={`flex flex-wrap items-center gap-2 text-[12.5px] font-semibold ${
-                              tomatodoPendingError ? 'text-danger' : 'text-fg'
-                            }`}
-                          >
-                            {tomatodoPendingError
-                              ? '无法读取待上传记录'
-                              : tomatodoPending > 0
-                                ? `${tomatodoPending} 条记录待上传`
-                                : '当前无待上传'}
-                            <span className={`settings-status-badge ${tomatodoBadge.tone}`}>
-                              {tomatodoBadge.label}
-                            </span>
-                          </p>
-                          <p className="mt-0.5 text-[11px] leading-4 text-fg-subtle">
-                            {tomatodoPendingError
-                              ? '检查数据库路径或番茄 Todo 文件权限后重试'
-                              : tomatodoBridgeLabel}
-                          </p>
-                        </div>
+                      <span className="settings-status-strip-icon">
+                        {tomatodoPendingError ||
+                        tomatodoBridge?.state === 'launch-failed' ||
+                        tomatodoBridge?.state === 'launch-timeout' ? (
+                          <Icon.AlertCircle size="sm" />
+                        ) : (
+                          <Icon.Upload size="sm" />
+                        )}
+                      </span>
+                      <div className="settings-status-strip-copy">
+                        <p className="settings-status-strip-title">
+                          {tomatodoPendingError
+                            ? '无法读取待上传记录'
+                            : tomatodoPending > 0
+                              ? `${tomatodoPending} 条待上传`
+                              : '当前无待上传记录'}
+                          <span className={`settings-status-badge ${tomatodoBadge.tone}`}>
+                            {tomatodoBadge.label}
+                          </span>
+                        </p>
+                        <p className="settings-status-strip-desc">
+                          {tomatodoPendingError
+                            ? '检查数据库路径或番茄 To-do 文件权限后重试'
+                            : tomatodoBridgeLabel}
+                        </p>
                       </div>
                       {!tomatodoPendingError && tomatodoPending > 0 && (
                         <button
@@ -1259,7 +1240,7 @@ export function SettingsPanel() {
           {activeTab === 'experience' && (
             <>
               {/* 系统与后台运行 */}
-              <Section icon={Icon.Power} title="系统与后台运行">
+              <Section title="系统与后台运行">
                 <Row label="最小化到托盘">
                   <Toggle
                     label="最小化到托盘"
@@ -1302,14 +1283,11 @@ export function SettingsPanel() {
           {activeTab === 'experience' && (
             <>
               <Section
-                icon={Icon.Sparkles}
-                title="FocusLink"
+                title="关于 FocusLink"
                 desc="全局快捷键驱动的专注计时器 + 滴答清单任务关联工具"
               >
                 <Row label="当前版本">
-                  <span className="rounded-md border border-border bg-bg-subtle px-2.5 py-1 text-xs font-mono text-fg-muted">
-                    v{APP_VERSION}
-                  </span>
+                  <span className="settings-version-chip text-diag">v{APP_VERSION}</span>
                 </Row>
               </Section>
             </>
@@ -1366,12 +1344,10 @@ function HotkeyStatusBadge({ state }: { state: HotkeyBadgeState }) {
 }
 
 function Section({
-  icon: SectionIcon,
   title,
   desc,
   children,
 }: {
-  icon?: React.ComponentType<IconProps>;
   title: string;
   desc?: string;
   children: React.ReactNode;
@@ -1379,15 +1355,8 @@ function Section({
   return (
     <section className="settings-section">
       <div className="settings-section-heading">
-        {SectionIcon ? (
-          <span className="settings-section-icon" aria-hidden="true">
-            <SectionIcon size="sm" />
-          </span>
-        ) : null}
-        <div className="settings-section-copy">
-          <h3>{title}</h3>
-          {desc ? <p>{desc}</p> : null}
-        </div>
+        <h3>{title}</h3>
+        {desc ? <p>{desc}</p> : null}
       </div>
       <div className="settings-section-content">{children}</div>
     </section>
@@ -1426,7 +1395,7 @@ function ChoiceBtn({
   return (
     <button
       onClick={onClick}
-      className={`motion-press choice-btn ${
+      className={`motion-press choice-btn ${active ? 'active' : ''} ${
         active
           ? 'bg-accent text-accent-fg shadow-sm'
           : 'bg-bg-subtle/60 text-fg-muted hover:bg-bg-subtle hover:text-fg'
@@ -1473,18 +1442,27 @@ function SyncModeChoice({
   );
 }
 
+/**
+ * 42×24 开关：完全受控（checked 来自全局 settings，无本地状态），
+ * 状态写入统一走 update() 乐观更新 + 服务端校正，因此不会出现
+ * 「首次显示正常、后续状态失效」的受控失配；disabled 时停止一切动态。
+ */
 function Toggle({
   label,
   checked,
   onChange,
+  disabled,
 }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
+      disabled={disabled}
+      aria-disabled={disabled || undefined}
       onClick={() => onChange(!checked)}
       className={`motion-press toggle-track ${checked ? 'checked' : ''}`}
       role="switch"
@@ -1493,6 +1471,173 @@ function Toggle({
       title={`${label}：${checked ? '已开启' : '已关闭'}`}
     >
       <span className="toggle-thumb" />
+    </button>
+  );
+}
+
+/**
+ * 下拉菜单：触发按钮 + .motion-popover 弹层（动画契约见 motion.css，
+ * 样式为 settings 局部专属，已在 settings.css 注明归口）。
+ * 支持点击外部 / Escape 关闭、上下方向键移动焦点、Enter 选择。
+ */
+function SelectMenu({
+  label,
+  value,
+  options,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  options: readonly string[];
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // 点击菜单外部时关闭
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [open]);
+
+  // 打开时把焦点放到当前选中项，保证键盘可立即操作
+  useEffect(() => {
+    if (!open) return;
+    rootRef.current
+      ?.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]')
+      ?.focus();
+  }, [open]);
+
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'),
+    );
+    if (items.length === 0) return;
+    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      items[(index + 1) % items.length]?.focus();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      items[(index - 1 + items.length) % items.length]?.focus();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    }
+  };
+
+  return (
+    <div className="settings-select" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="settings-select-trigger"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        <span className="settings-select-value">{value}</span>
+        <Icon.ChevronDown size="xs" className={`settings-select-chevron ${open ? 'open' : ''}`} />
+      </button>
+      {open && (
+        <div
+          className="settings-select-menu motion-popover"
+          role="listbox"
+          aria-label={label}
+          style={{ '--popover-origin': 'top right' } as React.CSSProperties}
+          onKeyDown={handleMenuKeyDown}
+        >
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="option"
+              aria-selected={option === value}
+              className={`settings-select-option ${option === value ? 'active' : ''}`}
+              onClick={() => {
+                onChange(option);
+                setOpen(false);
+                triggerRef.current?.focus();
+              }}
+            >
+              <span>{option}</span>
+              {option === value && <Icon.Check size="xs" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 危险操作二次确认按钮：第一次点击进入待确认态（.btn-pause 红色实心），
+ * 3.2s 内再次点击才真正执行，失焦或超时自动还原。
+ */
+function ConfirmButton({
+  label,
+  confirmLabel,
+  onConfirm,
+  icon,
+}: {
+  label: string;
+  confirmLabel: string;
+  onConfirm: () => void | Promise<void>;
+  icon?: React.ReactNode;
+}) {
+  const [armed, setArmed] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const disarm = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setArmed(false);
+  };
+
+  const handleClick = () => {
+    if (!armed) {
+      setArmed(true);
+      timerRef.current = setTimeout(() => setArmed(false), 3200);
+      return;
+    }
+    disarm();
+    void onConfirm();
+  };
+
+  return (
+    <button
+      type="button"
+      className={`${armed ? 'btn-pause' : 'btn-outline'} text-xs`}
+      aria-live="polite"
+      onClick={handleClick}
+      onBlur={disarm}
+    >
+      {icon}
+      {armed ? confirmLabel : label}
     </button>
   );
 }

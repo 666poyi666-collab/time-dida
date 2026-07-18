@@ -30,7 +30,9 @@ import type {
   Task,
   TomatodoSubject,
 } from '@shared/types';
+import type { SessionAnalyticsResult } from '@shared/ipc/api';
 import { TaskPicker } from '../tasks/TaskPicker';
+import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import {
   HistoryTimelineList,
   SyncBadge,
@@ -71,6 +73,12 @@ type PickerTarget =
   | { kind: 'batch-unlinked'; sessionId: string; title: string }
   | { kind: 'batch-all'; sessionId: string; title: string };
 
+/** ConfirmDialog 确认目标类型：替代原生 confirm() 的三处确认流 */
+type ConfirmTarget =
+  | { kind: 'delete-session'; sessionId: string }
+  | { kind: 'batch-all'; sessionId: string; task: Task }
+  | { kind: 'resync-segment'; segment: FocusSegment };
+
 const RANGE_PRESETS: Array<{ id: RangePreset; label: string }> = [
   { id: 'today', label: '单日' },
   { id: '7d', label: '近 7 天' },
@@ -78,6 +86,10 @@ const RANGE_PRESETS: Array<{ id: RangePreset; label: string }> = [
   { id: '30d', label: '1 个月' },
   { id: 'custom', label: '自定义' },
 ];
+
+/** 空 Session 列表的模块级稳定引用：避免 `analytics?.sessions ?? []` 每次渲染
+    产生新数组，导致下游 useMemo 依赖不稳定（react-hooks/exhaustive-deps）。 */
+const EMPTY_SESSIONS: FocusSession[] = [];
 
 export function HistoryPanel() {
   // Elapsed time changes every second while focusing. History only needs the identity/state of the
@@ -89,8 +101,9 @@ export function HistoryPanel() {
   const setSnapshot = useStore((state) => state.setSnapshot);
   const syncQueue = useStore((state) => state.syncQueue);
   const setSyncQueue = useStore((state) => state.setSyncQueue);
-  const [sessions, setSessions] = useState<FocusSession[]>([]);
+  const [analytics, setAnalytics] = useState<SessionAnalyticsResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [analyticsRefreshing, setAnalyticsRefreshing] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const expandedRef = useRef<string | null>(null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
@@ -100,7 +113,10 @@ export function HistoryPanel() {
     message: string;
   } | null>(null);
   const detailRequestIdRef = useRef(0);
+  const analyticsRequestIdRef = useRef(0);
+  const hasAnalyticsRef = useRef(false);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null);
   const [linking, setLinking] = useState(false);
   const [syncingSessionId, setSyncingSessionId] = useState<string | null>(null);
   const [syncingKind, setSyncingKind] = useState<'dida' | 'tomatodo' | null>(null);
@@ -114,6 +130,8 @@ export function HistoryPanel() {
   >({});
   const [rangePreset, setRangePreset] = useState<RangePreset>('today');
   const [dayCursor, setDayCursor] = useState(() => startOfDay(Date.now()));
+  // 单日导航方向：-1 前一天 / 1 后一天 / 0 预设或自定义切换；供图表做有方向感的滑动入场。
+  const [slideDirection, setSlideDirection] = useState<-1 | 0 | 1>(0);
   const [customStart, setCustomStart] = useState(toDateInput(Date.now()));
   const [customEnd, setCustomEnd] = useState(toDateInput(Date.now()));
   const [segmentFilter, setSegmentFilter] = useState<Record<string, SegmentFilter>>({});
@@ -126,6 +144,7 @@ export function HistoryPanel() {
         : getRange(rangePreset, customStart, customEnd),
     [rangePreset, customStart, customEnd, dayCursor],
   );
+  const sessions = analytics?.sessions ?? EMPTY_SESSIONS;
   const filteredSessions = useMemo(() => filterSessionsByRange(sessions, range), [sessions, range]);
   const rangeStats = useMemo(() => summarizeSessions(filteredSessions), [filteredSessions]);
   const persistedSyncStates = useMemo(() => buildSessionSyncStateMap(syncQueue), [syncQueue]);
@@ -176,11 +195,13 @@ export function HistoryPanel() {
   const dayCursorFullLabel = `${dayCursorLabel} · ${dayCursorWeekday}`;
 
   const selectRangePreset = (next: RangePreset) => {
+    setSlideDirection(0);
     if (next === 'today') setDayCursor(startOfDay(Date.now()));
     setRangePreset(next);
   };
 
   const moveSingleDay = (amount: -1 | 1) => {
+    setSlideDirection(amount);
     setDayCursor((current) => {
       const next = startOfDay(shiftLocalDay(current, amount));
       return Math.min(next, startOfDay(Date.now()));
@@ -188,33 +209,49 @@ export function HistoryPanel() {
   };
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const requestId = ++analyticsRequestIdRef.current;
+    if (!hasAnalyticsRef.current) setLoading(true);
+    setAnalyticsRefreshing(true);
     setLoadError(null);
     try {
       if (!window.focuslink) {
         throw new Error('FocusLink 桌面接口未就绪');
       }
-      const [list, queue] = await Promise.all([
-        window.focuslink.sessions.list(100),
+      // 混合时间轴窗口：单日视图跟随 dayCursor；多天/自定义范围锚定范围最后一天
+      // （近 7/15/30 天的范围末日即今天），保证时间轴始终展示一个有意义的自然日。
+      const timelineRange = getDayRange(rangePreset === 'today' ? dayCursor : range.end);
+      const [nextAnalytics, queue] = await Promise.all([
+        window.focuslink.sessions.analytics({
+          start: range.start,
+          end: range.end,
+          timelineStart: timelineRange.start,
+          timelineEnd: timelineRange.end,
+        }),
         window.focuslink.sync.list(),
       ]);
-      const sessionList = list as FocusSession[];
-      setSessions(sessionList);
+      if (requestId !== analyticsRequestIdRef.current) return;
+      setAnalytics(nextAnalytics);
+      hasAnalyticsRef.current = true;
       setSyncQueue(queue as SyncQueueItem[]);
       setSessionSyncMeta({});
       setSessionSegmentsById({});
     } catch (err) {
+      if (requestId !== analyticsRequestIdRef.current) return;
       setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      if (requestId === analyticsRequestIdRef.current) {
+        setLoading(false);
+        setAnalyticsRefreshing(false);
+      }
     }
-  }, [setSyncQueue]);
+  }, [dayCursor, rangePreset, range.end, range.start, setSyncQueue]);
 
   useEffect(() => {
     void load();
     return () => {
       // Invalidate a late IPC response after this route has unmounted.
       detailRequestIdRef.current += 1;
+      analyticsRequestIdRef.current += 1;
       expandedRef.current = null;
     };
   }, [load]);
@@ -319,13 +356,16 @@ export function HistoryPanel() {
     await reloadDetail(id);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     const isCurrentSession = currentSessionId === id;
     if (isCurrentSession && (currentTimerState === 'running' || currentTimerState === 'paused')) {
       addToast('当前专注仍在进行中，请先结束专注后再删除这条记录。', 'error');
       return;
     }
-    if (!confirm('确认删除这条专注记录？本地记录和已同步到滴答云端的专注记录都将被删除。')) return;
+    setConfirmTarget({ kind: 'delete-session', sessionId: id });
+  };
+
+  const performDeleteSession = async (id: string) => {
     try {
       const freshSnapshot = await window.focuslink.sessions.delete(id);
       if (freshSnapshot) {
@@ -396,20 +436,36 @@ export function HistoryPanel() {
         linkedSessionId = target.sessionId;
         addToast(`已批量关联 ${count} 个未关联片段到：${task.title}`, 'success');
       } else if (target.kind === 'batch-all') {
-        if (!confirm('确认把本次所有专注片段（含已关联）都改为同一任务？')) return;
-        const count = await window.focuslink.timer.linkSegmentsBatch(
-          target.sessionId,
-          task.id,
-          task.source,
-          task.title,
-          false,
-        );
-        linkedSessionId = target.sessionId;
-        addToast(`已把全部 ${count} 个片段关联到：${task.title}`, 'success');
+        // 覆盖已关联片段属于破坏性操作，先经 ConfirmDialog 确认再执行
+        setConfirmTarget({ kind: 'batch-all', sessionId: target.sessionId, task });
+        return;
       }
       if (expanded) await reloadDetail(expanded);
       if (task.source === 'ticktick' && linkedSessionId) {
         void autoSyncLinkedSession(linkedSessionId);
+      }
+    } catch (e) {
+      addToast('关联失败：' + (e as Error).message, 'error');
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  /** 批量改关联确认后的实际执行：与原 handlePick 的 batch-all 分支逻辑一致 */
+  const performBatchLinkAll = async (sessionId: string, task: Task) => {
+    setLinking(true);
+    try {
+      const count = await window.focuslink.timer.linkSegmentsBatch(
+        sessionId,
+        task.id,
+        task.source,
+        task.title,
+        false,
+      );
+      addToast(`已把全部 ${count} 个片段关联到：${task.title}`, 'success');
+      if (expanded) await reloadDetail(expanded);
+      if (task.source === 'ticktick') {
+        void autoSyncLinkedSession(sessionId);
       }
     } catch (e) {
       addToast('关联失败：' + (e as Error).message, 'error');
@@ -469,17 +525,15 @@ export function HistoryPanel() {
     }
   };
 
-  const handleResyncSegment = async (seg: FocusSegment) => {
+  const handleResyncSegment = (seg: FocusSegment) => {
     if (!seg.taskId || seg.taskSource !== 'ticktick') {
       addToast('该片段未关联滴答任务，无法重新同步', 'error');
       return;
     }
-    if (
-      !confirm(
-        `确认删除该片段已同步到滴答云端的专注记录，并重新同步？\n\n这会先删除云端记录，再以当前关联的任务重新上传。\n本地数据保留不变。`,
-      )
-    )
-      return;
+    setConfirmTarget({ kind: 'resync-segment', segment: seg });
+  };
+
+  const performResyncSegment = async (seg: FocusSegment) => {
     setLinking(true);
     try {
       const result = await window.focuslink.sync.resyncSegment(seg.id);
@@ -496,6 +550,45 @@ export function HistoryPanel() {
       addToast('重新同步失败：' + (e as Error).message, 'error');
     } finally {
       setLinking(false);
+    }
+  };
+
+  /** ConfirmDialog 文案：与原三处原生 confirm() 语义一致 */
+  const confirmCopy = (() => {
+    if (!confirmTarget) return null;
+    switch (confirmTarget.kind) {
+      case 'delete-session':
+        return {
+          title: '删除专注记录',
+          description: '确认删除这条专注记录？本地记录和已同步到滴答云端的专注记录都将被删除。',
+          confirmLabel: '删除',
+        };
+      case 'batch-all':
+        return {
+          title: '批量改关联',
+          description: '确认把本次所有专注片段（含已关联）都改为同一任务？',
+          confirmLabel: '全部改关联',
+        };
+      case 'resync-segment':
+        return {
+          title: '重新同步到滴答清单',
+          description:
+            '确认删除该片段已同步到滴答云端的专注记录，并重新同步？\n\n这会先删除云端记录，再以当前关联的任务重新上传。\n本地数据保留不变。',
+          confirmLabel: '重新同步',
+        };
+    }
+  })();
+
+  const handleConfirmDialog = () => {
+    const target = confirmTarget;
+    setConfirmTarget(null);
+    if (!target) return;
+    if (target.kind === 'delete-session') {
+      void performDeleteSession(target.sessionId);
+    } else if (target.kind === 'batch-all') {
+      void performBatchLinkAll(target.sessionId, target.task);
+    } else {
+      void performResyncSegment(target.segment);
     }
   };
 
@@ -626,14 +719,15 @@ export function HistoryPanel() {
           item.localWritten && !item.cloudSynced,
       ).length;
       if (result.failed > 0) {
+        // 番茄 Todo 语义：cloudSynced = 客户端已确认上传；本地已写未确认 = 待上传；不宣称独立云端回读。
         addToast(
-          `番茄 Todo 同步：云端已同步 ${cloudSynced} 条，本地待同步 ${localPending} 条，失败 ${result.failed} 条`,
+          `番茄 Todo 同步：上传已确认 ${cloudSynced} 条，待上传 ${localPending} 条，失败 ${result.failed} 条`,
           'error',
         );
       } else if (cloudSynced > 0 && localPending === 0) {
-        addToast(`已同步 ${cloudSynced} 条专注记录到番茄 Todo 云端`, 'success');
+        addToast(`番茄 Todo 已确认上传 ${cloudSynced} 条专注记录`, 'success');
       } else if (localPending > 0) {
-        addToast(`已写入本地 ${localPending} 条，等待番茄 Todo 上传云端`, 'info');
+        addToast(`已写入本地 ${localPending} 条，待番茄 Todo 上传`, 'info');
       } else {
         addToast('番茄 Todo 记录已存在且无需重复同步', 'info');
       }
@@ -710,7 +804,7 @@ export function HistoryPanel() {
         {/* 页面头：标题 + 范围筛选 + 单日导航 */}
         <header className="history-header">
           <div className="history-header-lead">
-            <h1 className="history-title">统计</h1>
+            <h1 className="text-page-title">统计</h1>
             <p className="history-subtitle">
               {rangePreset === 'today' ? (
                 <>
@@ -732,6 +826,14 @@ export function HistoryPanel() {
             </p>
           </div>
           <div className="history-header-controls">
+            <span
+              className={`history-range-refresh ${analyticsRefreshing ? 'is-visible' : ''}`}
+              role="status"
+              aria-live="polite"
+            >
+              <Icon.Loader size="xs" className={analyticsRefreshing ? 'motion-spin' : ''} />
+              更新数据
+            </span>
             <div className="history-filter-row">
               <span className="history-filter-label">时间范围</span>
               <div className="history-filter-buttons" role="group" aria-label="时间范围筛选">
@@ -749,19 +851,6 @@ export function HistoryPanel() {
                   </button>
                 ))}
               </div>
-              {filteredSessions.length > 0 && (
-                <div className="history-inline-stats" aria-label="筛选范围统计">
-                  <span>
-                    专注 <strong>{formatDuration(rangeStats.active)}</strong>
-                  </span>
-                  <span className="pause">
-                    暂停 <strong>{formatDuration(rangeStats.pause)}</strong>
-                  </span>
-                  <span>
-                    <strong>{rangeStats.count}</strong> 次
-                  </span>
-                </div>
-              )}
             </div>
             {rangePreset === 'today' && (
               <div className="history-day-navigator" aria-label="单日日期导航">
@@ -816,34 +905,16 @@ export function HistoryPanel() {
           </div>
         </header>
 
-        {/* 统一分析画布 */}
-        {filteredSessions.length > 0 && (
-          <HistoryInsights sessions={filteredSessions} summary={rangeStats} range={range} />
-        )}
-
-        {/* 筛选范围内无数据 */}
-        {filteredSessions.length === 0 && (
-          <div className="rounded-lg border border-dashed border-border/60 bg-bg-subtle/20 py-12 text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-bg-subtle/60 text-fg-subtle">
-              <Icon.Inbox size="xl" />
-            </div>
-            <p className="text-[13px] font-medium text-fg-muted">当前时间范围没有专注记录</p>
-            <p className="mt-1 text-[11px] text-fg-subtle">
-              换一个筛选范围，或者开始一次新的专注。
-            </p>
-            <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-              {(['7d', '15d', '30d'] as const).map((preset) => (
-                <button
-                  key={preset}
-                  className="motion-press rounded-md border border-border/60 bg-bg-card/50 px-3 py-1 text-[11.5px] font-medium text-fg-muted hover:text-fg"
-                  onClick={() => selectRangePreset(preset)}
-                >
-                  {preset === '7d' ? '近7天' : preset === '15d' ? '半个月' : '1个月'}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* 统一分析画布：零数据时同样渲染，由 HistoryInsights 提供完整零状态
+            （state-block 说明 + 空图表骨架），不隐藏统计区域。 */}
+        <HistoryInsights
+          sessions={filteredSessions}
+          summary={rangeStats}
+          range={range}
+          analytics={analytics}
+          slideDirection={slideDirection}
+          onSelectRange={selectRangePreset}
+        />
 
         {/* 会话时间线（按日分组） */}
         {filteredSessions.length > 0 && (
@@ -1181,6 +1252,15 @@ export function HistoryPanel() {
       </div>
 
       {pickerTarget && <TaskPicker onPick={handlePick} title={pickerTarget.title} />}
+      <ConfirmDialog
+        open={confirmTarget !== null}
+        title={confirmCopy?.title ?? ''}
+        description={confirmCopy?.description}
+        confirmLabel={confirmCopy?.confirmLabel}
+        danger
+        onConfirm={handleConfirmDialog}
+        onCancel={() => setConfirmTarget(null)}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // Startup acceptance for packaged FocusLink executables.
 // Usage: node scripts/review/verify-startup.cjs <path-to-exe>
 // Launches the exe with an isolated user-data-dir, verifies build identity and
-// the Aurora Ink shell render, then quits. Exits non-zero on any failure.
+// the Linear Workbench shell render, then quits. Exits non-zero on any failure.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -105,8 +105,8 @@ async function main() {
     version: document.documentElement.dataset.appVersion || '',
     commit: document.documentElement.dataset.appCommit || '',
     hasShell: Boolean(document.querySelector('.app-shell')),
-    hasRail: Boolean(document.querySelector('.global-rail')),
-    hasNavButton: Boolean(document.querySelector('.global-nav-button')),
+    hasRail: Boolean(document.querySelector('.edge-dock')),
+    hasNavButton: Boolean(document.querySelector('.edge-dock-button')),
     hasConsole: Boolean(document.querySelector('.focus-console')),
     pauseToken: getComputedStyle(document.documentElement).getPropertyValue('--app-pause').trim(),
   }))()`);
@@ -117,10 +117,10 @@ async function main() {
   if (result.commit !== expectedCommit)
     failures.push(`commit ${result.commit} != ${expectedCommit}`);
   if (!result.hasShell) failures.push('missing .app-shell');
-  if (!result.hasRail) failures.push('missing .global-rail');
-  if (!result.hasNavButton) failures.push('missing .global-nav-button');
+  if (!result.hasRail) failures.push('missing .edge-dock');
+  if (!result.hasNavButton) failures.push('missing .edge-dock-button');
   if (!result.hasConsole) failures.push('missing .focus-console');
-  if (result.pauseToken !== '224 49 60') failures.push(`pause token ${result.pauseToken}`);
+  if (result.pauseToken !== '217 119 6') failures.push(`pause token ${result.pauseToken}`);
 
   try {
     await evaluate('window.focuslink.window.quit()');

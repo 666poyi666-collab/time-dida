@@ -1,4 +1,3 @@
-/* Mini renderer style entry. Kept separate so its bundle can be split without changing JSX. */
-@import './foundation.css';
-@import './motion.css';
-@import './features/mini-window.css';
+/* Mini window uses the same new tokens, with its own fixed-size composition. */
+@import './temporal-foundation.css';
+@import './temporal-mini.css';

@@ -80,6 +80,8 @@ const api = {
   sessions: {
     list: (limit?: number) => ipcRenderer.invoke('sessions:list', limit),
     get: (id: string) => ipcRenderer.invoke('sessions:get', id),
+    analytics: (range: Parameters<FocusLinkAPI['sessions']['analytics']>[0]) =>
+      ipcRenderer.invoke('sessions:analytics', range),
     delete: (id: string) => ipcRenderer.invoke('sessions:delete', id),
     export: (id: string, format: 'json' | 'csv' | 'markdown') =>
       ipcRenderer.invoke('sessions:export', id, format),
@@ -132,6 +134,9 @@ const api = {
   },
   window: {
     minimizeToTray: () => ipcRenderer.send('window:minimize-to-tray'),
+    minimize: () => ipcRenderer.send('window:minimize'),
+    toggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
+    close: () => ipcRenderer.send('window:close'),
     show: () => ipcRenderer.send('window:show'),
     quit: () => ipcRenderer.send('window:quit'),
   },

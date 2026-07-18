@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { AppSettings, TimerSnapshot } from '@shared/types';
-import { resolveThemeAppearance, resolveThemeFamily, THEME_FAMILIES } from '@shared/theme';
+import { FONT_PROFILES, resolveFontProfile, resolveThemeAppearance } from '@shared/theme';
 import { FlipDigits } from '../../ui/FlipDigits';
 import { Icon } from '../../ui/Icon';
 import { formatDuration, formatDurationPadded } from '../../lib/time';
@@ -15,15 +15,6 @@ import {
   getWallElapsedMs,
 } from '@shared/focus/selectors';
 import { MINI_WINDOW_DOCK_TRANSITION_MS } from '@shared/miniWindowLayout';
-
-const ACCENT_CLASS: Record<string, string> = {
-  indigo: 'accent-indigo',
-  violet: 'accent-violet',
-  emerald: 'accent-emerald',
-  rose: 'accent-rose',
-  amber: 'accent-amber',
-  sky: 'accent-sky',
-};
 
 const STATE_META: Record<
   TimerSnapshot['state'],
@@ -99,15 +90,14 @@ function applyThemeClass(settings: AppSettings): void {
 
   root.classList.toggle('light', effectiveTheme === 'light');
   root.classList.toggle('dark', effectiveTheme === 'dark');
-  THEME_FAMILIES.forEach((family) => root.classList.remove(`theme-${family}`));
-  const family = resolveThemeFamily(settings.themeFamily);
-  root.classList.add(`theme-${family}`);
-  root.dataset.themeFamily = family;
-  root.classList.toggle('font-profile-geist', settings.fontProfile !== 'manrope');
-  root.classList.toggle('font-profile-manrope', settings.fontProfile === 'manrope');
-  Object.values(ACCENT_CLASS).forEach((className) => root.classList.remove(className));
-  const accentClass = ACCENT_CLASS[settings.accentColor];
-  if (family !== 'quiet' && accentClass) root.classList.add(accentClass);
+  ['quiet', 'dawn', 'bloom'].forEach((family) => root.classList.remove(`theme-${family}`));
+  root.classList.add('theme-quiet');
+  root.dataset.themeFamily = 'quiet';
+  FONT_PROFILES.forEach((profile) => root.classList.remove(`font-profile-${profile}`));
+  root.classList.add(`font-profile-${resolveFontProfile(settings.fontProfile)}`);
+  ['indigo', 'violet', 'emerald', 'rose', 'amber', 'sky'].forEach((accent) =>
+    root.classList.remove(`accent-${accent}`),
+  );
 }
 
 function MiniStateBadge({ state }: { state: TimerSnapshot['state'] }) {
@@ -241,13 +231,25 @@ export function MiniWindow() {
   const isPaused = state === 'paused';
   const isIdle = state === 'idle' || state === 'finished';
   const primaryMs = isPaused ? currentPauseMs : currentFocusMs;
-  const primaryButtonClass = isRunning ? 'mini-action-pause' : 'mini-action-focus';
+  const primaryButtonClass = isRunning
+    ? 'mini-action-hold'
+    : isPaused
+      ? 'mini-action-resume'
+      : 'mini-action-focus';
   const displayPrimaryMs = isIdle ? (state === 'finished' ? currentFocusMs : 0) : primaryMs;
   const compactTime = useMemo(() => formatDurationPadded(displayPrimaryMs), [displayPrimaryMs]);
+  // 进入小时档（"H:MM:SS"）后数字串变长，两态都换用紧凑字号防止 184px 溢出
+  const isLongTime = compactTime.length > 5;
   const focusShare = useMemo(() => {
     if (wallElapsedMs <= 0) return 0;
     return Math.max(0, Math.min(100, Math.round((cumulativeActiveMs / wallElapsedMs) * 100)));
   }, [cumulativeActiveMs, wallElapsedMs]);
+  // 进度轨上的红色暂停段：紧随 accent 专注段之后，合计不超过 100%
+  const pauseShare = useMemo(() => {
+    if (wallElapsedMs <= 0) return 0;
+    const share = Math.round((cumulativePauseMs / wallElapsedMs) * 100);
+    return Math.max(0, Math.min(100 - focusShare, share));
+  }, [cumulativePauseMs, wallElapsedMs, focusShare]);
 
   const handleToggle = useCallback(
     async (event: React.MouseEvent) => {
@@ -332,6 +334,16 @@ export function MiniWindow() {
               style={{ '--mini-progress': `${focusShare}%` } as CSSProperties}
             >
               <span className="mini-edge-progress-fill" />
+              <span
+                className="mini-edge-progress-pause"
+                aria-hidden="true"
+                style={
+                  {
+                    '--mini-pause-start': `${focusShare}%`,
+                    '--mini-pause-width': `${pauseShare}%`,
+                  } as CSSProperties
+                }
+              />
               <span className="mini-edge-progress-glint" aria-hidden="true" />
             </span>
             <div className="mini-collapsed-current">
@@ -340,7 +352,7 @@ export function MiniWindow() {
                 <span className={`mini-collapsed-label ${meta.textClass}`}>{meta.stripLabel}</span>
               </span>
               <div
-                className="mini-display-time mini-collapsed-time"
+                className={`mini-display-time mini-collapsed-time ${isLongTime ? 'mini-time-long' : ''}`}
                 data-testid="mini-current-time"
               >
                 <FlipDigits value={compactTime} />
@@ -386,10 +398,10 @@ export function MiniWindow() {
               <div className="mini-focus-core">
                 <span className={`mini-current-label ${meta.textClass}`}>{meta.currentLabel}</span>
                 <div
-                  className="mini-display-time mini-expanded-time"
+                  className={`mini-display-time mini-expanded-time ${isLongTime ? 'mini-time-long' : ''}`}
                   data-testid="mini-current-time"
                 >
-                  <FlipDigits value={formatDurationPadded(displayPrimaryMs)} />
+                  <FlipDigits value={compactTime} />
                 </div>
               </div>
 

@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.11.x 单一真相（当前实现 v0.11.6）
+> 状态：v0.12.1 后端单一真相
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -97,6 +97,7 @@ Provider 的稳定能力应包括：
 
 - 设置更新采用局部对象并与完整设置递归合并；缺失字段表示不修改。
 - 慢请求使用 request id 或版本防止旧响应覆盖新状态。
+- `sessions.analytics(range)` 是严格只读、范围有界的统计接口。数据库必须选择与范围相交的会话，而不是只按 `started_at` 落点筛选；共享聚合器按自然日裁切 Session、Segment 与 PauseEvent，跨午夜/跨月/跨年数据不得整段归到开始日。该接口不得修改计时、同步队列或外部服务状态。
 - 统计会话详情同时核对 request id 和当前展开 session id；路由卸载会使所有未完成详情请求失效。失败必须清理当前 loading 并保留行内可重试错误，不得产生 unhandled rejection。
 - 统计 renderer 只订阅当前 session id 和 timer state 等原子值，不因 `activeElapsedMs` 每秒变化而重渲染整份历史列表。
 - 主窗、小窗和托盘共享计时 tick、设置与任务变更广播。
