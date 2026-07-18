@@ -6,4 +6,7 @@
 *.exe binary
 *.woff binary
 *.woff2 binary
+
+# Release executables exceed GitHub's regular per-file limit.
+release-v*/FocusLink-*-x64*.exe filter=lfs diff=lfs merge=lfs -text
 release-v*/FocusLink-*-x64*.exe filter=lfs diff=lfs merge=lfs -text
