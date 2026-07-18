@@ -1,6 +1,6 @@
 # FocusLink 后端设计索引
 
-> 适用版本：v0.12.2
+> 适用版本：v0.12.x
 >
 > 文档责任：Electron 主进程、SQLite、IPC、任务 Provider、同步、测试与发布。
 

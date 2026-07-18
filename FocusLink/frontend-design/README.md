@@ -1,6 +1,6 @@
 # FocusLink 前端设计索引
 
-> 适用版本：v0.12.2 Linear Workbench 细节收敛
+> 适用版本：v0.12.x Linear Workbench 细节收敛
 >
 > 文档责任：只描述产品体验、renderer 结构和可验收的视觉/交互规则。
 
