@@ -1,14 +1,19 @@
-# FocusLink v0.12.1
+# FocusLink v0.12.2
 
 > 发布日期：2026-07-18
 >
-> 对应提交：`8b86956`
+> 对应提交：构建完成后回填
 >
 > 发布类型：正式版
 >
-> 验证状态：已通过
+> 验证状态：验证中
 
 ## 本次更新
+
+### 正式发布修复
+
+- v0.12.1 的公开 tag 在元数据门禁阶段被阻断，未创建 GitHub Release；本版保持其 UI 与数据行为，修正发布记录边界后重新生成资产。
+- 发布可执行文件改由 Git LFS 运输，Actions 会在校验与 smoke 前检出真实包体。
 
 ### Linear Workbench 单一视觉系统
 
@@ -62,11 +67,11 @@
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.12.1-x64.exe` | `cf56a9c47d50540d86a77ea583ea1273b53ec08c5416af841f8da279796ce9c7` |
-| `FocusLink-0.12.1-x64-portable.exe` | `4dfed26b4287d7e6513c25174b7635110be673e84341305a0b1cfe2c0db66726` |
+| `FocusLink-0.12.2-x64.exe` | 构建完成后回填 |
+| `FocusLink-0.12.2-x64-portable.exe` | 构建完成后回填 |
 
 同时提供 `SHA256SUMS.txt`。下载后可在 PowerShell 执行：
 
 ```powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath '.\FocusLink-0.12.1-x64.exe'
+Get-FileHash -Algorithm SHA256 -LiteralPath '.\FocusLink-0.12.2-x64.exe'
 ```

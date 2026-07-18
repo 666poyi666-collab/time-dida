@@ -539,10 +539,7 @@ async function main() {
     [results.running.workspaceClass.includes('state-running'), 'running workspace state class'],
     [results.running.primaryText === '暂停专注', 'running primary action'],
     [results.running.statusText === '专注中', 'running status is explicit'],
-    [
-      Boolean(results.running.stateMomentText?.startsWith('起于')),
-      'running start time is visible',
-    ],
+    [Boolean(results.running.stateMomentText?.startsWith('起于')), 'running start time is visible'],
     [results.running.primaryTime !== '00:00', 'visible timer advances after UI start'],
     [results.running.activityAnimation !== null, 'running temporal ribbon has a live now marker'],
     [results.running.ledgerVisible, 'running ledger opens after UI start'],
