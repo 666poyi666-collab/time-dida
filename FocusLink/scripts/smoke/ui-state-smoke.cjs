@@ -574,12 +574,15 @@ async function main() {
     [results.idle.bodyScroll[0] === results.idle.viewport[0], 'no horizontal overflow'],
     [results.idle.bodyScroll[1] === results.idle.viewport[1], 'no vertical overflow'],
     [
-      results.windowSizes.large.outer[0] === 1280 && results.windowSizes.large.outer[1] === 720,
-      'main window accepts 1280 by 720 bounds',
+      results.windowSizes.large.outer[0] >= 980 &&
+        results.windowSizes.large.outer[0] <= 1280 &&
+        results.windowSizes.large.outer[1] >= 660 &&
+        results.windowSizes.large.outer[1] <= 720,
+      'main window accepts requested or display-clamped large bounds',
     ],
     [
       results.windowSizes.large.bodyScroll[0] <= results.windowSizes.large.viewport[0],
-      'main window has no horizontal overflow at 1280 by 720',
+      'main window has no horizontal overflow at large bounds',
     ],
     [
       results.windowSizes.minimum.outer[0] >= 980 && results.windowSizes.minimum.outer[1] >= 660,
