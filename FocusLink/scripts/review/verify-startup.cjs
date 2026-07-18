@@ -120,7 +120,7 @@ async function main() {
   if (!result.hasRail) failures.push('missing .edge-dock');
   if (!result.hasNavButton) failures.push('missing .edge-dock-button');
   if (!result.hasConsole) failures.push('missing .focus-console');
-  if (result.pauseToken !== '217 119 6') failures.push(`pause token ${result.pauseToken}`);
+  if (result.pauseToken !== '210 67 57') failures.push(`pause token ${result.pauseToken}`);
 
   try {
     await evaluate('window.focuslink.window.quit()');

@@ -422,6 +422,8 @@ async function main() {
   results.historyInspection = await evaluate(`(() => ({
     cards: document.querySelectorAll('.history-insight-card').length,
     hasRing: Boolean(document.querySelector('.history-focus-ring')),
+    hasConclusion: Boolean(document.querySelector('.history-conclusion')),
+    hasTaskDestination: Boolean(document.querySelector('.history-task-card')),
     hasUnifiedCanvas: Boolean(document.querySelector('.history-visual-header')),
     hasCombinationChart: Boolean(document.querySelector('.history-chart-trend')) &&
       Boolean(document.querySelector('.history-chart-area')),
@@ -570,7 +572,7 @@ async function main() {
       'resume uses interface action color',
     ],
     [results.running.successToken === '5 150 105', 'focus green token'],
-    [results.paused.pauseToken === '217 119 6', 'pause amber token'],
+    [results.paused.pauseToken === '210 67 57', 'pause red token'],
     [results.idle.bodyScroll[0] === results.idle.viewport[0], 'no horizontal overflow'],
     [results.idle.bodyScroll[1] === results.idle.viewport[1], 'no vertical overflow'],
     [
@@ -606,7 +608,9 @@ async function main() {
       results.historyInspection.cardBorders.every((width) => width === '0px'),
       'history charts avoid nested card borders',
     ],
-    [results.historyInspection.hasRing, 'history renders focus composition ring'],
+    [!results.historyInspection.hasRing, 'history removes decorative focus composition ring'],
+    [results.historyInspection.hasConclusion, 'history leads with an actionable conclusion'],
+    [results.historyInspection.hasTaskDestination, 'history gives task destination its own chart'],
     [results.historyInspection.hourlyColumns === 24, 'history renders hourly focus columns'],
     [results.historyInspection.ranks > 0, 'history renders session ranking bars'],
     [results.historyInspection.hasDayNavigator, 'history defaults to single-day navigation'],

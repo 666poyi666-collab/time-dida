@@ -2,12 +2,37 @@
 
 .mini-window-page {
   --app-success: 5 150 105;
-  --app-pause: 217 119 6;
+  --app-pause: 210 67 57;
 }
 
 .mini-window-page.dark {
   --app-success: 52 211 153;
-  --app-pause: 251 191 36;
+  --app-pause: 244 104 92;
+}
+
+.mini-window-page.focus-color-emerald {
+  --app-success: 5 150 105;
+}
+.mini-window-page.focus-color-forest {
+  --app-success: 22 115 91;
+}
+.mini-window-page.focus-color-mint {
+  --app-success: 32 167 121;
+}
+.mini-window-page.focus-color-teal {
+  --app-success: 15 139 141;
+}
+.mini-window-page.dark.focus-color-emerald {
+  --app-success: 52 211 153;
+}
+.mini-window-page.dark.focus-color-forest {
+  --app-success: 79 187 148;
+}
+.mini-window-page.dark.focus-color-mint {
+  --app-success: 87 225 176;
+}
+.mini-window-page.dark.focus-color-teal {
+  --app-success: 72 201 204;
 }
 
 .mini-window-shell {
@@ -186,7 +211,7 @@
   display: grid;
   width: 100%;
   height: 100%;
-  grid-template-rows: 25px 38px 29px;
+  grid-template-rows: 34px 54px 36px;
 }
 
 .mini-expanded-header {
@@ -215,14 +240,15 @@
 .mini-task-title {
   overflow: hidden;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.18;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .mini-expanded-body {
   display: grid;
   min-width: 0;
-  grid-template-columns: 130px minmax(0, 1fr);
+  grid-template-columns: 152px minmax(0, 1fr);
   align-items: center;
   padding: 0 9px;
 }
@@ -230,10 +256,22 @@
 .mini-expanded-time {
   margin-top: 2px;
   color: rgb(var(--app-text));
-  font-size: 29px;
+  font-size: 31px;
   font-weight: 500;
   letter-spacing: -0.055em;
   line-height: 0.9;
+}
+
+.timer-style-digital .mini-display-time {
+  font-family: 'Sora Variable', 'IBM Plex Mono', monospace;
+  font-weight: 620;
+  letter-spacing: -0.04em;
+}
+
+.timer-style-mono .mini-display-time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 400;
+  letter-spacing: -0.06em;
 }
 
 .mini-metric-rail {
@@ -251,19 +289,17 @@
 .mini-metric span,
 .mini-metric strong {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .mini-metric span {
   color: rgb(var(--app-muted));
-  font-size: 8px;
+  font-size: 8.5px;
 }
 
 .mini-metric strong {
   margin-top: 1px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
 }
 
@@ -277,20 +313,20 @@
 .mini-action-dock {
   display: grid;
   width: 100%;
-  grid-template-columns: 1fr 62px;
-  gap: 4px;
+  grid-template-columns: 1fr 78px;
+  gap: 6px;
 }
 
 .mini-primary-button,
 .mini-secondary-button {
   display: inline-flex;
-  height: 21px;
+  height: 26px;
   align-items: center;
   justify-content: center;
   gap: 4px;
   padding: 0 7px;
   border-radius: 2px;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 650;
 }
 

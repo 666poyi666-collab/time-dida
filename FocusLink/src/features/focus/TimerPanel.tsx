@@ -101,6 +101,7 @@ export function TimerPanel() {
   const { now, currentSegmentMs, cumulativeActiveMs, cumulativePauseMs, wallMs } =
     useDisplayValues(snapshot);
   const [pickerMode, setPickerMode] = useState<'segment' | 'session' | 'preselect' | null>(null);
+  const [immersive, setImmersive] = useState(false);
 
   const state = snapshot?.state ?? 'idle';
   const isRunning = state === 'running' || state === 'paused';
@@ -305,14 +306,38 @@ export function TimerPanel() {
   const stateMomentLabel = state === 'paused' ? '暂停于' : '起于';
   const showLedger = (snapshot?.segments.length ?? 0) > 0;
 
+  useEffect(() => {
+    if (!immersive) return;
+    const exit = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setImmersive(false);
+    };
+    window.addEventListener('keydown', exit);
+    return () => window.removeEventListener('keydown', exit);
+  }, [immersive]);
+
   return (
-    <div className={`focus-console ${showLedger ? 'with-ledger' : 'solo'}`} data-state={state}>
+    <div
+      className={`focus-console ${showLedger ? 'with-ledger' : 'solo'} ${immersive ? 'is-immersive' : ''}`}
+      data-state={state}
+    >
       <section className="focus-instrument">
         <header className="focus-editorial-header">
           <span className="focus-edition">FOCUS / {String(segmentOrdinal).padStart(2, '0')}</span>
-          <AnimatePresence mode="wait" initial={false}>
-            <StateBadge key={state} state={state} />
-          </AnimatePresence>
+          <div className="focus-header-tools">
+            <AnimatePresence mode="wait" initial={false}>
+              <StateBadge key={state} state={state} />
+            </AnimatePresence>
+            <button
+              type="button"
+              className="focus-immersive-toggle motion-press"
+              onClick={() => setImmersive((value) => !value)}
+              aria-pressed={immersive}
+              title={immersive ? '退出沉浸模式（Esc）' : '进入沉浸模式'}
+            >
+              <Icon.Maximize size="xs" />
+              {immersive ? '退出沉浸' : '沉浸'}
+            </button>
+          </div>
         </header>
 
         <motion.div

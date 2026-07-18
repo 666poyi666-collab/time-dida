@@ -31,9 +31,9 @@ function readSharedSize(exportName) {
 const EXPANDED_SIZE = readSharedSize('MINI_WINDOW_EXPANDED_SIZE');
 const COLLAPSED_SIZE = readSharedSize('MINI_WINDOW_COLLAPSED_SIZE');
 const FOCUS_TOKEN = '52 211 153';
-const PAUSE_TOKEN = '251 191 36';
+const PAUSE_TOKEN = '244 104 92';
 const LIGHT_FOCUS_TOKEN = '5 150 105';
-const LIGHT_PAUSE_TOKEN = '217 119 6';
+const LIGHT_PAUSE_TOKEN = '210 67 57';
 const THEME_TOKENS = {
   dark: { focus: FOCUS_TOKEN, pause: PAUSE_TOKEN },
   light: { focus: LIGHT_FOCUS_TOKEN, pause: LIGHT_PAUSE_TOKEN },
@@ -860,7 +860,7 @@ function assertResult(name, result, expected) {
     [result.themeClass === expected.theme, `${expected.theme} color scheme`],
     [result.rootClasses.includes(expected.theme), `${expected.theme} root class`],
     [result.focusToken === themeTokens.focus, `${expected.theme} focus green token`],
-    [result.pauseToken === themeTokens.pause, `${expected.theme} pause amber token`],
+    [result.pauseToken === themeTokens.pause, `${expected.theme} pause red token`],
     [
       expected.collapsed ||
         expected.state === 'running' ||

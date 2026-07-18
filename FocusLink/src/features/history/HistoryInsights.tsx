@@ -1,4 +1,4 @@
-// 统计洞察画布 - 每日趋势 / 时间构成 / 任务去向 / 当天混合时间轴 / 单次强度
+// 统计 Dashboard - 先给结论，再展开节律 / 去向 / 单次质量 / 当日轨迹。
 // 数据全部来自只读的 sessions.analytics(range) 契约；零数据时渲染明确的空状态，
 // 不用伪造柱形、环形或会话来填满画布。
 import { useMemo, useState, type CSSProperties } from 'react';
@@ -73,7 +73,6 @@ export function HistoryInsights({
   const isEmpty = summary.count === 0;
   const tracked = Math.max(0, summary.active + summary.pause);
   const focusRatio = tracked > 0 ? (summary.active / tracked) * 100 : 0;
-  const pauseRatio = tracked > 0 ? (summary.pause / tracked) * 100 : 0;
   const stability = analytics?.stability ?? null;
   // 单日范围内方差恒为 0，稳定分没有推断意义，降级为「—」并说明，不作误导性展示。
   const stabilityReady = !isEmpty && (stability?.calendarDays ?? 0) >= 2;
@@ -92,9 +91,20 @@ export function HistoryInsights({
       aria-label="专注数据图表"
     >
       <header className="history-visual-header">
-        <div>
-          <span>时间图谱</span>
-          <small>{isEmpty ? '等待第一段时间留下刻度' : '趋势 · 构成 · 去向 · 当日轨迹'}</small>
+        <div className="history-conclusion">
+          <small>统计结论</small>
+          <span>
+            {isEmpty
+              ? '这里会直接告诉你时间花在了哪里'
+              : `${formatMinutes(summary.active)} 有效专注 · ${summary.count} 次 · 专注率 ${Math.round(focusRatio)}%`}
+          </span>
+          <p>
+            {stabilityReady && stability
+              ? `日均 ${formatMinutes(stability.averageDailyActiveMs)} · 活跃 ${stability.activeDays}/${stability.calendarDays} 天 · 稳定度 ${stability.score}`
+              : isEmpty
+                ? '完成一次专注后，结论、节律和时间去向会同时出现。'
+                : '单日数据不推断稳定性；下方展示真实时段与每次专注质量。'}
+          </p>
         </div>
         <div className="history-visual-summary">
           <span>
@@ -110,17 +120,8 @@ export function HistoryInsights({
             <strong>{summary.count}</strong>
           </span>
           <span>
-            <small>稳定性</small>
-            <strong
-              className={stabilityReady ? '' : 'is-na'}
-              title={
-                stabilityReady
-                  ? `稳定分 = 100 × (1 − 日波动 / 日均)，σ=${formatMinutes(stability?.standardDeviationMs ?? 0)}`
-                  : '范围不足两天，暂无稳定性读数'
-              }
-            >
-              {stabilityReady ? stability?.score : '—'}
-            </strong>
+            <small>专注率</small>
+            <strong>{isEmpty ? '—' : `${Math.round(focusRatio)}%`}</strong>
           </span>
         </div>
       </header>
@@ -170,13 +171,7 @@ export function HistoryInsights({
             rangeKey={rangeKey}
             slideVars={slideVars}
           />
-          <FocusRingCard
-            summary={summary}
-            analytics={analytics}
-            isEmpty={false}
-            focusRatio={focusRatio}
-            pauseRatio={pauseRatio}
-          />
+          <TaskDestinationCard analytics={analytics} />
           <SessionRankCard sessions={sessions} isEmpty={false} rangeEnd={range.end} />
           <DayTimelineBand analytics={analytics} slideVars={slideVars} />
         </>
@@ -258,13 +253,6 @@ function DailyTrendCard({
   }, [analytics?.timeline, range.start]);
   const maxHourly = Math.max(1, ...hourly.map((item) => item.active + item.pause));
   const isSingleDay = daily.length === 1;
-
-  // 任务去向：按任务聚合的专注时长（长任务名截断 + title 兜底）。
-  const tasks = analytics?.tasks ?? [];
-  const topTasks = tasks.slice(0, 5);
-  const restTasks = tasks.slice(5);
-  const restMs = restTasks.reduce((sum, task) => sum + task.activeMs, 0);
-  const maxTask = Math.max(1, ...topTasks.map((task) => task.activeMs));
 
   return (
     <article className="history-insight-card history-daily-card">
@@ -455,195 +443,50 @@ function DailyTrendCard({
           </p>
         </>
       )}
-
-      <div className="history-insight-divider" />
-
-      <div className="history-task-section">
-        <header className="history-insight-header">
-          <span>
-            <Icon.ListTodo size="sm" />
-            时间去向
-          </span>
-          <small>按任务聚合 · 前 5 项</small>
-        </header>
-        {isEmpty ? (
-          <div className="history-skel-rows" aria-hidden="true">
-            {[0, 1, 2].map((index) => (
-              <span
-                key={index}
-                className="skeleton history-skel-line"
-                style={{ width: `${86 - index * 16}%` }}
-              />
-            ))}
-          </div>
-        ) : topTasks.length === 0 ? (
-          <p className="history-task-empty">范围内没有可聚合的专注片段。</p>
-        ) : (
-          <div className="history-task-distribution" role="list" aria-label="按任务聚合的专注时长">
-            {topTasks.map((task, index) => (
-              <div
-                className="history-task-row"
-                key={task.key}
-                role="listitem"
-                tabIndex={0}
-                aria-label={`${task.title}：专注 ${formatMinutes(task.activeMs)}，${task.segmentCount} 个片段`}
-              >
-                <span className="history-task-title" title={task.title}>
-                  {task.title}
-                </span>
-                <div className="history-task-track">
-                  <motion.i
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.max(4, (task.activeMs / maxTask) * 100)}%` }}
-                    transition={{
-                      duration: 0.5,
-                      delay: index * 0.04,
-                      ease: [0.16, 1, 0.3, 1],
-                    }}
-                  />
-                </div>
-                <strong>{formatMinutes(task.activeMs)}</strong>
-              </div>
-            ))}
-            {restTasks.length > 0 && (
-              <p className="history-task-more">
-                其余 {restTasks.length} 个任务共 {formatMinutes(restMs)}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
     </article>
   );
 }
 
-/* ── 专注/暂停构成环 + 稳定性读数 ──────────────────────────── */
+/* ── 时间去向：独立成块，不再埋在节律图下方。 ─────────────── */
 
-function FocusRingCard({
-  summary,
-  analytics,
-  isEmpty,
-  focusRatio,
-  pauseRatio,
-}: {
-  summary: SessionSummary;
-  analytics: SessionAnalyticsResult | null;
-  isEmpty: boolean;
-  focusRatio: number;
-  pauseRatio: number;
-}) {
-  const stability = analytics?.stability ?? null;
-  const stabilityReady = !isEmpty && (stability?.calendarDays ?? 0) >= 2;
-  const focusDash = Math.max(0, Math.min(100, focusRatio));
-  const pauseDash = Math.max(0, Math.min(100 - focusDash, pauseRatio));
-  // 构成比例变化时重挂载轨道，让数据弧线连续绘制而不是闪切。
-  const ringKey = `${Math.round(focusRatio)}-${Math.round(pauseRatio)}-${isEmpty ? '0' : '1'}`;
+function TaskDestinationCard({ analytics }: { analytics: SessionAnalyticsResult | null }) {
+  const tasks = analytics?.tasks ?? [];
+  const topTasks = tasks.slice(0, 6);
+  const rest = tasks.slice(6);
+  const maxTask = Math.max(1, ...topTasks.map((task) => task.activeMs));
+  const total = tasks.reduce((sum, task) => sum + task.activeMs, 0);
 
   return (
-    <article className="history-insight-card history-focus-ring-card">
+    <article className="history-insight-card history-task-card">
       <header className="history-insight-header">
         <span>
-          <Icon.PieChart size="sm" />
-          时间构成
+          <Icon.ListTodo size="sm" />
+          时间去向
         </span>
-        <small>{isEmpty ? '暂无记录' : `${summary.count} 次会话`}</small>
+        <small>按任务聚合 · 共 {formatMinutes(total)}</small>
       </header>
-      <div className="history-focus-ring-wrap" key={ringKey}>
-        <motion.div
-          className="history-focus-ring"
-          role="img"
-          aria-label={
-            isEmpty
-              ? '时间构成：暂无数据'
-              : `时间构成：专注 ${formatMinutes(summary.active)}，占 ${Math.round(focusRatio)}%；暂停 ${formatMinutes(summary.pause)}，占 ${Math.round(pauseRatio)}%`
-          }
-          initial={{ scale: 0.94, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <svg viewBox="0 0 120 120" aria-hidden="true">
-            <circle className="history-orbit-track" cx="60" cy="60" r="48" pathLength="100" />
-            <motion.circle
-              className="history-orbit-focus"
-              cx="60"
-              cy="60"
-              r="48"
-              pathLength="100"
-              initial={{ strokeDasharray: '0 100' }}
-              animate={{ strokeDasharray: `${focusDash} ${100 - focusDash}` }}
-              transition={{ duration: 0.72, ease: [0.16, 1, 0.3, 1] }}
-            />
-            <motion.circle
-              className="history-orbit-pause"
-              cx="60"
-              cy="60"
-              r="38"
-              pathLength="100"
-              initial={{ strokeDasharray: '0 100' }}
-              animate={{ strokeDasharray: `${pauseDash} ${100 - pauseDash}` }}
-              transition={{ duration: 0.72, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
-              style={{ opacity: pauseDash > 0 ? 1 : 0 }}
-            />
-          </svg>
-          <div>
-            <strong>{isEmpty ? '—' : `${Math.round(focusRatio)}%`}</strong>
-            <span>有效专注</span>
-          </div>
-        </motion.div>
-        <div className="history-ring-legend">
-          <span className="focus">
-            <i />
-            专注 <strong>{isEmpty ? '—' : formatMinutes(summary.active)}</strong>
-          </span>
-          <span className="pause">
-            <i />
-            暂停 <strong>{isEmpty ? '—' : formatMinutes(summary.pause)}</strong>
-          </span>
+      {topTasks.length === 0 ? (
+        <p className="history-task-empty">范围内没有可聚合的任务片段。</p>
+      ) : (
+        <div className="history-task-distribution" role="list" aria-label="按任务聚合的专注时长">
+          {topTasks.map((task, index) => (
+            <div className="history-task-row" key={task.key} role="listitem">
+              <span className="history-task-title" title={task.title}>
+                {task.title}
+              </span>
+              <div className="history-task-track">
+                <motion.i
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.max(4, (task.activeMs / maxTask) * 100)}%` }}
+                  transition={{ duration: 0.5, delay: index * 0.04 }}
+                />
+              </div>
+              <strong>{formatMinutes(task.activeMs)}</strong>
+            </div>
+          ))}
+          {rest.length > 0 && <p className="history-task-more">另有 {rest.length} 个任务</p>}
         </div>
-      </div>
-
-      <div className="history-insight-divider" />
-
-      <div className="history-stability">
-        <header className="history-insight-header">
-          <span>
-            <Icon.Gauge size="sm" />
-            专注稳定性
-          </span>
-          <small>{stabilityReady ? '按日推导' : '需 ≥2 天'}</small>
-        </header>
-        <div className="history-stability-grid">
-          <div className="history-stability-item">
-            <strong>{stabilityReady && stability ? stability.score : '—'}</strong>
-            <span>稳定分 /100</span>
-          </div>
-          <div className="history-stability-item">
-            <strong>
-              {stabilityReady && stability ? formatMinutes(stability.standardDeviationMs) : '—'}
-            </strong>
-            <span>日波动 σ</span>
-          </div>
-          <div className="history-stability-item">
-            <strong>
-              {isEmpty || !stability ? '—' : `${stability.activeDays}/${stability.calendarDays}`}
-            </strong>
-            <span>活跃天数</span>
-          </div>
-          <div className="history-stability-item">
-            <strong>
-              {isEmpty || !stability || stability.averageDailyActiveMs <= 0
-                ? '—'
-                : formatMinutes(stability.averageDailyActiveMs)}
-            </strong>
-            <span>日均专注</span>
-          </div>
-        </div>
-        {!isEmpty && !stabilityReady && (
-          <p className="history-stability-note">
-            稳定性读数需要至少两个自然日的数据，单日不作推断。
-          </p>
-        )}
-      </div>
+      )}
     </article>
   );
 }
@@ -667,7 +510,6 @@ function SessionRankCard({
         .slice(0, 5),
     [sessions],
   );
-  const maxSession = Math.max(1, ...longestSessions.map((item) => item.activeElapsedMs));
   const referenceYear = new Date(rangeEnd).getFullYear();
 
   return (
@@ -675,9 +517,9 @@ function SessionRankCard({
       <header className="history-insight-header">
         <span>
           <Icon.TrendingUp size="sm" />
-          单次专注强度
+          单次专注质量
         </span>
-        <small>{isEmpty ? '暂无记录' : `最长 ${longestSessions.length} 次`}</small>
+        <small>{isEmpty ? '暂无记录' : `最近高投入 ${longestSessions.length} 次`}</small>
       </header>
       {isEmpty ? (
         <div className="history-skel-rows" aria-hidden="true">
@@ -695,6 +537,10 @@ function SessionRankCard({
             const label = sessionLabel(session, referenceYear);
             const pauseText =
               session.pauseElapsedMs > 0 ? `，暂停 ${formatMinutes(session.pauseElapsedMs)}` : '';
+            const quality =
+              session.wallElapsedMs > 0
+                ? Math.round((session.activeElapsedMs / session.wallElapsedMs) * 100)
+                : 0;
             return (
               <div
                 className="history-rank-row"
@@ -708,13 +554,15 @@ function SessionRankCard({
                 <div className="history-rank-content">
                   <div>
                     <span>{label}</span>
-                    <strong>{formatMinutes(session.activeElapsedMs)}</strong>
+                    <strong>
+                      {formatMinutes(session.activeElapsedMs)} · {quality}%
+                    </strong>
                   </div>
                   <div className="history-rank-track">
                     <motion.i
                       initial={{ width: 0 }}
                       animate={{
-                        width: `${Math.max(5, (session.activeElapsedMs / maxSession) * 100)}%`,
+                        width: `${Math.max(5, quality)}%`,
                       }}
                       transition={{
                         duration: 0.52,

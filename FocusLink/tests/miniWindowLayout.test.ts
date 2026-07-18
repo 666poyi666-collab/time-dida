@@ -81,7 +81,7 @@ describe('mini window layout policy', () => {
         height: 1080,
       }),
     ).toEqual({
-      x: 1660,
+      x: 1920 - MINI_WINDOW_EXPANDED_SIZE.width,
       y: 1080 - MINI_WINDOW_EXPANDED_SIZE.height,
       ...MINI_WINDOW_EXPANDED_SIZE,
     });

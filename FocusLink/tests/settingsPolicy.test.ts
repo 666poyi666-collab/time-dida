@@ -53,6 +53,12 @@ describe('settings partial update policy', () => {
     expect(detectSettingsChangedDomains(DEFAULT_SETTINGS, next)).toEqual(['theme']);
   });
 
+  it('routes focus color and timer style through the theme domain', () => {
+    const next = mergeSettings(DEFAULT_SETTINGS, { focusColor: 'teal', timerStyle: 'digital' });
+
+    expect(detectSettingsChangedDomains(DEFAULT_SETTINGS, next)).toEqual(['theme']);
+  });
+
   it('adds the single-theme defaults to legacy settings and preserves appearance changes', () => {
     const legacySettings = { ...DEFAULT_SETTINGS } as Partial<AppSettings>;
     delete legacySettings.themeFamily;

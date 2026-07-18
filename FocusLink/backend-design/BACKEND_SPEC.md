@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相
+> 状态：v0.12.4 后端单一真相
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -161,7 +161,7 @@ Provider 的稳定能力应包括：
 
 ## 8. 小窗与边缘状态
 
-- 只有 `collapsed` 和 `expanded` 两种合法尺寸，数值唯一来自 `shared/miniWindowLayout.ts`。v0.11 保持 `184×35` 与 `256×92`，不引入第三尺寸；常量变化必须同步更新前端规范。
+- 只有 `collapsed` 和 `expanded` 两种合法尺寸，数值唯一来自 `shared/miniWindowLayout.ts`。当前为 `184×35` 与 `320×124`，不引入第三尺寸；常量变化必须同步更新前端规范。
 - collapsed renderer 契约仅允许进度/状态、当前时间、底部真实专注占比进度轨和展开入口；不传达任务详情、三组累计或其他控制。验收字号为 collapsed 25px、expanded 31px。
 - Electron 主进程持有真实 bounds、当前显示器 work area、吸附边缘和窗口状态。
 - Windows 通过 `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` 明确区分按住与释放；按住不动时不得用 move 事件静默时间猜测释放。真正结束后才计算最近合法边缘，使用进入 14px / 离开 30px 双阈值；先吸附并保持 expanded 尺寸，renderer 接收 `mini:dock-transition` 显示 320ms 收束反馈，之后才切换 collapsed；过渡中再次 native move 必须取消待折叠任务。程序化 bounds 允许 2px DPI 归一化误差。

@@ -245,6 +245,10 @@ export interface AppSettings {
   /** 主窗口外观；system 跟随系统颜色方案。 */
   theme: 'dark' | 'light' | 'system';
   accentColor: string;
+  /** 专注状态的独立强调色；不与界面操作蓝、暂停红混用。 */
+  focusColor: 'emerald' | 'forest' | 'mint' | 'teal';
+  /** 主计时数字的表现方式。 */
+  timerStyle: 'editorial' | 'digital' | 'mono';
   /** 主界面排版气质；所有主题均可独立选择，数字字体与正文字体成套切换。 */
   fontProfile: 'plex' | 'geist' | 'manrope' | 'sora';
   segmentBehavior: 'new-segment' | 'continue-segment';
@@ -360,6 +364,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   themeFamily: 'quiet',
   theme: 'light',
   accentColor: 'indigo',
+  focusColor: 'emerald',
+  timerStyle: 'editorial',
   fontProfile: 'plex',
   segmentBehavior: 'new-segment',
   syncMode: 'focus-record',

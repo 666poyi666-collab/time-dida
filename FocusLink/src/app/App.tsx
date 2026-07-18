@@ -417,6 +417,14 @@ function applyTheme(settings: AppSettings): void {
   root.dataset.themeFamily = 'quiet';
   const accents = ['indigo', 'violet', 'emerald', 'rose', 'amber', 'sky'];
   accents.forEach((a) => root.classList.remove(`accent-${a}`));
+  ['emerald', 'forest', 'mint', 'teal'].forEach((color) =>
+    root.classList.remove(`focus-color-${color}`),
+  );
+  root.classList.add(`focus-color-${settings.focusColor ?? 'emerald'}`);
+  ['editorial', 'digital', 'mono'].forEach((style) =>
+    root.classList.remove(`timer-style-${style}`),
+  );
+  root.classList.add(`timer-style-${settings.timerStyle ?? 'editorial'}`);
   FONT_PROFILES.forEach((profile) => root.classList.remove(`font-profile-${profile}`));
   root.classList.add(`font-profile-${resolveFontProfile(settings.fontProfile)}`);
 }

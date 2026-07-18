@@ -98,6 +98,14 @@ function applyThemeClass(settings: AppSettings): void {
   ['indigo', 'violet', 'emerald', 'rose', 'amber', 'sky'].forEach((accent) =>
     root.classList.remove(`accent-${accent}`),
   );
+  ['emerald', 'forest', 'mint', 'teal'].forEach((color) =>
+    root.classList.remove(`focus-color-${color}`),
+  );
+  root.classList.add(`focus-color-${settings.focusColor ?? 'emerald'}`);
+  ['editorial', 'digital', 'mono'].forEach((style) =>
+    root.classList.remove(`timer-style-${style}`),
+  );
+  root.classList.add(`timer-style-${settings.timerStyle ?? 'editorial'}`);
 }
 
 function MiniStateBadge({ state }: { state: TimerSnapshot['state'] }) {

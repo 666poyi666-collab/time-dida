@@ -11,7 +11,7 @@ export type MiniWindowEdge = 'left' | 'right' | 'top' | 'bottom';
  * shared tokens prevents renderer, main-process bounds and tests from drifting.
  */
 export const MINI_WINDOW_COLLAPSED_SIZE = { width: 184, height: 35 } as const;
-export const MINI_WINDOW_EXPANDED_SIZE = { width: 256, height: 92 } as const;
+export const MINI_WINDOW_EXPANDED_SIZE = { width: 320, height: 124 } as const;
 
 /** Enter and leave distances are deliberately different to prevent edge jitter. */
 export const MINI_WINDOW_EDGE_SNAP_DISTANCE = 14;

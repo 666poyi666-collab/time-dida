@@ -40,7 +40,9 @@ export function detectSettingsChangedDomains(
     prev.themeFamily !== next.themeFamily ||
     prev.theme !== next.theme ||
     prev.accentColor !== next.accentColor ||
-    prev.fontProfile !== next.fontProfile
+    prev.fontProfile !== next.fontProfile ||
+    prev.focusColor !== next.focusColor ||
+    prev.timerStyle !== next.timerStyle
   ) {
     domains.push('theme');
   }

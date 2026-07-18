@@ -1,5 +1,6 @@
 // 设置页 - 紧凑分组列表：左侧分组导航 + 右侧连续行列表。
-// FocusLink 只有一套视觉语言；外观只切换 light/dark/system，状态色不开放自定义。
+// FocusLink 只有一套视觉语言；外观只切换 light/dark/system。
+// 界面操作保持蓝色、暂停保持红色，用户仅可调整专注强调色。
 // - 开关统一 42×24px，关闭态有清楚边界，disabled 可识别；
 // - 语义标签：已同步/未同步/同步失败仅用于同步队列；dida 描述为「同步到滴答清单」；
 //   番茄 To-do 使用「已写入本地/待上传/上传已确认」。
@@ -56,6 +57,19 @@ const FONT_OPTIONS = [
   detail: string;
   sample: string;
 }>;
+
+const FOCUS_COLOR_OPTIONS = [
+  { id: 'emerald', label: '翡翠', color: '#059669' },
+  { id: 'forest', label: '森林', color: '#16735b' },
+  { id: 'mint', label: '薄荷', color: '#20a779' },
+  { id: 'teal', label: '青绿', color: '#0f8b8d' },
+] as const;
+
+const TIMER_STYLE_OPTIONS = [
+  { id: 'editorial', label: '编辑体' },
+  { id: 'digital', label: '数码体' },
+  { id: 'mono', label: '等宽体' },
+] as const;
 
 // 番茄 To-do 学科下拉的可选值（与 TOMATODO_SUBJECT_OPTIONS 同源）
 const TOMATODO_SUBJECT_VALUES = TOMATODO_SUBJECT_OPTIONS.map((subject) => subject.value);
@@ -637,7 +651,7 @@ export function SettingsPanel() {
         <div className="settings-container settings-stack">
           {activeTab === 'experience' && (
             <>
-              <Section title="外观" desc="同一套 FocusLink 界面只切换明暗，不改变状态颜色和布局。">
+              <Section title="外观" desc="亮色优先设计；深色沿用同一套结构与状态语义。">
                 <Row label="外观模式" desc="切换后主窗口与跟随主题的小窗会立即更新">
                   <div className="settings-theme-choices">
                     <ChoiceBtn
@@ -667,7 +681,7 @@ export function SettingsPanel() {
 
               <Section
                 title="排版"
-                desc="字体可以调整阅读气质；专注绿、暂停琥珀与界面蓝保持固定语义。"
+                desc="字体与计时字形刻意拉开差异；界面蓝、专注绿、暂停红各司其职。"
               >
                 <div>
                   <Row label="字体气质" desc="四套正文、标题与数字字体组合，主窗口和小窗同步生效">
@@ -694,11 +708,35 @@ export function SettingsPanel() {
                       ))}
                     </div>
                   </Row>
-                  <Row label="状态颜色" desc="固定语义，避免同一个颜色在不同页面表达不同含义">
-                    <div className="settings-state-colors" aria-label="固定状态颜色">
-                      <span className="focus">专注</span>
-                      <span className="pause">暂停</span>
-                      <span className="interface">界面操作</span>
+                  <Row label="专注色" desc="只影响专注数字、时间织带与统计图；暂停始终使用红色">
+                    <div className="settings-focus-colors" aria-label="专注强调色">
+                      {FOCUS_COLOR_OPTIONS.map((color) => (
+                        <button
+                          key={color.id}
+                          type="button"
+                          className={settings.focusColor === color.id ? 'active' : ''}
+                          onClick={() => update({ focusColor: color.id })}
+                          aria-label={color.label}
+                          aria-pressed={settings.focusColor === color.id}
+                          title={color.label}
+                        >
+                          <i style={{ backgroundColor: color.color }} />
+                          <span>{color.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </Row>
+                  <Row label="计时字形" desc="仅改变主计时读数，不牺牲数字宽度与可读性">
+                    <div className="settings-theme-choices">
+                      {TIMER_STYLE_OPTIONS.map((style) => (
+                        <ChoiceBtn
+                          key={style.id}
+                          active={settings.timerStyle === style.id}
+                          onClick={() => update({ timerStyle: style.id })}
+                        >
+                          {style.label}
+                        </ChoiceBtn>
+                      ))}
                     </div>
                   </Row>
                 </div>
