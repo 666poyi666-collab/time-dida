@@ -99,7 +99,8 @@ npm run smoke:dida:ui -- ../release-v0115/win-unpacked/FocusLink.exe
    隔离安装前还必须备份并临时隐藏当前用户的 FocusLink 卸载注册项，避免 Electron Builder 把本次验证识别成升级并卸载正在运行的正式安装；
    桌面/开始菜单快捷方式也要先保存，并在 `finally` 中连同卸载注册项原样恢复。验证结束后必须确认原进程仍在、注册版本与两个快捷方式目标均未改变。
    `build/installer.nsh` 的同名开关必须同时绕过自定义关闭和内置 `CHECK_APP_RUNNING`，否则静默安装会在不可见提示框上挂起。
-   GitHub Actions 的干净 runner 必须不设置该变量，覆盖安装器默认路径。
+   GitHub Actions 的干净 runner 必须不设置该变量，覆盖安装器默认路径。若 NSIS 在 runner 上以 Windows 访问冲突
+   `0xC0000005` 退出，可清理隔离安装目录后重试一次；只允许该退出码，第二次或其他退出码必须立即失败。
 4. 填完两份完全一致的 Release notes，记录上一步的源码提交和真实 SHA256；不可变元数据固定为
    “发布类型：正式版 / 验证状态：已通过”，不在正式 Release 正文里保留“候选”或“待发布”。
 5. 清理 release 目录，只留下下列四个文件；把发布资产、notes 和本次生成的版本元数据组成单独的 release-record commit。该提交不得再改产品源码。

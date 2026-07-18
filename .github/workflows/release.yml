@@ -228,10 +228,22 @@ jobs:
             throw "Installer not found: $installer"
           }
           Remove-Item Env:FOCUSLINK_INSTALLER_SKIP_CLOSE -ErrorAction SilentlyContinue
-          $process = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$installDirectory") -Wait -PassThru -WindowStyle Hidden
-          if ($process.ExitCode -ne 0) {
-            throw "Silent installer exited with code $($process.ExitCode)"
-          }
+          $attempt = 0
+          do {
+            $attempt += 1
+            if (Test-Path -LiteralPath $installDirectory) {
+              Remove-Item -LiteralPath $installDirectory -Recurse -Force
+            }
+            $process = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$installDirectory") -Wait -PassThru -WindowStyle Hidden
+            if ($process.ExitCode -eq 0) {
+              break
+            }
+            if ($process.ExitCode -ne -1073741819 -or $attempt -ge 2) {
+              throw "Silent installer exited with code $($process.ExitCode) on attempt $attempt"
+            }
+            Write-Warning 'NSIS exited with transient access violation 0xC0000005; retrying once with a clean install directory.'
+            Start-Sleep -Seconds 2
+          } while ($attempt -lt 2)
           $installedExecutable = Join-Path $installDirectory 'FocusLink.exe'
           if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
             throw "Installed executable not found: $installedExecutable"
