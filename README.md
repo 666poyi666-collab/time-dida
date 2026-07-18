@@ -2,7 +2,7 @@
 
 FocusLink 是一个本地优先的 Windows 桌面专注工具：主进程精确记录专注、暂停与自然跨度，把片段关联到滴答清单任务，并通过彼此独立的队列同步滴答清单与番茄 To-do。
 
-> 当前版本：v0.12.4
+> 当前版本：v0.12.5
 >
 > 版本主题：结论优先统计台 · 双尺度时间之带 · 可配置专注色 · 信息完整小窗
 
@@ -144,13 +144,13 @@ RELEASE_NOTES.md
 
 | 版本 | 本地安装版 | 版本说明 |
 | --- | --- | --- |
-| 0.11.7 | `release-v0117/FocusLink-0.11.7-x64.exe` | [v0.11.7](release-v0117/RELEASE_NOTES.md) |
 | 0.12.3 | `release-v0123/FocusLink-0.12.3-x64.exe` | [v0.12.3](release-v0123/RELEASE_NOTES.md) |
 | 0.12.4 | `release-v0124/FocusLink-0.12.4-x64.exe` | [v0.12.4](release-v0124/RELEASE_NOTES.md) |
+| 0.12.5 | `release-v0125/FocusLink-0.12.5-x64.exe` | [v0.12.5](release-v0125/RELEASE_NOTES.md) |
 
 每次版本迭代必须同步更新 `CHANGELOG.md`、本地 `RELEASE_NOTES.md` 和 GitHub Release，并上传安装版、便携版与 SHA256。只推送代码或 tag 不算发布完成。
 
-v0.12.4 的本地发布状态以同目录 `RELEASE_NOTES.md` 为准，线上状态以 GitHub Releases 回读结果为准。每个新版本都必须由 tag workflow 复验已提交产物，并回读正文、目标提交、附件名称、字节数、下载链接与下载后 SHA256；不能移动失败的旧 tag，也不能补造未完成门禁的历史 Release。
+v0.12.5 的本地发布状态以同目录 `RELEASE_NOTES.md` 为准，线上状态以 GitHub Releases 回读结果为准。每个新版本都必须由 tag workflow 复验已提交产物，并回读正文、目标提交、附件名称、字节数、下载链接与下载后 SHA256；不能移动失败的旧 tag，也不能补造未完成门禁的历史 Release。
 
 ## 文档入口
 
