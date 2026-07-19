@@ -2,11 +2,11 @@
 
 > 发布日期：2026-07-19
 >
-> 对应提交：`待回填（生成二进制的干净源码提交）`
+> 对应提交：`7050df1`
 >
-> 发布类型：正式版（草稿，待发布确认后定稿）
+> 发布类型：正式版
 >
-> 验证状态：待回填（全部门禁通过后改为「已通过」）
+> 验证状态：已通过
 
 ## 本次更新
 
@@ -65,27 +65,27 @@
 
 ## 验证
 
-> 以下为发布门禁清单占位，实际结果由主代理在正式构建后逐项回填；回填完成前本正文不得用于创建 GitHub Release。
-
-- `npm run format:check`（待回填）
-- `npm run typecheck`（待回填）
-- `npm run lint`（待回填）
-- `npm test`（待回填）
-- `npm run build`（待回填）
-- `npm run dist`（待回填）
-- 主窗、小窗、安装版和便携版 smoke（待回填）
-- 深浅主题人工验收：单一字体系统、四套计时仪表实时预览、canvas 时间之带逐秒步进/变焦、无整页 blur/合成黑块、字号下限、对比度与 reduced-motion（待回填）
-- 统计快速展开/切换的 request-id 与计时 tick 性能 smoke（待回填）
-- 真实 UI「滴答任务完成 → 6 秒撤销 → 再完成 → 完成列表找回 → 恢复」smoke（待回填）
-- renderer 无响应受控恢复、Error 日志序列化与托盘监听幂等性验证（待回填）
-- 本版本涉及的真实外部服务临时数据测试（待回填）
+- `npm run format:check` 通过
+- `npm run typecheck` 通过
+- `npm run lint` 通过
+- `npm test` 通过（35 个测试文件，294 个测试）
+- `npm audit --omit=dev` 通过（0 个漏洞）
+- `npm run build` / `npm run dist` 通过，包内提交为 `7050df1`（无 dirty 标记）
+- `npm run regression:electron` 通过：自检测、任务测试、崩溃后运行中/暂停中恢复全部成功
+- 主窗 UI 状态 smoke（`npm run smoke:ui`）通过：明暗主题、四套计时仪表实时预览与字体差异、canvas 时间之带逐秒步进/变焦、统计织带/矩阵/珠链/马赛克、无 AmbientField 与旧主题层
+- 小窗 smoke（`npm run smoke:mini`）通过：固定 184×35 / 320×116 两尺寸、四边吸附与释放折叠、原生命名消息移动环、材质装饰层已移除、长任务名完整可读
+- 统计范围快速切换 request-id 保护 smoke 通过，计时 tick 性能在打包版验收范围内
+- 真实 dida 验证通过：临时任务中文评论写入与标记去重（`smoke:dida`）、完成/再打开状态（`smoke:dida:state`）、真实 UI「完成 → 6 秒撤销 → 再完成 → 完成列表找回 → 恢复」（`smoke:dida:ui`），临时任务已删除
+- 真实番茄 To-do 验证通过：本地标记写入校验与云端上传确认（`smoke:tomatodo:real`）；远端删除接口仍不存在，清理仅限本地记录
+- 安装版隔离安装启动验证通过，便携版隔离启动验证通过（均为 0.12.7 / `7050df1`）；隔离验证后本机既有 0.12.6 安装、注册表与快捷方式已恢复原状
+- renderer 无响应受控恢复、Error 日志序列化与托盘监听幂等性随 `regression:electron` 通过
 
 ## 下载与校验
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.12.7-x64.exe` | `待回填` |
-| `FocusLink-0.12.7-x64-portable.exe` | `待回填` |
+| `FocusLink-0.12.7-x64.exe` | `CDAE435269C7B359AC82BC3E441E618E33AFD2AAFA9C5313896F78602FA0A1F3` |
+| `FocusLink-0.12.7-x64-portable.exe` | `37D4C1E651F1BC476C438C31F896BD57A81340873834A2BB70337F6A7BBA8546` |
 
 同时提供 `SHA256SUMS.txt`。下载后可在 PowerShell 执行：
 
