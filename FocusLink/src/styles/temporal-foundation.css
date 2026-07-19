@@ -157,9 +157,9 @@
 
 /* 全局强调色：操作、选中、导航、统计与专注使用同一色相；暂停红保持独立。 */
 .focus-color-emerald {
-  --app-accent: 14 159 110;
-  --app-accent-hover: 11 122 85;
-  --app-accent-active: 8 96 67;
+  --app-accent: 0 122 85;
+  --app-accent-hover: 0 96 67;
+  --app-accent-active: 0 76 54;
   --app-accent-soft: 228 245 238;
   --app-success: 14 159 110;
   --app-success-soft: 228 245 238;
@@ -211,9 +211,9 @@
   --app-success-deep: 205 179 246;
 }
 .focus-color-amber {
-  --app-accent: 187 119 24;
-  --app-accent-hover: 139 85 14;
-  --app-accent-active: 107 65 12;
+  --app-accent: 143 84 0;
+  --app-accent-hover: 112 64 0;
+  --app-accent-active: 88 49 0;
   --app-accent-soft: 249 240 222;
   --app-success: 187 119 24;
   --app-success-soft: 249 240 222;
