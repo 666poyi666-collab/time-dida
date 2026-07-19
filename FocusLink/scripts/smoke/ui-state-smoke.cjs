@@ -120,6 +120,7 @@ async function inspectState(expectedState) {
       const rootStyle = getComputedStyle(document.documentElement);
       return {
         state: consoleElement?.dataset.state || null,
+        accentToken: rootStyle.getPropertyValue('--app-accent').trim(),
         pauseToken: rootStyle.getPropertyValue('--app-pause').trim(),
         successToken: rootStyle.getPropertyValue('--app-success').trim(),
         workspaceClass: workspace?.className || null,
@@ -567,7 +568,10 @@ async function main() {
     [results.paused.workspaceClass.includes('state-paused'), 'paused workspace state class'],
     [results.paused.primaryText === '继续', 'paused primary action'],
     [Boolean(results.paused.stateMomentText?.startsWith('暂停于')), 'pause time is visible'],
-    [results.idle.primaryBackground.includes('37, 99, 235'), 'idle primary uses interface blue'],
+    [
+      results.idle.primaryBackground.includes(results.idle.accentToken.split(' ').join(', ')),
+      'idle primary uses the selected global accent',
+    ],
     [
       results.paused.primaryBackground !== 'none rgba(0, 0, 0, 0)' &&
         !results.paused.primaryBackground.includes('210, 67, 57'),
