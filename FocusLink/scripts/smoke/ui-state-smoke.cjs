@@ -432,6 +432,27 @@ async function main() {
     cardBorders: [...document.querySelectorAll('.insight-block')]
       .map((card) => getComputedStyle(card).borderTopWidth),
   }))()`);
+  results.historyViews = {};
+  for (const label of ['单次质量', '时间去向']) {
+    const clicked = await evaluate(`(() => {
+      const button = [...document.querySelectorAll('.insight-view-switch button')]
+        .find((item) => item.textContent?.trim().startsWith(${JSON.stringify(label)}));
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    if (!clicked) throw new Error(`History analysis view was not found: ${label}`);
+    await delay(220);
+    results.historyViews[label] = await evaluate(`(() => ({
+      activeLabel: document.querySelector('.insight-view-switch button.active')?.textContent?.trim() || null,
+      insightBlocks: document.querySelectorAll('.insight-block').length,
+      hasWeave: Boolean(document.querySelector('.weave-canvas')),
+      hasBeads: Boolean(document.querySelector('.beads-canvas')),
+      hasMosaic: Boolean(document.querySelector('.mosaic')),
+    }))()`);
+  }
+  await evaluate(`document.querySelector('.insight-view-switch button')?.click()`);
+  await delay(220);
   results.historyTodayLabel = await evaluate(
     `document.querySelector('.history-day-current strong')?.textContent?.trim() || null`,
   );
@@ -602,12 +623,30 @@ async function main() {
     [results.taskLightInspection.shellBackdrop === 'none', 'task workspace has no backdrop filter'],
     [results.historyInspection.hasConclusion, 'history leads with an actionable conclusion'],
     [
-      results.historyInspection.insightBlocks === 3,
-      'single-day history renders weave, beads and mosaic blocks',
+      results.historyInspection.insightBlocks === 1,
+      'history emphasizes one analysis block at a time',
     ],
     [results.historyInspection.hasWeave, 'single-day history renders the 24-hour weave'],
-    [results.historyInspection.hasBeads, 'history renders the session bead chain'],
-    [results.historyInspection.hasMosaic, 'history renders the task destination mosaic'],
+    [
+      !results.historyInspection.hasBeads && !results.historyInspection.hasMosaic,
+      'overview does not compete with secondary visualizations',
+    ],
+    [
+      results.historyViews['单次质量']?.activeLabel?.startsWith('单次质量') &&
+        results.historyViews['单次质量']?.insightBlocks === 1 &&
+        results.historyViews['单次质量']?.hasBeads &&
+        !results.historyViews['单次质量']?.hasWeave &&
+        !results.historyViews['单次质量']?.hasMosaic,
+      'single-session quality view renders the bead chain alone',
+    ],
+    [
+      results.historyViews['时间去向']?.activeLabel?.startsWith('时间去向') &&
+        results.historyViews['时间去向']?.insightBlocks === 1 &&
+        results.historyViews['时间去向']?.hasMosaic &&
+        !results.historyViews['时间去向']?.hasWeave &&
+        !results.historyViews['时间去向']?.hasBeads,
+      'task destination view renders the mosaic alone',
+    ],
     [
       results.historyInspection.cardBorders.every((width) => width === '0px'),
       'history blocks avoid nested card borders',

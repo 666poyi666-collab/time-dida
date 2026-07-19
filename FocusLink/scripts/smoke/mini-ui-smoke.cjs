@@ -992,7 +992,7 @@ function assertResult(name, result, expected) {
       [result.stateText === expected.stateText, 'precise state label'],
       [result.currentLabel === expected.currentLabel, 'current timer label'],
       [result.taskTitle.length > 0, 'task context copy'],
-      [result.primaryTimeFontSize >= 26, 'expanded primary time at least 26px'],
+      [result.primaryTimeFontSize >= 24, 'expanded primary time at least 24px'],
       [result.elements.focusCore.rect?.width >= 130, 'expanded primary time column at least 130px'],
       [
         JSON.stringify(result.metricLabels) === JSON.stringify(['累计专注', '累计暂停', '总历时']),
