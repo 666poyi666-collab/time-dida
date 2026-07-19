@@ -1,5 +1,6 @@
-/* FocusLink has one visual system. Feature recipes live in temporal-ui; the compact
-   linear workbench shell below owns layout and must remain the only presentation layer. */
+/* FocusLink has one visual system: temporal-foundation owns tokens and fonts;
+   legacy-support carries still-referenced rules for tasks/settings/overlays;
+   linear-workbench is the single presentation layer and wins on conflicts. */
 @import './temporal-foundation.css';
-@import './temporal-ui.css';
+@import './legacy-support.css';
 @import './linear-workbench.css';

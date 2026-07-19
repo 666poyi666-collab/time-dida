@@ -112,30 +112,27 @@ async function inspectState(expectedState) {
     const result = await evaluate(`(() => {
       const consoleElement = document.querySelector('.focus-console');
       const workspace = document.querySelector('.session-workspace');
-      const primary = document.querySelector('.timer-controls button');
-      const status = document.querySelector('.status-chip');
+      const primary = document.querySelector('.timer-controls .btn-main-action');
+      const status = document.querySelector('.focus-state-word');
       const stateMoment = document.querySelector('.timer-readout-meta > span:nth-child(2)');
-      const activity = document.querySelector('.ribbon-now');
-      const ambient = document.querySelector('.ambient-field');
-      const ambientCanvas = document.querySelector('.ambient-canvas');
+      const ribbon = document.querySelector('.temporal-ribbon');
+      const ribbonCanvas = document.querySelector('.ribbon-canvas');
       const rootStyle = getComputedStyle(document.documentElement);
       return {
         state: consoleElement?.dataset.state || null,
         pauseToken: rootStyle.getPropertyValue('--app-pause').trim(),
         successToken: rootStyle.getPropertyValue('--app-success').trim(),
         workspaceClass: workspace?.className || null,
-        workspaceBorder: workspace ? getComputedStyle(workspace).borderColor : null,
-        workspaceShadow: workspace ? getComputedStyle(workspace).boxShadow : null,
         primaryBackground: primary ? getComputedStyle(primary).backgroundImage + ' ' + getComputedStyle(primary).backgroundColor : null,
         primaryText: primary?.textContent?.trim() || null,
-        primaryTime: document.querySelector('.timer-primary')?.textContent?.trim() || null,
+        primaryTime: document.querySelector('.timer-dial')?.textContent?.trim() || null,
         statusText: status?.textContent?.trim() || null,
         stateMomentText: stateMoment?.textContent?.trim() || null,
-        activityAnimation: activity ? getComputedStyle(activity).animationName : null,
+        ribbonState: ribbon?.dataset.state || null,
+        hasRibbonCanvas: Boolean(ribbonCanvas),
+        ribbonCanvasSize: ribbonCanvas ? [ribbonCanvas.width, ribbonCanvas.height] : null,
+        ambientGone: !document.querySelector('.ambient-field'),
         themeFamily: document.documentElement.dataset.themeFamily || null,
-        ambientRenderer: ambient?.dataset.renderer || null,
-        ambientCanvasSize: ambientCanvas ? [ambientCanvas.width, ambientCanvas.height] : null,
-        ambientFallbackGlows: document.querySelectorAll('.ambient-glow').length,
         ledgerVisible: Boolean(document.querySelector('.session-ledger-pane')),
         viewport: [window.innerWidth, window.innerHeight],
         bodyScroll: [document.body.scrollWidth, document.body.scrollHeight],
@@ -299,7 +296,7 @@ async function main() {
   }
   await evaluate("window.focuslink.settings.set({ theme: 'light', accentColor: 'indigo' })");
   await delay(180);
-  await evaluate("document.querySelector('.timer-context-action')?.click()");
+  await evaluate("[...document.querySelectorAll('.timer-context-actions button')][0]?.click()");
   await waitForAnyText(['点击任务即可关联', '暂无可用任务', '滴答清单']);
   results.taskPicker = await captureScreen('task-picker');
   await evaluate("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
@@ -352,8 +349,8 @@ async function main() {
   results.focusActionStates = {};
   results.focusActionStates.focus = await evaluate(`(() => {
     document.documentElement.classList.add('kb-nav');
-    const button = document.querySelector('.timer-btn-main');
-    const stop = document.querySelector('.timer-btn-stop');
+    const button = document.querySelector('.timer-controls .btn-main-action');
+    const stop = document.querySelector('.timer-controls .btn-stop-action');
     if (!button || !stop) return null;
     button.focus();
     const style = getComputedStyle(button);
@@ -365,7 +362,7 @@ async function main() {
     };
   })()`);
   const startRect = await evaluate(`(() => {
-    const button = document.querySelector('.timer-btn-main');
+    const button = document.querySelector('.timer-controls .btn-main-action');
     if (!button) return null;
     const rect = button.getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
@@ -378,7 +375,7 @@ async function main() {
   });
   await delay(180);
   results.focusActionStates.hover = await evaluate(`(() => {
-    const style = getComputedStyle(document.querySelector('.timer-btn-main'));
+    const style = getComputedStyle(document.querySelector('.timer-controls .btn-main-action'));
     return { background: style.backgroundColor, transform: style.transform, shadow: style.boxShadow };
   })()`);
   await send('Input.dispatchMouseEvent', {
@@ -390,7 +387,7 @@ async function main() {
   });
   await delay(150);
   results.focusActionStates.active = await evaluate(`(() => {
-    const style = getComputedStyle(document.querySelector('.timer-btn-main'));
+    const style = getComputedStyle(document.querySelector('.timer-controls .btn-main-action'));
     return { background: style.backgroundColor, transform: style.transform };
   })()`);
   await send('Input.dispatchMouseEvent', {
@@ -404,8 +401,8 @@ async function main() {
   process.stderr.write('[ui-smoke] capture running\n');
   results.running = await capture('running', 'running');
   const pauseClicked = await evaluate(`(() => {
-    const button = document.querySelector('.timer-controls button');
-    if (!button || !button.textContent.includes('暂停专注')) return false;
+    const button = document.querySelector('.timer-controls .btn-main-action');
+    if (!button || button.textContent.trim() !== '暂停') return false;
     button.click();
     return true;
   })()`);
@@ -420,21 +417,19 @@ async function main() {
   await delay(650);
   results.history = await captureScreen('history');
   results.historyInspection = await evaluate(`(() => ({
-    cards: document.querySelectorAll('.history-insight-card').length,
+    hasConclusion: Boolean(document.querySelector('.insight-conclusion')),
+    conclusionText: document.querySelector('.conclusion-sentence')?.textContent?.trim() || null,
+    insightBlocks: document.querySelectorAll('.insight-block').length,
+    hasWeave: Boolean(document.querySelector('.weave-canvas')),
+    hasBeads: Boolean(document.querySelector('.beads-canvas')),
+    hasMosaic: Boolean(document.querySelector('.mosaic')),
+    allocRows: document.querySelectorAll('.alloc-row').length,
     hasRing: Boolean(document.querySelector('.history-focus-ring')),
-    hasConclusion: Boolean(document.querySelector('.history-conclusion')),
-    hasTaskDestination: Boolean(document.querySelector('.history-task-card')),
-    hasUnifiedCanvas: Boolean(document.querySelector('.history-visual-header')),
-    hasCombinationChart: Boolean(document.querySelector('.history-chart-trend')) &&
-      Boolean(document.querySelector('.history-chart-area')),
-    columns: document.querySelectorAll('.history-column').length,
-    hourlyColumns: document.querySelectorAll('.history-hourly-column').length,
-    ranks: document.querySelectorAll('.history-rank-row').length,
     hasDayNavigator: Boolean(document.querySelector('.history-day-navigator')),
     activeRange: [...document.querySelectorAll('.history-filter-row button')]
       .find((button) => button.classList.contains('bg-accent'))?.textContent?.trim() || null,
     nextDayDisabled: Boolean(document.querySelector('.history-day-navigator > button:last-child')?.disabled),
-    cardBorders: [...document.querySelectorAll('.history-insight-card')]
+    cardBorders: [...document.querySelectorAll('.insight-block')]
       .map((card) => getComputedStyle(card).borderTopWidth),
   }))()`);
   results.historyTodayLabel = await evaluate(
@@ -467,7 +462,8 @@ async function main() {
       activeRange: [...document.querySelectorAll('.history-filter-row button')]
         .find((button) => button.getAttribute('aria-pressed') === 'true')?.textContent?.trim() || null,
       hasDayNavigator: Boolean(document.querySelector('.history-day-navigator')),
-      columns: document.querySelectorAll('.history-column').length,
+      hasMatrix: Boolean(document.querySelector('.matrix-canvas')),
+      hasWeave: Boolean(document.querySelector('.weave-canvas')),
     }))()`);
   }
   const singleDayClicked = await evaluate(`(() => {
@@ -484,8 +480,8 @@ async function main() {
       .find((button) => button.getAttribute('aria-pressed') === 'true')?.textContent?.trim() || null,
     label: document.querySelector('.history-day-current strong')?.textContent?.trim() || null,
     nextDisabled: Boolean(document.querySelector('.history-day-navigator > button:last-child')?.disabled),
-    columns: document.querySelectorAll('.history-column').length,
-    hourlyColumns: document.querySelectorAll('.history-hourly-column').length,
+    hasWeave: Boolean(document.querySelector('.weave-canvas')),
+    hasMatrix: Boolean(document.querySelector('.matrix-canvas')),
   }))()`);
   await evaluate('document.querySelector(\'button[aria-label="设置"]\')?.click()');
   await waitForAnyText(['外观', '界面与体验']);
@@ -496,7 +492,7 @@ async function main() {
     if (!tab) throw new Error('Experience settings tab was not found');
     tab.click();
   })()`);
-  await waitForAnyText(['字体气质']);
+  await waitForAnyText(['计时仪表']);
   const toggleSelector = '.toggle-track[aria-label^="跟随主界面主题："]';
   results.toggleInspection = {
     before: await inspectToggle(toggleSelector),
@@ -513,25 +509,28 @@ async function main() {
   await evaluate(`document.querySelector(${JSON.stringify(toggleSelector)})?.click()`);
   await delay(280);
   results.toggleInspection.restored = await inspectToggle(toggleSelector);
-  await evaluate("window.focuslink.settings.set({ fontProfile: 'manrope' })");
-  await delay(250);
-  results.settingsFontManrope = await captureScreen('settings-font-manrope');
-  results.manropeFont = await evaluate(`(() => {
-    const body = getComputedStyle(document.body);
-    const preview = getComputedStyle(document.querySelector('.font-preview-manrope .settings-font-sample'));
-    return { family: body.fontFamily, weight: body.fontWeight, tracking: body.letterSpacing,
-      previewFamily: preview.fontFamily, previewTracking: preview.letterSpacing };
-  })()`);
-  await evaluate("window.focuslink.settings.set({ fontProfile: 'geist' })");
-  await delay(250);
-  results.settingsFontGeist = await captureScreen('settings-font-geist');
-  results.geistFont = await evaluate(`(() => {
-    const body = getComputedStyle(document.body);
-    const preview = getComputedStyle(document.querySelector('.font-preview-geist .settings-font-sample'));
-    return { family: body.fontFamily, weight: body.fontWeight, tracking: body.letterSpacing,
-      previewFamily: preview.fontFamily, previewTracking: preview.letterSpacing };
-  })()`);
-  await evaluate("window.focuslink.settings.set({ theme: 'dark' })");
+  // 计时仪表：切换四种样式，验证根类与四种预览读数字体真实不同
+  results.instrumentFonts = {};
+  for (const style of ['standard', 'flip', 'pixel', 'thin']) {
+    await evaluate(`window.focuslink.settings.set({ timerStyle: '${style}' })`);
+    await delay(220);
+    results.instrumentFonts[style] = await evaluate(`(() => {
+      const pick = (sel) => {
+        const el = document.querySelector(sel);
+        return el ? getComputedStyle(el).fontFamily : null;
+      };
+      return {
+        rootTimerClass: [...document.documentElement.classList].find((c) => c.startsWith('timer-style-')) || null,
+        standard: pick('.dial-standard'),
+        flip: pick('.dial-flip'),
+        pixel: pick('.dial-pixel'),
+        thin: pick('.dial-thin'),
+        previewCount: document.querySelectorAll('.instrument-choice .timer-dial').length,
+      };
+    })()`);
+    await captureScreen(`settings-instrument-${style}`);
+  }
+  await evaluate("window.focuslink.settings.set({ timerStyle: 'standard', theme: 'dark' })");
   await delay(400);
   results.settingsDark = await captureScreen('settings-dark');
 
@@ -539,19 +538,21 @@ async function main() {
     [results.buildIdentity.version === packageVersion, 'packaged version matches package.json'],
     [results.buildIdentity.commit === expectedCommit, 'packaged commit matches generated metadata'],
     [results.running.workspaceClass.includes('state-running'), 'running workspace state class'],
-    [results.running.primaryText === '暂停专注', 'running primary action'],
+    [results.running.primaryText === '暂停', 'running primary action'],
     [results.running.statusText === '专注中', 'running status is explicit'],
     [Boolean(results.running.stateMomentText?.startsWith('起于')), 'running start time is visible'],
     [results.running.primaryTime !== '00:00', 'visible timer advances after UI start'],
-    [results.running.activityAnimation !== null, 'running temporal ribbon has a live now marker'],
-    [results.running.ledgerVisible, 'running ledger opens after UI start'],
-    [results.running.themeFamily === 'quiet', 'quiet is the default visual theme'],
-    [results.running.ambientRenderer === 'canvas', 'ambient field uses the canvas renderer'],
     [
-      results.running.ambientCanvasSize?.[0] > 0 && results.running.ambientCanvasSize?.[1] > 0,
-      'ambient canvas matches a real viewport',
+      results.running.ribbonState === 'running' && results.running.hasRibbonCanvas,
+      'running temporal band canvas is live',
     ],
-    [results.running.ambientFallbackGlows === 3, 'ambient CSS fallback remains available'],
+    [
+      results.running.ribbonCanvasSize?.[0] > 0 && results.running.ribbonCanvasSize?.[1] > 0,
+      'temporal band canvas matches a real viewport',
+    ],
+    [results.running.ambientGone, 'ambient field is removed from the design system'],
+    [results.running.themeFamily === null, 'legacy theme family is no longer written'],
+    [results.running.ledgerVisible, 'running ledger opens after UI start'],
     [
       Number.parseFloat(results.focusActionStates.focus?.outlineWidth || '0') > 0,
       'keyboard focus exposes a visible primary-action outline',
@@ -563,15 +564,15 @@ async function main() {
     ],
     [results.focusActionStates.active?.transform !== 'none', 'primary action has active feedback'],
     [results.paused.workspaceClass.includes('state-paused'), 'paused workspace state class'],
-    [results.paused.primaryText === '继续专注', 'paused primary action'],
+    [results.paused.primaryText === '继续', 'paused primary action'],
     [Boolean(results.paused.stateMomentText?.startsWith('暂停于')), 'pause time is visible'],
     [results.idle.primaryBackground.includes('37, 99, 235'), 'idle primary uses interface blue'],
     [
       results.paused.primaryBackground !== 'none rgba(0, 0, 0, 0)' &&
-        !results.paused.primaryBackground.includes('217, 119, 6'),
-      'resume uses interface action color',
+        !results.paused.primaryBackground.includes('210, 67, 57'),
+      'resume uses interface action color, not pause red',
     ],
-    [results.running.successToken === '5 150 105', 'focus green token'],
+    [results.running.successToken === '14 159 110', 'focus green token'],
     [results.paused.pauseToken === '210 67 57', 'pause red token'],
     [results.idle.bodyScroll[0] === results.idle.viewport[0], 'no horizontal overflow'],
     [results.idle.bodyScroll[1] === results.idle.viewport[1], 'no vertical overflow'],
@@ -598,21 +599,19 @@ async function main() {
     [results.taskLightInspection.completedView, 'task completed view'],
     [!results.taskLightInspection.hasSourceSelector, 'task provider is not exposed as a source'],
     [results.taskLightInspection.shellBackdrop === 'none', 'task workspace has no backdrop filter'],
-    [results.historyInspection.cards === 3, 'history renders three insight charts'],
-    [results.historyInspection.hasUnifiedCanvas, 'history charts share one analytics canvas'],
+    [results.historyInspection.hasConclusion, 'history leads with an actionable conclusion'],
     [
-      results.historyInspection.hourlyColumns === 24,
-      'single-day history renders a precise 24-hour rhythm',
+      results.historyInspection.insightBlocks === 3,
+      'single-day history renders weave, beads and mosaic blocks',
     ],
+    [results.historyInspection.hasWeave, 'single-day history renders the 24-hour weave'],
+    [results.historyInspection.hasBeads, 'history renders the session bead chain'],
+    [results.historyInspection.hasMosaic, 'history renders the task destination mosaic'],
     [
       results.historyInspection.cardBorders.every((width) => width === '0px'),
-      'history charts avoid nested card borders',
+      'history blocks avoid nested card borders',
     ],
     [!results.historyInspection.hasRing, 'history removes decorative focus composition ring'],
-    [results.historyInspection.hasConclusion, 'history leads with an actionable conclusion'],
-    [results.historyInspection.hasTaskDestination, 'history gives task destination its own chart'],
-    [results.historyInspection.hourlyColumns === 24, 'history renders hourly focus columns'],
-    [results.historyInspection.ranks > 0, 'history renders session ranking bars'],
     [results.historyInspection.hasDayNavigator, 'history defaults to single-day navigation'],
     [results.historyInspection.activeRange === '单日', 'history defaults to today'],
     [results.historyInspection.nextDayDisabled, 'history cannot navigate beyond today'],
@@ -628,27 +627,28 @@ async function main() {
     ],
     [
       results.historyRanges['近 7 天']?.activeRange === '近 7 天' &&
-        results.historyRanges['近 7 天']?.columns === 7 &&
+        results.historyRanges['近 7 天']?.hasMatrix &&
         !results.historyRanges['近 7 天']?.hasDayNavigator,
-      'history switches to a real seven-day chart',
+      'history switches to the seven-day rhythm matrix',
     ],
     [
       results.historyRanges['半个月']?.activeRange === '半个月' &&
-        results.historyRanges['半个月']?.columns === 15 &&
+        results.historyRanges['半个月']?.hasMatrix &&
         !results.historyRanges['半个月']?.hasDayNavigator,
-      'history switches to a real fifteen-day chart',
+      'history switches to the fifteen-day rhythm matrix',
     ],
     [
       results.historyRanges['1 个月']?.activeRange === '1 个月' &&
-        results.historyRanges['1 个月']?.columns === 30 &&
+        results.historyRanges['1 个月']?.hasMatrix &&
         !results.historyRanges['1 个月']?.hasDayNavigator,
-      'history switches to a real thirty-day chart',
+      'history switches to the thirty-day rhythm matrix',
     ],
     [
       results.historyReturnedSingleDay.activeRange === '单日' &&
         results.historyReturnedSingleDay.label === results.historyTodayLabel &&
         results.historyReturnedSingleDay.nextDisabled &&
-        results.historyReturnedSingleDay.hourlyColumns === 24,
+        results.historyReturnedSingleDay.hasWeave &&
+        !results.historyReturnedSingleDay.hasMatrix,
       'history returns from range presets to today single-day data',
     ],
     [results.toggleInspection.before?.role === 'switch', 'settings toggle uses switch semantics'],
@@ -683,10 +683,21 @@ async function main() {
       'settings toggle can restore its original state',
     ],
     [
-      results.manropeFont.family.includes('Manrope') &&
-        results.geistFont.family.includes('Geist') &&
-        results.manropeFont.family !== results.geistFont.family,
-      'font profiles produce visibly distinct interface families',
+      results.instrumentFonts.standard?.previewCount === 4,
+      'settings renders live previews for all four timer instruments',
+    ],
+    [
+      results.instrumentFonts.standard?.standard?.includes('JetBrains Mono') &&
+        results.instrumentFonts.standard?.flip?.includes('Oswald') &&
+        results.instrumentFonts.standard?.thin?.includes('Inter Tight'),
+      'timer instruments use genuinely different digit families',
+    ],
+    [
+      results.instrumentFonts.standard?.rootTimerClass === 'timer-style-standard' &&
+        results.instrumentFonts.flip?.rootTimerClass === 'timer-style-flip' &&
+        results.instrumentFonts.pixel?.rootTimerClass === 'timer-style-pixel' &&
+        results.instrumentFonts.thin?.rootTimerClass === 'timer-style-thin',
+      'timer style setting applies the matching instrument class',
     ],
     [
       results.taskLightInspection.bodyScroll[0] === results.taskLightInspection.viewport[0],

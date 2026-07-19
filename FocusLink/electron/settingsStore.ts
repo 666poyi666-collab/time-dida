@@ -5,6 +5,7 @@ import { getSetting, setSetting, resetFailedSyncItems, getDb } from './db/index.
 import { DEFAULT_SETTINGS } from '@shared/types';
 import type { AppSettings } from '@shared/types';
 import { mergeSettings } from '@shared/settingsPolicy';
+import { resolveTimerStyle } from '@shared/theme';
 import { getExpandedMiniWindowSize } from '@shared/miniWindowLayout';
 import { logger } from './logger.js';
 import {
@@ -78,8 +79,22 @@ export function getSettings(): AppSettings {
   applyTomatodoCloudV053Migration(settings);
   applyReconcileDidaFocusV060Migration();
   normalizeSegmentBehavior(settings);
+  normalizeTimerStyle(settings);
   normalizeMiniWindowSize(settings);
   return settings;
+}
+
+/** v0.12.7 迁移：旧计时字形 editorial/digital/mono 映射到新仪表体系，未知值回落 standard。 */
+function normalizeTimerStyle(settings: AppSettings): void {
+  const resolved = resolveTimerStyle(settings.timerStyle);
+  if (resolved === settings.timerStyle) return;
+  logger.info(
+    'settings',
+    `v0127 migration: timerStyle ${String(settings.timerStyle)} -> ${resolved}`,
+  );
+  settings.timerStyle = resolved;
+  store.store = settings;
+  setSetting(SETTINGS_KEY, JSON.stringify(settings));
 }
 
 /** 暂停后继续固定创建新片段；清理旧版仍保存的无效“继续原片段”选项。 */

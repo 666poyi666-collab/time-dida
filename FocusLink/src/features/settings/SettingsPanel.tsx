@@ -10,7 +10,9 @@ import type { AppSettings } from '@shared/types';
 import type { TomatodoBridgeStatus } from '@shared/ipc/api';
 import { APP_VERSION } from '@shared/version';
 import { TOMATODO_SUBJECT_OPTIONS } from '@shared/tomatodoPolicy';
+import { resolveTimerStyle } from '@shared/theme';
 import { Icon } from '../../ui/Icon';
+import { TimerDial } from '../focus/TimerDial';
 
 const HOTKEY_LABELS: Record<keyof AppSettings['hotkeys'], string> = {
   toggleTimer: '开始 / 暂停 / 继续',
@@ -26,50 +28,23 @@ const TABS = [
   { id: 'sync', label: '同步', icon: Icon.Refresh },
 ] as const;
 
-const FONT_OPTIONS = [
-  {
-    id: 'plex',
-    label: '精密',
-    detail: 'IBM Plex · 仪器感与中文秩序',
-    sample: '专注节奏 Focus 24:16',
-  },
-  {
-    id: 'manrope',
-    label: '人文',
-    detail: 'Manrope · 温润舒展，适合长读',
-    sample: '专注节奏 Focus 24:16',
-  },
-  {
-    id: 'geist',
-    label: '现代',
-    detail: 'Geist · 利落紧凑，信息密度高',
-    sample: '专注节奏 Focus 24:16',
-  },
-  {
-    id: 'sora',
-    label: '几何',
-    detail: 'Sora · 个性鲜明，数字更醒目',
-    sample: '专注节奏 Focus 24:16',
-  },
-] as const satisfies ReadonlyArray<{
-  id: AppSettings['fontProfile'];
-  label: string;
-  detail: string;
-  sample: string;
-}>;
-
 const FOCUS_COLOR_OPTIONS = [
-  { id: 'emerald', label: '翡翠', color: '#059669' },
-  { id: 'forest', label: '森林', color: '#16735b' },
-  { id: 'mint', label: '薄荷', color: '#20a779' },
-  { id: 'teal', label: '青绿', color: '#0f8b8d' },
+  { id: 'emerald', label: '翡翠', color: '#0e9f6e' },
+  { id: 'forest', label: '森林', color: '#27855a' },
+  { id: 'mint', label: '薄荷', color: '#3fa98c' },
+  { id: 'teal', label: '青碧', color: '#0e8f8f' },
 ] as const;
 
 const TIMER_STYLE_OPTIONS = [
-  { id: 'editorial', label: '编辑体' },
-  { id: 'digital', label: '数码体' },
-  { id: 'mono', label: '等宽体' },
-] as const;
+  { id: 'standard', label: '标准等宽', note: 'JetBrains Mono · 沉稳仪器读数' },
+  { id: 'flip', label: '翻页机械', note: '上下分片翻牌 · 中央转轴' },
+  { id: 'pixel', label: '像素点阵', note: '5×7 点阵 · 专注核心充能' },
+  { id: 'thin', label: '极细编辑', note: 'Inter Tight 极细 · 排版感' },
+] as const satisfies ReadonlyArray<{
+  id: AppSettings['timerStyle'];
+  label: string;
+  note: string;
+}>;
 
 // 番茄 To-do 学科下拉的可选值（与 TOMATODO_SUBJECT_OPTIONS 同源）
 const TOMATODO_SUBJECT_VALUES = TOMATODO_SUBJECT_OPTIONS.map((subject) => subject.value);
@@ -680,63 +655,58 @@ export function SettingsPanel() {
               </Section>
 
               <Section
-                title="排版"
-                desc="字体与计时字形刻意拉开差异；界面蓝、专注绿、暂停红各司其职。"
+                title="专注仪表"
+                desc="界面蓝 = 操作、专注绿 = 运行、暂停红 = 损耗；三套仪表在字形骨架上真正不同。"
               >
                 <div>
-                  <Row label="字体气质" desc="四套正文、标题与数字字体组合，主窗口和小窗同步生效">
-                    <div className="settings-font-choices" aria-label="字体气质">
-                      {FONT_OPTIONS.map((font) => (
-                        <button
-                          key={font.id}
-                          type="button"
-                          className={`settings-font-choice font-preview-${font.id} ${settings.fontProfile === font.id ? 'active' : ''}`}
-                          onClick={() => update({ fontProfile: font.id })}
-                          aria-pressed={settings.fontProfile === font.id}
-                        >
-                          <span className="settings-font-sample">{font.sample}</span>
-                          <span className="settings-font-meta">
-                            <strong>{font.label}</strong>
-                            <small>{font.detail}</small>
-                          </span>
-                          {settings.fontProfile === font.id && (
-                            <span className="settings-font-check">
-                              <Icon.Check size="xs" />
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </Row>
-                  <Row label="专注色" desc="只影响专注数字、时间织带与统计图；暂停始终使用红色">
-                    <div className="settings-focus-colors" aria-label="专注强调色">
+                  <Row label="专注色" desc="只影响专注读数、时间之带与统计图；暂停始终使用红色">
+                    <div className="focus-color-choices" aria-label="专注强调色">
                       {FOCUS_COLOR_OPTIONS.map((color) => (
                         <button
                           key={color.id}
                           type="button"
-                          className={settings.focusColor === color.id ? 'active' : ''}
+                          className={`focus-color-swatch ${settings.focusColor === color.id ? 'active' : ''}`}
+                          style={{ backgroundColor: color.color }}
                           onClick={() => update({ focusColor: color.id })}
                           aria-label={color.label}
                           aria-pressed={settings.focusColor === color.id}
                           title={color.label}
+                        />
+                      ))}
+                      <span className="focus-color-note">
+                        当前：{FOCUS_COLOR_OPTIONS.find((c) => c.id === settings.focusColor)?.label}
+                      </span>
+                    </div>
+                  </Row>
+                  <Row label="计时仪表" desc="只改变主计时读数的表现，不构成完整主题">
+                    <div className="instrument-choices" aria-label="计时仪表样式">
+                      {TIMER_STYLE_OPTIONS.map((style) => (
+                        <button
+                          key={style.id}
+                          type="button"
+                          className={`instrument-choice ${resolveTimerStyle(settings.timerStyle) === style.id ? 'active' : ''}`}
+                          onClick={() => update({ timerStyle: style.id })}
+                          aria-pressed={resolveTimerStyle(settings.timerStyle) === style.id}
                         >
-                          <i style={{ backgroundColor: color.color }} />
-                          <span>{color.label}</span>
+                          <span className="ic-name">{style.label}</span>
+                          <span className="ic-preview">
+                            <TimerDial
+                              ms={25 * 60_000 + 16_000}
+                              state="running"
+                              style={style.id}
+                              coreRatio={0.62}
+                            />
+                          </span>
+                          <span className="ic-note">{style.note}</span>
                         </button>
                       ))}
                     </div>
                   </Row>
-                  <Row label="计时字形" desc="仅改变主计时读数，不牺牲数字宽度与可读性">
-                    <div className="settings-theme-choices">
-                      {TIMER_STYLE_OPTIONS.map((style) => (
-                        <ChoiceBtn
-                          key={style.id}
-                          active={settings.timerStyle === style.id}
-                          onClick={() => update({ timerStyle: style.id })}
-                        >
-                          {style.label}
-                        </ChoiceBtn>
-                      ))}
+                  <Row label="状态色" desc="三种语义色在全应用保持稳定">
+                    <div className="settings-state-colors">
+                      <span className="interface">操作 · 界面蓝</span>
+                      <span className="focus">专注 · 强调绿</span>
+                      <span className="pause">暂停 · 红</span>
                     </div>
                   </Row>
                 </div>

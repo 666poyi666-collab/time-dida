@@ -247,9 +247,9 @@ export interface AppSettings {
   accentColor: string;
   /** 专注状态的独立强调色；不与界面操作蓝、暂停红混用。 */
   focusColor: 'emerald' | 'forest' | 'mint' | 'teal';
-  /** 主计时数字的表现方式。 */
-  timerStyle: 'editorial' | 'digital' | 'mono';
-  /** 主界面排版气质；所有主题均可独立选择，数字字体与正文字体成套切换。 */
+  /** 主计时数字的仪表样式：标准等宽 / 翻页机械 / 像素点阵 / 极细编辑。 */
+  timerStyle: 'standard' | 'flip' | 'pixel' | 'thin';
+  /** 兼容字段：旧排版气质已合并为单一字体系统，运行时不再消费，仅用于旧设置迁移。 */
   fontProfile: 'plex' | 'geist' | 'manrope' | 'sora';
   segmentBehavior: 'new-segment' | 'continue-segment';
   syncMode: 'focus-record' | 'comment' | 'local-only';
@@ -365,7 +365,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   accentColor: 'indigo',
   focusColor: 'emerald',
-  timerStyle: 'editorial',
+  timerStyle: 'standard',
   fontProfile: 'plex',
   segmentBehavior: 'new-segment',
   syncMode: 'focus-record',

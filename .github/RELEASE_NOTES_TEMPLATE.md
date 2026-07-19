@@ -44,7 +44,7 @@
 - `npm run build`
 - `npm run dist`
 - 主窗、小窗、安装版和便携版 smoke
-- 动态材质深浅主题与双字体人工验收：默认 `Manrope Variable` + `Noto Sans SC Variable`，并验证 Geist“精准”方案可切换；核对单一低对比环境层、无整页 blur/合成黑块、字号下限、对比度与 reduced-motion
+- 深浅主题人工验收：单一字体系统（Geist Variable + MiSans + JetBrains Mono；仪表字形 Inter Tight / Oswald）、四套计时仪表实时预览与 canvas 时间之带逐秒步进/变焦；核对无整页 blur/合成黑块、字号下限、对比度与 reduced-motion
 - 统计快速展开/切换的 request-id 与计时 tick 性能 smoke
 - 真实 UI “滴答任务完成 → 6 秒撤销 → 再完成 → 完成列表找回 → 恢复” smoke
 - renderer 无响应受控恢复、Error 日志序列化与托盘监听幂等性验证

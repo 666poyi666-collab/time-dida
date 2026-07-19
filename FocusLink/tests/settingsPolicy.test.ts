@@ -7,7 +7,13 @@ import {
   mergeSettings,
   resolveTickTickTaskProvider,
 } from '../shared/settingsPolicy';
-import { resolveThemeAppearance, resolveThemeFamily } from '../shared/theme';
+import {
+  FOCUS_COLORS,
+  TIMER_STYLES,
+  resolveFocusColor,
+  resolveThemeAppearance,
+  resolveThemeFamily,
+} from '../shared/theme';
 
 describe('settings partial update policy', () => {
   it('preserves the full settings object when the task drawer only changes taskSource', () => {
@@ -54,7 +60,7 @@ describe('settings partial update policy', () => {
   });
 
   it('routes focus color and timer style through the theme domain', () => {
-    const next = mergeSettings(DEFAULT_SETTINGS, { focusColor: 'teal', timerStyle: 'digital' });
+    const next = mergeSettings(DEFAULT_SETTINGS, { focusColor: 'teal', timerStyle: 'pixel' });
 
     expect(detectSettingsChangedDomains(DEFAULT_SETTINGS, next)).toEqual(['theme']);
   });
@@ -68,6 +74,44 @@ describe('settings partial update policy', () => {
     expect(migrated.themeFamily).toBe('quiet');
     expect(migrated.theme).toBe('light');
     expect(detectSettingsChangedDomains(migrated, system)).toEqual(['theme']);
+  });
+});
+
+describe('专注色与计时仪表样式的保存恢复', () => {
+  it('专注色保存后跨无关更新恢复，四种专注色全部往返', () => {
+    for (const color of FOCUS_COLORS) {
+      const saved = mergeSettings(DEFAULT_SETTINGS, { focusColor: color });
+      expect(saved.focusColor).toBe(color);
+      const restored = mergeSettings(saved, { taskSource: 'local' });
+      expect(restored.focusColor).toBe(color);
+    }
+  });
+
+  it('旧设置缺 focusColor 时回落默认；未知值解析回落 emerald', () => {
+    const legacy = { ...DEFAULT_SETTINGS } as Partial<AppSettings>;
+    delete legacy.focusColor;
+    expect(mergeSettings(DEFAULT_SETTINGS, legacy).focusColor).toBe('emerald');
+    expect(resolveFocusColor('neon')).toBe('emerald');
+    expect(resolveFocusColor(undefined)).toBe('emerald');
+    expect(resolveFocusColor(null)).toBe('emerald');
+    for (const color of FOCUS_COLORS) {
+      expect(resolveFocusColor(color)).toBe(color);
+    }
+  });
+
+  it('计时仪表样式保存后跨无关更新恢复，四种样式全部往返', () => {
+    for (const style of TIMER_STYLES) {
+      const saved = mergeSettings(DEFAULT_SETTINGS, { timerStyle: style });
+      expect(saved.timerStyle).toBe(style);
+      const restored = mergeSettings(saved, { theme: 'dark' });
+      expect(restored.timerStyle).toBe(style);
+    }
+  });
+
+  it('旧设置缺 timerStyle 时回落 standard', () => {
+    const legacy = { ...DEFAULT_SETTINGS } as Partial<AppSettings>;
+    delete legacy.timerStyle;
+    expect(mergeSettings(DEFAULT_SETTINGS, legacy).timerStyle).toBe('standard');
   });
 });
 

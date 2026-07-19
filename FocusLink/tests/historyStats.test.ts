@@ -53,6 +53,32 @@ describe('history stats and range grouping', () => {
     expect(formatDayLabel(range.end)).toBe('2026-06-30');
   });
 
+  it('builds inclusive 15 and 30 day ranges anchored on today', () => {
+    const halfMonth = getRange('15d', '', '', at(2026, 6, 30));
+    expect(formatDayLabel(halfMonth.start)).toBe('2026-06-16');
+    expect(formatDayLabel(halfMonth.end)).toBe('2026-06-30');
+
+    const month = getRange('30d', '', '', at(2026, 6, 30));
+    expect(formatDayLabel(month.start)).toBe('2026-06-01');
+    expect(formatDayLabel(month.end)).toBe('2026-06-30');
+  });
+
+  it('every multi-day preset keeps today as the range end', () => {
+    for (const preset of ['7d', '15d', '30d'] as const) {
+      expect(formatDayLabel(getRange(preset, '', '', at(2026, 6, 30)).end)).toBe('2026-06-30');
+    }
+  });
+
+  it('builds a custom range and falls back to today on invalid input', () => {
+    const custom = getRange('custom', '2026-06-10', '2026-06-12', at(2026, 6, 30));
+    expect(formatDayLabel(custom.start)).toBe('2026-06-10');
+    expect(formatDayLabel(custom.end)).toBe('2026-06-12');
+
+    const fallback = getRange('custom', 'not-a-date', '', at(2026, 6, 30));
+    expect(formatDayLabel(fallback.start)).toBe('2026-06-30');
+    expect(formatDayLabel(fallback.end)).toBe('2026-06-30');
+  });
+
   it('shows every day in the selected range, including days without sessions', () => {
     const range = getRange('7d', '', '', at(2026, 6, 30));
     const sessions = [

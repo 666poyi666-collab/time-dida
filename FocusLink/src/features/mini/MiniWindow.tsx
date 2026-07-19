@@ -1,11 +1,20 @@
 // Two-preset focus companion: a dense control panel and a dockable edge strip.
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { AppSettings, TimerSnapshot } from '@shared/types';
-import { FONT_PROFILES, resolveFontProfile, resolveThemeAppearance } from '@shared/theme';
+import {
+  FOCUS_COLORS,
+  FONT_PROFILES,
+  LEGACY_TIMER_STYLES,
+  TIMER_STYLES,
+  resolveFocusColor,
+  resolveThemeAppearance,
+  resolveTimerStyle,
+} from '@shared/theme';
 import { FlipDigits } from '../../ui/FlipDigits';
 import { Icon } from '../../ui/Icon';
 import { formatDuration, formatDurationPadded } from '../../lib/time';
+import { resolveMiniTaskDisplayMode, type MiniTaskDisplayMode } from './miniDisplayPolicy';
 import {
   getCumulativeActiveMs,
   getCumulativePauseMs,
@@ -91,21 +100,17 @@ function applyThemeClass(settings: AppSettings): void {
   root.classList.toggle('light', effectiveTheme === 'light');
   root.classList.toggle('dark', effectiveTheme === 'dark');
   ['quiet', 'dawn', 'bloom'].forEach((family) => root.classList.remove(`theme-${family}`));
-  root.classList.add('theme-quiet');
-  root.dataset.themeFamily = 'quiet';
+  delete root.dataset.themeFamily;
   FONT_PROFILES.forEach((profile) => root.classList.remove(`font-profile-${profile}`));
-  root.classList.add(`font-profile-${resolveFontProfile(settings.fontProfile)}`);
   ['indigo', 'violet', 'emerald', 'rose', 'amber', 'sky'].forEach((accent) =>
     root.classList.remove(`accent-${accent}`),
   );
-  ['emerald', 'forest', 'mint', 'teal'].forEach((color) =>
-    root.classList.remove(`focus-color-${color}`),
-  );
-  root.classList.add(`focus-color-${settings.focusColor ?? 'emerald'}`);
-  ['editorial', 'digital', 'mono'].forEach((style) =>
+  FOCUS_COLORS.forEach((color) => root.classList.remove(`focus-color-${color}`));
+  root.classList.add(`focus-color-${resolveFocusColor(settings.focusColor)}`);
+  [...TIMER_STYLES, ...LEGACY_TIMER_STYLES].forEach((style) =>
     root.classList.remove(`timer-style-${style}`),
   );
-  root.classList.add(`timer-style-${settings.timerStyle ?? 'editorial'}`);
+  root.classList.add(`timer-style-${resolveTimerStyle(settings.timerStyle)}`);
 }
 
 function MiniStateBadge({ state }: { state: TimerSnapshot['state'] }) {
@@ -229,12 +234,21 @@ export function MiniWindow() {
   const state = snapshot?.state ?? 'idle';
   const meta = STATE_META[state];
   const nowMs = Date.now();
+  const taskTitleRef = useRef<HTMLSpanElement>(null);
+  // 任务名显示策略：1=单行完整；2=两行完整；3=极长，单行克制滚动
+  const [taskDisplay, setTaskDisplay] = useState<MiniTaskDisplayMode>('single');
   const currentFocusMs = getCurrentSegmentDisplayMs(snapshot, nowMs);
   const currentPauseMs = getCurrentPauseDisplayMs(snapshot, nowMs);
   const cumulativeActiveMs = getCumulativeActiveMs(snapshot, nowMs);
   const cumulativePauseMs = getCumulativePauseMs(snapshot, nowMs);
   const wallElapsedMs = getWallElapsedMs(snapshot, nowMs);
   const currentTaskTitle = getCurrentTaskTitle(snapshot) ?? '未关联任务';
+  useEffect(() => {
+    const el = taskTitleRef.current;
+    if (!el || collapsed) return;
+    // 21px 任务行只放单行：装得下就完整显示，装不下走克制滚动（不用省略号/渐隐）
+    setTaskDisplay(resolveMiniTaskDisplayMode(el.scrollWidth, el.clientWidth, !!reduceMotion));
+  }, [currentTaskTitle, collapsed, reduceMotion]);
   const isRunning = state === 'running';
   const isPaused = state === 'paused';
   const isIdle = state === 'idle' || state === 'finished';
@@ -311,12 +325,6 @@ export function MiniWindow() {
       onDoubleClick={collapsed ? handleExpand : undefined}
       title={collapsed ? '点击箭头展开；拖离屏幕边缘也会自动展开' : undefined}
     >
-      <div className="mini-material-stack" aria-hidden="true">
-        <span className="mini-material-glow" />
-        <span className="mini-material-grain" />
-        <span className="mini-focus-aura" />
-        <span className="mini-signal" />
-      </div>
       <span className="mini-state-rail" aria-hidden="true" />
       <span className="mini-dock-cue" aria-hidden="true" />
 
@@ -381,17 +389,7 @@ export function MiniWindow() {
             transition={reduceMotion ? { duration: 0 } : panelMotion}
           >
             <header className="mini-expanded-header">
-              <div className="mini-header-context">
-                <MiniStateBadge state={state} />
-                <span className="mini-header-divider" aria-hidden="true" />
-                <span
-                  className="mini-task-title"
-                  data-testid="mini-task-title"
-                  title={currentTaskTitle}
-                >
-                  {currentTaskTitle}
-                </span>
-              </div>
+              <MiniStateBadge state={state} />
               <div className="mini-header-actions">
                 <MiniIconButton label="打开主窗口" testId="mini-open-main" onClick={handleOpenMain}>
                   <Icon.Maximize size="xs" />
@@ -401,6 +399,25 @@ export function MiniWindow() {
                 </MiniIconButton>
               </div>
             </header>
+
+            <div
+              className={`mini-task-block ${
+                taskDisplay === 'single'
+                  ? ''
+                  : taskDisplay === 'scroll'
+                    ? 'is-scroll'
+                    : 'is-marquee'
+              }`}
+            >
+              <span
+                ref={taskTitleRef}
+                className="mini-task-title"
+                data-testid="mini-task-title"
+                title={currentTaskTitle}
+              >
+                {currentTaskTitle}
+              </span>
+            </div>
 
             <div className="mini-expanded-body">
               <div className="mini-focus-core">

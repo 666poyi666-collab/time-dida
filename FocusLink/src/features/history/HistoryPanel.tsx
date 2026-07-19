@@ -46,6 +46,7 @@ import {
   type SessionDetail,
 } from './HistoryBadges';
 import { HistoryInsights } from './HistoryInsights';
+import { createRequestGate } from './requestGate';
 
 function buildSegmentSyncStateMap(queue: SyncQueueItem[]): Record<string, SessionSyncState> {
   const latest = new Map<string, SyncQueueItem>();
@@ -112,8 +113,8 @@ export function HistoryPanel() {
     sessionId: string;
     message: string;
   } | null>(null);
-  const detailRequestIdRef = useRef(0);
-  const analyticsRequestIdRef = useRef(0);
+  const detailRequestGate = useRef(createRequestGate()).current;
+  const analyticsRequestGate = useRef(createRequestGate()).current;
   const hasAnalyticsRef = useRef(false);
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null);
@@ -209,7 +210,7 @@ export function HistoryPanel() {
   };
 
   const load = useCallback(async () => {
-    const requestId = ++analyticsRequestIdRef.current;
+    const requestId = analyticsRequestGate.issue();
     if (!hasAnalyticsRef.current) setLoading(true);
     setAnalyticsRefreshing(true);
     setLoadError(null);
@@ -229,32 +230,32 @@ export function HistoryPanel() {
         }),
         window.focuslink.sync.list(),
       ]);
-      if (requestId !== analyticsRequestIdRef.current) return;
+      if (!analyticsRequestGate.isCurrent(requestId)) return;
       setAnalytics(nextAnalytics);
       hasAnalyticsRef.current = true;
       setSyncQueue(queue as SyncQueueItem[]);
       setSessionSyncMeta({});
       setSessionSegmentsById({});
     } catch (err) {
-      if (requestId !== analyticsRequestIdRef.current) return;
+      if (!analyticsRequestGate.isCurrent(requestId)) return;
       setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
-      if (requestId === analyticsRequestIdRef.current) {
+      if (analyticsRequestGate.isCurrent(requestId)) {
         setLoading(false);
         setAnalyticsRefreshing(false);
       }
     }
-  }, [dayCursor, rangePreset, range.end, range.start, setSyncQueue]);
+  }, [dayCursor, rangePreset, range.end, range.start, setSyncQueue, analyticsRequestGate]);
 
   useEffect(() => {
     void load();
     return () => {
       // Invalidate a late IPC response after this route has unmounted.
-      detailRequestIdRef.current += 1;
-      analyticsRequestIdRef.current += 1;
+      detailRequestGate.invalidate();
+      analyticsRequestGate.invalidate();
       expandedRef.current = null;
     };
-  }, [load]);
+  }, [load, detailRequestGate, analyticsRequestGate]);
 
   const refreshTomatodoStatus = async (sessionId: string) => {
     try {
@@ -282,12 +283,12 @@ export function HistoryPanel() {
     // A slower mutation can finish after the user has already opened another row. Never let that
     // stale callback restart loading for a row which is no longer the active detail target.
     if (expandedRef.current !== id) return;
-    const requestId = ++detailRequestIdRef.current;
+    const requestId = detailRequestGate.issue();
     setDetailLoadingId(id);
     setDetailLoadError(null);
     try {
       const d = await window.focuslink.sessions.get(id);
-      if (requestId !== detailRequestIdRef.current || expandedRef.current !== id) return;
+      if (!detailRequestGate.isCurrent(requestId) || expandedRef.current !== id) return;
       if (!d) throw new Error('这条专注记录已不存在，请刷新统计列表。');
       setDetail(d);
       setSessionSegmentsById((prev) => ({
@@ -296,14 +297,14 @@ export function HistoryPanel() {
       }));
       void refreshTomatodoStatus(id);
     } catch (error) {
-      if (requestId !== detailRequestIdRef.current || expandedRef.current !== id) return;
+      if (!detailRequestGate.isCurrent(requestId) || expandedRef.current !== id) return;
       setDetail(null);
       setDetailLoadError({
         sessionId: id,
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      if (requestId === detailRequestIdRef.current && expandedRef.current === id) {
+      if (detailRequestGate.isCurrent(requestId) && expandedRef.current === id) {
         setDetailLoadingId(null);
       }
     }
@@ -341,7 +342,7 @@ export function HistoryPanel() {
 
   const toggleExpand = async (id: string) => {
     if (expandedRef.current === id) {
-      detailRequestIdRef.current += 1;
+      detailRequestGate.invalidate();
       expandedRef.current = null;
       setExpanded(null);
       setDetail(null);
@@ -374,7 +375,7 @@ export function HistoryPanel() {
       await load();
       if (expandedRef.current === id) {
         expandedRef.current = null;
-        detailRequestIdRef.current += 1;
+        detailRequestGate.invalidate();
         setExpanded(null);
         setDetail(null);
         setDetailLoadingId(null);
@@ -914,6 +915,7 @@ export function HistoryPanel() {
           analytics={analytics}
           slideDirection={slideDirection}
           onSelectRange={selectRangePreset}
+          onOpenSession={toggleExpand}
         />
 
         {/* 会话时间线（按日分组） */}

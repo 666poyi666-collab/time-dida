@@ -161,8 +161,8 @@ Provider 的稳定能力应包括：
 
 ## 8. 小窗与边缘状态
 
-- 只有 `collapsed` 和 `expanded` 两种合法尺寸，数值唯一来自 `shared/miniWindowLayout.ts`。当前为 `184×35` 与 `320×124`，不引入第三尺寸；常量变化必须同步更新前端规范。
-- collapsed renderer 契约仅允许进度/状态、当前时间、底部真实专注占比进度轨和展开入口；不传达任务详情、三组累计或其他控制。验收字号为 collapsed 25px、expanded 31px。
+- 只有 `collapsed` 和 `expanded` 两种合法尺寸，数值唯一来自 `shared/miniWindowLayout.ts`。当前为 `184×35` 与 `320×116`，不引入第三尺寸；常量变化必须同步更新前端规范。
+- collapsed renderer 契约仅允许进度/状态、当前时间、底部真实专注占比进度轨和展开入口；不传达任务详情、三组累计或其他控制。expanded 契约须完整呈现任务名（不用省略号/渐隐截断）、当前时间、累计专注/暂停/总历时与全部控制，时间与按钮分属独立网格行、结构上不重叠。验收字号为 collapsed 25px、expanded 27px。
 - Electron 主进程持有真实 bounds、当前显示器 work area、吸附边缘和窗口状态。
 - Windows 通过 `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` 明确区分按住与释放；按住不动时不得用 move 事件静默时间猜测释放。真正结束后才计算最近合法边缘，使用进入 14px / 离开 30px 双阈值；先吸附并保持 expanded 尺寸，renderer 接收 `mini:dock-transition` 显示 320ms 收束反馈，之后才切换 collapsed；过渡中再次 native move 必须取消待折叠任务。程序化 bounds 允许 2px DPI 归一化误差。
 - 展开必须向 work area 内部生长并校正坐标；多显示器、负坐标和不同缩放比均要覆盖。

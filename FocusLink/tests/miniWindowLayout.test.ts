@@ -19,6 +19,12 @@ import {
 } from '../shared/miniWindowLayout';
 
 describe('mini window layout policy', () => {
+  it('locks the two product-owned sizes: 320x116 expanded, 184x35 collapsed', () => {
+    expect(MINI_WINDOW_EXPANDED_SIZE).toEqual({ width: 320, height: 116 });
+    expect(MINI_WINDOW_COLLAPSED_SIZE).toEqual({ width: 184, height: 35 });
+    expect(MINI_WINDOW_SIZE_PRESETS).toHaveLength(2);
+  });
+
   it('keeps fixed collapsed and expanded size presets', () => {
     expect(MINI_WINDOW_SIZE_PRESETS).toEqual([
       MINI_WINDOW_COLLAPSED_SIZE,

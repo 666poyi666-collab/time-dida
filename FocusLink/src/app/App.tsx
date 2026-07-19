@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion, useIsPresent } from 'framer-motion';
 import { useStore } from './store';
-import { AmbientField } from './AmbientField';
 import { TimerPanel } from '../features/focus/TimerPanel';
 import { HistoryPanel } from '../features/history/HistoryPanel';
 import { SettingsPanel } from '../features/settings/SettingsPanel';
@@ -10,7 +9,15 @@ import { Toast } from '../ui/Toast';
 import { Icon } from '../ui/Icon';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import type { AppSettings } from '@shared/types';
-import { FONT_PROFILES, resolveFontProfile, resolveThemeAppearance } from '@shared/theme';
+import {
+  FOCUS_COLORS,
+  FONT_PROFILES,
+  LEGACY_TIMER_STYLES,
+  TIMER_STYLES,
+  resolveFocusColor,
+  resolveTimerStyle,
+  resolveThemeAppearance,
+} from '@shared/theme';
 
 type View = 'timer' | 'tasks' | 'history' | 'settings';
 
@@ -47,11 +54,8 @@ export default function App() {
   const setSettings = useStore((state) => state.setSettings);
   const setSyncQueue = useStore((state) => state.setSyncQueue);
   const addToast = useStore((state) => state.addToast);
-  const toasts = useStore((state) => state.toasts);
 
   const [bootError, setBootError] = useState<string | null>(null);
-  const [alertTick, setAlertTick] = useState(0);
-  const consumedErrorToastIdsRef = useRef<Set<string>>(new Set());
   const previousViewRef = useRef<View>(view);
   const navigationDirection =
     Math.sign(VIEW_ORDER[view] - VIEW_ORDER[previousViewRef.current]) || 1;
@@ -60,7 +64,7 @@ export default function App() {
     previousViewRef.current = view;
   }, [view]);
 
-  // 窗口失焦降光：类挂在根节点，CSS 侧只压暗光场与材质饱和度，不触碰布局与内容可读性。
+  // 窗口失焦：类挂在根节点，仅用于必要的失焦表现，不触碰布局与内容可读性。
   useEffect(() => {
     const root = document.documentElement;
     const onBlur = () => root.classList.add('window-blurred');
@@ -73,20 +77,6 @@ export default function App() {
       root.classList.remove('window-blurred');
     };
   }, []);
-
-  // A fresh error toast raises one ambient alert pulse. Consumed ids live in a ref so each
-  // toast fires exactly once; ids of expired toasts are pruned to keep the set bounded.
-  useEffect(() => {
-    const consumed = consumedErrorToastIdsRef.current;
-    const liveIds = new Set(toasts.map((toast) => toast.id));
-    consumed.forEach((id) => {
-      if (!liveIds.has(id)) consumed.delete(id);
-    });
-    const freshErrors = toasts.filter((toast) => toast.type === 'error' && !consumed.has(toast.id));
-    if (freshErrors.length === 0) return;
-    freshErrors.forEach((toast) => consumed.add(toast.id));
-    setAlertTick((tick) => tick + 1);
-  }, [toasts]);
 
   useEffect(() => {
     const unsubs: Array<() => void> = [];
@@ -196,7 +186,6 @@ export default function App() {
     <ErrorBoundary>
       <MotionConfig reducedMotion="user">
         <div className={`app-shell view-${view} state-${timerState}`}>
-          <AmbientField view={view} state={timerState} alertTick={alertTick} />
           <a className="skip-link" href="#focuslink-main">
             跳到主要内容
           </a>
@@ -412,21 +401,18 @@ function applyTheme(settings: AppSettings): void {
   const effectiveTheme = resolveThemeAppearance(settings.theme, prefersDark);
   root.classList.toggle('dark', effectiveTheme === 'dark');
   root.classList.toggle('light', effectiveTheme === 'light');
+  // 单一设计系统：旧的 theme-*/accent-*/font-profile-* 类全部清除，不再写入。
   ['quiet', 'dawn', 'bloom'].forEach((family) => root.classList.remove(`theme-${family}`));
-  root.classList.add('theme-quiet');
-  root.dataset.themeFamily = 'quiet';
+  delete root.dataset.themeFamily;
   const accents = ['indigo', 'violet', 'emerald', 'rose', 'amber', 'sky'];
   accents.forEach((a) => root.classList.remove(`accent-${a}`));
-  ['emerald', 'forest', 'mint', 'teal'].forEach((color) =>
-    root.classList.remove(`focus-color-${color}`),
-  );
-  root.classList.add(`focus-color-${settings.focusColor ?? 'emerald'}`);
-  ['editorial', 'digital', 'mono'].forEach((style) =>
+  FONT_PROFILES.forEach((profile) => root.classList.remove(`font-profile-${profile}`));
+  FOCUS_COLORS.forEach((color) => root.classList.remove(`focus-color-${color}`));
+  root.classList.add(`focus-color-${resolveFocusColor(settings.focusColor)}`);
+  [...TIMER_STYLES, ...LEGACY_TIMER_STYLES].forEach((style) =>
     root.classList.remove(`timer-style-${style}`),
   );
-  root.classList.add(`timer-style-${settings.timerStyle ?? 'editorial'}`);
-  FONT_PROFILES.forEach((profile) => root.classList.remove(`font-profile-${profile}`));
-  root.classList.add(`font-profile-${resolveFontProfile(settings.fontProfile)}`);
+  root.classList.add(`timer-style-${resolveTimerStyle(settings.timerStyle)}`);
 }
 
 function toErrorMessage(value: unknown): string {

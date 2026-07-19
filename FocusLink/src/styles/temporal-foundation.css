@@ -1,58 +1,59 @@
-@import '@fontsource-variable/manrope/wght.css';
 @import '@fontsource-variable/geist/wght.css';
-@import '@fontsource-variable/sora/wght.css';
-@import '@fontsource-variable/noto-sans-sc/wght.css';
-@import '@fontsource-variable/space-grotesk/wght.css';
-@import '@fontsource/ibm-plex-mono/400.css';
-@import '@fontsource/ibm-plex-mono/500.css';
-@import '@fontsource/ibm-plex-sans/400.css';
-@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource-variable/inter-tight/wght.css';
+@import '@fontsource-variable/oswald/wght.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/600.css';
+@import 'misans/lib/Normal/MiSans-Regular.min.css';
+@import 'misans/lib/Normal/MiSans-Medium.min.css';
+@import 'misans/lib/Normal/MiSans-Semibold.min.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+ * FocusLink · 时间仪器（Time Instrument）设计地基
+ * 唯一 token 来源。语义色：界面蓝=操作，专注绿=运行，暂停红=损耗，深红=危险。
+ * ========================================================================== */
 :root {
   color-scheme: light;
-  --font-ui: 'Manrope Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
-  --font-display: 'Space Grotesk Variable', 'Noto Sans SC Variable', sans-serif;
-  --font-number: 'IBM Plex Mono', 'Microsoft YaHei UI', monospace;
-  --font-mono: 'IBM Plex Mono', monospace;
 
-  --app-bg: 244 243 239;
-  --app-surface: 250 249 246;
-  --app-surface-2: 238 237 232;
-  --app-surface-3: 226 224 217;
+  /* 字体角色：界面 / 中文 / 数据等宽 / 极细编辑数字 / 翻页机械数字 */
+  --font-ui: 'Geist Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
+  --font-number: 'JetBrains Mono', 'MiSans', monospace;
+  --font-timer-thin: 'Inter Tight Variable', 'MiSans', sans-serif;
+  --font-timer-flip: 'Oswald Variable', 'MiSans', sans-serif;
+
+  --app-bg: 245 245 242;
+  --app-surface: 252 252 250;
+  --app-surface-2: 240 240 236;
+  --app-surface-3: 232 231 225;
   --app-elevated: 255 255 253;
   --app-text: 24 26 29;
-  --app-muted: 100 102 103;
-  --app-subtle: 144 144 140;
-  --app-border: 214 212 205;
-  --app-border-strong: 181 179 171;
-  --app-accent: 18 92 116;
-  --app-accent-hover: 12 75 98;
-  --app-accent-active: 8 62 82;
-  --app-accent-companion: 76 158 174;
-  --app-accent-fg: 250 253 253;
-  --app-accent-soft: 214 233 237;
-  --app-success: 22 123 90;
+  --app-muted: 95 99 104;
+  --app-subtle: 154 157 162;
+  --app-border: 221 220 214;
+  --app-border-strong: 198 197 190;
+  --app-accent: 37 99 235;
+  --app-accent-hover: 29 78 216;
+  --app-accent-active: 30 64 175;
+  --app-accent-fg: 255 255 255;
+  --app-accent-soft: 231 238 252;
+  --app-success: 14 159 110;
+  --app-success-soft: 228 245 238;
+  --app-success-deep: 11 122 85;
   --app-pause: 210 67 57;
   --app-pause-hover: 181 51 44;
   --app-pause-active: 152 41 35;
   --app-pause-fg: 255 250 248;
+  --app-pause-soft: 251 234 232;
   --app-warning: 178 111 29;
-  --app-danger: 190 49 45;
-  --app-info: 18 92 116;
+  --app-danger: 160 43 32;
+  --app-info: var(--app-accent);
   --app-ink: 24 26 29;
   --app-ink-fg: 250 249 246;
-  --app-glow-1: 255 248 225;
-  --app-glow-2: 211 239 239;
-  --app-glow-3: 221 222 255;
-  --app-action-start: var(--app-accent);
-  --app-action-end: var(--app-accent-hover);
-  --accent-muted: var(--app-accent-soft);
-  --material-edge: 255 255 255;
-  --material-tint: var(--app-surface);
+  --app-grid: 24 26 29;
 
   --bg-base: var(--app-bg);
   --bg-card: var(--app-surface);
@@ -71,65 +72,65 @@
   --danger: var(--app-danger);
   --info: var(--app-info);
 
-  --radius-xs: 3px;
-  --radius-sm: 5px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 18px;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 6px;
   --radius-pill: 999px;
-  --motion-fast: 110ms;
-  --motion-normal: 190ms;
+  --motion-fast: 120ms;
+  --motion-normal: 200ms;
   --motion-slow: 360ms;
+  --motion-tick: 130ms;
+  --motion-zoom: 720ms;
   --ease-out: cubic-bezier(0.2, 0.78, 0.2, 1);
   --ease-fluid: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
-  --shadow-xs: 0 1px 2px rgb(24 26 29 / 0.06);
-  --shadow-sm: 0 4px 14px -10px rgb(24 26 29 / 0.22);
-  --shadow-md: 0 14px 36px -24px rgb(24 26 29 / 0.3);
-  --shadow-lg: 0 24px 64px -34px rgb(24 26 29 / 0.42);
-  --shadow-modal: 0 26px 80px -30px rgb(24 26 29 / 0.48);
+  --ease-step: cubic-bezier(0.16, 0.9, 0.3, 1);
+  --ease-zoom: cubic-bezier(0.65, 0, 0.35, 1);
+  --shadow-xs: 0 1px 2px rgb(24 26 29 / 0.05);
+  --shadow-sm: 0 4px 14px -10px rgb(24 26 29 / 0.2);
+  --shadow-md: 0 14px 36px -24px rgb(24 26 29 / 0.28);
+  --shadow-lg: 0 24px 64px -34px rgb(24 26 29 / 0.4);
+  --shadow-modal: 0 26px 80px -30px rgb(24 26 29 / 0.46);
   --shadow-material: var(--shadow-sm);
   --shadow-control-thumb: 0 1px 4px rgb(0 0 0 / 0.22);
   --shadow-slider-thumb: 0 1px 3px rgb(0 0 0 / 0.2);
   --shadow-slider-thumb-hover: 0 0 0 4px rgb(var(--app-accent) / 0.14);
   --shadow-swatch-ring: inset 0 0 0 1px rgb(0 0 0 / 0.14);
   --shadow-swatch-ring-soft: inset 0 0 0 1px rgb(0 0 0 / 0.08);
-  --shadow-check-glyph: none;
-  --shadow-glow-accent: 0 12px 36px -18px rgb(var(--app-accent) / 0.56);
-  --shadow-glow-pause: 0 12px 36px -18px rgb(var(--app-pause) / 0.52);
 }
 
 .dark {
   color-scheme: dark;
   --app-bg: 15 17 20;
   --app-surface: 21 24 28;
-  --app-surface-2: 28 31 35;
+  --app-surface-2: 29 32 37;
   --app-surface-3: 37 40 45;
-  --app-elevated: 29 32 37;
+  --app-elevated: 32 36 42;
   --app-text: 239 239 235;
   --app-muted: 158 159 156;
-  --app-subtle: 110 112 112;
+  --app-subtle: 110 115 120;
   --app-border: 47 50 54;
-  --app-border-strong: 69 72 77;
-  --app-accent: 103 192 211;
-  --app-accent-hover: 132 210 225;
-  --app-accent-active: 155 220 232;
-  --app-accent-fg: 10 29 35;
-  --app-accent-soft: 25 58 66;
-  --app-success: 92 200 158;
-  --app-pause: 244 104 92;
-  --app-pause-hover: 250 129 118;
-  --app-pause-active: 255 151 140;
+  --app-border-strong: 66 70 76;
+  --app-accent: 96 165 250;
+  --app-accent-hover: 147 197 253;
+  --app-accent-active: 191 219 254;
+  --app-accent-fg: 12 26 48;
+  --app-accent-soft: 30 58 105;
+  --app-success: 52 211 153;
+  --app-success-soft: 15 46 35;
+  --app-success-deep: 110 231 183;
+  --app-pause: 244 112 103;
+  --app-pause-hover: 250 135 124;
+  --app-pause-active: 252 165 158;
   --app-pause-fg: 45 10 8;
+  --app-pause-soft: 58 27 24;
   --app-warning: 225 170 90;
-  --app-danger: 244 104 92;
-  --app-info: 103 192 211;
+  --app-danger: 255 138 128;
   --app-ink: 239 239 235;
   --app-ink-fg: 18 20 23;
-  --app-glow-1: 58 51 29;
-  --app-glow-2: 24 68 70;
-  --app-glow-3: 43 44 82;
-  --material-tint: var(--app-surface);
+  --app-grid: 239 239 235;
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.32);
   --shadow-sm: 0 5px 16px -10px rgb(0 0 0 / 0.72);
   --shadow-md: 0 16px 38px -22px rgb(0 0 0 / 0.8);
@@ -137,25 +138,46 @@
   --shadow-modal: 0 28px 90px -28px rgb(0 0 0 / 0.9);
 }
 
-.font-profile-plex {
-  --font-ui: 'IBM Plex Sans', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
-  --font-display: 'IBM Plex Sans', 'Noto Sans SC Variable', sans-serif;
-  --font-number: 'IBM Plex Mono', monospace;
+/* 专注强调色四选：只映射专注语义，不触碰界面蓝 */
+.focus-color-emerald {
+  --app-success: 14 159 110;
+  --app-success-soft: 228 245 238;
+  --app-success-deep: 11 122 85;
 }
-.font-profile-manrope {
-  --font-ui: 'Manrope Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
-  --font-display: 'Space Grotesk Variable', 'Noto Sans SC Variable', sans-serif;
-  --font-number: 'Space Grotesk Variable', 'IBM Plex Mono', monospace;
+.dark.focus-color-emerald {
+  --app-success: 52 211 153;
+  --app-success-soft: 15 46 35;
+  --app-success-deep: 110 231 183;
 }
-.font-profile-geist {
-  --font-ui: 'Geist Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
-  --font-display: 'Geist Variable', 'Noto Sans SC Variable', sans-serif;
-  --font-number: 'IBM Plex Mono', monospace;
+.focus-color-forest {
+  --app-success: 39 133 90;
+  --app-success-soft: 230 242 235;
+  --app-success-deep: 30 107 71;
 }
-.font-profile-sora {
-  --font-ui: 'Sora Variable', 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
-  --font-display: 'Sora Variable', 'Noto Sans SC Variable', sans-serif;
-  --font-number: 'Sora Variable', 'IBM Plex Mono', monospace;
+.dark.focus-color-forest {
+  --app-success: 76 195 138;
+  --app-success-soft: 18 43 31;
+  --app-success-deep: 127 206 165;
+}
+.focus-color-mint {
+  --app-success: 63 169 140;
+  --app-success-soft: 231 245 240;
+  --app-success-deep: 47 138 114;
+}
+.dark.focus-color-mint {
+  --app-success: 94 196 166;
+  --app-success-soft: 18 48 42;
+  --app-success-deep: 138 216 192;
+}
+.focus-color-teal {
+  --app-success: 14 143 143;
+  --app-success-soft: 227 242 242;
+  --app-success-deep: 10 110 110;
+}
+.dark.focus-color-teal {
+  --app-success: 63 193 193;
+  --app-success-soft: 14 42 42;
+  --app-success-deep: 122 213 213;
 }
 
 * {
@@ -174,11 +196,10 @@ body {
   background: rgb(var(--app-bg));
   color: rgb(var(--app-text));
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 13.5px;
   line-height: 1.5;
-  font-feature-settings: 'tnum', 'ss02', 'kern';
+  font-feature-settings: 'kern';
   -webkit-font-smoothing: antialiased;
-  user-select: none;
 }
 html.mini-window-page,
 html.mini-window-page body,
@@ -201,10 +222,10 @@ button:disabled {
 }
 :focus-visible {
   outline: 2px solid rgb(var(--app-accent) / 0.72);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 ::selection {
-  background: rgb(var(--app-accent) / 0.24);
+  background: rgb(var(--app-accent) / 0.2);
 }
 ::-webkit-scrollbar {
   width: 7px;
@@ -221,20 +242,20 @@ button:disabled {
 }
 
 .text-page-title {
-  font: 600 30px/1.12 var(--font-display);
-  letter-spacing: -0.035em;
+  font: 600 30px/1.12 var(--font-ui);
+  letter-spacing: -0.03em;
 }
 .text-body {
   color: rgb(var(--app-text));
-  font-size: 13px;
+  font-size: 13.5px;
 }
 .text-meta {
   color: rgb(var(--app-muted));
-  font-size: 11px;
+  font-size: 11.5px;
 }
 .text-diag {
   color: rgb(var(--app-subtle));
-  font: 500 10px/1.4 var(--font-mono);
+  font: 500 10.5px/1.4 var(--font-number);
 }
 .timer-digit,
 .mini-data-time {
@@ -252,14 +273,6 @@ button:disabled {
     transform: none;
   }
 }
-@keyframes temporal-sweep {
-  from {
-    transform: translateX(-120%);
-  }
-  to {
-    transform: translateX(240%);
-  }
-}
 @keyframes temporal-pulse {
   0%,
   100% {
@@ -269,12 +282,9 @@ button:disabled {
     opacity: 1;
   }
 }
-@keyframes temporal-draw {
-  from {
-    transform: scaleX(0);
-  }
+@keyframes motion-spin-kf {
   to {
-    transform: scaleX(1);
+    transform: rotate(360deg);
   }
 }
 .motion-press {
@@ -302,6 +312,10 @@ button:disabled {
 .motion-dot-breathe {
   animation: temporal-pulse 1.8s ease-in-out infinite;
 }
+.motion-spin {
+  animation: motion-spin-kf 0.9s linear infinite;
+  transform-origin: center;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -318,11 +332,9 @@ button:disabled {
   display: inline-block;
   transform-origin: 50% 68%;
 }
-
 .motion-digit-flip[data-changed='true'] {
   animation: digit-settle 180ms var(--ease-out);
 }
-
 @keyframes digit-settle {
   0% {
     transform: translateY(-2px) scale(0.92);

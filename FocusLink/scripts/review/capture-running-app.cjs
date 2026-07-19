@@ -57,9 +57,7 @@ async function main() {
   await evaluate('window.focuslink.window.show()');
   await delay(600);
   await evaluate(`window.focuslink.settings.set({
-    theme: 'light',
-    themeFamily: 'quiet',
-    fontProfile: 'plex'
+    theme: 'light'
   })`);
 
   for (const [label, name] of [
@@ -76,17 +74,18 @@ async function main() {
 
   if (captureThemes) {
     await evaluate(`document.querySelector('button[aria-label="专注"]')?.click()`);
-    for (const family of ['quiet', 'dawn', 'bloom']) {
+    // 单一设计系统：主题族已移除，主题维度 = 明暗 × 四种计时仪表
+    for (const style of ['standard', 'flip', 'pixel', 'thin']) {
       for (const appearance of ['light', 'dark']) {
         await evaluate(`window.focuslink.settings.set({
-          themeFamily: ${JSON.stringify(family)},
+          timerStyle: ${JSON.stringify(style)},
           theme: ${JSON.stringify(appearance)}
         })`);
-        await capture(`theme-${family}-${appearance}-focus`);
+        await capture(`instrument-${style}-${appearance}-focus`);
       }
     }
     await evaluate(`window.focuslink.settings.set({
-      themeFamily: 'quiet',
+      timerStyle: 'standard',
       theme: 'light'
     })`);
   }
@@ -98,12 +97,12 @@ async function main() {
       (button) => button.textContent?.includes('开始专注')
     )?.click()`);
     await capture('current-focus-running');
-    await evaluate(`Array.from(document.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('暂停专注')
+    await evaluate(`Array.from(document.querySelectorAll('.timer-controls .btn-main-action')).find(
+      (button) => button.textContent?.trim() === '暂停'
     )?.click()`);
     await capture('current-focus-paused');
-    await evaluate(`Array.from(document.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('继续专注')
+    await evaluate(`Array.from(document.querySelectorAll('.timer-controls .btn-main-action')).find(
+      (button) => button.textContent?.trim() === '继续'
     )?.click()`);
     await delay(900);
     await evaluate(`Array.from(document.querySelectorAll('button')).find(
@@ -112,7 +111,7 @@ async function main() {
     await delay(500);
     await evaluate(`document.querySelector('button[aria-label="统计"]')?.click()`);
     await capture('current-stats-with-data');
-    await evaluate(`document.querySelector('.history-panel')?.scrollTo({ top: 900 })`);
+    await evaluate(`document.querySelector('.history-page')?.scrollTo({ top: 900 })`);
     await capture('current-stats-with-data-lower');
 
     await evaluate(`(async () => {

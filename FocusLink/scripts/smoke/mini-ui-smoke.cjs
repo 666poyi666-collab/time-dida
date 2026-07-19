@@ -30,9 +30,10 @@ function readSharedSize(exportName) {
 }
 const EXPANDED_SIZE = readSharedSize('MINI_WINDOW_EXPANDED_SIZE');
 const COLLAPSED_SIZE = readSharedSize('MINI_WINDOW_COLLAPSED_SIZE');
+// 与 src/styles/temporal-foundation.css 唯一 token 来源保持一致（tests/themeTokens.test.ts 锁定）。
 const FOCUS_TOKEN = '52 211 153';
-const PAUSE_TOKEN = '244 104 92';
-const LIGHT_FOCUS_TOKEN = '5 150 105';
+const PAUSE_TOKEN = '244 112 103';
+const LIGHT_FOCUS_TOKEN = '14 159 110';
 const LIGHT_PAUSE_TOKEN = '210 67 57';
 const THEME_TOKENS = {
   dark: { focus: FOCUS_TOKEN, pause: PAUSE_TOKEN },
@@ -288,7 +289,7 @@ async function inspectMini(mini) {
       edgeProgressFill: '.mini-edge-progress-fill',
       expandedContent: '[data-testid="mini-expanded-content"]',
       expandedHeader: '.mini-expanded-header',
-      headerContext: '.mini-header-context',
+      taskBlock: '.mini-task-block',
       taskTitle: '.mini-task-title',
       expandedBody: '.mini-expanded-body',
       focusCore: '.mini-focus-core',
@@ -448,26 +449,25 @@ async function waitForMiniTheme(mini, theme) {
   throw new Error(`Mini did not switch to ${theme} theme in place: ${JSON.stringify(last)}`);
 }
 
-async function setFontProfile(main, profile) {
+async function setTimerStyle(main, style) {
   const result = await main.evaluate(`window.focuslink.settings.set({
-    fontProfile: ${JSON.stringify(profile)}
+    timerStyle: ${JSON.stringify(style)}
   })`);
-  if (result?.fontProfile !== profile) {
-    throw new Error(`Could not persist ${profile} font profile: ${JSON.stringify(result)}`);
+  if (result?.timerStyle !== style) {
+    throw new Error(`Could not persist ${style} timer style: ${JSON.stringify(result)}`);
   }
 }
 
-async function waitForMiniFontProfile(mini, profile) {
-  const expectedClass = `font-profile-${profile}`;
-  const otherClass = profile === 'geist' ? 'font-profile-manrope' : 'font-profile-geist';
+async function waitForMiniTimerStyle(mini, style) {
+  const expectedClass = `timer-style-${style}`;
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const result = await inspectMini(mini);
-    if (result.rootClasses.includes(expectedClass) && !result.rootClasses.includes(otherClass)) {
+    if (result.rootClasses.includes(expectedClass)) {
       return result;
     }
     await delay(100);
   }
-  throw new Error(`Mini did not switch live to ${profile} font profile`);
+  throw new Error(`Mini did not switch live to ${style} timer style`);
 }
 
 async function clickMini(mini, selector, label) {
@@ -913,7 +913,7 @@ function assertResult(name, result, expected) {
     const expandedKeys = [
       'expandedContent',
       'expandedHeader',
-      'headerContext',
+      'taskBlock',
       'taskTitle',
       'expandedBody',
       'focusCore',
@@ -953,7 +953,7 @@ function assertResult(name, result, expected) {
     const expandedKeys = [
       'expandedContent',
       'expandedHeader',
-      'headerContext',
+      'taskBlock',
       'taskTitle',
       'expandedBody',
       'focusCore',
@@ -983,7 +983,7 @@ function assertResult(name, result, expected) {
       [result.stateText === expected.stateText, 'precise state label'],
       [result.currentLabel === expected.currentLabel, 'current timer label'],
       [result.taskTitle.length > 0, 'task context copy'],
-      [result.primaryTimeFontSize >= 29, 'expanded primary time at least 29px'],
+      [result.primaryTimeFontSize >= 26, 'expanded primary time at least 26px'],
       [result.elements.focusCore.rect?.width >= 130, 'expanded primary time column at least 130px'],
       [
         JSON.stringify(result.metricLabels) === JSON.stringify(['累计专注', '累计暂停', '总历时']),
@@ -1036,11 +1036,13 @@ async function main() {
     );
   }
 
-  process.stderr.write('[mini-smoke] verify live font profile broadcast and persistence\n');
-  await setFontProfile(mainSession, 'geist');
-  const geistFont = await waitForMiniFontProfile(miniSession, 'geist');
-  await setFontProfile(mainSession, 'manrope');
-  const manropeFont = await waitForMiniFontProfile(miniSession, 'manrope');
+  process.stderr.write('[mini-smoke] verify live timer style broadcast and persistence\n');
+  await setTimerStyle(mainSession, 'flip');
+  await waitForMiniTimerStyle(miniSession, 'flip');
+  await setTimerStyle(mainSession, 'pixel');
+  await waitForMiniTimerStyle(miniSession, 'pixel');
+  await setTimerStyle(mainSession, 'standard');
+  await waitForMiniTimerStyle(miniSession, 'standard');
 
   await mainSession.evaluate('window.focuslink.mini.expand()');
   await waitForMiniState(miniSession, 'idle', false, EXPANDED_SIZE);
@@ -1299,10 +1301,10 @@ async function main() {
       liveRoundTripWithoutReload: true,
       bodyTransparent: true,
     },
-    fonts: {
+    instruments: {
       liveMainToMini: true,
-      geistClass: geistFont.rootClasses.includes('font-profile-geist'),
-      manropeClass: manropeFont.rootClasses.includes('font-profile-manrope'),
+      flipClass: true,
+      pixelClass: true,
       persistedSelection: true,
     },
     edgeDock: {
