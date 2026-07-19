@@ -401,6 +401,41 @@ async function main() {
   await delay(900);
   process.stderr.write('[ui-smoke] capture running\n');
   results.running = await capture('running', 'running');
+  const immersiveClicked = await evaluate(`(() => {
+    const button = document.querySelector('.focus-immersive-toggle[title="全屏进入沉浸模式"]');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!immersiveClicked) throw new Error('Immersive mode button was not clickable');
+  await waitForSelector('[data-testid="focus-immersive"]');
+  await delay(900);
+  results.immersive = await evaluate(`(() => {
+    const overlay = document.querySelector('[data-testid="focus-immersive"]');
+    const stage = overlay?.querySelector('.immersive-stage');
+    const animation = stage ? getComputedStyle(stage) : null;
+    const rect = overlay?.getBoundingClientRect();
+    return {
+      present: Boolean(overlay),
+      state: overlay?.dataset.state || null,
+      viewport: [window.innerWidth, window.innerHeight],
+      rect: rect ? [rect.left, rect.top, rect.width, rect.height] : null,
+      hasNavigation: Boolean(overlay?.querySelector('.global-navigation')),
+      hasLedger: Boolean(overlay?.querySelector('.session-ledger-pane')),
+      hasReadout: Boolean(overlay?.querySelector('.immersive-readout .timer-dial')),
+      hasBand: Boolean(overlay?.querySelector('.immersive-band .ribbon-canvas')),
+      hasTotals: overlay?.querySelectorAll('.timer-total').length === 3,
+      hasControls: Boolean(overlay?.querySelector('.timer-controls')),
+      stageAnimationName: animation?.animationName || null,
+      stageAnimationDuration: animation?.animationDuration || null,
+    };
+  })()`);
+  results.immersive.screenshot = await captureScreen('immersive-running');
+  await evaluate(`document.querySelector('.immersive-exit')?.click()`);
+  await delay(650);
+  if (await evaluate(`Boolean(document.querySelector('[data-testid="focus-immersive"]'))`)) {
+    throw new Error('Immersive mode did not exit cleanly');
+  }
   const pauseClicked = await evaluate(`(() => {
     const button = document.querySelector('.timer-controls .btn-main-action');
     if (!button || button.textContent.trim() !== '暂停') return false;
@@ -573,6 +608,27 @@ async function main() {
     [results.running.ambientGone, 'ambient field is removed from the design system'],
     [results.running.themeFamily === null, 'legacy theme family is no longer written'],
     [results.running.ledgerVisible, 'running ledger opens after UI start'],
+    [
+      results.immersive.present &&
+        results.immersive.state === 'running' &&
+        results.immersive.rect?.[2] === results.immersive.viewport[0] &&
+        results.immersive.rect?.[3] === results.immersive.viewport[1],
+      'immersive focus surface fills the entire display',
+    ],
+    [
+      !results.immersive.hasNavigation &&
+        !results.immersive.hasLedger &&
+        results.immersive.hasReadout &&
+        results.immersive.hasBand &&
+        results.immersive.hasTotals &&
+        results.immersive.hasControls,
+      'immersive mode shows only the complete focus interface',
+    ],
+    [
+      results.immersive.stageAnimationName !== 'none' &&
+        results.immersive.stageAnimationDuration !== '0s',
+      'immersive mode enters with a real transition',
+    ],
     [
       Number.parseFloat(results.focusActionStates.focus?.outlineWidth || '0') > 0,
       'keyboard focus exposes a visible primary-action outline',
