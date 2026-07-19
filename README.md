@@ -2,7 +2,7 @@
 
 FocusLink 是一个本地优先的 Windows 桌面专注工具：主进程精确记录专注、暂停与自然跨度，把片段关联到滴答清单任务，并通过彼此独立的队列同步滴答清单与番茄 To-do。
 
-> 当前版本：v0.12.12
+> 当前版本：v0.12.13
 >
 > 版本主题：全局强调色 · 四套艺术字体 · 日报 Dashboard · 秒级时间之带
 
@@ -144,13 +144,13 @@ RELEASE_NOTES.md
 
 | 版本 | 本地安装版 | 版本说明 |
 | --- | --- | --- |
-| 0.12.10 | `release-v01210/FocusLink-0.12.10-x64.exe`（发布门禁阻断） | [v0.12.10](release-v01210/RELEASE_NOTES.md) |
 | 0.12.11 | `release-v01211/FocusLink-0.12.11-x64.exe`（校验表格式门禁阻断） | [v0.12.11](release-v01211/RELEASE_NOTES.md) |
-| 0.12.12 | `release-v01212/FocusLink-0.12.12-x64.exe`（待构建） | [v0.12.12](release-v01212/RELEASE_NOTES.md) |
+| 0.12.12 | `release-v01212/FocusLink-0.12.12-x64.exe`（NSIS runner 瞬时故障） | [v0.12.12](release-v01212/RELEASE_NOTES.md) |
+| 0.12.13 | `release-v01213/FocusLink-0.12.13-x64.exe`（待构建） | [v0.12.13](release-v01213/RELEASE_NOTES.md) |
 
 每次版本迭代必须同步更新 `CHANGELOG.md`、本地 `RELEASE_NOTES.md` 和 GitHub Release，并上传安装版、便携版与 SHA256。只推送代码或 tag 不算发布完成。
 
-v0.12.10 的公开 tag 因发布目录元数据遗漏而被阻断；v0.12.11 的源码、便携版与安装版门禁已通过，但校验表分隔格式不符合发布契约。两个公开 tag 均保持不移动，v0.12.12 从新的干净源码提交重新生成资产并使用标准 `hash *文件名` 校验格式。线上状态以 GitHub Releases 回读结果为准。
+v0.12.11 因校验表格式被阻断；v0.12.12 的源码、回归和便携版门禁已通过，但 GitHub Windows runner 上 NSIS 连续两次出现已知的瞬时访问冲突。公开 tag 均保持不移动，v0.12.13 保留真实安装验收并增加有界重试与递增退避。线上状态以 GitHub Releases 回读结果为准。
 
 ## 文档入口
 
@@ -161,7 +161,7 @@ v0.12.10 的公开 tag 因发布目录元数据遗漏而被阻断；v0.12.11 的
 - [后端与共享契约](FocusLink/backend-design/BACKEND_SPEC.md)
 - [测试与发布门禁](FocusLink/backend-design/TEST_AND_RELEASE.md)
 - [后端 AI 接手清单](FocusLink/backend-design/AI_HANDOFF_CHECKLIST.md)
-- [当前版本 v0.12.12 Release 正文](release-v01212/RELEASE_NOTES.md)
+- [当前版本 v0.12.13 Release 正文](release-v01213/RELEASE_NOTES.md)
 - [v0.11.2 离线发布记录](FocusLink/backend-design/releases/v0.11.2.md)
 - [v0.11.1 离线发布记录](FocusLink/backend-design/releases/v0.11.1.md)
 - [v0.11.0 离线发布记录](FocusLink/backend-design/releases/v0.11.0.md)

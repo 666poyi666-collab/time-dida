@@ -238,12 +238,13 @@ jobs:
             if ($process.ExitCode -eq 0) {
               break
             }
-            if ($process.ExitCode -ne -1073741819 -or $attempt -ge 2) {
+            if ($process.ExitCode -ne -1073741819 -or $attempt -ge 4) {
               throw "Silent installer exited with code $($process.ExitCode) on attempt $attempt"
             }
-            Write-Warning 'NSIS exited with transient access violation 0xC0000005; retrying once with a clean install directory.'
-            Start-Sleep -Seconds 2
-          } while ($attempt -lt 2)
+            $retryDelay = 2 * $attempt
+            Write-Warning "NSIS exited with transient access violation 0xC0000005; retrying with a clean install directory after ${retryDelay}s."
+            Start-Sleep -Seconds $retryDelay
+          } while ($attempt -lt 4)
           $installedExecutable = Join-Path $installDirectory 'FocusLink.exe'
           if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
             throw "Installed executable not found: $installedExecutable"
