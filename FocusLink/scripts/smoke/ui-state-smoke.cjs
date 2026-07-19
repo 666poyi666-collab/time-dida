@@ -240,6 +240,9 @@ async function main() {
 
   await send('Page.enable');
   await send('Runtime.enable');
+  await send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }],
+  });
   await evaluate('window.focuslink.window.show()');
   await send('Page.bringToFront');
   await delay(3000);
@@ -412,8 +415,7 @@ async function main() {
   await delay(900);
   results.immersive = await evaluate(`(() => {
     const overlay = document.querySelector('[data-testid="focus-immersive"]');
-    const stage = overlay?.querySelector('.immersive-stage');
-    const animation = stage ? getComputedStyle(stage) : null;
+    const animation = overlay ? getComputedStyle(overlay) : null;
     const rect = overlay?.getBoundingClientRect();
     return {
       present: Boolean(overlay),
