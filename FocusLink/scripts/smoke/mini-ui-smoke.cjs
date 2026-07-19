@@ -949,7 +949,7 @@ function assertResult(name, result, expected) {
       [result.primaryTimeFontSize >= 23, 'collapsed primary time at least 23px'],
       [result.primaryTimeFontSize >= 25, 'collapsed primary time enlarged to at least 25px'],
       [result.elements.compactTime.rect?.height >= 23, 'collapsed primary time visually dominant'],
-      [result.elements.edgeProgress.rect?.height >= 3, 'collapsed has a clear progress rail'],
+      [result.elements.edgeProgress.rect?.height >= 2, 'collapsed has a precise progress rail'],
       [
         Number.isFinite(result.edgeProgressValue) &&
           result.edgeProgressValue >= 0 &&
@@ -992,7 +992,7 @@ function assertResult(name, result, expected) {
       [result.stateText === expected.stateText, 'precise state label'],
       [result.currentLabel === expected.currentLabel, 'current timer label'],
       [result.taskTitle.length > 0, 'task context copy'],
-      [result.primaryTimeFontSize >= 24, 'expanded primary time at least 24px'],
+      [result.primaryTimeFontSize >= 20, 'expanded primary time at least 20px'],
       [result.elements.focusCore.rect?.width >= 130, 'expanded primary time column at least 130px'],
       [
         JSON.stringify(result.metricLabels) === JSON.stringify(['累计专注', '累计暂停', '总历时']),

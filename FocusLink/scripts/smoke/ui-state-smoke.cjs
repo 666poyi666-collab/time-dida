@@ -417,42 +417,21 @@ async function main() {
   await delay(650);
   results.history = await captureScreen('history');
   results.historyInspection = await evaluate(`(() => ({
-    hasConclusion: Boolean(document.querySelector('.insight-conclusion')),
-    conclusionText: document.querySelector('.conclusion-sentence')?.textContent?.trim() || null,
-    insightBlocks: document.querySelectorAll('.insight-block').length,
+    hasDashboard: Boolean(document.querySelector('.analytics-dashboard')),
+    dashboardTitle: document.querySelector('.analytics-heading h2')?.textContent?.trim() || null,
+    kpiCount: document.querySelectorAll('.analytics-kpi').length,
+    panelCount: document.querySelectorAll('.analytics-panel').length,
     hasWeave: Boolean(document.querySelector('.weave-canvas')),
-    hasBeads: Boolean(document.querySelector('.beads-canvas')),
-    hasMosaic: Boolean(document.querySelector('.mosaic')),
-    allocRows: document.querySelectorAll('.alloc-row').length,
+    hasTaskRanking: Boolean(document.querySelector('.task-ranking')),
+    hasSessionTable: Boolean(document.querySelector('.session-performance-list')),
+    hasAbstractSwitcher: Boolean(document.querySelector('.insight-view-switch')),
     hasRing: Boolean(document.querySelector('.history-focus-ring')),
     hasDayNavigator: Boolean(document.querySelector('.history-day-navigator')),
     activeRange: [...document.querySelectorAll('.history-filter-row button')]
       .find((button) => button.classList.contains('bg-accent'))?.textContent?.trim() || null,
     nextDayDisabled: Boolean(document.querySelector('.history-day-navigator > button:last-child')?.disabled),
-    cardBorders: [...document.querySelectorAll('.insight-block')]
-      .map((card) => getComputedStyle(card).borderTopWidth),
+    dashboardBorder: getComputedStyle(document.querySelector('.analytics-dashboard')).borderTopWidth,
   }))()`);
-  results.historyViews = {};
-  for (const label of ['单次质量', '时间去向']) {
-    const clicked = await evaluate(`(() => {
-      const button = [...document.querySelectorAll('.insight-view-switch button')]
-        .find((item) => item.textContent?.trim().startsWith(${JSON.stringify(label)}));
-      if (!button) return false;
-      button.click();
-      return true;
-    })()`);
-    if (!clicked) throw new Error(`History analysis view was not found: ${label}`);
-    await delay(220);
-    results.historyViews[label] = await evaluate(`(() => ({
-      activeLabel: document.querySelector('.insight-view-switch button.active')?.textContent?.trim() || null,
-      insightBlocks: document.querySelectorAll('.insight-block').length,
-      hasWeave: Boolean(document.querySelector('.weave-canvas')),
-      hasBeads: Boolean(document.querySelector('.beads-canvas')),
-      hasMosaic: Boolean(document.querySelector('.mosaic')),
-    }))()`);
-  }
-  await evaluate(`document.querySelector('.insight-view-switch button')?.click()`);
-  await delay(220);
   results.historyTodayLabel = await evaluate(
     `document.querySelector('.history-day-current strong')?.textContent?.trim() || null`,
   );
@@ -621,35 +600,22 @@ async function main() {
     [results.taskLightInspection.completedView, 'task completed view'],
     [!results.taskLightInspection.hasSourceSelector, 'task provider is not exposed as a source'],
     [results.taskLightInspection.shellBackdrop === 'none', 'task workspace has no backdrop filter'],
-    [results.historyInspection.hasConclusion, 'history leads with an actionable conclusion'],
+    [results.historyInspection.hasDashboard, 'history renders the rebuilt analytics dashboard'],
+    [results.historyInspection.kpiCount === 4, 'history exposes four familiar core KPIs'],
     [
-      results.historyInspection.insightBlocks === 1,
-      'history emphasizes one analysis block at a time',
+      results.historyInspection.panelCount === 3,
+      'history has trend, allocation and session panels',
     ],
-    [results.historyInspection.hasWeave, 'single-day history renders the 24-hour weave'],
+    [results.historyInspection.hasWeave, 'single-day history renders the 24-hour timeline'],
+    [results.historyInspection.hasTaskRanking, 'history renders a readable task ranking'],
+    [results.historyInspection.hasSessionTable, 'history renders the recent-session table'],
     [
-      !results.historyInspection.hasBeads && !results.historyInspection.hasMosaic,
-      'overview does not compete with secondary visualizations',
-    ],
-    [
-      results.historyViews['单次质量']?.activeLabel?.startsWith('单次质量') &&
-        results.historyViews['单次质量']?.insightBlocks === 1 &&
-        results.historyViews['单次质量']?.hasBeads &&
-        !results.historyViews['单次质量']?.hasWeave &&
-        !results.historyViews['单次质量']?.hasMosaic,
-      'single-session quality view renders the bead chain alone',
+      !results.historyInspection.hasAbstractSwitcher,
+      'history removes the abstract visualization switcher',
     ],
     [
-      results.historyViews['时间去向']?.activeLabel?.startsWith('时间去向') &&
-        results.historyViews['时间去向']?.insightBlocks === 1 &&
-        results.historyViews['时间去向']?.hasMosaic &&
-        !results.historyViews['时间去向']?.hasWeave &&
-        !results.historyViews['时间去向']?.hasBeads,
-      'task destination view renders the mosaic alone',
-    ],
-    [
-      results.historyInspection.cardBorders.every((width) => width === '0px'),
-      'history blocks avoid nested card borders',
+      results.historyInspection.dashboardBorder !== '0px',
+      'dashboard has one shared outer boundary',
     ],
     [!results.historyInspection.hasRing, 'history removes decorative focus composition ring'],
     [results.historyInspection.hasDayNavigator, 'history defaults to single-day navigation'],

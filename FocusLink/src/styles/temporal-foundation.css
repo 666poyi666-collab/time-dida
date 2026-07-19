@@ -5,9 +5,6 @@
 @import '@fontsource/jetbrains-mono/400.css';
 @import '@fontsource/jetbrains-mono/500.css';
 @import '@fontsource/jetbrains-mono/600.css';
-@import 'misans/lib/Normal/MiSans-Regular.min.css';
-@import 'misans/lib/Normal/MiSans-Medium.min.css';
-@import 'misans/lib/Normal/MiSans-Semibold.min.css';
 
 @font-face {
   font-family: 'LXGW Neo ZhiSong';
@@ -37,10 +34,10 @@
   color-scheme: light;
 
   /* 字体角色：界面 / 中文 / 数据等宽 / 极细编辑数字 / 翻页机械数字 */
-  --font-ui: 'Noto Sans SC Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
-  --font-number: 'JetBrains Mono', 'MiSans', monospace;
+  --font-ui: 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
+  --font-number: 'JetBrains Mono', 'Noto Sans SC Variable', monospace;
   --font-timer-thin: 'Bodoni Moda Variable', 'Noto Sans SC Variable', serif;
-  --font-timer-flip: 'Oswald Variable', 'MiSans', sans-serif;
+  --font-timer-flip: 'Oswald Variable', 'Noto Sans SC Variable', sans-serif;
 
   --app-bg: 245 245 242;
   --app-surface: 252 252 250;

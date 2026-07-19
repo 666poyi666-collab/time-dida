@@ -45,7 +45,6 @@
     "better-sqlite3": "^11.3.0",
     "framer-motion": "^11.3.0",
     "lucide-react": "^0.412.0",
-    "misans": "^4.1.0",
     "ws": "^8.21.0",
     "zustand": "^4.5.4"
   },
