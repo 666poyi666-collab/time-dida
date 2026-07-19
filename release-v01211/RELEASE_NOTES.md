@@ -2,11 +2,11 @@
 
 > 发布日期：2026-07-19
 >
-> 对应提交：`待源码提交后填写`
+> 对应提交：`f1e3902`
 >
 > 发布类型：正式版
 >
-> 验证状态：门禁执行中
+> 验证状态：已通过
 
 ## 本次更新
 
@@ -42,7 +42,7 @@
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.12.11-x64.exe` | `待生成` |
-| `FocusLink-0.12.11-x64-portable.exe` | `待生成` |
+| `FocusLink-0.12.11-x64.exe` | `FB57B57EA7570E6018734084042C67DA977AD5C8051A7B1084D914FFAEFC80D0` |
+| `FocusLink-0.12.11-x64-portable.exe` | `8FB160435D0BFB6BF3922DE6EDB82DAE384CD5B912EBF913DDC3A985E36850DE` |
 
 同时提供 `SHA256SUMS.txt`。
