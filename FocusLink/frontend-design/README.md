@@ -1,6 +1,6 @@
 # FocusLink 前端设计索引
 
-> 适用版本：v0.12.x 系列；当前对应 v0.12.9「时间仪器 Time Instrument」设计系统
+> 适用版本：v0.12.x 系列；当前对应 v0.12.10「时间仪器 Time Instrument」设计系统
 >
 > 文档责任：只描述产品体验、renderer 结构和可验收的视觉/交互规则。
 
@@ -20,7 +20,7 @@
 | `src/app/` | 应用骨架、顶级导航和 renderer 状态编排 |
 | `src/features/focus/` | 专注计时、五套计时仪表（TimerDial）、canvas 时间之带与当前会话账本 |
 | `src/features/tasks/` | 固定滴答语义的任务工作台、完成历史和统一任务选择器 |
-| `src/features/history/` | 统计摘要、织带/矩阵/珠链可视化、带请求版本保护的历史会话和同步状态 |
+| `src/features/history/` | 统计日报、单日时间轴/多日趋势、任务排行、最近会话与带请求版本保护的历史详情 |
 | `src/features/settings/` | 连接、同步与体验设置 |
 | `src/features/mini/` | 固定两态小窗及边缘自动收起表现 |
 | `src/ui/` | 无业务含义的基础 UI 组件 |
