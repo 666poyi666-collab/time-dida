@@ -2,7 +2,7 @@
 
 FocusLink 是一个本地优先的 Windows 桌面专注工具：主进程精确记录专注、暂停与自然跨度，把片段关联到滴答清单任务，并通过彼此独立的队列同步滴答清单与番茄 To-do。
 
-> 当前版本：v0.12.10
+> 当前版本：v0.12.11
 >
 > 版本主题：全局强调色 · 四套艺术字体 · 日报 Dashboard · 秒级时间之带
 
@@ -145,11 +145,12 @@ RELEASE_NOTES.md
 | 版本 | 本地安装版 | 版本说明 |
 | --- | --- | --- |
 | 0.12.8 | `release-v0128/FocusLink-0.12.8-x64.exe` | [v0.12.8](release-v0128/RELEASE_NOTES.md) |
-| 0.12.10 | `release-v01210/FocusLink-0.12.10-x64.exe`（待构建） | [v0.12.10](release-v01210/RELEASE_NOTES.md) |
+| 0.12.10 | `release-v01210/FocusLink-0.12.10-x64.exe`（发布门禁阻断） | [v0.12.10](release-v01210/RELEASE_NOTES.md) |
+| 0.12.11 | `release-v01211/FocusLink-0.12.11-x64.exe`（待构建） | [v0.12.11](release-v01211/RELEASE_NOTES.md) |
 
 每次版本迭代必须同步更新 `CHANGELOG.md`、本地 `RELEASE_NOTES.md` 和 GitHub Release，并上传安装版、便携版与 SHA256。只推送代码或 tag 不算发布完成。
 
-v0.12.10 的本地发布状态以同目录 `RELEASE_NOTES.md` 为准，线上状态以 GitHub Releases 回读结果为准。每个新版本都必须由 tag workflow 复验已提交产物，并回读正文、目标提交、附件名称、字节数、下载链接与下载后 SHA256。
+v0.12.10 的公开 tag 因 `APP_RELEASE_DIR` 遗漏同步而在元数据门禁被阻断，保持不移动；v0.12.11 以新 tag 重新生成并复验资产。线上状态以 GitHub Releases 回读结果为准。
 
 ## 文档入口
 
@@ -160,7 +161,7 @@ v0.12.10 的本地发布状态以同目录 `RELEASE_NOTES.md` 为准，线上状
 - [后端与共享契约](FocusLink/backend-design/BACKEND_SPEC.md)
 - [测试与发布门禁](FocusLink/backend-design/TEST_AND_RELEASE.md)
 - [后端 AI 接手清单](FocusLink/backend-design/AI_HANDOFF_CHECKLIST.md)
-- [当前版本 v0.12.10 Release 正文](release-v01210/RELEASE_NOTES.md)
+- [当前版本 v0.12.11 Release 正文](release-v01211/RELEASE_NOTES.md)
 - [v0.11.2 离线发布记录](FocusLink/backend-design/releases/v0.11.2.md)
 - [v0.11.1 离线发布记录](FocusLink/backend-design/releases/v0.11.1.md)
 - [v0.11.0 离线发布记录](FocusLink/backend-design/releases/v0.11.0.md)
