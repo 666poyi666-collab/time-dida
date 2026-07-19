@@ -117,8 +117,17 @@ if (-not $script:messageSent) { throw 'Could not find the isolated FocusLink Min
 `;
 
   return new Promise((resolve, reject) => {
+    const powershellPath =
+      process.env.POWERSHELL_PATH ||
+      path.join(
+        process.env.SystemRoot || 'C:\\Windows',
+        'System32',
+        'WindowsPowerShell',
+        'v1.0',
+        'powershell.exe',
+      );
     execFile(
-      'powershell.exe',
+      powershellPath,
       ['-NoProfile', '-NonInteractive', '-Command', script],
       { windowsHide: true, timeout: 15_000, maxBuffer: 1024 * 1024 },
       (error, stdout, stderr) => {
