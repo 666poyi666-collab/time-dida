@@ -26,8 +26,8 @@ describe('专注/暂停颜色语义 token 契约', () => {
     expect(dark).toContain('--app-pause: 244 112 103;');
   });
 
-  it('四种专注色只重映射专注语义，绝不触碰暂停红与界面蓝', () => {
-    for (const color of ['emerald', 'forest', 'mint', 'teal']) {
+  it('五种跨色相专注色只重映射专注语义，绝不触碰暂停红与界面蓝', () => {
+    for (const color of ['emerald', 'cobalt', 'violet', 'amber', 'graphite']) {
       for (const prefix of ['', '.dark']) {
         const block = blockOf(`${prefix}.focus-color-${color}`);
         expect(block).toContain('--app-success:');

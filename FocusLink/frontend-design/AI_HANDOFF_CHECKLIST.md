@@ -34,7 +34,7 @@
 - [ ] 统计默认今天，单日左右导航不会进入未来；近 7 / 15 / 30 天和自定义仍能重算真实图表。
 - [ ] 真实点击“开始专注”后可见“专注中”、开始时间、计时增长、活动轨和片段账本；smoke 不绕过按钮直接启动。
 - [ ] 设置 Switch 在亮色关闭态仍有明确轮廓，尺寸、滑块位置、`role="switch"` 与 `aria-checked` 一致。
-- [ ] 小窗仍只有两种固定状态（收起 184×35 / 展开 320×116）；所有尺寸只从 `shared/miniWindowLayout.ts` 派生。
+- [ ] 小窗仍只有两种固定状态（收起 184×35 / 展开 304×96）；所有尺寸只从 `shared/miniWindowLayout.ts` 派生。
 - [ ] 收起小窗仅有进度/状态、当前时间和展开入口，没有任务、累计统计或额外按钮；展开小窗任务名单行完整显示或克制滚动，不用省略号/渐隐。
 - [ ] 时间之带为 canvas 单一渲染面（`shared/focus/bandMath.ts` 纯函数内核）：专注=秒级近景、暂停=远景变焦、逐秒步进 130ms、reduced-motion 瞬时切换。
 - [ ] 计时仪表四样式（standard/flip/pixel/thin）宽度稳定不跳位；旧 editorial/digital/mono 设置经 `resolveTimerStyle` 迁移。

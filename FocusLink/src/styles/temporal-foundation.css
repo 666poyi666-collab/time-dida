@@ -1,6 +1,7 @@
-@import '@fontsource-variable/geist/wght.css';
-@import '@fontsource-variable/inter-tight/wght.css';
 @import '@fontsource-variable/oswald/wght.css';
+@import '@fontsource-variable/noto-sans-sc/wght.css';
+@import '@fontsource/lxgw-wenkai/500.css';
+@import '@fontsource-variable/bodoni-moda/wght.css';
 @import '@fontsource/jetbrains-mono/400.css';
 @import '@fontsource/jetbrains-mono/500.css';
 @import '@fontsource/jetbrains-mono/600.css';
@@ -20,9 +21,9 @@
   color-scheme: light;
 
   /* 字体角色：界面 / 中文 / 数据等宽 / 极细编辑数字 / 翻页机械数字 */
-  --font-ui: 'Geist Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
+  --font-ui: 'Noto Sans SC Variable', 'MiSans', 'Microsoft YaHei UI', sans-serif;
   --font-number: 'JetBrains Mono', 'MiSans', monospace;
-  --font-timer-thin: 'Inter Tight Variable', 'MiSans', sans-serif;
+  --font-timer-thin: 'Bodoni Moda Variable', 'Noto Sans SC Variable', serif;
   --font-timer-flip: 'Oswald Variable', 'MiSans', sans-serif;
 
   --app-bg: 245 245 242;
@@ -138,7 +139,7 @@
   --shadow-modal: 0 28px 90px -28px rgb(0 0 0 / 0.9);
 }
 
-/* 专注强调色四选：只映射专注语义，不触碰界面蓝 */
+/* 专注强调色跨色相选择：只映射专注语义，不触碰界面蓝与暂停红。 */
 .focus-color-emerald {
   --app-success: 14 159 110;
   --app-success-soft: 228 245 238;
@@ -149,35 +150,45 @@
   --app-success-soft: 15 46 35;
   --app-success-deep: 110 231 183;
 }
-.focus-color-forest {
-  --app-success: 39 133 90;
-  --app-success-soft: 230 242 235;
-  --app-success-deep: 30 107 71;
+.focus-color-cobalt {
+  --app-success: 35 103 196;
+  --app-success-soft: 231 239 250;
+  --app-success-deep: 27 77 151;
 }
-.dark.focus-color-forest {
-  --app-success: 76 195 138;
-  --app-success-soft: 18 43 31;
-  --app-success-deep: 127 206 165;
+.dark.focus-color-cobalt {
+  --app-success: 99 156 235;
+  --app-success-soft: 19 38 66;
+  --app-success-deep: 153 191 244;
 }
-.focus-color-mint {
-  --app-success: 63 169 140;
-  --app-success-soft: 231 245 240;
-  --app-success-deep: 47 138 114;
+.focus-color-violet {
+  --app-success: 113 73 188;
+  --app-success-soft: 239 234 248;
+  --app-success-deep: 84 53 146;
 }
-.dark.focus-color-mint {
-  --app-success: 94 196 166;
-  --app-success-soft: 18 48 42;
-  --app-success-deep: 138 216 192;
+.dark.focus-color-violet {
+  --app-success: 171 133 232;
+  --app-success-soft: 42 29 63;
+  --app-success-deep: 205 179 246;
 }
-.focus-color-teal {
-  --app-success: 14 143 143;
-  --app-success-soft: 227 242 242;
-  --app-success-deep: 10 110 110;
+.focus-color-amber {
+  --app-success: 187 119 24;
+  --app-success-soft: 249 240 222;
+  --app-success-deep: 139 85 14;
 }
-.dark.focus-color-teal {
-  --app-success: 63 193 193;
-  --app-success-soft: 14 42 42;
-  --app-success-deep: 122 213 213;
+.dark.focus-color-amber {
+  --app-success: 232 169 73;
+  --app-success-soft: 53 38 18;
+  --app-success-deep: 250 203 125;
+}
+.focus-color-graphite {
+  --app-success: 67 76 88;
+  --app-success-soft: 235 237 239;
+  --app-success-deep: 38 45 55;
+}
+.dark.focus-color-graphite {
+  --app-success: 190 198 207;
+  --app-success-soft: 39 43 48;
+  --app-success-deep: 224 229 234;
 }
 
 * {
@@ -199,7 +210,17 @@ body {
   font-size: 13.5px;
   line-height: 1.5;
   font-feature-settings: 'kern';
-  -webkit-font-smoothing: antialiased;
+  -webkit-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
+}
+.font-profile-noto {
+  --font-ui: 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
+}
+.font-profile-misans {
+  --font-ui: 'MiSans', 'Noto Sans SC Variable', sans-serif;
+}
+.font-profile-wenkai {
+  --font-ui: 'LXGW WenKai', 'Noto Sans SC Variable', serif;
 }
 html.mini-window-page,
 html.mini-window-page body,
@@ -338,12 +359,10 @@ button:disabled {
 @keyframes digit-settle {
   0% {
     transform: translateY(-2px) scale(0.92);
-    filter: blur(1.5px);
     opacity: 0.42;
   }
   100% {
     transform: none;
-    filter: none;
     opacity: 1;
   }
 }

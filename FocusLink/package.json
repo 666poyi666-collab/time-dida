@@ -1,6 +1,6 @@
 {
   "name": "focuslink",
-  "version": "0.12.7",
+  "version": "0.12.8",
   "description": "FocusLink - 全局快捷键驱动的专注时间记录器 + 滴答清单任务关联器",
   "author": "FocusLink",
   "main": "dist-electron/main.js",
@@ -37,10 +37,11 @@
     "lint:fix": "eslint --fix \"src/**/*.{ts,tsx}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"tests/**/*.ts\""
   },
   "dependencies": {
-    "@fontsource-variable/geist": "^5.2.9",
-    "@fontsource-variable/inter-tight": "^5.2.7",
+    "@fontsource-variable/bodoni-moda": "^5.3.0",
+    "@fontsource-variable/noto-sans-sc": "^5.3.0",
     "@fontsource-variable/oswald": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/lxgw-wenkai": "^5.3.0",
     "better-sqlite3": "^11.3.0",
     "framer-motion": "^11.3.0",
     "lucide-react": "^0.412.0",

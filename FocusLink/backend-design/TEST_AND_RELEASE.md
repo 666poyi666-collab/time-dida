@@ -30,10 +30,10 @@ npm run regression:electron
 ### UI smoke
 
 - 主窗覆盖深浅主题的 idle、running、paused、任务、统计、设置和 TaskPicker。
-- 契约断言覆盖四套计时仪表（standard/flip/pixel/thin）、canvas 时间之带实时渲染、统计单日织带/多日节律矩阵/单次质量珠链/时间去向马赛克，以及沉浸模式覆盖层。
+- 契约断言覆盖五套计时仪表（standard/flip/pixel/thin/segment）、canvas 时间之带实时渲染、统计单日织带/多日节律矩阵/单次质量珠链/时间去向马赛克，以及 Electron 原生全屏沉浸覆盖层。
 - 视觉断言要确认主工作面无大面积 `backdrop-filter`/blur/光晕，文字对比与字号下限符合前端规范，reduced-motion 无持续呼吸或位移。
 - 覆盖默认尺寸、最小尺寸、1280×720、键盘焦点和无横向溢出。
-- 小窗覆盖 expanded/collapsed、running/paused、实时主题/字体切换、透明边界、DPR、多显示器 work area 和四边吸附；Windows 原生拖拽必须由 `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` 区分按住与释放，断言收起态仅有进度/状态、当前时间、3px 进度轨和展开入口，展开态完整显示任务名、三项累计与全部控制且时间与按钮分行，字号为 25px / 27px，并覆盖 320ms 收束与过渡中拖动取消。
+- 小窗覆盖 expanded/collapsed、running/paused、实时主题/字体切换、透明边界、DPR、多显示器 work area 和四边吸附；Windows 原生拖拽必须由 `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` 区分按住与释放，断言收起态仅有进度/状态、当前时间、3px 进度轨和展开入口，展开态在 `304×96` 内完整显示任务名、三项累计与全部控制且时间与按钮分行，并覆盖 320ms 收束与过渡中拖动取消。
 - 小窗尺寸以 BrowserWindow 内容 viewport、填满 viewport 的 shell 和截图像素为三重事实；Chromium 的 `window.outerWidth/outerHeight` 在 Windows runner 可能包含不可见系统边框，只能用于诊断和重复命令前后不变性，不能作为固定内容尺寸的发布断言。
 - 关闭 smoke 后删除临时 user-data 必须允许 Windows 日志尾写入的有界重试；清理错误不得覆盖首个产品/断言错误。
 - 统计 smoke 连续快速展开不同会话、在计时 tick 中滚动/切换页面，确认旧请求不会覆盖新详情，退出页不拦截鼠标。

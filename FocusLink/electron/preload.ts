@@ -136,6 +136,7 @@ const api = {
     minimizeToTray: () => ipcRenderer.send('window:minimize-to-tray'),
     minimize: () => ipcRenderer.send('window:minimize'),
     toggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
+    setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-full-screen', enabled),
     close: () => ipcRenderer.send('window:close'),
     show: () => ipcRenderer.send('window:show'),
     quit: () => ipcRenderer.send('window:quit'),

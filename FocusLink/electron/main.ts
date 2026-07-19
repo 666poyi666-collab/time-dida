@@ -313,7 +313,7 @@ function createMainWindow(): BrowserWindow {
 function createMiniWindow(): BrowserWindow {
   const settings = getSettings();
   const cfg = settings.miniWindow;
-  // 小窗固定尺寸：边缘进度胶囊 184×35，展开控制台 320×124。
+  // 小窗固定尺寸：边缘进度条 184×35，展开控制台尺寸来自 shared 唯一真值。
   const MIN_W = MINI_WINDOW_SIZE_PRESETS[0].width;
   const MIN_H = MINI_WINDOW_COLLAPSED_HEIGHT;
   const MAX_W = MINI_WINDOW_SIZE_PRESETS[1].width;

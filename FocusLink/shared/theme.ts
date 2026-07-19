@@ -4,13 +4,10 @@ import type { AppSettings } from './types';
 // FocusLink design language; the legacy setting is accepted only for migration.
 export const THEME_FAMILIES = ['quiet'] as const satisfies readonly AppSettings['themeFamily'][];
 
-// 旧排版气质字段已废弃：单一字体系统（Geist + MiSans + JetBrains Mono +
-// Inter Tight + Oswald），仅保留解析以免旧设置启动报错。
 export const FONT_PROFILES = [
-  'plex',
-  'geist',
-  'manrope',
-  'sora',
+  'noto',
+  'misans',
+  'wenkai',
 ] as const satisfies readonly AppSettings['fontProfile'][];
 
 export const TIMER_STYLES = [
@@ -18,17 +15,19 @@ export const TIMER_STYLES = [
   'flip',
   'pixel',
   'thin',
+  'segment',
 ] as const satisfies readonly AppSettings['timerStyle'][];
 
 /** 旧计时样式值：仅用于清理遗留根类与设置迁移，不再是可选项。 */
 export const LEGACY_TIMER_STYLES = ['editorial', 'digital', 'mono'] as const;
 
-/** 专注强调色四选：只映射专注语义（--app-success），不触碰界面蓝与暂停红。 */
+/** 专注强调色跨色相五选：只映射专注语义（--app-success），不触碰界面蓝与暂停红。 */
 export const FOCUS_COLORS = [
   'emerald',
-  'forest',
-  'mint',
-  'teal',
+  'cobalt',
+  'violet',
+  'amber',
+  'graphite',
 ] as const satisfies readonly AppSettings['focusColor'][];
 
 export function resolveThemeFamily(value: unknown): AppSettings['themeFamily'] {
@@ -37,9 +36,13 @@ export function resolveThemeFamily(value: unknown): AppSettings['themeFamily'] {
 }
 
 export function resolveFontProfile(value: unknown): AppSettings['fontProfile'] {
-  return FONT_PROFILES.includes(value as AppSettings['fontProfile'])
-    ? (value as AppSettings['fontProfile'])
-    : 'plex';
+  if (FONT_PROFILES.includes(value as AppSettings['fontProfile'])) {
+    return value as AppSettings['fontProfile'];
+  }
+  if (value === 'geist' || value === 'plex' || value === 'manrope' || value === 'sora') {
+    return 'noto';
+  }
+  return 'noto';
 }
 
 /**
@@ -61,6 +64,8 @@ export function resolveTimerStyle(value: unknown): AppSettings['timerStyle'] {
 
 /** 专注强调色解析：未知值一律回落 emerald。 */
 export function resolveFocusColor(value: unknown): AppSettings['focusColor'] {
+  if (value === 'forest' || value === 'mint') return 'emerald';
+  if (value === 'teal') return 'cobalt';
   return FOCUS_COLORS.includes(value as AppSettings['focusColor'])
     ? (value as AppSettings['focusColor'])
     : 'emerald';

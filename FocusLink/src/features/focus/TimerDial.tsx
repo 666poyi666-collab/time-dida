@@ -1,4 +1,4 @@
-// 计时仪表：同一主时间的四种真实不同的机械/排版表现。
+// 计时仪表：同一主时间的五种真实不同的机械/排版表现。
 // - standard 标准等宽：JetBrains Mono，沉稳的仪器读数
 // - flip     翻页机械：Oswald + 上下分片翻牌，中央转轴
 // - pixel    像素点阵：5×7 点阵数字 + 随累计专注点亮的专注核心
@@ -17,7 +17,7 @@ import {
   focusCoreLitCount,
 } from '@shared/timerInstruments';
 
-export type TimerStyleName = 'standard' | 'flip' | 'pixel' | 'thin';
+export type TimerStyleName = 'standard' | 'flip' | 'pixel' | 'thin' | 'segment';
 
 export function TimerDial({
   ms,
@@ -34,6 +34,7 @@ export function TimerDial({
   const text = formatDurationPadded(ms);
   if (style === 'flip') return <FlipDial text={text} state={state} />;
   if (style === 'pixel') return <PixelDial text={text} state={state} coreRatio={coreRatio ?? 0} />;
+  if (style === 'segment') return <SegmentDial text={text} state={state} />;
   if (style === 'thin') {
     return (
       <div className={`timer-dial dial-thin state-${state}`} aria-label={text}>
@@ -44,6 +45,56 @@ export function TimerDial({
   return (
     <div className={`timer-dial dial-standard state-${state}`} aria-label={text}>
       <FlipDigits value={text} />
+    </div>
+  );
+}
+
+/* ─── 七段数码 ─────────────────────────────────────────────── */
+
+const SEGMENTS: Record<string, string> = {
+  '0': 'abcdef',
+  '1': 'bc',
+  '2': 'abdeg',
+  '3': 'abcdg',
+  '4': 'bcfg',
+  '5': 'acdfg',
+  '6': 'acdefg',
+  '7': 'abc',
+  '8': 'abcdefg',
+  '9': 'abcdfg',
+};
+
+const SEGMENT_PATHS: Record<string, string> = {
+  a: 'M12 5 L48 5 L53 10 L47 15 L13 15 L7 10 Z',
+  b: 'M50 13 L55 18 L55 43 L50 48 L45 43 L45 20 Z',
+  c: 'M50 52 L55 57 L55 82 L50 87 L45 80 L45 57 Z',
+  d: 'M12 85 L48 85 L53 90 L47 95 L13 95 L7 90 Z',
+  e: 'M10 52 L15 57 L15 80 L10 87 L5 82 L5 57 Z',
+  f: 'M10 13 L15 20 L15 43 L10 48 L5 43 L5 18 Z',
+  g: 'M12 45 L48 45 L53 50 L48 55 L12 55 L7 50 Z',
+};
+
+function SegmentDial({ text, state }: { text: string; state: string }) {
+  return (
+    <div className={`timer-dial dial-segment state-${state}`} aria-label={text}>
+      {Array.from(text).map((char, index) =>
+        char === ':' ? (
+          <svg className="segment-colon" viewBox="0 0 20 100" aria-hidden="true" key={index}>
+            <circle cx="10" cy="34" r="4" />
+            <circle cx="10" cy="68" r="4" />
+          </svg>
+        ) : (
+          <svg className="segment-digit" viewBox="0 0 60 100" aria-hidden="true" key={index}>
+            {Object.entries(SEGMENT_PATHS).map(([name, d]) => (
+              <path
+                key={name}
+                d={d}
+                className={(SEGMENTS[char] ?? '').includes(name) ? 'segment-on' : 'segment-off'}
+              />
+            ))}
+          </svg>
+        ),
+      )}
     </div>
   );
 }

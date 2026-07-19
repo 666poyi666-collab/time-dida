@@ -8,6 +8,7 @@ import {
   LEGACY_TIMER_STYLES,
   TIMER_STYLES,
   resolveFocusColor,
+  resolveFontProfile,
   resolveThemeAppearance,
   resolveTimerStyle,
 } from '@shared/theme';
@@ -101,7 +102,10 @@ function applyThemeClass(settings: AppSettings): void {
   root.classList.toggle('dark', effectiveTheme === 'dark');
   ['quiet', 'dawn', 'bloom'].forEach((family) => root.classList.remove(`theme-${family}`));
   delete root.dataset.themeFamily;
-  FONT_PROFILES.forEach((profile) => root.classList.remove(`font-profile-${profile}`));
+  [...FONT_PROFILES, 'plex', 'geist', 'manrope', 'sora'].forEach((profile) =>
+    root.classList.remove(`font-profile-${profile}`),
+  );
+  root.classList.add(`font-profile-${resolveFontProfile(settings.fontProfile)}`);
   ['indigo', 'violet', 'emerald', 'rose', 'amber', 'sky'].forEach((accent) =>
     root.classList.remove(`accent-${accent}`),
   );

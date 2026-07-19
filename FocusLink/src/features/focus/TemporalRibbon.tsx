@@ -239,17 +239,24 @@ function renderBand(
   const farA = macroTickAlpha(scale);
 
   // —— 刻度场即进度场 ——
-  const fieldTop = 24;
-  const fieldBottom = H - 26;
+  const fieldTop = 28;
+  const fieldBottom = H - 30;
   const fieldH = fieldBottom - fieldTop;
-  // 未发生时间：中性灰底
-  ctx.fillStyle = `rgba(${surface2},1)`;
+  // 未发生时间：中性灰仪表槽，纵向明暗让它像一块刻蚀材料而不是空白矩形。
+  const baseGradient = ctx.createLinearGradient(0, fieldTop, 0, fieldBottom);
+  baseGradient.addColorStop(0, `rgba(${surface2},0.72)`);
+  baseGradient.addColorStop(0.12, `rgba(${surface2},1)`);
+  baseGradient.addColorStop(0.88, `rgba(${surface2},0.9)`);
+  baseGradient.addColorStop(1, `rgba(${ink},0.075)`);
+  ctx.fillStyle = baseGradient;
   ctx.fillRect(0, fieldTop, W, fieldH);
-  ctx.fillStyle = `rgba(${ink},0.08)`;
+  ctx.fillStyle = `rgba(${ink},0.12)`;
   ctx.fillRect(0, fieldTop, W, 1);
   ctx.fillRect(0, fieldBottom - 1, W, 1);
+  const t0 = tDisp - px / scale;
+  const t1 = tDisp + (W - px) / scale;
 
-  // 已发生片段：专注实体填充 + 暂停斜纹
+  // 已发生片段：专注使用有纵深的实色材料，暂停使用双向刻纹。
   for (const m of input.moments) {
     let endMs = m.endedAt;
     if (!endMs) {
@@ -262,24 +269,47 @@ function renderBand(
     const x1 = Math.min(X(endMs), px);
     if (x1 < -2 || x0 > W + 2 || x1 - x0 < 0.3) continue;
     if (m.type === 'focus') {
-      ctx.fillStyle = `rgba(${focusC},0.88)`;
+      const focusGradient = ctx.createLinearGradient(0, fieldTop, 0, fieldBottom);
+      focusGradient.addColorStop(0, `rgba(${focusC},0.96)`);
+      focusGradient.addColorStop(0.48, `rgba(${focusC},0.82)`);
+      focusGradient.addColorStop(1, `rgba(${focusDeep},0.88)`);
+      ctx.fillStyle = focusGradient;
       ctx.fillRect(x0, fieldTop, x1 - x0, fieldH);
       ctx.fillStyle = `rgba(${focusDeep},1)`;
-      ctx.fillRect(x0, fieldTop, x1 - x0, 2);
+      ctx.fillRect(x0, fieldTop, x1 - x0, 1.5);
+      ctx.fillStyle = `rgba(255,255,255,0.16)`;
+      ctx.fillRect(x0, fieldTop + 2, x1 - x0, 1);
+      // 秒级近景中，每一秒既是刻度也是一个可触摸的进度单元。
+      if (scale >= 3.2) {
+        const firstSecond = Math.max(Math.floor(t0), Math.floor(m.startedAt / 1000));
+        const lastSecond = Math.min(Math.ceil(t1), Math.ceil(endMs / 1000));
+        ctx.fillStyle = `rgba(${ink},0.105)`;
+        for (let second = firstSecond; second <= lastSecond; second += 1) {
+          const cellX = X(second * 1000);
+          if (cellX >= x0 && cellX <= x1) ctx.fillRect(cellX, fieldTop, 0.65, fieldH);
+        }
+      }
       if (!m.endedAt) ctx.fillRect(x1 - 2, fieldTop, 2, fieldH);
     } else {
-      ctx.fillStyle = `rgba(${pauseC},0.16)`;
+      ctx.fillStyle = `rgba(${pauseC},0.19)`;
       ctx.fillRect(x0, fieldTop, x1 - x0, fieldH);
       ctx.save();
       ctx.beginPath();
       ctx.rect(x0, fieldTop, x1 - x0, fieldH);
       ctx.clip();
-      ctx.strokeStyle = `rgba(${pauseC},0.55)`;
-      ctx.lineWidth = 1.3;
-      for (let d = x0 - fieldH; d < x1 + fieldH; d += 7) {
+      ctx.strokeStyle = `rgba(${pauseC},0.58)`;
+      ctx.lineWidth = 1.15;
+      for (let d = x0 - fieldH; d < x1 + fieldH; d += 8) {
         ctx.beginPath();
         ctx.moveTo(d, fieldBottom);
         ctx.lineTo(d + fieldH, fieldTop);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = `rgba(${pauseC},0.16)`;
+      for (let d = x0; d < x1 + fieldH; d += 16) {
+        ctx.beginPath();
+        ctx.moveTo(d, fieldTop);
+        ctx.lineTo(d + fieldH, fieldBottom);
         ctx.stroke();
       }
       ctx.restore();
@@ -294,9 +324,12 @@ function renderBand(
   ctx.fillStyle = `rgba(${ink},0.05)`;
   ctx.fillRect(px, fieldTop, W - px, fieldH);
 
+  // 仪表槽内部的两条发丝基准线统一专注、暂停和未来区域的材质。
+  ctx.fillStyle = `rgba(${ink},0.075)`;
+  ctx.fillRect(0, fieldTop + fieldH / 3, W, 0.6);
+  ctx.fillRect(0, fieldTop + (fieldH * 2) / 3, W, 0.6);
+
   // —— 刻度绘制在颜色区域之上 ——
-  const t0 = tDisp - px / scale;
-  const t1 = tDisp + (W - px) / scale;
   ctx.textAlign = 'center';
   if (nearA > 0.02) {
     for (let t = Math.floor(t0) - 1; t <= t1 + 1; t += 1) {
@@ -305,7 +338,7 @@ function renderBand(
       const fut = t > tDisp;
       const major = t % 60 === 0;
       const mid = t % 5 === 0;
-      const h = major ? 26 : mid ? 16 : 9;
+      const h = major ? fieldH : mid ? Math.min(24, fieldH * 0.42) : Math.min(13, fieldH * 0.24);
       ctx.strokeStyle = `rgba(${ink},${(fut ? 0.28 : major ? 0.8 : mid ? 0.6 : 0.42) * nearA})`;
       ctx.lineWidth = major ? 1.4 : 1;
       ctx.beginPath();
@@ -329,7 +362,7 @@ function renderBand(
       ctx.lineWidth = major ? 1.4 : 1;
       ctx.beginPath();
       ctx.moveTo(x, fieldTop);
-      ctx.lineTo(x, fieldTop + (major ? 26 : 15));
+      ctx.lineTo(x, fieldTop + (major ? fieldH : Math.min(22, fieldH * 0.38)));
       ctx.stroke();
       if (major) {
         ctx.fillStyle = `rgba(${muted},${(fut ? 0.5 : 0.95) * farA})`;
@@ -355,8 +388,10 @@ function renderBand(
   }
 
   // —— 指针 + 秒脉冲 ——
+  ctx.fillStyle = `rgba(${ink},0.16)`;
+  ctx.fillRect(px - 3, fieldTop, 6, fieldH);
   ctx.fillStyle = `rgba(${ink},1)`;
-  ctx.fillRect(px - 1, 6, 2, H - 44);
+  ctx.fillRect(px - 0.75, 6, 1.5, H - 44);
   ctx.font = fontUi;
   ctx.textAlign = 'center';
   ctx.fillText('现在', px, H - 8);

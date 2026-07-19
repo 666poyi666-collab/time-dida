@@ -5,7 +5,7 @@ import { getSetting, setSetting, resetFailedSyncItems, getDb } from './db/index.
 import { DEFAULT_SETTINGS } from '@shared/types';
 import type { AppSettings } from '@shared/types';
 import { mergeSettings } from '@shared/settingsPolicy';
-import { resolveTimerStyle } from '@shared/theme';
+import { resolveFocusColor, resolveFontProfile, resolveTimerStyle } from '@shared/theme';
 import { getExpandedMiniWindowSize } from '@shared/miniWindowLayout';
 import { logger } from './logger.js';
 import {
@@ -79,20 +79,31 @@ export function getSettings(): AppSettings {
   applyTomatodoCloudV053Migration(settings);
   applyReconcileDidaFocusV060Migration();
   normalizeSegmentBehavior(settings);
-  normalizeTimerStyle(settings);
+  normalizeAppearanceSettings(settings);
   normalizeMiniWindowSize(settings);
   return settings;
 }
 
-/** v0.12.7 迁移：旧计时字形 editorial/digital/mono 映射到新仪表体系，未知值回落 standard。 */
-function normalizeTimerStyle(settings: AppSettings): void {
-  const resolved = resolveTimerStyle(settings.timerStyle);
-  if (resolved === settings.timerStyle) return;
-  logger.info(
-    'settings',
-    `v0127 migration: timerStyle ${String(settings.timerStyle)} -> ${resolved}`,
-  );
-  settings.timerStyle = resolved;
+/** 视觉设置迁移：收敛旧字体、旧专注色和旧计时字形，避免设置页出现无选中状态。 */
+function normalizeAppearanceSettings(settings: AppSettings): void {
+  const timerStyle = resolveTimerStyle(settings.timerStyle);
+  const fontProfile = resolveFontProfile(settings.fontProfile);
+  const focusColor = resolveFocusColor(settings.focusColor);
+  if (
+    timerStyle === settings.timerStyle &&
+    fontProfile === settings.fontProfile &&
+    focusColor === settings.focusColor
+  ) {
+    return;
+  }
+  logger.info('settings', 'normalize appearance settings', {
+    timerStyle: `${String(settings.timerStyle)} -> ${timerStyle}`,
+    fontProfile: `${String(settings.fontProfile)} -> ${fontProfile}`,
+    focusColor: `${String(settings.focusColor)} -> ${focusColor}`,
+  });
+  settings.timerStyle = timerStyle;
+  settings.fontProfile = fontProfile;
+  settings.focusColor = focusColor;
   store.store = settings;
   setSetting(SETTINGS_KEY, JSON.stringify(settings));
 }

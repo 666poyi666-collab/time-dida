@@ -74,7 +74,7 @@ async function main() {
 
   if (captureThemes) {
     await evaluate(`document.querySelector('button[aria-label="专注"]')?.click()`);
-    // 单一设计系统：主题族已移除，主题维度 = 明暗 × 四种计时仪表
+    // 单一设计系统：主题族已移除，主题维度 = 明暗 × 五种计时仪表
     for (const style of ['standard', 'flip', 'pixel', 'thin']) {
       for (const appearance of ['light', 'dark']) {
         await evaluate(`window.focuslink.settings.set({

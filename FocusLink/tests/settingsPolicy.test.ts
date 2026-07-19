@@ -46,21 +46,21 @@ describe('settings partial update policy', () => {
     const legacySettings = { ...DEFAULT_SETTINGS } as Partial<AppSettings>;
     delete legacySettings.fontProfile;
     const migrated = mergeSettings(DEFAULT_SETTINGS, legacySettings);
-    const chosen = mergeSettings(migrated, { fontProfile: 'manrope' });
+    const chosen = mergeSettings(migrated, { fontProfile: 'wenkai' });
 
-    expect(migrated.fontProfile).toBe('plex');
-    expect(chosen.fontProfile).toBe('manrope');
-    expect(mergeSettings(chosen, { theme: 'dark' }).fontProfile).toBe('manrope');
+    expect(migrated.fontProfile).toBe('noto');
+    expect(chosen.fontProfile).toBe('wenkai');
+    expect(mergeSettings(chosen, { theme: 'dark' }).fontProfile).toBe('wenkai');
   });
 
   it('routes a font-only update through the theme domain without unrelated side effects', () => {
-    const next = mergeSettings(DEFAULT_SETTINGS, { fontProfile: 'manrope' });
+    const next = mergeSettings(DEFAULT_SETTINGS, { fontProfile: 'misans' });
 
     expect(detectSettingsChangedDomains(DEFAULT_SETTINGS, next)).toEqual(['theme']);
   });
 
   it('routes focus color and timer style through the theme domain', () => {
-    const next = mergeSettings(DEFAULT_SETTINGS, { focusColor: 'teal', timerStyle: 'pixel' });
+    const next = mergeSettings(DEFAULT_SETTINGS, { focusColor: 'violet', timerStyle: 'pixel' });
 
     expect(detectSettingsChangedDomains(DEFAULT_SETTINGS, next)).toEqual(['theme']);
   });
@@ -78,7 +78,7 @@ describe('settings partial update policy', () => {
 });
 
 describe('专注色与计时仪表样式的保存恢复', () => {
-  it('专注色保存后跨无关更新恢复，四种专注色全部往返', () => {
+  it('专注色保存后跨无关更新恢复，跨色相专注色全部往返', () => {
     for (const color of FOCUS_COLORS) {
       const saved = mergeSettings(DEFAULT_SETTINGS, { focusColor: color });
       expect(saved.focusColor).toBe(color);
@@ -99,7 +99,7 @@ describe('专注色与计时仪表样式的保存恢复', () => {
     }
   });
 
-  it('计时仪表样式保存后跨无关更新恢复，四种样式全部往返', () => {
+  it('计时仪表样式保存后跨无关更新恢复，全部样式均可往返', () => {
     for (const style of TIMER_STYLES) {
       const saved = mergeSettings(DEFAULT_SETTINGS, { timerStyle: style });
       expect(saved.timerStyle).toBe(style);

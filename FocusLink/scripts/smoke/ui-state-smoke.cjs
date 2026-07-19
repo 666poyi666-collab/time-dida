@@ -509,9 +509,9 @@ async function main() {
   await evaluate(`document.querySelector(${JSON.stringify(toggleSelector)})?.click()`);
   await delay(280);
   results.toggleInspection.restored = await inspectToggle(toggleSelector);
-  // 计时仪表：切换四种样式，验证根类与四种预览读数字体真实不同
+  // 计时仪表：切换五种样式，验证根类、预览数量与独立构形。
   results.instrumentFonts = {};
-  for (const style of ['standard', 'flip', 'pixel', 'thin']) {
+  for (const style of ['standard', 'flip', 'pixel', 'thin', 'segment']) {
     await evaluate(`window.focuslink.settings.set({ timerStyle: '${style}' })`);
     await delay(220);
     results.instrumentFonts[style] = await evaluate(`(() => {
@@ -525,6 +525,7 @@ async function main() {
         flip: pick('.dial-flip'),
         pixel: pick('.dial-pixel'),
         thin: pick('.dial-thin'),
+        segment: Boolean(document.querySelector('.dial-segment .segment-on')),
         previewCount: document.querySelectorAll('.instrument-choice .timer-dial').length,
       };
     })()`);
@@ -683,20 +684,22 @@ async function main() {
       'settings toggle can restore its original state',
     ],
     [
-      results.instrumentFonts.standard?.previewCount === 4,
-      'settings renders live previews for all four timer instruments',
+      results.instrumentFonts.standard?.previewCount === 5,
+      'settings renders live previews for all five timer instruments',
     ],
     [
       results.instrumentFonts.standard?.standard?.includes('JetBrains Mono') &&
         results.instrumentFonts.standard?.flip?.includes('Oswald') &&
-        results.instrumentFonts.standard?.thin?.includes('Inter Tight'),
+        results.instrumentFonts.standard?.thin?.includes('Bodoni Moda') &&
+        results.instrumentFonts.standard?.segment,
       'timer instruments use genuinely different digit families',
     ],
     [
       results.instrumentFonts.standard?.rootTimerClass === 'timer-style-standard' &&
         results.instrumentFonts.flip?.rootTimerClass === 'timer-style-flip' &&
         results.instrumentFonts.pixel?.rootTimerClass === 'timer-style-pixel' &&
-        results.instrumentFonts.thin?.rootTimerClass === 'timer-style-thin',
+        results.instrumentFonts.thin?.rootTimerClass === 'timer-style-thin' &&
+        results.instrumentFonts.segment?.rootTimerClass === 'timer-style-segment',
       'timer style setting applies the matching instrument class',
     ],
     [

@@ -246,11 +246,11 @@ export interface AppSettings {
   theme: 'dark' | 'light' | 'system';
   accentColor: string;
   /** 专注状态的独立强调色；不与界面操作蓝、暂停红混用。 */
-  focusColor: 'emerald' | 'forest' | 'mint' | 'teal';
-  /** 主计时数字的仪表样式：标准等宽 / 翻页机械 / 像素点阵 / 极细编辑。 */
-  timerStyle: 'standard' | 'flip' | 'pixel' | 'thin';
-  /** 兼容字段：旧排版气质已合并为单一字体系统，运行时不再消费，仅用于旧设置迁移。 */
-  fontProfile: 'plex' | 'geist' | 'manrope' | 'sora';
+  focusColor: 'emerald' | 'cobalt' | 'violet' | 'amber' | 'graphite';
+  /** 主计时数字的仪表样式。特色只作用于读数，不构成完整主题。 */
+  timerStyle: 'standard' | 'flip' | 'pixel' | 'thin' | 'segment';
+  /** 主界面排版气质：三套字形骨架真实不同的中文字体方案。 */
+  fontProfile: 'noto' | 'misans' | 'wenkai';
   segmentBehavior: 'new-segment' | 'continue-segment';
   syncMode: 'focus-record' | 'comment' | 'local-only';
   experimentalFocusEnabled: boolean;
@@ -366,7 +366,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   accentColor: 'indigo',
   focusColor: 'emerald',
   timerStyle: 'standard',
-  fontProfile: 'plex',
+  fontProfile: 'noto',
   segmentBehavior: 'new-segment',
   syncMode: 'focus-record',
   experimentalFocusEnabled: false,
@@ -548,6 +548,7 @@ export interface WindowIPC {
   'window:minimize-to-tray': () => void;
   'window:minimize': () => void;
   'window:toggle-maximize': () => void;
+  'window:set-full-screen': (enabled: boolean) => Promise<boolean>;
   'window:close': () => void;
   'window:show': () => void;
   'window:quit': () => void;

@@ -622,6 +622,10 @@ export function registerIpc(
     if (window.isMaximized()) window.unmaximize();
     else window.maximize();
   });
+  ipcMain.handle('window:set-full-screen', (_event, enabled: boolean) => {
+    window.setFullScreen(Boolean(enabled));
+    return window.isFullScreen();
+  });
   ipcMain.on('window:close', () => window.close());
   ipcMain.on('window:show', () => {
     window.show();

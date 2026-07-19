@@ -11,11 +11,11 @@ import {
 } from '../shared/timerInstruments';
 
 describe('计时仪表样式解析与旧值迁移', () => {
-  it('新四样式全部直通', () => {
+  it('新仪表样式全部直通', () => {
     for (const style of TIMER_STYLES) {
       expect(resolveTimerStyle(style)).toBe(style);
     }
-    expect(TIMER_STYLES).toEqual(['standard', 'flip', 'pixel', 'thin']);
+    expect(TIMER_STYLES).toEqual(['standard', 'flip', 'pixel', 'thin', 'segment']);
   });
 
   it('旧 editorial/digital/mono 映射到新体系', () => {
@@ -93,7 +93,7 @@ describe('专注核心点亮', () => {
   });
 });
 
-describe('仪表读数格式化（standard/flip/pixel/thin 共用契约）', () => {
+describe('仪表读数格式化（所有仪表共用契约）', () => {
   it('idle 与秒级推进：分钟始终补零', () => {
     expect(formatDurationPadded(0)).toBe('00:00');
     expect(formatDurationPadded(9_000)).toBe('00:09');

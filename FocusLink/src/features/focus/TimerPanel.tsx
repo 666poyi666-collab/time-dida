@@ -1,6 +1,7 @@
 // 专注工作台：任务、计时仪表、时间之带、账本属于同一连续平面。
 // 计时逻辑、任务关联逻辑、状态机全部保持原样。
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
 import { useStore } from '../../app/store';
@@ -73,6 +74,7 @@ export function TimerPanel() {
   const { now, mainMs, cumulativeActiveMs, cumulativePauseMs, wallMs } = useDisplayValues(snapshot);
   const [pickerMode, setPickerMode] = useState<'segment' | 'session' | 'preselect' | null>(null);
   const [immersive, setImmersive] = useState(false);
+  const [ledgerOpen, setLedgerOpen] = useState(true);
 
   const state = snapshot?.state ?? 'idle';
   const isRunning = state === 'running' || state === 'paused';
@@ -277,11 +279,32 @@ export function TimerPanel() {
   useEffect(() => {
     if (!immersive) return;
     const exit = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setImmersive(false);
+      if (event.key === 'Escape') {
+        setImmersive(false);
+        void window.focuslink.window.setFullScreen(false);
+      }
     };
     window.addEventListener('keydown', exit);
     return () => window.removeEventListener('keydown', exit);
   }, [immersive]);
+
+  const enterImmersive = async () => {
+    setImmersive(true);
+    try {
+      await window.focuslink.window.setFullScreen(true);
+    } catch {
+      // The body-level overlay remains a usable windowed fallback.
+    }
+  };
+
+  const exitImmersive = async () => {
+    setImmersive(false);
+    try {
+      await window.focuslink.window.setFullScreen(false);
+    } catch {
+      // The operating system may already have left fullscreen.
+    }
+  };
 
   const timerLabel = (
     <div className="timer-readout-meta">
@@ -348,7 +371,10 @@ export function TimerPanel() {
   );
 
   return (
-    <div className={`focus-console ${showLedger ? 'with-ledger' : 'solo'}`} data-state={state}>
+    <div
+      className={`focus-console ${showLedger && ledgerOpen ? 'with-ledger' : 'solo ledger-collapsed'}`}
+      data-state={state}
+    >
       <section className="focus-instrument">
         <header className="focus-header">
           <span className={`focus-state-word state-${state}`}>
@@ -358,15 +384,27 @@ export function TimerPanel() {
           <span className="focus-seg-no timer-digit">
             {isRunning ? `片段 ${String(segmentOrdinal).padStart(2, '0')}` : ''}
           </span>
-          <button
-            type="button"
-            className="focus-immersive-toggle motion-press"
-            onClick={() => setImmersive(true)}
-            title="进入沉浸模式"
-          >
-            <Icon.Maximize size="xs" />
-            沉浸
-          </button>
+          <div className="focus-header-actions">
+            {showLedger && (
+              <button
+                type="button"
+                className="focus-immersive-toggle motion-press"
+                onClick={() => setLedgerOpen((open) => !open)}
+                aria-pressed={ledgerOpen}
+              >
+                {ledgerOpen ? '收起账本' : '展开账本'}
+              </button>
+            )}
+            <button
+              type="button"
+              className="focus-immersive-toggle motion-press"
+              onClick={() => void enterImmersive()}
+              title="全屏进入沉浸模式"
+            >
+              <Icon.Maximize size="xs" />
+              全屏沉浸
+            </button>
+          </div>
         </header>
 
         <div className="timer-context-strip">
@@ -433,7 +471,7 @@ export function TimerPanel() {
       </section>
 
       <AnimatePresence initial={false}>
-        {showLedger && (
+        {showLedger && ledgerOpen && (
           <motion.aside
             className="session-ledger-pane"
             initial={{ opacity: 0, x: 14 }}
@@ -450,28 +488,41 @@ export function TimerPanel() {
         <TaskPicker onPick={pickerConfig.onPick} title={pickerConfig.title} />
       )}
 
-      {immersive && (
-        <div className="focus-immersive" data-state={state}>
-          <button className="immersive-exit" onClick={() => setImmersive(false)}>
-            Esc 退出 <Icon.X size="xs" />
-          </button>
-          <div className="immersive-task" title={contextTitle ?? '未关联任务'}>
-            {contextTitle ?? '未关联任务'}
-          </div>
-          <TimerDial
-            ms={mainMs}
-            state={state}
-            style={timerStyle}
-            coreRatio={Math.min(1, cumulativeActiveMs / CORE_GOAL_MS)}
-          />
-          <div className="immersive-meta">{timerLabel}</div>
-          {totals}
-          {controls}
-          <div className="immersive-band">
-            <TemporalRibbon snapshot={snapshot} state={state} now={now} />
-          </div>
-        </div>
-      )}
+      {immersive &&
+        createPortal(
+          <div
+            className={`focus-immersive instrument-${timerStyle}`}
+            data-state={state}
+            data-testid="focus-immersive"
+          >
+            <button className="immersive-exit" onClick={() => void exitImmersive()}>
+              Esc 退出 <Icon.X size="xs" />
+            </button>
+            <main className="immersive-stage">
+              <div className="immersive-task" title={contextTitle ?? '未关联任务'}>
+                <span>{state === 'paused' ? '暂停中' : '正在专注'}</span>
+                <strong>{contextTitle ?? '未关联任务'}</strong>
+              </div>
+              <div className="immersive-readout">
+                <TimerDial
+                  ms={mainMs}
+                  state={state}
+                  style={timerStyle}
+                  coreRatio={Math.min(1, cumulativeActiveMs / CORE_GOAL_MS)}
+                />
+              </div>
+              <div className="immersive-meta">{timerLabel}</div>
+              <div className="immersive-lower">
+                {totals}
+                {controls}
+              </div>
+            </main>
+            <div className="immersive-band">
+              <TemporalRibbon snapshot={snapshot} state={state} now={now} />
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

@@ -402,6 +402,7 @@ export interface FocusLinkAPI {
     minimizeToTray(): void;
     minimize(): void;
     toggleMaximize(): void;
+    setFullScreen(enabled: boolean): Promise<boolean>;
     close(): void;
     show(): void;
     quit(): void;

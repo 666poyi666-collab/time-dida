@@ -93,6 +93,7 @@ export function HistoryInsights({
   onSelectRange,
   onOpenSession,
 }: HistoryInsightsProps) {
+  const [analysisView, setAnalysisView] = useState<'overview' | 'sessions' | 'tasks'>('overview');
   const isEmpty = summary.count === 0;
   const tracked = Math.max(0, summary.active + summary.pause);
   const focusRatio = tracked > 0 ? (summary.active / tracked) * 100 : 0;
@@ -180,24 +181,58 @@ export function HistoryInsights({
             </div>
           </div>
 
-          {singleDay ? (
-            <WeaveBlock
-              range={range}
-              timeline={analytics?.timeline ?? []}
-              onOpenSession={onOpenSession}
-            />
-          ) : (
-            <MatrixBlock sessions={sessions} range={range} />
-          )}
+          <nav className="insight-view-switch" aria-label="统计分析视图">
+            <button
+              type="button"
+              className={analysisView === 'overview' ? 'active' : ''}
+              onClick={() => setAnalysisView('overview')}
+            >
+              {singleDay ? '今日轨迹' : '专注节律'}
+              <span>{singleDay ? '时间发生在哪里' : '什么时候最容易专注'}</span>
+            </button>
+            <button
+              type="button"
+              className={analysisView === 'sessions' ? 'active' : ''}
+              onClick={() => setAnalysisView('sessions')}
+            >
+              单次质量
+              <span>每一轮是否稳定</span>
+            </button>
+            <button
+              type="button"
+              className={analysisView === 'tasks' ? 'active' : ''}
+              onClick={() => setAnalysisView('tasks')}
+            >
+              时间去向
+              <span>专注投入了什么</span>
+            </button>
+          </nav>
 
-          <BeadsBlock
-            sessions={sessions}
-            range={range}
-            singleDay={singleDay}
-            onOpenSession={onOpenSession}
-          />
+          <div className="insight-stage" key={analysisView}>
+            {analysisView === 'overview' &&
+              (singleDay ? (
+                <WeaveBlock
+                  range={range}
+                  timeline={analytics?.timeline ?? []}
+                  onOpenSession={onOpenSession}
+                />
+              ) : (
+                <MatrixBlock sessions={sessions} range={range} />
+              ))}
 
-          <TaskMosaicBlock analytics={analytics} totalActive={summary.active} />
+            {analysisView === 'sessions' && (
+              <BeadsBlock
+                sessions={sessions}
+                range={range}
+                singleDay={singleDay}
+                onOpenSession={onOpenSession}
+              />
+            )}
+
+            {analysisView === 'tasks' && (
+              <TaskMosaicBlock analytics={analytics} totalActive={summary.active} />
+            )}
+          </div>
         </>
       )}
     </section>

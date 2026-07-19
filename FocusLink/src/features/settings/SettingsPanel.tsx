@@ -10,7 +10,7 @@ import type { AppSettings } from '@shared/types';
 import type { TomatodoBridgeStatus } from '@shared/ipc/api';
 import { APP_VERSION } from '@shared/version';
 import { TOMATODO_SUBJECT_OPTIONS } from '@shared/tomatodoPolicy';
-import { resolveTimerStyle } from '@shared/theme';
+import { resolveFontProfile, resolveTimerStyle } from '@shared/theme';
 import { Icon } from '../../ui/Icon';
 import { TimerDial } from '../focus/TimerDial';
 
@@ -30,16 +30,34 @@ const TABS = [
 
 const FOCUS_COLOR_OPTIONS = [
   { id: 'emerald', label: '翡翠', color: '#0e9f6e' },
-  { id: 'forest', label: '森林', color: '#27855a' },
-  { id: 'mint', label: '薄荷', color: '#3fa98c' },
-  { id: 'teal', label: '青碧', color: '#0e8f8f' },
+  { id: 'cobalt', label: '钴蓝', color: '#2367c4' },
+  { id: 'violet', label: '鸢尾', color: '#7149bc' },
+  { id: 'amber', label: '琥珀', color: '#bb7718' },
+  { id: 'graphite', label: '石墨', color: '#434c58' },
 ] as const;
+
+const FONT_PROFILE_OPTIONS = [
+  { id: 'noto', label: '思源黑体', sample: '待完成 · 时间仪器', note: '清晰理性，适合长时间阅读' },
+  { id: 'misans', label: '现代黑体', sample: '待完成 · 时间仪器', note: '紧凑几何，界面密度更高' },
+  {
+    id: 'wenkai',
+    label: '霞鹜文楷',
+    sample: '待完成 · 时间仪器',
+    note: '书写骨架，气质差异最明显',
+  },
+] as const satisfies ReadonlyArray<{
+  id: AppSettings['fontProfile'];
+  label: string;
+  sample: string;
+  note: string;
+}>;
 
 const TIMER_STYLE_OPTIONS = [
   { id: 'standard', label: '标准等宽', note: 'JetBrains Mono · 沉稳仪器读数' },
   { id: 'flip', label: '翻页机械', note: '上下分片翻牌 · 中央转轴' },
-  { id: 'pixel', label: '像素点阵', note: '5×7 点阵 · 专注核心充能' },
-  { id: 'thin', label: '极细编辑', note: 'Inter Tight 极细 · 排版感' },
+  { id: 'pixel', label: '像素点阵', note: '实体格点 · 专注核心充能' },
+  { id: 'thin', label: '高反差编辑', note: 'Bodoni 衬线 · 纤细排版' },
+  { id: 'segment', label: '七段数码', note: '真实段码 · 工业仪表' },
 ] as const satisfies ReadonlyArray<{
   id: AppSettings['timerStyle'];
   label: string;
@@ -656,9 +674,26 @@ export function SettingsPanel() {
 
               <Section
                 title="专注仪表"
-                desc="界面蓝 = 操作、专注绿 = 运行、暂停红 = 损耗；三套仪表在字形骨架上真正不同。"
+                desc="界面操作色、专注强调色与暂停红彼此独立；字体和仪表都提供真实字形差异。"
               >
                 <div>
+                  <Row label="界面字体" desc="改变正文、任务与设置文字；计时数字使用各自独立字体">
+                    <div className="font-profile-choices" aria-label="界面字体">
+                      {FONT_PROFILE_OPTIONS.map((profile) => (
+                        <button
+                          key={profile.id}
+                          type="button"
+                          className={`font-profile-choice preview-${profile.id} ${resolveFontProfile(settings.fontProfile) === profile.id ? 'active' : ''}`}
+                          onClick={() => update({ fontProfile: profile.id })}
+                          aria-pressed={resolveFontProfile(settings.fontProfile) === profile.id}
+                        >
+                          <span className="fp-name">{profile.label}</span>
+                          <strong className="fp-sample">{profile.sample}</strong>
+                          <span className="fp-note">{profile.note}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </Row>
                   <Row label="专注色" desc="只影响专注读数、时间之带与统计图；暂停始终使用红色">
                     <div className="focus-color-choices" aria-label="专注强调色">
                       {FOCUS_COLOR_OPTIONS.map((color) => (
