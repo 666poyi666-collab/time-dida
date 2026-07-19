@@ -1,6 +1,6 @@
 # FocusLink 前端设计规范
 
-> 目标版本：v0.12.x（当前实现：v0.12.11）
+> 目标版本：v0.12.x（当前实现：v0.12.12）
 >
 > 当前状态：「时间仪器 Time Instrument」设计系统已实现并取代 Linear Workbench。
 >
