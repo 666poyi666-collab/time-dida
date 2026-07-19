@@ -2,11 +2,11 @@
 
 > 发布日期：2026-07-19
 >
-> 对应提交：`待源码提交后填写`
+> 对应提交：`64daa01`
 >
 > 发布类型：正式版
 >
-> 验证状态：门禁执行中
+> 验证状态：已通过
 
 ## 本次更新
 
@@ -42,16 +42,17 @@
 
 ## 验证
 
-- format / typecheck / lint / 294 项自动化测试 / production audit
+- format / typecheck / lint / 294 项自动化测试 / production audit（0 漏洞）
 - Electron 计时、任务与崩溃恢复回归
-- 主窗、小窗、原生全屏沉浸、四套字体、五套仪表、统计日报与时间之带 smoke
-- dida、番茄 To-do、安装版和便携版验证将在干净源码提交后重新执行并回填
+- 打包主窗、小窗、原生全屏沉浸、四套字体、五套仪表、统计日报与时间之带 smoke
+- dida 中文评论与 marker 幂等、任务完成/撤销/再完成/恢复、番茄 To-do 桥与真实上传确认
+- `win-unpacked` 完整 UI 与便携版启动验证；安装器隔离安装由 GitHub 干净 Windows runner 复验
 
 ## 下载与校验
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.12.10-x64.exe` | `待生成` |
-| `FocusLink-0.12.10-x64-portable.exe` | `待生成` |
+| `FocusLink-0.12.10-x64.exe` | `db1d95e26281349692135738e39195ec1ca53dc1de73a3fbafa768c9a2cde244` |
+| `FocusLink-0.12.10-x64-portable.exe` | `53958cc277ac2b338ecb52b2cfc78ad89c200834b34f97dac000992045e6c269` |
 
 同时提供 `SHA256SUMS.txt`。
