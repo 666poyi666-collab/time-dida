@@ -2,7 +2,7 @@
 // 颜色进度充满整个刻度区域（专注=强调色实体、暂停=红色斜纹、未发生=中性灰、未来=暗灰），
 // 秒/分钟刻度绘制在颜色区域之上；指针固定，世界逐秒擒纵步进；
 // 专注=秒级近景，暂停/空闲=30 分钟远景，切换是 720ms 对数变焦而非换图。
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildMixedTimelineItems } from '@shared/focus/timeline';
 import {
   BAND_POINTER_RATIO,
@@ -64,6 +64,7 @@ export function TemporalRibbon({
     pulseAt: 0,
   });
   const reducedMotion = useReducedMotion();
+  const [viewMode, setViewMode] = useState<'auto' | 'near' | 'far'>('auto');
 
   const moments: Moment[] = useMemo(
     () =>
@@ -90,11 +91,17 @@ export function TemporalRibbon({
   const nowRef = useRef(now);
   nowRef.current = now;
 
-  const isMicro = state === 'running';
+  const targetScale =
+    viewMode === 'near'
+      ? BAND_SCALE_NEAR
+      : viewMode === 'far'
+        ? BAND_SCALE_FAR
+        : bandScaleForState(state);
+  const isMicro = targetScale === BAND_SCALE_NEAR;
 
   useEffect(() => {
     const engine = engineRef.current;
-    const target = bandScaleForState(state);
+    const target = targetScale;
     const current = engine.scale;
     if (Math.abs(target - current) < 1e-6 && !engine.zoom) return;
     if (reducedMotion) {
@@ -108,7 +115,7 @@ export function TemporalRibbon({
       start: performance.now(),
       duration: BAND_ZOOM_MS,
     };
-  }, [state, reducedMotion]);
+  }, [targetScale, reducedMotion]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -164,6 +171,32 @@ export function TemporalRibbon({
           {isMicro
             ? '秒级近景 · 每小格 1 秒 · 每大格 1 分钟'
             : '远景 · 每小格 5 分钟 · 每大格 30 分钟'}
+        </span>
+        <span className="ribbon-live-clock" aria-label="当前精确时间">
+          {new Date(now).toLocaleTimeString('zh-CN', { hour12: false })}
+        </span>
+        <span className="ribbon-view-switch" aria-label="时间之带视野">
+          <button
+            type="button"
+            className={isMicro ? 'active' : ''}
+            onClick={() => setViewMode('near')}
+            aria-pressed={isMicro}
+          >
+            近景
+          </button>
+          <button
+            type="button"
+            className={!isMicro ? 'active' : ''}
+            onClick={() => setViewMode('far')}
+            aria-pressed={!isMicro}
+          >
+            远景
+          </button>
+          {viewMode !== 'auto' && (
+            <button type="button" className="ribbon-auto" onClick={() => setViewMode('auto')}>
+              跟随状态
+            </button>
+          )}
         </span>
         <span className="ribbon-scale-tag">{isMicro ? '1 小格 = 1 秒' : '1 大格 = 30 分钟'}</span>
       </div>
@@ -415,6 +448,25 @@ function renderBand(
     ctx.beginPath();
     ctx.arc(px, fieldTop - 10, 2.6, 0, Math.PI * 2);
     ctx.fill();
+
+    // 时间消逝粒子：从“现在”向已经发生的方向散落并逐步消失。
+    // 暂停时固定为红色，专注时跟随全局强调色；位置由时间决定，不创建对象。
+    if (!input.reducedMotion) {
+      const particleColor = input.state === 'paused' ? pauseC : focusC;
+      const phase = performance.now() / 1000;
+      for (let index = 0; index < 22; index += 1) {
+        const life = (((phase * 0.72 + index * 0.137) % 1) + 1) % 1;
+        const seed = Math.sin(index * 91.73) * 43758.5453;
+        const random = seed - Math.floor(seed);
+        const driftX = 5 + life * (18 + random * 34);
+        const driftY = Math.sin(index * 2.13 + phase * 2.1) * (3 + life * 11);
+        const radius = Math.max(0.35, (1 - life) * (1.7 + random));
+        ctx.fillStyle = `rgba(${particleColor},${(1 - life) * 0.72})`;
+        ctx.beginPath();
+        ctx.arc(px - driftX, fieldTop + fieldH / 2 + driftY, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
   }
 }
 

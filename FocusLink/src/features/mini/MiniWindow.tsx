@@ -102,7 +102,7 @@ function applyThemeClass(settings: AppSettings): void {
   root.classList.toggle('dark', effectiveTheme === 'dark');
   ['quiet', 'dawn', 'bloom'].forEach((family) => root.classList.remove(`theme-${family}`));
   delete root.dataset.themeFamily;
-  [...FONT_PROFILES, 'plex', 'geist', 'manrope', 'sora'].forEach((profile) =>
+  [...FONT_PROFILES, 'misans', 'plex', 'geist', 'manrope', 'sora'].forEach((profile) =>
     root.classList.remove(`font-profile-${profile}`),
   );
   root.classList.add(`font-profile-${resolveFontProfile(settings.fontProfile)}`);

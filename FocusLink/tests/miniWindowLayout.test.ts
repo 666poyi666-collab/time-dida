@@ -19,8 +19,8 @@ import {
 } from '../shared/miniWindowLayout';
 
 describe('mini window layout policy', () => {
-  it('locks the two product-owned sizes: 304x96 expanded, 184x35 collapsed', () => {
-    expect(MINI_WINDOW_EXPANDED_SIZE).toEqual({ width: 304, height: 96 });
+  it('locks the two product-owned sizes: 280x84 expanded, 184x35 collapsed', () => {
+    expect(MINI_WINDOW_EXPANDED_SIZE).toEqual({ width: 280, height: 84 });
     expect(MINI_WINDOW_COLLAPSED_SIZE).toEqual({ width: 184, height: 35 });
     expect(MINI_WINDOW_SIZE_PRESETS).toHaveLength(2);
   });

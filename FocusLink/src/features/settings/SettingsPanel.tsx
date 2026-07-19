@@ -1,6 +1,6 @@
 // 设置页 - 紧凑分组列表：左侧分组导航 + 右侧连续行列表。
 // FocusLink 只有一套视觉语言；外观只切换 light/dark/system。
-// 界面操作保持蓝色、暂停保持红色，用户仅可调整专注强调色。
+// 强调色贯穿全部界面与专注状态；暂停保持红色。
 // - 开关统一 42×24px，关闭态有清楚边界，disabled 可识别；
 // - 语义标签：已同步/未同步/同步失败仅用于同步队列；dida 描述为「同步到滴答清单」；
 //   番茄 To-do 使用「已写入本地/待上传/上传已确认」。
@@ -37,13 +37,29 @@ const FOCUS_COLOR_OPTIONS = [
 ] as const;
 
 const FONT_PROFILE_OPTIONS = [
-  { id: 'noto', label: '思源黑体', sample: '待完成 · 时间仪器', note: '清晰理性，适合长时间阅读' },
-  { id: 'misans', label: '现代黑体', sample: '待完成 · 时间仪器', note: '紧凑几何，界面密度更高' },
+  {
+    id: 'noto',
+    label: '现代无衬线',
+    sample: '待完成 · 时间仪器',
+    note: '中性清晰，适合高密度信息',
+  },
   {
     id: 'wenkai',
     label: '霞鹜文楷',
     sample: '待完成 · 时间仪器',
-    note: '书写骨架，气质差异最明显',
+    note: '楷体骨架，温润而有书写感',
+  },
+  {
+    id: 'zhisong',
+    label: '霞鹜新致宋',
+    sample: '待完成 · 时间仪器',
+    note: '现代宋体，横细竖重且有编辑气质',
+  },
+  {
+    id: 'marker',
+    label: '霞鹜漫黑',
+    sample: '待完成 · 时间仪器',
+    note: '马克笔笔触，轻松而有鲜明个性',
   },
 ] as const satisfies ReadonlyArray<{
   id: AppSettings['fontProfile'];

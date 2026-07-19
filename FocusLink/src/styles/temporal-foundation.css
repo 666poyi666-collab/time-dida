@@ -9,13 +9,29 @@
 @import 'misans/lib/Normal/MiSans-Medium.min.css';
 @import 'misans/lib/Normal/MiSans-Semibold.min.css';
 
+@font-face {
+  font-family: 'LXGW Neo ZhiSong';
+  src: url('../assets/fonts/LXGWNeoZhiSong.ttf') format('truetype');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: 'LXGW Marker Gothic';
+  src: url('../assets/fonts/LXGWMarkerGothic-Regular.ttf') format('truetype');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ==========================================================================
  * FocusLink · 时间仪器（Time Instrument）设计地基
- * 唯一 token 来源。语义色：界面蓝=操作，专注绿=运行，暂停红=损耗，深红=危险。
+ * 唯一 token 来源。语义色：全局强调色=操作与专注，暂停红=损耗，深红=危险。
  * ========================================================================== */
 :root {
   color-scheme: light;
@@ -139,53 +155,93 @@
   --shadow-modal: 0 28px 90px -28px rgb(0 0 0 / 0.9);
 }
 
-/* 专注强调色跨色相选择：只映射专注语义，不触碰界面蓝与暂停红。 */
+/* 全局强调色：操作、选中、导航、统计与专注使用同一色相；暂停红保持独立。 */
 .focus-color-emerald {
+  --app-accent: 14 159 110;
+  --app-accent-hover: 11 122 85;
+  --app-accent-active: 8 96 67;
+  --app-accent-soft: 228 245 238;
   --app-success: 14 159 110;
   --app-success-soft: 228 245 238;
   --app-success-deep: 11 122 85;
 }
 .dark.focus-color-emerald {
+  --app-accent: 52 211 153;
+  --app-accent-hover: 110 231 183;
+  --app-accent-active: 167 243 208;
+  --app-accent-soft: 15 46 35;
   --app-success: 52 211 153;
   --app-success-soft: 15 46 35;
   --app-success-deep: 110 231 183;
 }
 .focus-color-cobalt {
+  --app-accent: 35 103 196;
+  --app-accent-hover: 27 77 151;
+  --app-accent-active: 24 61 118;
+  --app-accent-soft: 231 239 250;
   --app-success: 35 103 196;
   --app-success-soft: 231 239 250;
   --app-success-deep: 27 77 151;
 }
 .dark.focus-color-cobalt {
+  --app-accent: 99 156 235;
+  --app-accent-hover: 153 191 244;
+  --app-accent-active: 191 219 254;
+  --app-accent-soft: 19 38 66;
   --app-success: 99 156 235;
   --app-success-soft: 19 38 66;
   --app-success-deep: 153 191 244;
 }
 .focus-color-violet {
+  --app-accent: 113 73 188;
+  --app-accent-hover: 84 53 146;
+  --app-accent-active: 67 42 116;
+  --app-accent-soft: 239 234 248;
   --app-success: 113 73 188;
   --app-success-soft: 239 234 248;
   --app-success-deep: 84 53 146;
 }
 .dark.focus-color-violet {
+  --app-accent: 171 133 232;
+  --app-accent-hover: 205 179 246;
+  --app-accent-active: 226 211 252;
+  --app-accent-soft: 42 29 63;
   --app-success: 171 133 232;
   --app-success-soft: 42 29 63;
   --app-success-deep: 205 179 246;
 }
 .focus-color-amber {
+  --app-accent: 187 119 24;
+  --app-accent-hover: 139 85 14;
+  --app-accent-active: 107 65 12;
+  --app-accent-soft: 249 240 222;
   --app-success: 187 119 24;
   --app-success-soft: 249 240 222;
   --app-success-deep: 139 85 14;
 }
 .dark.focus-color-amber {
+  --app-accent: 232 169 73;
+  --app-accent-hover: 250 203 125;
+  --app-accent-active: 253 224 171;
+  --app-accent-soft: 53 38 18;
   --app-success: 232 169 73;
   --app-success-soft: 53 38 18;
   --app-success-deep: 250 203 125;
 }
 .focus-color-graphite {
+  --app-accent: 67 76 88;
+  --app-accent-hover: 38 45 55;
+  --app-accent-active: 24 29 36;
+  --app-accent-soft: 235 237 239;
   --app-success: 67 76 88;
   --app-success-soft: 235 237 239;
   --app-success-deep: 38 45 55;
 }
 .dark.focus-color-graphite {
+  --app-accent: 190 198 207;
+  --app-accent-hover: 224 229 234;
+  --app-accent-active: 242 244 247;
+  --app-accent-soft: 39 43 48;
   --app-success: 190 198 207;
   --app-success-soft: 39 43 48;
   --app-success-deep: 224 229 234;
@@ -216,11 +272,14 @@ body {
 .font-profile-noto {
   --font-ui: 'Noto Sans SC Variable', 'Microsoft YaHei UI', sans-serif;
 }
-.font-profile-misans {
-  --font-ui: 'MiSans', 'Noto Sans SC Variable', sans-serif;
-}
 .font-profile-wenkai {
   --font-ui: 'LXGW WenKai', 'Noto Sans SC Variable', serif;
+}
+.font-profile-zhisong {
+  --font-ui: 'LXGW Neo ZhiSong', 'Noto Serif SC', serif;
+}
+.font-profile-marker {
+  --font-ui: 'LXGW Marker Gothic', 'Noto Sans SC Variable', sans-serif;
 }
 html.mini-window-page,
 html.mini-window-page body,

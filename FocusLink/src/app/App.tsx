@@ -407,7 +407,7 @@ function applyTheme(settings: AppSettings): void {
   delete root.dataset.themeFamily;
   const accents = ['indigo', 'violet', 'emerald', 'rose', 'amber', 'sky'];
   accents.forEach((a) => root.classList.remove(`accent-${a}`));
-  [...FONT_PROFILES, 'plex', 'geist', 'manrope', 'sora'].forEach((profile) =>
+  [...FONT_PROFILES, 'misans', 'plex', 'geist', 'manrope', 'sora'].forEach((profile) =>
     root.classList.remove(`font-profile-${profile}`),
   );
   root.classList.add(`font-profile-${resolveFontProfile(settings.fontProfile)}`);

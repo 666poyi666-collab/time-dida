@@ -26,13 +26,13 @@ describe('专注/暂停颜色语义 token 契约', () => {
     expect(dark).toContain('--app-pause: 244 112 103;');
   });
 
-  it('五种跨色相专注色只重映射专注语义，绝不触碰暂停红与界面蓝', () => {
+  it('五种跨色相强调色同时映射界面与专注语义，但绝不触碰暂停红', () => {
     for (const color of ['emerald', 'cobalt', 'violet', 'amber', 'graphite']) {
       for (const prefix of ['', '.dark']) {
         const block = blockOf(`${prefix}.focus-color-${color}`);
         expect(block).toContain('--app-success:');
+        expect(block).toContain('--app-accent:');
         expect(block).not.toContain('--app-pause');
-        expect(block).not.toContain('--app-accent:');
       }
     }
   });

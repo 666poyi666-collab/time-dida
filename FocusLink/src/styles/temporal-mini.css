@@ -1,5 +1,5 @@
 /* Fixed-size edge companion. Deliberately flat: no glass capsule, no decorative glow.
- * 尺寸唯一真值是 shared/miniWindowLayout.ts（收起 184×35 / 展开 304×96）。 */
+ * 尺寸唯一真值是 shared/miniWindowLayout.ts（收起 184×35 / 展开 280×84）。 */
 
 .mini-window-shell {
   position: relative;
@@ -141,9 +141,9 @@
   right: 4px;
   bottom: 1px;
   left: 4px;
-  height: 3px;
-  overflow: hidden;
-  background: rgb(var(--app-border));
+  height: 2px;
+  overflow: visible;
+  background: rgb(var(--app-border) / 0.48);
 }
 
 .mini-edge-progress-fill,
@@ -155,29 +155,52 @@
 .mini-edge-progress-fill {
   left: 0;
   width: var(--mini-progress);
-  background: rgb(var(--app-success));
+  background: linear-gradient(90deg, rgb(var(--app-success) / 0.2), rgb(var(--app-success)));
 }
 
 .mini-edge-progress-pause {
   left: var(--mini-pause-start);
   width: var(--mini-pause-width);
-  background: repeating-linear-gradient(
-    135deg,
-    rgb(var(--app-pause)) 0 3px,
-    rgb(var(--app-pause) / 0.45) 3px 6px
-  );
+  background: linear-gradient(90deg, rgb(var(--app-pause) / 0.76), rgb(var(--app-pause) / 0.18));
+}
+
+.mini-edge-progress-pause::after {
+  position: absolute;
+  top: -2px;
+  right: -1px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgb(var(--app-pause));
+  box-shadow:
+    -4px -2px 0 -0.4px rgb(var(--app-pause) / 0.72),
+    -8px 2px 0 -0.8px rgb(var(--app-pause) / 0.48),
+    -13px -1px 0 -1px rgb(var(--app-pause) / 0.34);
+  content: '';
+  animation: mini-particle-decay 1.2s steps(6, end) infinite;
 }
 
 .mini-edge-progress-glint {
   display: none;
 }
 
-/* ─── 展开态 304×96：状态头 + 完整任务 + 时间 + 三项累计 + 全部控制 ─── */
+@keyframes mini-particle-decay {
+  0% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-9px) scale(0.35);
+  }
+}
+
+/* ─── 展开态 280×84：状态头 + 完整任务 + 时间 + 三项累计 + 全部控制 ─── */
 .mini-expanded-content {
   display: grid;
   width: 100%;
   height: 100%;
-  grid-template-rows: 17px 17px 40px 22px;
+  grid-template-rows: 14px 14px 36px 20px;
 }
 
 .mini-expanded-header {
@@ -185,12 +208,12 @@
   min-width: 0;
   align-items: center;
   justify-content: space-between;
-  padding: 0 2px 0 7px;
+  padding: 0 1px 0 5px;
   border-bottom: 1px solid rgb(var(--app-border));
 }
 
 .mini-state-badge {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
 }
 
@@ -199,8 +222,8 @@
 }
 
 .mini-header-actions .mini-icon-button {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .mini-task-block {
@@ -208,14 +231,14 @@
   display: flex;
   align-items: center;
   min-height: 0;
-  padding: 0 6px;
+  padding: 0 5px;
   overflow: hidden;
   border-bottom: 1px solid rgb(var(--app-border));
 }
 
 .mini-task-title {
   color: rgb(var(--app-text));
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 550;
   line-height: 1.3;
   white-space: nowrap;
@@ -247,39 +270,39 @@
   min-width: 0;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  padding: 0 6px;
+  padding: 0 5px;
 }
 
 .mini-focus-core {
   display: grid;
   min-width: 0;
-  grid-template-rows: 10px 25px;
+  grid-template-rows: 9px 22px;
   align-content: center;
 }
 
 .mini-current-label {
-  font-size: 9.5px;
+  font-size: 8.5px;
   line-height: 1;
 }
 
 .mini-expanded-time {
   margin-top: 0;
   color: rgb(var(--app-text));
-  font-size: 24px;
+  font-size: 21px;
   font-weight: 500;
   letter-spacing: -0.045em;
   line-height: 1;
 }
 
 .mini-expanded-time.mini-time-long {
-  font-size: 20px;
+  font-size: 17px;
 }
 
 .mini-metric-rail {
   display: grid;
   min-width: 0;
-  gap: 1px;
-  padding-left: 6px;
+  gap: 0;
+  padding-left: 5px;
   border-left: 1px solid rgb(var(--app-border));
 }
 
@@ -287,7 +310,7 @@
   display: grid;
   min-width: 0;
   grid-template-columns: auto auto;
-  gap: 5px;
+  gap: 3px;
   align-items: baseline;
   line-height: 1.3;
 }
@@ -300,12 +323,12 @@
 
 .mini-metric span {
   color: rgb(var(--app-muted));
-  font-size: 8.5px;
+  font-size: 7.5px;
 }
 
 .mini-metric strong {
   font-family: var(--font-number);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 550;
   font-variant-numeric: tabular-nums;
 }
@@ -317,27 +340,27 @@
 .mini-expanded-footer {
   display: flex;
   align-items: center;
-  padding: 0 4px;
+  padding: 0 3px;
   border-top: 1px solid rgb(var(--app-border));
 }
 
 .mini-action-dock {
   display: grid;
   width: 100%;
-  grid-template-columns: 1fr 66px;
-  gap: 4px;
+  grid-template-columns: 1fr 58px;
+  gap: 3px;
 }
 
 .mini-primary-button,
 .mini-secondary-button {
   display: inline-flex;
-  height: 18px;
+  height: 16px;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 0 7px;
+  gap: 3px;
+  padding: 0 5px;
   border-radius: 2px;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
 }
 
@@ -374,6 +397,9 @@
     transition: none;
   }
   .mini-task-block.is-marquee .mini-task-title {
+    animation: none;
+  }
+  .mini-edge-progress-pause::after {
     animation: none;
   }
 }

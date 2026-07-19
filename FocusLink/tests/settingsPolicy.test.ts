@@ -46,15 +46,15 @@ describe('settings partial update policy', () => {
     const legacySettings = { ...DEFAULT_SETTINGS } as Partial<AppSettings>;
     delete legacySettings.fontProfile;
     const migrated = mergeSettings(DEFAULT_SETTINGS, legacySettings);
-    const chosen = mergeSettings(migrated, { fontProfile: 'wenkai' });
+    const chosen = mergeSettings(migrated, { fontProfile: 'zhisong' });
 
-    expect(migrated.fontProfile).toBe('noto');
-    expect(chosen.fontProfile).toBe('wenkai');
-    expect(mergeSettings(chosen, { theme: 'dark' }).fontProfile).toBe('wenkai');
+    expect(migrated.fontProfile).toBe('wenkai');
+    expect(chosen.fontProfile).toBe('zhisong');
+    expect(mergeSettings(chosen, { theme: 'dark' }).fontProfile).toBe('zhisong');
   });
 
   it('routes a font-only update through the theme domain without unrelated side effects', () => {
-    const next = mergeSettings(DEFAULT_SETTINGS, { fontProfile: 'misans' });
+    const next = mergeSettings(DEFAULT_SETTINGS, { fontProfile: 'marker' });
 
     expect(detectSettingsChangedDomains(DEFAULT_SETTINGS, next)).toEqual(['theme']);
   });

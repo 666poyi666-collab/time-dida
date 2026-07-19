@@ -104,17 +104,34 @@ function SegmentDial({ text, state }: { text: string; state: string }) {
 const FLIP_MS = 260;
 
 function FlipChar({ char }: { char: string }) {
-  const [current, setCurrent] = useState(char);
-  const [previous, setPrevious] = useState<string | null>(null);
+  const committedRef = useRef(char);
+  const [transition, setTransition] = useState({
+    from: char,
+    to: char,
+    active: false,
+    sequence: 0,
+  });
   useEffect(() => {
-    if (char === current) return undefined;
-    setPrevious(current);
-    setCurrent(char);
-    const id = window.setTimeout(() => setPrevious(null), FLIP_MS);
+    const from = committedRef.current;
+    if (char === from) return undefined;
+    committedRef.current = char;
+    setTransition((previous) => ({
+      from,
+      to: char,
+      active: true,
+      sequence: previous.sequence + 1,
+    }));
+    const id = window.setTimeout(() => {
+      setTransition((current) =>
+        current.to === char ? { ...current, active: false, from: char } : current,
+      );
+    }, FLIP_MS + 24);
     return () => window.clearTimeout(id);
-  }, [char, current]);
+  }, [char]);
 
-  const flipping = previous !== null;
+  const flipping = transition.active;
+  const current = transition.to;
+  const previous = transition.from;
   return (
     <span className={`flip-card ${flipping ? 'is-flipping' : ''}`}>
       {/* 静态上半：立即显示新值，被翻下的上瓣暂时遮住 */}
@@ -126,14 +143,14 @@ function FlipChar({ char }: { char: string }) {
         <span className="flip-glyph">{flipping ? previous : current}</span>
       </span>
       {flipping && (
-        <>
-          <span className="flip-half flip-top flip-flap-top" key={`t-${previous}`}>
+        <span className="flip-animation" key={transition.sequence} aria-hidden="true">
+          <span className="flip-half flip-top flip-flap-top">
             <span className="flip-glyph">{previous}</span>
           </span>
-          <span className="flip-half flip-bottom flip-flap-bottom" key={`b-${current}`}>
+          <span className="flip-half flip-bottom flip-flap-bottom">
             <span className="flip-glyph">{current}</span>
           </span>
-        </>
+        </span>
       )}
       <span className="flip-hinge" aria-hidden="true" />
     </span>

@@ -245,12 +245,12 @@ export interface AppSettings {
   /** 主窗口外观；system 跟随系统颜色方案。 */
   theme: 'dark' | 'light' | 'system';
   accentColor: string;
-  /** 专注状态的独立强调色；不与界面操作蓝、暂停红混用。 */
+  /** 全局强调色；贯穿导航、任务、统计、设置与专注状态，暂停仍固定为红色。 */
   focusColor: 'emerald' | 'cobalt' | 'violet' | 'amber' | 'graphite';
   /** 主计时数字的仪表样式。特色只作用于读数，不构成完整主题。 */
   timerStyle: 'standard' | 'flip' | 'pixel' | 'thin' | 'segment';
-  /** 主界面排版气质：三套字形骨架真实不同的中文字体方案。 */
-  fontProfile: 'noto' | 'misans' | 'wenkai';
+  /** 主界面排版气质：现代无衬线、文楷、新致宋、漫黑四套不同字形门类。 */
+  fontProfile: 'noto' | 'wenkai' | 'zhisong' | 'marker';
   segmentBehavior: 'new-segment' | 'continue-segment';
   syncMode: 'focus-record' | 'comment' | 'local-only';
   experimentalFocusEnabled: boolean;
@@ -366,7 +366,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   accentColor: 'indigo',
   focusColor: 'emerald',
   timerStyle: 'standard',
-  fontProfile: 'noto',
+  fontProfile: 'wenkai',
   segmentBehavior: 'new-segment',
   syncMode: 'focus-record',
   experimentalFocusEnabled: false,

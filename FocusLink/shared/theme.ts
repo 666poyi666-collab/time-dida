@@ -6,8 +6,9 @@ export const THEME_FAMILIES = ['quiet'] as const satisfies readonly AppSettings[
 
 export const FONT_PROFILES = [
   'noto',
-  'misans',
   'wenkai',
+  'zhisong',
+  'marker',
 ] as const satisfies readonly AppSettings['fontProfile'][];
 
 export const TIMER_STYLES = [
@@ -21,7 +22,7 @@ export const TIMER_STYLES = [
 /** 旧计时样式值：仅用于清理遗留根类与设置迁移，不再是可选项。 */
 export const LEGACY_TIMER_STYLES = ['editorial', 'digital', 'mono'] as const;
 
-/** 专注强调色跨色相五选：只映射专注语义（--app-success），不触碰界面蓝与暂停红。 */
+/** 全局强调色跨色相五选：贯穿界面与专注语义，暂停红保持独立。 */
 export const FOCUS_COLORS = [
   'emerald',
   'cobalt',
@@ -39,10 +40,16 @@ export function resolveFontProfile(value: unknown): AppSettings['fontProfile'] {
   if (FONT_PROFILES.includes(value as AppSettings['fontProfile'])) {
     return value as AppSettings['fontProfile'];
   }
-  if (value === 'geist' || value === 'plex' || value === 'manrope' || value === 'sora') {
+  if (
+    value === 'geist' ||
+    value === 'plex' ||
+    value === 'manrope' ||
+    value === 'sora' ||
+    value === 'misans'
+  ) {
     return 'noto';
   }
-  return 'noto';
+  return 'wenkai';
 }
 
 /**
