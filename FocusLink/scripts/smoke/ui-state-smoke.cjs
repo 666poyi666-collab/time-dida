@@ -510,6 +510,24 @@ async function main() {
   await evaluate(`document.querySelector(${JSON.stringify(toggleSelector)})?.click()`);
   await delay(280);
   results.toggleInspection.restored = await inspectToggle(toggleSelector);
+  // 界面字体：四种设置必须落到四套真实字形，而不是同一黑体的不同字重。
+  results.interfaceFonts = {};
+  for (const profile of ['noto', 'wenkai', 'zhisong', 'marker']) {
+    await evaluate(`window.focuslink.settings.set({ fontProfile: '${profile}' })`);
+    await delay(240);
+    results.interfaceFonts[profile] = await evaluate(`(() => ({
+      rootFontClass:
+        [...document.documentElement.classList].find((name) => name.startsWith('font-profile-')) ||
+        null,
+      bodyFontFamily: getComputedStyle(document.body).fontFamily,
+      sampleFontFamily: getComputedStyle(
+        document.querySelector('.font-profile-choice.preview-${profile} .fp-sample')
+      ).fontFamily,
+      previewCount: document.querySelectorAll('.font-profile-choice').length,
+    }))()`);
+  }
+  await evaluate("window.focuslink.settings.set({ fontProfile: 'wenkai' })");
+  await delay(240);
   // 计时仪表：切换五种样式，验证根类、预览数量与独立构形。
   results.instrumentFonts = {};
   for (const style of ['standard', 'flip', 'pixel', 'thin', 'segment']) {
@@ -710,6 +728,21 @@ async function main() {
         results.instrumentFonts.thin?.rootTimerClass === 'timer-style-thin' &&
         results.instrumentFonts.segment?.rootTimerClass === 'timer-style-segment',
       'timer style setting applies the matching instrument class',
+    ],
+    [
+      Object.values(results.interfaceFonts).every((font) => font.previewCount === 4),
+      'settings renders all four interface font families',
+    ],
+    [
+      results.interfaceFonts.noto?.rootFontClass === 'font-profile-noto' &&
+        results.interfaceFonts.noto?.bodyFontFamily.includes('Noto Sans SC') &&
+        results.interfaceFonts.wenkai?.rootFontClass === 'font-profile-wenkai' &&
+        results.interfaceFonts.wenkai?.bodyFontFamily.includes('LXGW WenKai') &&
+        results.interfaceFonts.zhisong?.rootFontClass === 'font-profile-zhisong' &&
+        results.interfaceFonts.zhisong?.bodyFontFamily.includes('LXGW Neo ZhiSong') &&
+        results.interfaceFonts.marker?.rootFontClass === 'font-profile-marker' &&
+        results.interfaceFonts.marker?.bodyFontFamily.includes('LXGW Marker Gothic'),
+      'interface font setting applies four genuinely different families',
     ],
     [
       results.taskLightInspection.bodyScroll[0] === results.taskLightInspection.viewport[0],

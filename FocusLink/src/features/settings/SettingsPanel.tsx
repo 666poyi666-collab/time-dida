@@ -690,7 +690,7 @@ export function SettingsPanel() {
 
               <Section
                 title="专注仪表"
-                desc="界面操作色、专注强调色与暂停红彼此独立；字体和仪表都提供真实字形差异。"
+                desc="所选强调色贯穿导航、按钮、任务、统计与专注状态；暂停始终保持红色。"
               >
                 <div>
                   <Row label="界面字体" desc="改变正文、任务与设置文字；计时数字使用各自独立字体">
@@ -710,7 +710,10 @@ export function SettingsPanel() {
                       ))}
                     </div>
                   </Row>
-                  <Row label="专注色" desc="只影响专注读数、时间之带与统计图；暂停始终使用红色">
+                  <Row
+                    label="全局强调色"
+                    desc="同时应用到导航、操作、选中态、统计图、专注读数与时间之带"
+                  >
                     <div className="focus-color-choices" aria-label="专注强调色">
                       {FOCUS_COLOR_OPTIONS.map((color) => (
                         <button
@@ -755,8 +758,8 @@ export function SettingsPanel() {
                   </Row>
                   <Row label="状态色" desc="三种语义色在全应用保持稳定">
                     <div className="settings-state-colors">
-                      <span className="interface">操作 · 界面蓝</span>
-                      <span className="focus">专注 · 强调绿</span>
+                      <span className="interface">操作 · 当前强调色</span>
+                      <span className="focus">专注 · 当前强调色</span>
                       <span className="pause">暂停 · 红</span>
                     </div>
                   </Row>
