@@ -6,7 +6,7 @@
 >
 > 发布类型：本地候选版（GitHub 暂缓）
 >
-> 验证状态：`VERIFY_STATUS`
+> 验证状态：已通过本地门禁
 
 ## 本次更新
 
@@ -29,8 +29,8 @@
 
 ## 验证
 
-- `VERIFY_SUMMARY`
-- 安装版、便携版与包内身份回读：`PACKAGE_VERIFY`。
+- format、TypeScript、ESLint、46 个测试文件共 354 项测试、audit 0 漏洞、build、dist、Electron 崩溃恢复与 Android unit/lint 全部通过。
+- 解包版与便携版通过完整主窗 smoke；小窗通过 `184×35 / 256×70`、四边吸附、主题切换与暂停粒子连续帧验证。安装版隔离安装后回读 `0.12.19.0 / 346b804` 并成功创建 Renderer target，原 0.12.18 的 5 个进程、注册项与快捷方式全程保留。
 
 ## 下载与校验
 
