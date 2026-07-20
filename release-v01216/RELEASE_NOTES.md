@@ -2,7 +2,7 @@
 
 > 发布日期：2026-07-20
 >
-> 对应源码：安装包、便携版、Web 与 Android 均内嵌并显示同一干净 `APP_COMMIT`
+> 对应源码：`f2b1ead`（安装包、便携版、Web 与 Android 均内嵌同一干净提交）
 >
 > 发布类型：本地候选版（GitHub 暂缓）
 >
@@ -33,6 +33,8 @@
 - 修复复用 0.12.15 导致 Windows、PWA、Android 无法明确区分新旧包的问题。
 - 修复 Web/PWA、Android 仍使用旧圆环、柱状品牌标和默认 Android launcher 的视觉版本断层。
 - 保留当前时间织带、小窗、计时仪表和全局强调色，不回退到跨设备开发开始前的旧界面。
+- 修复结束专注后结算画面过早归零，保证时间织带完成拉远并稳定冻结。
+- 小窗展开态新增“本段专注 / 本段暂停”语义标签，在 `256×70` 内明确区分当前读数与三项累计。
 
 ## 升级提示
 
@@ -52,14 +54,15 @@
 - Web/PWA 与 Cloud 生产构建。
 - 浏览器真实闭环：连接、开始、暂停、继续、结束，revision 0→4，结束账本自动收敛。
 - 360×800 响应式验收：无横向溢出，主操作高度 48px。
-- Android sync、unit、lint、assemble；真机版本、安装和 instrumentation 在最终 APK 生成后回读。
-- Electron 主窗、小窗、安装版与便携版在最终产物生成后回读。
+- Android sync、unit、lint、assemble；华为与小米均通过 3/3 instrumentation，并回读 `0.12.16 / versionCode 1216`。
+- Electron 解包产物通过主窗与小窗完整 smoke，回读 `0.12.16 / f2b1ead`；便携版通过隔离启动与构建身份验收。
+- 当前正在运行的 0.12.15、卸载注册项和快捷方式未被改动；安装器隔离安装因本机执行策略拦截注册项暂存而未执行。
 
 ## 下载与校验
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.12.16-x64.exe` | 最终构建后填写 |
-| `FocusLink-0.12.16-x64-portable.exe` | 最终构建后填写 |
+| `FocusLink-0.12.16-x64.exe` | `8318BEF0BDCCD02437789A059567AC908AE91C75D98697B230AD1F6BB1694125` |
+| `FocusLink-0.12.16-x64-portable.exe` | `2740D7254833773725B7219EDAD0503EAB35EBA392D21D601A655423F7F831C0` |
 
 同时提供 `SHA256SUMS.txt`。
