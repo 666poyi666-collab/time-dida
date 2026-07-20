@@ -2,7 +2,7 @@
 
 > 发布日期：2026-07-20
 >
-> 对应源码：`SOURCE_COMMIT`
+> 对应源码：`bc66283`
 >
 > 发布类型：正式版
 >
@@ -30,13 +30,13 @@
 ## 验证
 
 - format、TypeScript、ESLint、46 个测试文件共 354 项测试、audit 0 漏洞、build、dist、Electron 崩溃恢复与 Android unit/lint 全部通过。
-- 解包版与便携版通过完整主窗 smoke；小窗通过 `184×35 / 256×70`、四边吸附、主题切换与暂停粒子连续帧验证。安装版隔离安装后回读 `0.12.19.0 / 346b804` 并成功创建 Renderer target，原 0.12.18 的 5 个进程、注册项与快捷方式全程保留。
+- 解包版与便携版通过完整主窗 smoke；小窗通过 `184×35 / 256×70`、四边吸附、主题切换与暂停粒子连续帧验证。安装版与便携版内嵌版本均核验为 `0.12.19 / bc66283`，并成功创建 Renderer target；原 0.12.18 的进程、注册项与快捷方式全程保留。
 
 ## 下载与校验
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.12.19-x64.exe` | `INSTALLER_SHA256` |
-| `FocusLink-0.12.19-x64-portable.exe` | `PORTABLE_SHA256` |
+| `FocusLink-0.12.19-x64.exe` | `ED4202A694077919604EBE3EAB93538460AD6E4DCB65FEF2C3CE3969C63C2DBE` |
+| `FocusLink-0.12.19-x64-portable.exe` | `74B0A4648F5BA75779CC0C8B461C8431F938B34771FEBC8E229DEF1480D78AA6` |
 
 同时提供 `SHA256SUMS.txt`。
