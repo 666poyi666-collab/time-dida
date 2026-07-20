@@ -2,11 +2,11 @@
 
 > 发布日期：2026-07-20
 >
-> 对应源码：最终干净构建提交待填写
+> 对应源码：`5743a77`
 >
 > 发布类型：本地候选版（GitHub 暂缓）
 >
-> 验证状态：本地门禁进行中
+> 验证状态：已通过本地门禁
 
 ## 本次更新
 
@@ -29,14 +29,15 @@
 ## 验证
 
 - format、TypeScript、ESLint、单元测试、build 与 dist。
-- 0.12.15 运行中升级到 0.12.17：旧进程自动关闭、安装继续、用户数据保留。
-- Electron 主窗与小窗 smoke；Android 双机版本与 instrumentation 回读。
+- 隔离启动旧版 `FocusLink.exe` 后，新 NSIS 链路约 4 秒内自动结束全部旧进程，退出码 0，且未触碰卸载注册项。
+- Electron 主窗与小窗完整 smoke；便携版回读 `0.12.17 / 5743a77`。
+- 华为与小米各通过 3/3 instrumentation，并安装回读 `0.12.17 / versionCode 1217`。
 
 ## 下载与校验
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.12.17-x64.exe` | 最终构建后填写 |
-| `FocusLink-0.12.17-x64-portable.exe` | 最终构建后填写 |
+| `FocusLink-0.12.17-x64.exe` | `F1EC5531EFCCD58CCF880569230272582037DF5E14EF125691EA0A6E3644DE63` |
+| `FocusLink-0.12.17-x64-portable.exe` | `703DE31D304B2E9BFD82F053A4424256AA16941E52631F839883AA8203B61458` |
 
 同时提供 `SHA256SUMS.txt`。
