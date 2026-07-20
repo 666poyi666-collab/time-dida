@@ -1,6 +1,6 @@
 // 时间之带：时间材料、刻度与进度是同一个物体。
-// 运行时世界只在秒边界做一次擒纵步进；暂停时红色材料在真实前沿打孔、断裂、剥落。
-// 近景是秒级精密尺，远景是 30 分钟总览；暂停远景保留一枚贴着前沿的秒级侵蚀观察窗。
+// 运行时世界只在秒边界做一次擒纵步进；暂停时红色材料在真实前沿碎裂、发光并消散。
+// 近景是秒级精密尺，远景是 30 分钟总览；暂停远景保留一枚贴着前沿的秒级消散观察窗。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildMixedTimelineItems } from '@shared/focus/timeline';
 import {
@@ -264,7 +264,7 @@ export function TemporalRibbon({
   const viewDescription = isNear
     ? '秒级近景 · 每格 1 秒 · 分钟主刻'
     : state === 'paused'
-      ? '30 分钟总览 · 前沿保留秒级侵蚀窗'
+      ? '30 分钟总览 · 前沿保留秒级消散窗'
       : '30 分钟总览 · 每格 5 分钟';
   const clockAt = live ? now : lastRecordedAt || now;
   const clockLabel = live ? '当前精确时间' : lastRecordedAt > 0 ? '最后记录时间' : '待机时间锚点';
@@ -277,6 +277,7 @@ export function TemporalRibbon({
       data-view-mode={viewMode}
       data-motion={state === 'running' || state === 'paused' ? 'second-locked' : 'frozen'}
       data-erosion={state === 'paused' ? 'front-bound' : 'none'}
+      data-dissolve={state === 'paused' ? 'particle-field' : 'none'}
     >
       <div className="ribbon-caption">
         <span className="ribbon-title">时间之带</span>
@@ -746,10 +747,10 @@ function drawPausePerforation(
   for (let index = 0; index < holeCount; index += 1) {
     const xSeed = hash01(index * 7.13 + 1.9);
     const ySeed = hash01(index * 17.9 + 4.7);
-    const radius = 0.65 + hash01(index * 23.1 + 8.3) * (index % 5 === 0 ? 2.2 : 1.15);
+    const radius = 0.35 + hash01(index * 23.1 + 8.3) * (index % 5 === 0 ? 1.15 : 0.7);
     const x = input.end - 0.7 - xSeed * Math.max(0.5, erosionWidth - 1.4);
     const y = input.fieldTop + 3 + ySeed * Math.max(1, fieldHeight - 6);
-    ctx.fillStyle = `rgba(${input.colors.surface2},${0.68 + ySeed * 0.22})`;
+    ctx.fillStyle = `rgba(${input.colors.surface2},${0.3 + ySeed * 0.18})`;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
@@ -942,6 +943,61 @@ function drawRunningFrontier(
   }
 }
 
+function drawDissolveParticleField(
+  ctx: CanvasRenderingContext2D,
+  input: {
+    particles: ReturnType<typeof pauseErosionParticles>;
+    edgeX: number;
+    fieldTop: number;
+    fieldBottom: number;
+    colors: BandColors;
+    motionScale?: number;
+    sizeScale?: number;
+  },
+): void {
+  const fieldHeight = input.fieldBottom - input.fieldTop;
+  const motionScale = input.motionScale ?? 1;
+  const sizeScale = input.sizeScale ?? 1;
+
+  for (const particle of input.particles) {
+    if (particle.alpha <= 0.01) continue;
+    const originX = input.edgeX - particle.originOffsetX;
+    const originY = input.fieldTop + particle.originRatioY * fieldHeight;
+    ctx.save();
+    ctx.translate(
+      originX + particle.travelX * motionScale,
+      originY + particle.travelY * motionScale,
+    );
+    ctx.rotate(particle.rotation);
+    ctx.fillStyle = `rgba(${input.colors.pause},${particle.alpha})`;
+    ctx.strokeStyle = `rgba(${input.colors.pause},${particle.alpha})`;
+    ctx.shadowColor = `rgba(${input.colors.pause},${particle.alpha * 0.76})`;
+    ctx.shadowBlur = particle.kind === 'spark' ? 8 : particle.kind === 'dust' ? 3.5 : 1.5;
+    const size = particle.size * sizeScale;
+    if (particle.kind === 'shard') {
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.72, -size * 0.32);
+      ctx.lineTo(size * 0.66, -size * 0.58);
+      ctx.lineTo(size * 0.48, size * 0.72);
+      ctx.lineTo(-size * 0.42, size * 0.48);
+      ctx.closePath();
+      ctx.fill();
+    } else if (particle.kind === 'spark') {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineWidth = Math.max(0.55, size * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(-size * 3.2, 0);
+      ctx.lineTo(size * 2.4, 0);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, size * 0.58, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
 function drawPauseErosion(
   ctx: CanvasRenderingContext2D,
   input: ActivePause & {
@@ -963,15 +1019,15 @@ function drawPauseErosion(
   // 远景中主时间轴保持真实比例；这枚明确标注的观察窗只放大最后 12 秒的材料细节。
   if (input.farAlpha > 0.04) {
     const alpha = Math.min(1, input.farAlpha * 1.12);
-    const lensWidth = clamp(input.width * 0.11, 92, 144);
-    const lensHeight = clamp(fieldHeight * 0.46, 32, 66);
+    const lensWidth = clamp(input.width * 0.18, 148, 208);
+    const lensHeight = clamp(fieldHeight * 0.68, 54, 86);
     const lensX = input.pointerX - lensWidth;
     const lensY = input.fieldTop + fieldHeight - lensHeight - 8;
     const lensHeaderHeight = clamp(lensHeight * 0.3, 15, 19);
     const materialTop = lensY + lensHeaderHeight;
     const materialHeight = lensHeight - lensHeaderHeight;
-    const cellWidth = lensWidth / 12;
-    const pausedSeconds = Math.min(12, Math.max(0, input.elapsedMs / 1000));
+    const cellWidth = lensWidth / 15;
+    const pausedSeconds = Math.min(15, Math.max(0, input.elapsedMs / 1000));
     const pausedWidth = pausedSeconds * cellWidth;
 
     ctx.save();
@@ -984,7 +1040,7 @@ function drawPauseErosion(
     ctx.fillStyle = lensMaterial;
     ctx.fillRect(input.pointerX - pausedWidth, materialTop, pausedWidth, materialHeight);
 
-    // 铭牌与材料舱分层：读数永远稳定，红色侵蚀不会盖住标签。
+    // 铭牌与材料舱分层：读数永远稳定，红色消散不会盖住标签。
     ctx.fillStyle = `rgba(${input.colors.surface2},0.98)`;
     ctx.fillRect(lensX, lensY, lensWidth, lensHeaderHeight);
     ctx.strokeStyle = `rgba(${input.colors.borderStrong},0.72)`;
@@ -1002,7 +1058,7 @@ function drawPauseErosion(
     ctx.lineTo(input.pointerX, lensY);
     ctx.stroke();
 
-    for (let second = 0; second <= 12; second += 1) {
+    for (let second = 0; second <= 15; second += 1) {
       const x = lensX + second * cellWidth;
       ctx.strokeStyle = `rgba(${input.colors.ink},${second % 5 === 0 ? 0.48 : 0.24})`;
       ctx.beginPath();
@@ -1019,50 +1075,90 @@ function drawPauseErosion(
     for (let index = 0; index < holeCount; index += 1) {
       const x = input.pointerX - 1 - hash01(index * 7.13 + 1.9) * Math.max(1, pausedWidth - 2);
       const y = materialTop + 3 + hash01(index * 17.9 + 4.7) * Math.max(1, materialHeight - 6);
-      const radius = 0.75 + hash01(index * 23.1 + 8.3) * (index % 5 === 0 ? 2.35 : 1.2);
-      ctx.fillStyle = `rgba(${input.colors.surface2},0.88)`;
+      const radius = 0.35 + hash01(index * 23.1 + 8.3) * (index % 5 === 0 ? 1.15 : 0.72);
+      ctx.fillStyle = `rgba(${input.colors.surface2},0.42)`;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
 
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(lensX + 1, materialTop + 1, lensWidth - 2, materialHeight - 2);
+    ctx.clip();
+    drawDissolveParticleField(ctx, {
+      particles: pauseErosionParticles(input.elapsedMs, pausedWidth, input.reducedMotion),
+      edgeX: input.pointerX - 2,
+      fieldTop: materialTop + 2,
+      fieldBottom: materialTop + materialHeight - 2,
+      colors: input.colors,
+      motionScale: 0.68,
+      sizeScale: 0.94,
+    });
+    ctx.restore();
+
     ctx.fillStyle = `rgba(${input.colors.pause},0.94)`;
     ctx.font = input.fontUi;
     ctx.textAlign = 'left';
-    ctx.fillText(`侵蚀 ${formatElapsedSeconds(input.elapsedMs)}`, lensX + 7, lensY + 12);
+    ctx.fillText(`消散 ${formatElapsedSeconds(input.elapsedMs)}`, lensX + 7, lensY + 12);
     ctx.fillStyle = `rgba(${input.colors.muted},0.82)`;
     ctx.font = input.fontNumber;
     ctx.textAlign = 'right';
-    ctx.fillText('12s', input.pointerX - 6, lensY + 12);
+    ctx.fillText('15s', input.pointerX - 6, lensY + 12);
+    ctx.restore();
+  }
+
+  const halo = ctx.createRadialGradient(
+    input.end,
+    input.fieldTop + fieldHeight * 0.5,
+    0,
+    input.end,
+    input.fieldTop + fieldHeight * 0.5,
+    Math.min(54, Math.max(22, materialWidth * 0.8)),
+  );
+  halo.addColorStop(0, `rgba(255,255,255,0.24)`);
+  halo.addColorStop(0.16, `rgba(${input.colors.pause},0.2)`);
+  halo.addColorStop(1, `rgba(${input.colors.pause},0)`);
+  ctx.fillStyle = halo;
+  ctx.fillRect(
+    input.end - Math.min(54, materialWidth),
+    input.fieldTop - 10,
+    Math.min(72, materialWidth + 18),
+    fieldHeight + 20,
+  );
+
+  const pulse = input.reducedMotion ? 1 : input.pulseAge / BAND_PAUSE_MOTION_MS;
+  if (!input.reducedMotion) {
+    const ringAlpha = Math.pow(1 - pulse, 1.7) * 0.5;
+    ctx.save();
+    ctx.strokeStyle = `rgba(${input.colors.pause},${ringAlpha})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(
+      input.end,
+      input.fieldTop + fieldHeight * 0.5,
+      5 + pulse * 26,
+      fieldHeight * (0.16 + pulse * 0.32),
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.stroke();
     ctx.restore();
   }
 
   const particles = pauseErosionParticles(input.elapsedMs, materialWidth, input.reducedMotion);
-  for (const particle of particles) {
-    const originX = input.end - particle.originOffsetX;
-    const originY = input.fieldTop + particle.originRatioY * fieldHeight;
-    ctx.save();
-    ctx.translate(originX - particle.travelX, originY + particle.travelY);
-    ctx.rotate(particle.rotation);
-    ctx.fillStyle = `rgba(${input.colors.pause},${particle.alpha})`;
-    if (particle.kind === 'shard') {
-      const size = particle.size;
-      ctx.beginPath();
-      ctx.moveTo(-size * 0.72, -size * 0.32);
-      ctx.lineTo(size * 0.66, -size * 0.58);
-      ctx.lineTo(size * 0.48, size * 0.72);
-      ctx.lineTo(-size * 0.42, size * 0.48);
-      ctx.closePath();
-      ctx.fill();
-    } else {
-      ctx.fillRect(-particle.size / 2, -particle.size / 2, particle.size, particle.size);
-    }
-    ctx.restore();
-  }
+  drawDissolveParticleField(ctx, {
+    particles,
+    edgeX: input.end,
+    fieldTop: input.fieldTop,
+    fieldBottom: input.fieldBottom,
+    colors: input.colors,
+  });
 
-  // 红色前沿不是呼吸灯；每秒侵蚀窗口内增强一次，随后固定在警戒亮度。
-  const phase = input.reducedMotion ? 1 : Math.min(1, input.pulseAge / BAND_PAUSE_MOTION_MS);
+  // 红色前沿不是呼吸灯；每秒消散窗口内增强一次，随后固定在警戒亮度。
+  const phase = input.reducedMotion ? 1 : Math.min(1, pulse);
   const edgeAlpha = 0.68 + (1 - phase) * 0.28;
   ctx.fillStyle = `rgba(${input.colors.pause},${edgeAlpha})`;
   ctx.fillRect(input.end - 2.4, input.fieldTop, 2.4, fieldHeight);

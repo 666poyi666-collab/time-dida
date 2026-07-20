@@ -15,8 +15,8 @@ export const BAND_ZOOM_MS = 820;
 
 /** 运行态每秒释放后的可见机械动作窗口；其余时间画面保持稳定。 */
 export const BAND_RUNNING_MOTION_MS = 420;
-/** 暂停态每秒侵蚀动作窗口；碎片必须在下一秒前熄灭。 */
-export const BAND_PAUSE_MOTION_MS = 860;
+/** 暂停态粒子持续流动；相邻秒的发射批次会重叠，避免整秒边界跳变。 */
+export const BAND_PAUSE_MOTION_MS = 1000;
 
 /**
  * 结束后保留结算画面的时间。必须长于拉远动画与完成提示的组合时长，
@@ -118,7 +118,8 @@ export function bandDetailMix(scalePxPerSec: number): number {
 }
 
 export type PauseErosionParticle = {
-  kind: 'shard' | 'dust';
+  id: string;
+  kind: 'shard' | 'dust' | 'spark';
   originOffsetX: number;
   originRatioY: number;
   travelX: number;
@@ -128,48 +129,81 @@ export type PauseErosionParticle = {
   alpha: number;
 };
 
-/** 暂停侵蚀的确定性粒子；出生点始终绑定真实红色材料前沿。 */
+/**
+ * 暂停消散的确定性粒子。相邻两秒的发射批次会重叠：碎片先剥离，尘点拖出尾迹，
+ * 火花更快熄灭。函数只返回当前仍存活的粒子，因此不会在整秒边界整批换帧。
+ */
 export function pauseErosionParticles(
   elapsedMs: number,
   materialWidth: number,
   reducedMotion: boolean,
 ): PauseErosionParticle[] {
   if (reducedMotion || materialWidth <= 0) return [];
-  const phaseMs = Math.max(0, elapsedMs % 1000);
-  if (phaseMs >= BAND_PAUSE_MOTION_MS) return [];
+  const elapsedSeconds = Math.max(0, elapsedMs / 1000);
+  const currentSecond = Math.floor(elapsedSeconds);
+  const birthWidth = Math.min(materialWidth, 16);
+  const particles: PauseErosionParticle[] = [];
 
-  const eventSecond = Math.max(0, Math.floor(elapsedMs / 1000));
-  const life = phaseMs / BAND_PAUSE_MOTION_MS;
-  const easedLife = 1 - Math.pow(1 - life, 2.2);
-  const birthWidth = Math.min(materialWidth, 24);
+  for (
+    let cohortSecond = Math.max(0, currentSecond - 1);
+    cohortSecond <= currentSecond;
+    cohortSecond += 1
+  ) {
+    for (let index = 0; index < 32; index += 1) {
+      const seed = cohortSecond * 61.73 + index * 29.17;
+      const kind: PauseErosionParticle['kind'] =
+        index % 7 === 0 ? 'shard' : index % 5 === 0 ? 'spark' : 'dust';
+      const coarse = kind === 'shard';
+      const spark = kind === 'spark';
+      const birthOffset = (index / 32) * 0.76 + hash01(seed + 1.1) * 0.035;
+      const ageSeconds = elapsedSeconds - (cohortSecond + birthOffset);
+      const lifespan = spark
+        ? 0.3 + hash01(seed + 4.3) * 0.2
+        : coarse
+          ? 0.82 + hash01(seed + 4.3) * 0.28
+          : 0.92 + hash01(seed + 4.3) * 0.42;
+      if (ageSeconds < 0 || ageSeconds >= lifespan) continue;
 
-  return Array.from({ length: 9 }, (_, index) => {
-    const seed = eventSecond * 61.73 + index * 29.17;
-    const kind = index < 3 ? 'shard' : 'dust';
-    const coarse = kind === 'shard';
-    const upwardDust = !coarse && index % 3 === 0;
-    const gravity = easedLife * easedLife * (coarse ? 12 : 7);
-    return {
-      kind,
-      originOffsetX: birthWidth * (0.08 + hash01(seed + 2.7) * 0.84),
-      originRatioY: 0.08 + hash01(seed + 7.3) * 0.78,
-      travelX: easedLife * (coarse ? 7 + hash01(seed + 11.9) * 12 : 3 + hash01(seed + 11.9) * 8),
-      travelY:
-        easedLife * (upwardDust ? -(2 + hash01(seed + 17.1) * 4) : 2 + hash01(seed + 17.1) * 7) +
-        gravity,
-      size:
-        (coarse ? 2 + hash01(seed + 23.7) * 2.4 : 0.65 + hash01(seed + 23.7) * 1.05) *
-        (1 - life * 0.72),
-      rotation: (hash01(seed + 31.3) - 0.5) * 1.5 + easedLife * (coarse ? 1.45 : 0.55),
-      alpha: (coarse ? 0.92 : 0.68) * (1 - life) ** 1.35,
-    };
-  });
+      const life = clamp01(ageSeconds / lifespan);
+      const easedLife = 1 - Math.pow(1 - life, 2.25);
+      const direction = index % 9 === 0 ? -0.32 : 1;
+      const lift = index % 3 === 0 ? -1 : 1;
+      const drift = coarse
+        ? 11 + hash01(seed + 11.9) * 17
+        : spark
+          ? 19 + hash01(seed + 11.9) * 24
+          : 7 + hash01(seed + 11.9) * 16;
+      const gravity = easedLife * easedLife * (coarse ? 14 : spark ? 2 : 7);
+      const fadeIn = clamp01(ageSeconds / (spark ? 0.025 : 0.055));
+
+      particles.push({
+        id: `${cohortSecond}-${index}`,
+        kind,
+        originOffsetX: birthWidth * (0.04 + hash01(seed + 2.7) * 0.92),
+        originRatioY: 0.06 + hash01(seed + 7.3) * 0.86,
+        travelX: direction * easedLife * drift,
+        travelY: lift * easedLife * (2 + hash01(seed + 17.1) * (spark ? 10 : 7)) + gravity,
+        size:
+          (coarse
+            ? 2.4 + hash01(seed + 23.7) * 3.5
+            : spark
+              ? 0.9 + hash01(seed + 23.7) * 1.3
+              : 0.9 + hash01(seed + 23.7) * 1.7) * Math.max(0.12, 1 - life * (coarse ? 0.78 : 0.9)),
+        rotation:
+          (hash01(seed + 31.3) - 0.5) * 1.9 + easedLife * (coarse ? 2.4 : spark ? 0.24 : 0.9),
+        alpha:
+          fadeIn * (coarse ? 0.98 : spark ? 0.96 : 0.82) * Math.pow(1 - life, spark ? 1.05 : 1.38),
+      });
+    }
+  }
+
+  return particles;
 }
 
-/** 打孔数量随暂停成本增长，但以平方根减速。 */
+/** 材料残痕只作粒子消散的次级底纹，随暂停增长但保持低密度。 */
 export function pauseErosionHoleCount(elapsedMs: number): number {
   const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
-  return Math.min(34, 7 + Math.floor(Math.sqrt(elapsedSeconds + 1) * 3.2));
+  return Math.min(16, 3 + Math.floor(Math.sqrt(elapsedSeconds + 1) * 1.35));
 }
 
 /** 变焦进度：返回当前尺度；完成时返回 null 表示动画结束 */

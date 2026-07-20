@@ -786,11 +786,15 @@ export function SettingsPanel() {
               </Section>
 
               <Section
-                title="专注仪表"
-                desc="所选强调色贯穿导航、按钮、任务、统计与专注状态；暂停始终保持红色。"
+                title="界面与读数"
+                desc="字体、强调色与计时读数各自独立选择；暂停始终使用红色语义。"
               >
-                <div>
-                  <Row label="界面字体" desc="改变正文、任务与设置文字；计时数字使用各自独立字体">
+                <div className="settings-visual-groups">
+                  <div className="settings-choice-group settings-choice-group-wide">
+                    <div className="settings-choice-heading">
+                      <strong>界面字体</strong>
+                      <span>应用于正文、任务与设置；计时数字保留各仪表自己的字形。</span>
+                    </div>
                     <div className="font-profile-choices" aria-label="界面字体">
                       {FONT_PROFILE_OPTIONS.map((profile) => (
                         <button
@@ -806,11 +810,13 @@ export function SettingsPanel() {
                         </button>
                       ))}
                     </div>
-                  </Row>
-                  <Row
-                    label="全局强调色"
-                    desc="同时应用到导航、操作、选中态、统计图、专注读数与时间之带"
-                  >
+                  </div>
+
+                  <div className="settings-choice-group settings-choice-group-inline">
+                    <div className="settings-choice-heading">
+                      <strong>全局强调色</strong>
+                      <span>同步应用到导航、操作、选中态、统计、专注读数与时间之带。</span>
+                    </div>
                     <div className="focus-color-choices" aria-label="专注强调色">
                       {FOCUS_COLOR_OPTIONS.map((color) => (
                         <button
@@ -828,8 +834,13 @@ export function SettingsPanel() {
                         当前：{FOCUS_COLOR_OPTIONS.find((c) => c.id === settings.focusColor)?.label}
                       </span>
                     </div>
-                  </Row>
-                  <Row label="计时仪表" desc="只改变主计时读数的表现，不构成完整主题">
+                  </div>
+
+                  <div className="settings-choice-group settings-choice-group-wide">
+                    <div className="settings-choice-heading">
+                      <strong>计时仪表</strong>
+                      <span>只改变主计时读数；每种样式使用固定尺寸的真实预览。</span>
+                    </div>
                     <div className="instrument-choices" aria-label="计时仪表样式">
                       {TIMER_STYLE_OPTIONS.map((style) => (
                         <button
@@ -852,14 +863,19 @@ export function SettingsPanel() {
                         </button>
                       ))}
                     </div>
-                  </Row>
-                  <Row label="状态色" desc="三种语义色在全应用保持稳定">
+                  </div>
+
+                  <div className="settings-choice-group settings-choice-group-inline">
+                    <div className="settings-choice-heading">
+                      <strong>状态语义</strong>
+                      <span>操作与专注跟随强调色，暂停始终保持警示红。</span>
+                    </div>
                     <div className="settings-state-colors">
                       <span className="interface">操作 · 当前强调色</span>
                       <span className="focus">专注 · 当前强调色</span>
                       <span className="pause">暂停 · 红</span>
                     </div>
-                  </Row>
+                  </div>
                 </div>
               </Section>
             </>

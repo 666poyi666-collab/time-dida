@@ -905,6 +905,13 @@
   padding: 9px 18px 9px 52px;
   border-bottom: 1px solid rgb(var(--app-border));
 }
+.ledger-row.row-focus {
+  box-shadow: inset 3px 0 rgb(var(--app-accent) / 0.72);
+}
+.ledger-row.row-pause {
+  background: rgb(var(--app-pause) / 0.025);
+  box-shadow: inset 3px 0 rgb(var(--app-pause) / 0.72);
+}
 .ledger-row::before {
   position: absolute;
   top: 0;
@@ -922,6 +929,12 @@
   height: 1px;
   background: rgb(var(--app-border-strong));
   content: '';
+}
+.ledger-row.row-focus::after {
+  background: rgb(var(--app-accent) / 0.72);
+}
+.ledger-row.row-pause::after {
+  background: rgb(var(--app-pause) / 0.78);
 }
 .ledger-row.is-current {
   background: rgb(var(--app-success-soft));
@@ -946,8 +959,16 @@
   font-weight: 550;
   font-variant-numeric: tabular-nums;
 }
+.ledger-row.row-focus .ledger-row-title,
+.ledger-row.row-focus .ledger-row-duration {
+  color: rgb(var(--app-accent));
+}
+.ledger-row.row-pause .ledger-row-title,
+.ledger-row.row-pause .ledger-row-duration {
+  color: rgb(var(--app-pause));
+}
 .ledger-row.is-current .ledger-row-duration {
-  color: rgb(var(--app-success-deep));
+  color: rgb(var(--app-accent));
 }
 .ledger-row.is-current.row-pause .ledger-row-duration {
   color: rgb(var(--app-pause));
@@ -1325,17 +1346,34 @@
 /* ─── 设置页骨架与新增控件 ────────────────────────────────── */
 .settings-page {
   display: grid;
-  grid-template-columns: 224px minmax(0, 1fr);
+  grid-template-columns: 208px minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+  padding: 0;
 }
 .settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  margin-top: 0;
+  padding: 32px 20px 20px;
   border: 0;
   border-right: 1px solid rgb(var(--app-border));
   border-radius: 0;
   background: rgb(var(--app-surface) / 0.5);
 }
 .settings-scroll {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
   border: 0;
   background: transparent;
+}
+.settings-container {
+  width: min(1080px, calc(100% - 64px));
+  margin: 0 auto;
+  padding: 32px 0 72px;
 }
 .settings-tab,
 .settings-row,
@@ -1352,52 +1390,63 @@
 /* 计时仪表样式选择：实时渲染预览 */
 .instrument-choices {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0;
-  width: min(860px, 100%);
-  border: 1px solid rgb(var(--app-border));
+  grid-template-columns: repeat(3, minmax(168px, 1fr));
+  gap: 8px;
+  width: 100%;
 }
 .font-profile-choices {
   display: grid;
-  width: min(860px, 100%);
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border: 1px solid rgb(var(--app-border));
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 8px;
 }
 
-/* 宽预览控件占据内容列，不能反向把设置项标题压成逐字竖排。 */
-.settings-row:has(.instrument-choices),
-.settings-row:has(.font-profile-choices) {
-  grid-template-columns: 176px minmax(0, 1fr);
-  align-items: start;
+.settings-visual-groups {
+  display: grid;
+  gap: 0;
 }
-.settings-row:has(.instrument-choices) .settings-row-control,
-.settings-row:has(.font-profile-choices) .settings-row-control {
+.settings-choice-group {
+  display: grid;
+  gap: 12px;
+  padding: 18px 0;
+  border-bottom: 1px solid rgb(var(--app-border));
+}
+.settings-choice-group-inline {
+  grid-template-columns: minmax(190px, 0.72fr) minmax(320px, 1.28fr);
+  align-items: center;
+}
+.settings-choice-heading {
+  display: grid;
+  gap: 5px;
   min-width: 0;
-  justify-content: stretch;
 }
-.settings-row:has(.instrument-choices) .instrument-choices,
-.settings-row:has(.font-profile-choices) .font-profile-choices {
-  width: 100%;
+.settings-choice-heading strong {
+  color: rgb(var(--app-text));
+  font-size: 12px;
+  font-weight: 650;
+}
+.settings-choice-heading span {
+  max-width: 60ch;
+  color: rgb(var(--app-muted));
+  font-size: 10.5px;
+  line-height: 1.55;
 }
 .font-profile-choice {
   display: grid;
-  min-height: 104px;
+  min-height: 118px;
   gap: 7px;
   align-content: center;
   padding: 12px 14px;
-  border: 0;
-  border-right: 1px solid rgb(var(--app-border));
-  background: transparent;
+  border: 1px solid rgb(var(--app-border));
+  background: rgb(var(--app-surface) / 0.48);
   text-align: left;
-}
-.font-profile-choice:last-child {
-  border-right: 0;
 }
 .font-profile-choice:hover {
   background: rgb(var(--app-surface-2));
 }
 .font-profile-choice.active {
   background: rgb(var(--app-accent-soft));
+  border-color: rgb(var(--app-accent) / 0.72);
   box-shadow: inset 0 -2px rgb(var(--app-accent));
 }
 .font-profile-choice .fp-name,
@@ -2027,22 +2076,20 @@
 }
 .instrument-choice {
   display: flex;
-  min-height: 108px;
+  min-width: 0;
+  min-height: 142px;
   flex-direction: column;
   padding: 12px 14px;
-  border: 0;
-  border-right: 1px solid rgb(var(--app-border));
-  background: transparent;
+  border: 1px solid rgb(var(--app-border));
+  background: rgb(var(--app-surface) / 0.48);
   text-align: left;
-}
-.instrument-choice:last-child {
-  border-right: 0;
 }
 .instrument-choice:hover {
   background: rgb(var(--app-surface-2));
 }
 .instrument-choice.active {
   background: rgb(var(--app-accent-soft));
+  border-color: rgb(var(--app-accent) / 0.72);
   box-shadow: inset 0 -2px rgb(var(--app-accent));
 }
 .instrument-choice .ic-name {
@@ -2051,15 +2098,36 @@
   letter-spacing: 0.04em;
 }
 .instrument-choice .ic-preview {
-  display: flex;
-  flex: 1;
+  display: grid;
+  width: 100%;
+  height: 70px;
+  flex: none;
   align-items: center;
+  justify-items: start;
   margin-top: 8px;
   color: rgb(var(--app-success));
   overflow: hidden;
 }
 .instrument-choice .ic-preview .timer-dial {
-  font-size: 34px;
+  width: max-content;
+  max-width: none;
+  min-width: max-content;
+  font-size: 32px;
+  line-height: 1;
+  transform: scale(0.72);
+  transform-origin: left center;
+  white-space: nowrap;
+}
+.instrument-choice .ic-preview .dial-standard {
+  min-width: 184px;
+}
+.instrument-choice .ic-preview .dial-flip {
+  transform: scale(0.62);
+}
+.instrument-choice .ic-preview .dial-pixel,
+.instrument-choice .ic-preview .dial-segment {
+  width: 190px;
+  min-width: 190px;
 }
 .instrument-choice .ic-preview .pixel-core {
   display: none;
@@ -2073,6 +2141,8 @@
 /* 专注色选择 */
 .focus-color-choices {
   display: flex;
+  align-items: center;
+  justify-content: flex-start;
   gap: 8px;
 }
 .focus-color-swatch {
@@ -2100,6 +2170,8 @@
 /* 状态色说明条 */
 .settings-state-colors {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   gap: 8px;
 }
 .settings-state-colors span {

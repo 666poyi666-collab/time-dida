@@ -25,6 +25,7 @@ import {
   getWallElapsedMs,
 } from '@shared/focus/selectors';
 import { MINI_WINDOW_DOCK_TRANSITION_MS } from '@shared/miniWindowLayout';
+import { pauseErosionParticles } from '@shared/focus/bandMath';
 
 const STATE_META: Record<
   TimerSnapshot['state'],
@@ -266,9 +267,22 @@ export function MiniWindow() {
 
   useEffect(() => {
     if (snapshot?.state !== 'running' && snapshot?.state !== 'paused') return;
+    if (snapshot.state === 'paused' && !reduceMotion) {
+      let frame = 0;
+      let lastFrame = 0;
+      const draw = (timestamp: number) => {
+        if (timestamp - lastFrame >= 32) {
+          lastFrame = timestamp;
+          setNow(Date.now());
+        }
+        frame = window.requestAnimationFrame(draw);
+      };
+      frame = window.requestAnimationFrame(draw);
+      return () => window.cancelAnimationFrame(frame);
+    }
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
-  }, [snapshot?.state, snapshot?.lastTick, snapshot?.currentPauseStartedAt]);
+  }, [reduceMotion, snapshot?.state, snapshot?.lastTick, snapshot?.currentPauseStartedAt]);
 
   const state = snapshot?.state ?? 'idle';
   const meta = STATE_META[state];
@@ -399,6 +413,8 @@ export function MiniWindow() {
               progress={minuteProgress}
               second={Math.floor((displayPrimaryMs / 1000) % 60)}
               paused={isPaused}
+              elapsedMs={displayPrimaryMs}
+              reducedMotion={Boolean(reduceMotion)}
               compact
             />
             <div className="mini-collapsed-current">
@@ -472,6 +488,8 @@ export function MiniWindow() {
                   progress={minuteProgress}
                   second={Math.floor((displayPrimaryMs / 1000) % 60)}
                   paused={isPaused}
+                  elapsedMs={displayPrimaryMs}
+                  reducedMotion={Boolean(reduceMotion)}
                 />
               </div>
 
@@ -536,11 +554,15 @@ function MiniSecondRail({
   progress,
   second,
   paused,
+  elapsedMs,
+  reducedMotion,
   compact = false,
 }: {
   progress: number;
   second: number;
   paused: boolean;
+  elapsedMs: number;
+  reducedMotion: boolean;
   compact?: boolean;
 }) {
   return (
@@ -556,23 +578,63 @@ function MiniSecondRail({
     >
       <span className="mini-second-rail-fill mini-edge-progress-fill" />
       <span className="mini-second-front" aria-hidden="true" />
-      {paused && <MiniDecayParticles fromEdge={progress < 12} />}
+      {paused && (
+        <MiniDecayParticles
+          elapsedMs={elapsedMs}
+          fromEdge={progress < 12}
+          reducedMotion={reducedMotion}
+        />
+      )}
     </span>
   );
 }
 
-function MiniDecayParticles({ fromEdge }: { fromEdge: boolean }) {
+function MiniDecayParticles({
+  elapsedMs,
+  fromEdge,
+  reducedMotion,
+}: {
+  elapsedMs: number;
+  fromEdge: boolean;
+  reducedMotion: boolean;
+}) {
+  const particles = pauseErosionParticles(elapsedMs, 42, reducedMotion);
+  const pulse = (elapsedMs % 1000) / 1000;
+  const echoPulse = pulse < 0.46 ? 0 : (pulse - 0.46) / 0.54;
   return (
-    <span className={`mini-decay-particles ${fromEdge ? 'from-edge' : ''}`} aria-hidden="true">
-      {Array.from({ length: 18 }, (_, index) => (
+    <span
+      className={`mini-decay-particles ${fromEdge ? 'from-edge' : ''}`}
+      aria-hidden="true"
+      data-dissolve-layers="shard dust spark"
+      style={
+        {
+          '--dissolve-halo-alpha': 0.52 + (1 - pulse) * 0.34,
+          '--dissolve-halo-scale': 0.86 + pulse * 0.28,
+          '--dissolve-wave-alpha': (1 - pulse) * 0.5,
+          '--dissolve-wave-scale': 0.75 + pulse * 1.65,
+          '--dissolve-echo-alpha': echoPulse * (1 - echoPulse) * 1.15,
+          '--dissolve-echo-scale': 0.72 + echoPulse * 1.2,
+        } as CSSProperties
+      }
+    >
+      <span className="mini-dissolve-halo" />
+      <span className="mini-dissolve-wave wave-primary" />
+      <span className="mini-dissolve-wave wave-echo" />
+      {particles.map((particle, index) => (
         <i
-          key={index}
+          key={particle.id}
+          className={`particle-${particle.kind}`}
           style={
             {
               '--particle-index': index,
-              '--particle-size': `${0.75 + (index % 4) * 0.45}px`,
-              '--particle-x': `${(fromEdge ? 1 : -1) * (3 + (index % 6) * 1.55)}px`,
-              '--particle-y': `${(index % 2 === 0 ? -1 : 1) * (2 + (index % 5) * 1.15)}px`,
+              '--particle-size': `${particle.size}px`,
+              '--particle-length': `${Math.max(2, particle.size * 4.4)}px`,
+              '--particle-origin-x': `${fromEdge ? 0 : -particle.originOffsetX}px`,
+              '--particle-origin-y': `${particle.originRatioY * 100}%`,
+              '--particle-x': `${fromEdge ? Math.abs(particle.travelX) : particle.travelX}px`,
+              '--particle-y': `${particle.travelY}px`,
+              '--particle-rotation': `${particle.rotation}rad`,
+              '--particle-alpha': particle.alpha,
             } as CSSProperties
           }
         />

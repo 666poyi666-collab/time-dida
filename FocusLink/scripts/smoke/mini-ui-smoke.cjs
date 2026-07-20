@@ -380,6 +380,12 @@ async function inspectMini(mini) {
         : null,
       edgeProgressFillWidth: edgeProgressFill?.getBoundingClientRect().width || 0,
       decayParticleCount: document.querySelectorAll('.mini-decay-particles i').length,
+      decayParticleKinds: [...document.querySelectorAll('.mini-decay-particles i')]
+        .map((element) => [...element.classList].find((name) => name.startsWith('particle-')))
+        .filter(Boolean),
+      decayLayers: document.querySelector('.mini-decay-particles')?.dataset.dissolveLayers || null,
+      decayAnimationNames: [...document.querySelectorAll('.mini-decay-particles i')]
+        .map((element) => getComputedStyle(element).animationName),
       mode: shell?.getAttribute('data-mode') || null,
       dockingEdge: shell?.getAttribute('data-docking-edge') || null,
       hasMaterialGlow: Boolean(document.querySelector('.mini-material-glow')),
@@ -987,6 +993,14 @@ function assertResult(name, result, expected) {
           : result.decayParticleCount === 0,
         'decay particles exist only during the current pause',
       ],
+      [
+        expected.state !== 'paused' || result.decayLayers === 'shard dust spark',
+        'paused mini rail uses shard, dust and spark dissolve layers',
+      ],
+      [
+        expected.state !== 'paused' || result.decayAnimationNames.every((name) => name === 'none'),
+        'paused mini particles are driven by real elapsed time instead of infinite CSS loops',
+      ],
       [result.primaryText === null && result.secondaryText === null, 'no timer controls collapsed'],
     );
   } else {
@@ -1039,6 +1053,10 @@ function assertResult(name, result, expected) {
           ? result.decayParticleCount > 0
           : result.decayParticleCount === 0,
         'expanded decay particles exist only during the current pause',
+      ],
+      [
+        expected.state !== 'paused' || result.decayAnimationNames.every((name) => name === 'none'),
+        'expanded dissolve field has no infinite CSS particle loop',
       ],
     );
   }

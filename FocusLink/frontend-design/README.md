@@ -1,17 +1,25 @@
 # FocusLink 前端设计索引
 
-> 适用版本：v0.12.x 系列；当前对应 v0.12.18「时间仪器 + 实时多端专注」
+> 适用版本：v0.12.x 系列；当前对应 v0.12.19「时间仪器 + 实时多端专注」
 >
 > 文档责任：只描述产品体验、renderer 结构和可验收的视觉/交互规则。
 
 这个目录是 FocusLink 前端设计的唯一规范入口。旧截图、一次性改版报告和已经废弃的视觉概念不具有约束力；发现实现与文档冲突时，先核对当前测试与运行行为，再在同一个变更中修正文档。
 
-## 阅读顺序
+## 前端档案
 
-1. [FRONTEND_SPEC.md](FRONTEND_SPEC.md)：产品界面、信息架构、主题、token、动效、小窗和验收标准的单一真相。
-2. [AI_HANDOFF_CHECKLIST.md](AI_HANDOFF_CHECKLIST.md)：任何 AI 或新维护者开始和结束工作时必须逐项核对的清单。
-3. [../backend-design/BACKEND_SPEC.md](../backend-design/BACKEND_SPEC.md)：IPC、数据、任务 Provider 和同步语义。
-4. [../backend-design/TEST_AND_RELEASE.md](../backend-design/TEST_AND_RELEASE.md)：测试、打包和 GitHub Release 门禁。
+### 产品与交互
+
+- [FRONTEND_SPEC.md](FRONTEND_SPEC.md)：界面信息架构、主题 token、字体、计时仪表、时间之带、账本、小窗和验收标准的单一真相。
+
+### 开发与维护
+
+- [AI_HANDOFF_CHECKLIST.md](AI_HANDOFF_CHECKLIST.md)：开始修改、视觉验收和交付前必须逐项核对的清单。
+
+### 后端边界
+
+- [../backend-design/BACKEND_SPEC.md](../backend-design/BACKEND_SPEC.md)：IPC、数据、任务 Provider 和同步事实。
+- [../backend-design/TEST_AND_RELEASE.md](../backend-design/TEST_AND_RELEASE.md)：自动化、真实服务、打包和发布门禁。
 
 ## 源码责任
 

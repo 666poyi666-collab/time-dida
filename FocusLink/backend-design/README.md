@@ -2,21 +2,28 @@
 
 > 适用版本：v0.12.x
 >
-> 当前实现：v0.12.18
+> 当前实现：v0.12.19
 >
 > 文档责任：Electron 主进程、SQLite、IPC、任务 Provider、同步、测试与发布。
 
 这个目录是后端设计与维护的唯一规范入口。`electron/` 和 `shared/` 是运行时事实，本文档负责解释不变量与验收边界；不再维护 `docs/`、`backend/` 或 `shared-contract/` 的平行文稿。
 
-## 阅读顺序
+## 后端档案
 
-1. [BACKEND_SPEC.md](BACKEND_SPEC.md)：架构、数据、IPC、计时、任务、第三方投递与跨设备同步的单一真相。
-2. [TEST_AND_RELEASE.md](TEST_AND_RELEASE.md)：自动化、真实服务、打包、校验和 GitHub Release 门禁。
-3. [AI_HANDOFF_CHECKLIST.md](AI_HANDOFF_CHECKLIST.md)：新 AI 或维护者的接手/交付清单。
-4. [v0.12.18 发布正文](../../release-v01218/RELEASE_NOTES.md)：完成发布后必须与本地发布目录和 GitHub Release 一致；历史 Release 正文源见 releases/ 目录。
-5. [releases/v0.11.2.md](releases/v0.11.2.md)：被发布记录路径契约阻断后的离线发布记录；公开 tag 不移动，未创建 GitHub Release。
-6. [releases/v0.11.1.md](releases/v0.11.1.md)：更早的离线发布记录。
-7. [../frontend-design/FRONTEND_SPEC.md](../frontend-design/FRONTEND_SPEC.md)：用户可见行为、主题、动效与小窗表现。
+### 架构与数据
+
+- [BACKEND_SPEC.md](BACKEND_SPEC.md)：架构、数据、IPC、计时、任务、第三方投递与跨设备同步的单一真相。
+
+### 测试与发布
+
+- [TEST_AND_RELEASE.md](TEST_AND_RELEASE.md)：自动化、真实服务、打包、校验和 GitHub Release 门禁。
+- [v0.12.19 发布正文](../../release-v01219/RELEASE_NOTES.md)：当前版本的本地与 GitHub Release 正文源。
+- [releases/README.md](releases/README.md)：旧版本发布记录按系列分类后的索引。
+
+### 开发与交接
+
+- [AI_HANDOFF_CHECKLIST.md](AI_HANDOFF_CHECKLIST.md)：维护者接手、实现和交付清单。
+- [../frontend-design/FRONTEND_SPEC.md](../frontend-design/FRONTEND_SPEC.md)：用户可见行为、主题、动效与小窗表现。
 
 ## 源码责任
 

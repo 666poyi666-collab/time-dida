@@ -1,7 +1,6 @@
 // 时间之带纯函数内核测试：缩放状态机、逐秒步进、变焦插值、刻度层透明度
 import { describe, expect, it } from 'vitest';
 import {
-  BAND_PAUSE_MOTION_MS,
   BAND_SCALE_FAR,
   BAND_SCALE_NEAR,
   BAND_TICK_MS,
@@ -172,11 +171,13 @@ describe('镜头细节与暂停侵蚀', () => {
     expect(bandDetailMix(twoThirds)).toBeLessThan(1);
   });
 
-  it('暂停碎片只从真实材料前沿内部出生，并在一秒内熄灭', () => {
+  it('暂停粒子从真实材料前沿连续剥离，包含碎片、尘点与火花', () => {
     const materialWidth = 13.5;
     const particles = pauseErosionParticles(12_280, materialWidth, false);
-    expect(particles).toHaveLength(9);
-    expect(particles.filter((particle) => particle.kind === 'shard')).toHaveLength(3);
+    expect(particles.length).toBeGreaterThan(12);
+    expect(particles.some((particle) => particle.kind === 'shard')).toBe(true);
+    expect(particles.some((particle) => particle.kind === 'dust')).toBe(true);
+    expect(particles.some((particle) => particle.kind === 'spark')).toBe(true);
     expect(
       particles.every(
         (particle) =>
@@ -184,13 +185,16 @@ describe('镜头细节与暂停侵蚀', () => {
           particle.originOffsetX <= materialWidth &&
           particle.originRatioY >= 0 &&
           particle.originRatioY <= 1 &&
-          particle.travelX >= 0 &&
           particle.size > 0 &&
-          particle.alpha > 0,
+          particle.alpha >= 0,
       ),
     ).toBe(true);
 
-    expect(pauseErosionParticles(12_000 + BAND_PAUSE_MOTION_MS, materialWidth, false)).toEqual([]);
+    const beforeBoundary = pauseErosionParticles(12_990, materialWidth, false);
+    const afterBoundary = pauseErosionParticles(13_010, materialWidth, false);
+    expect(beforeBoundary.length).toBeGreaterThan(0);
+    expect(afterBoundary.length).toBeGreaterThan(0);
+    expect(Math.abs(beforeBoundary.length - afterBoundary.length)).toBeLessThan(6);
     expect(pauseErosionParticles(12_280, materialWidth, true)).toEqual([]);
   });
 
@@ -205,8 +209,8 @@ describe('镜头细节与暂停侵蚀', () => {
     ).toBe(true);
   });
 
-  it('侵蚀孔洞随暂停成本增加但有上限，长暂停不会成为噪点墙', () => {
+  it('消散残痕随暂停成本增加但保持低密度，不会成为噪点墙', () => {
     expect(pauseErosionHoleCount(60_000)).toBeGreaterThan(pauseErosionHoleCount(1_000));
-    expect(pauseErosionHoleCount(24 * 60 * 60 * 1000)).toBe(34);
+    expect(pauseErosionHoleCount(24 * 60 * 60 * 1000)).toBe(16);
   });
 });

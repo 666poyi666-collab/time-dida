@@ -130,11 +130,17 @@ async function inspectState(expectedState) {
         statusText: status?.textContent?.trim() || null,
         stateMomentText: stateMoment?.textContent?.trim() || null,
         ribbonState: ribbon?.dataset.state || null,
+        ribbonDissolve: ribbon?.dataset.dissolve || null,
         hasRibbonCanvas: Boolean(ribbonCanvas),
         ribbonCanvasSize: ribbonCanvas ? [ribbonCanvas.width, ribbonCanvas.height] : null,
         ambientGone: !document.querySelector('.ambient-field'),
         themeFamily: document.documentElement.dataset.themeFamily || null,
         ledgerVisible: Boolean(document.querySelector('.session-ledger-pane')),
+        ledgerTones: [...document.querySelectorAll('.ledger-row.row-focus, .ledger-row.row-pause')].map((row) => ({
+          kind: row.classList.contains('row-pause') ? 'pause' : 'focus',
+          border: getComputedStyle(row).borderLeftColor,
+          title: getComputedStyle(row.querySelector('.ledger-row-title') || row).color,
+        })),
         viewport: [window.innerWidth, window.innerHeight],
         bodyScroll: [document.body.scrollWidth, document.body.scrollHeight],
       };
@@ -734,6 +740,10 @@ async function main() {
     ],
     [results.focusActionStates.active?.transform !== 'none', 'primary action has active feedback'],
     [results.paused.workspaceClass.includes('state-paused'), 'paused workspace state class'],
+    [
+      results.paused.ribbonDissolve === 'particle-field',
+      'paused band exposes the particle dissolve field',
+    ],
     [results.paused.primaryText === '继续', 'paused primary action'],
     [Boolean(results.paused.stateMomentText?.startsWith('暂停于')), 'pause time is visible'],
     [
@@ -752,6 +762,15 @@ async function main() {
     ],
     [results.running.successToken === '14 159 110', 'focus green token'],
     [results.paused.pauseToken === '210 67 57', 'pause red token'],
+    [
+      results.paused.ledgerTones.some(
+        (row) => row.kind === 'focus' && row.border !== 'rgba(0, 0, 0, 0)',
+      ) &&
+        results.paused.ledgerTones.some(
+          (row) => row.kind === 'pause' && row.border !== 'rgba(0, 0, 0, 0)',
+        ),
+      'all focus and pause ledger rows retain semantic color',
+    ],
     [results.idle.bodyScroll[0] === results.idle.viewport[0], 'no horizontal overflow'],
     [results.idle.bodyScroll[1] === results.idle.viewport[1], 'no vertical overflow'],
     [
