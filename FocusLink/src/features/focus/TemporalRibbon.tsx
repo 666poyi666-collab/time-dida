@@ -264,7 +264,7 @@ export function TemporalRibbon({
   const viewDescription = isNear
     ? '秒级近景 · 每格 1 秒 · 分钟主刻'
     : state === 'paused'
-      ? '30 分钟总览 · 前沿保留秒级消散窗'
+      ? '30 分钟总览 · 前沿按秒粒子消散'
       : '30 分钟总览 · 每格 5 分钟';
   const clockAt = live ? now : lastRecordedAt || now;
   const clockLabel = live ? '当前精确时间' : lastRecordedAt > 0 ? '最后记录时间' : '待机时间锚点';
@@ -314,7 +314,7 @@ export function TemporalRibbon({
           )}
         </span>
         <span className="ribbon-scale-tag">
-          {isNear ? '1 格 = 1 秒' : state === 'paused' ? '总览 + 秒级细看' : '1 大格 = 30 分钟'}
+          {isNear ? '1 格 = 1 秒' : state === 'paused' ? '粒子随秒消散' : '1 大格 = 30 分钟'}
         </span>
       </div>
       <canvas
@@ -535,16 +535,11 @@ function renderBand(
   } else if (input.state === 'paused' && activePause) {
     drawPauseErosion(ctx, {
       ...activePause,
-      pointerX,
-      width,
       fieldTop,
       fieldBottom,
-      farAlpha,
       pulseAge,
       reducedMotion: input.reducedMotion,
       colors,
-      fontNumber,
-      fontUi,
     });
   }
 
@@ -1001,113 +996,15 @@ function drawDissolveParticleField(
 function drawPauseErosion(
   ctx: CanvasRenderingContext2D,
   input: ActivePause & {
-    pointerX: number;
-    width: number;
     fieldTop: number;
     fieldBottom: number;
-    farAlpha: number;
     pulseAge: number;
     reducedMotion: boolean;
     colors: BandColors;
-    fontNumber: string;
-    fontUi: string;
   },
 ): void {
   const fieldHeight = input.fieldBottom - input.fieldTop;
   const materialWidth = Math.max(0.75, input.end - input.materialStart);
-
-  // 远景中主时间轴保持真实比例；这枚明确标注的观察窗只放大最后 12 秒的材料细节。
-  if (input.farAlpha > 0.04) {
-    const alpha = Math.min(1, input.farAlpha * 1.12);
-    const lensWidth = clamp(input.width * 0.18, 148, 208);
-    const lensHeight = clamp(fieldHeight * 0.68, 54, 86);
-    const lensX = input.pointerX - lensWidth;
-    const lensY = input.fieldTop + fieldHeight - lensHeight - 8;
-    const lensHeaderHeight = clamp(lensHeight * 0.3, 15, 19);
-    const materialTop = lensY + lensHeaderHeight;
-    const materialHeight = lensHeight - lensHeaderHeight;
-    const cellWidth = lensWidth / 15;
-    const pausedSeconds = Math.min(15, Math.max(0, input.elapsedMs / 1000));
-    const pausedWidth = pausedSeconds * cellWidth;
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = `rgba(${input.colors.surface2},0.94)`;
-    ctx.fillRect(lensX, lensY, lensWidth, lensHeight);
-    const lensMaterial = ctx.createLinearGradient(lensX, 0, input.pointerX, 0);
-    lensMaterial.addColorStop(0, `rgba(${input.colors.pause},0.25)`);
-    lensMaterial.addColorStop(1, `rgba(${input.colors.pause},0.78)`);
-    ctx.fillStyle = lensMaterial;
-    ctx.fillRect(input.pointerX - pausedWidth, materialTop, pausedWidth, materialHeight);
-
-    // 铭牌与材料舱分层：读数永远稳定，红色消散不会盖住标签。
-    ctx.fillStyle = `rgba(${input.colors.surface2},0.98)`;
-    ctx.fillRect(lensX, lensY, lensWidth, lensHeaderHeight);
-    ctx.strokeStyle = `rgba(${input.colors.borderStrong},0.72)`;
-    ctx.beginPath();
-    ctx.moveTo(lensX, materialTop + 0.5);
-    ctx.lineTo(input.pointerX, materialTop + 0.5);
-    ctx.stroke();
-
-    ctx.strokeStyle = `rgba(${input.colors.borderStrong},0.86)`;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(lensX + 0.5, lensY + 0.5, lensWidth - 1, lensHeight - 1);
-    ctx.strokeStyle = `rgba(${input.colors.pause},0.68)`;
-    ctx.beginPath();
-    ctx.moveTo(lensX, lensY);
-    ctx.lineTo(input.pointerX, lensY);
-    ctx.stroke();
-
-    for (let second = 0; second <= 15; second += 1) {
-      const x = lensX + second * cellWidth;
-      ctx.strokeStyle = `rgba(${input.colors.ink},${second % 5 === 0 ? 0.48 : 0.24})`;
-      ctx.beginPath();
-      ctx.moveTo(x, materialTop + 1);
-      ctx.lineTo(x, materialTop + (second % 5 === 0 ? materialHeight - 1 : materialHeight * 0.42));
-      ctx.stroke();
-    }
-
-    const holeCount = pauseErosionHoleCount(input.elapsedMs);
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(input.pointerX - pausedWidth, materialTop, pausedWidth, materialHeight);
-    ctx.clip();
-    for (let index = 0; index < holeCount; index += 1) {
-      const x = input.pointerX - 1 - hash01(index * 7.13 + 1.9) * Math.max(1, pausedWidth - 2);
-      const y = materialTop + 3 + hash01(index * 17.9 + 4.7) * Math.max(1, materialHeight - 6);
-      const radius = 0.35 + hash01(index * 23.1 + 8.3) * (index % 5 === 0 ? 1.15 : 0.72);
-      ctx.fillStyle = `rgba(${input.colors.surface2},0.42)`;
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(lensX + 1, materialTop + 1, lensWidth - 2, materialHeight - 2);
-    ctx.clip();
-    drawDissolveParticleField(ctx, {
-      particles: pauseErosionParticles(input.elapsedMs, pausedWidth, input.reducedMotion),
-      edgeX: input.pointerX - 2,
-      fieldTop: materialTop + 2,
-      fieldBottom: materialTop + materialHeight - 2,
-      colors: input.colors,
-      motionScale: 0.68,
-      sizeScale: 0.94,
-    });
-    ctx.restore();
-
-    ctx.fillStyle = `rgba(${input.colors.pause},0.94)`;
-    ctx.font = input.fontUi;
-    ctx.textAlign = 'left';
-    ctx.fillText(`消散 ${formatElapsedSeconds(input.elapsedMs)}`, lensX + 7, lensY + 12);
-    ctx.fillStyle = `rgba(${input.colors.muted},0.82)`;
-    ctx.font = input.fontNumber;
-    ctx.textAlign = 'right';
-    ctx.fillText('15s', input.pointerX - 6, lensY + 12);
-    ctx.restore();
-  }
 
   const halo = ctx.createRadialGradient(
     input.end,
