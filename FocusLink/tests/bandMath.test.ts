@@ -14,8 +14,7 @@ import {
   easeOutStep,
   interpolateZoomScale,
   macroTickAlpha,
-  pauseErosionHoleCount,
-  pauseErosionParticles,
+  pauseDissolveParticles,
   secondTickAlpha,
   steppedDisplaySeconds,
 } from '../shared/focus/bandMath';
@@ -38,7 +37,7 @@ describe('时间之带缩放状态机', () => {
 });
 
 describe('逐秒擒纵步进', () => {
-  it('暂停侵蚀从暂停起点开启独立秒周期，三个相位读数共用同一时钟', () => {
+  it('暂停消散从暂停起点开启独立秒周期，三个相位读数共用同一时钟', () => {
     const pauseStartedAt = 1_700_000_010_760;
     const now = pauseStartedAt + 2_345;
 
@@ -159,7 +158,7 @@ describe('刻度层透明度随密度渐变', () => {
   });
 });
 
-describe('镜头细节与暂停侵蚀', () => {
+describe('镜头细节与暂停消散', () => {
   it('镜头细节在对数尺度上从远景连续过渡到近景', () => {
     expect(bandDetailMix(BAND_SCALE_FAR)).toBe(0);
     expect(bandDetailMix(BAND_SCALE_NEAR)).toBe(1);
@@ -172,45 +171,47 @@ describe('镜头细节与暂停侵蚀', () => {
   });
 
   it('暂停粒子从真实材料前沿连续剥离，包含碎片、尘点与火花', () => {
-    const materialWidth = 13.5;
-    const particles = pauseErosionParticles(12_280, materialWidth, false);
-    expect(particles.length).toBeGreaterThan(12);
+    const sourceWidth = 13.5;
+    const particles = pauseDissolveParticles(12_280, sourceWidth, false);
+    expect(particles.length).toBeGreaterThan(100);
     expect(particles.some((particle) => particle.kind === 'shard')).toBe(true);
     expect(particles.some((particle) => particle.kind === 'dust')).toBe(true);
     expect(particles.some((particle) => particle.kind === 'spark')).toBe(true);
+    expect(particles.some((particle) => particle.progress === 0)).toBe(true);
+    expect(particles.some((particle) => particle.progress > 0.1)).toBe(true);
     expect(
       particles.every(
         (particle) =>
           particle.originOffsetX >= 0 &&
-          particle.originOffsetX <= materialWidth &&
+          particle.originOffsetX <= sourceWidth &&
           particle.originRatioY >= 0 &&
           particle.originRatioY <= 1 &&
           particle.size > 0 &&
-          particle.alpha >= 0,
+          particle.alpha >= 0 &&
+          particle.progress >= 0 &&
+          particle.progress <= 1,
       ),
     ).toBe(true);
 
-    const beforeBoundary = pauseErosionParticles(12_990, materialWidth, false);
-    const afterBoundary = pauseErosionParticles(13_010, materialWidth, false);
+    const beforeBoundary = pauseDissolveParticles(12_990, sourceWidth, false);
+    const afterBoundary = pauseDissolveParticles(13_010, sourceWidth, false);
     expect(beforeBoundary.length).toBeGreaterThan(0);
     expect(afterBoundary.length).toBeGreaterThan(0);
-    expect(Math.abs(beforeBoundary.length - afterBoundary.length)).toBeLessThan(6);
-    expect(pauseErosionParticles(12_280, materialWidth, true)).toEqual([]);
+    expect(
+      beforeBoundary.filter((particle) => afterBoundary.some((next) => next.id === particle.id))
+        .length,
+    ).toBeGreaterThan(80);
+    expect(pauseDissolveParticles(12_280, sourceWidth, true)).toEqual([]);
   });
 
-  it('极窄远景材料的碎片仍紧贴前沿，不会凭空生成在左侧', () => {
-    const materialWidth = 0.2;
-    const particles = pauseErosionParticles(3_160, materialWidth, false);
+  it('远景时间切片仍保持可见宽度，全部采样点都从切片内部开始', () => {
+    const sourceWidth = 12;
+    const particles = pauseDissolveParticles(3_160, sourceWidth, false);
     expect(particles.length).toBeGreaterThan(0);
     expect(
       particles.every(
-        (particle) => particle.originOffsetX >= 0 && particle.originOffsetX <= materialWidth,
+        (particle) => particle.originOffsetX >= 0 && particle.originOffsetX <= sourceWidth,
       ),
     ).toBe(true);
-  });
-
-  it('消散残痕随暂停成本增加但保持低密度，不会成为噪点墙', () => {
-    expect(pauseErosionHoleCount(60_000)).toBeGreaterThan(pauseErosionHoleCount(1_000));
-    expect(pauseErosionHoleCount(24 * 60 * 60 * 1000)).toBe(16);
   });
 });

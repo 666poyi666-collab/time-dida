@@ -25,7 +25,7 @@ import {
   getWallElapsedMs,
 } from '@shared/focus/selectors';
 import { MINI_WINDOW_DOCK_TRANSITION_MS } from '@shared/miniWindowLayout';
-import { pauseErosionParticles } from '@shared/focus/bandMath';
+import { pauseDissolveParticles } from '@shared/focus/bandMath';
 
 const STATE_META: Record<
   TimerSnapshot['state'],
@@ -598,7 +598,7 @@ function MiniDecayParticles({
   fromEdge: boolean;
   reducedMotion: boolean;
 }) {
-  const particles = pauseErosionParticles(elapsedMs, 42, reducedMotion);
+  const particles = pauseDissolveParticles(elapsedMs, 42, reducedMotion);
   const pulse = (elapsedMs % 1000) / 1000;
   const echoPulse = pulse < 0.46 ? 0 : (pulse - 0.46) / 0.54;
   return (

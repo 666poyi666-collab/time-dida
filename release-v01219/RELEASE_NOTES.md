@@ -2,7 +2,7 @@
 
 > 发布日期：2026-07-20
 >
-> 对应源码：`SOURCE_COMMIT`
+> 对应源码：`bc66283`
 >
 > 发布类型：本地候选版（GitHub 暂缓）
 >
@@ -36,7 +36,7 @@
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.12.19-x64.exe` | `INSTALLER_SHA256` |
-| `FocusLink-0.12.19-x64-portable.exe` | `PORTABLE_SHA256` |
+| `FocusLink-0.12.19-x64.exe` | `ED4202A694077919604EBE3EAB93538460AD6E4DCB65FEF2C3CE3969C63C2DBE` |
+| `FocusLink-0.12.19-x64-portable.exe` | `74B0A4648F5BA75779CC0C8B461C8431F938B34771FEBC8E229DEF1480D78AA6` |
 
 同时提供 `SHA256SUMS.txt`。

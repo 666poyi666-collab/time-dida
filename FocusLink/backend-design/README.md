@@ -2,7 +2,7 @@
 
 > 适用版本：v0.12.x
 >
-> 当前实现：v0.12.19
+> 当前实现：v0.12.20
 >
 > 文档责任：Electron 主进程、SQLite、IPC、任务 Provider、同步、测试与发布。
 
@@ -17,7 +17,7 @@
 ### 测试与发布
 
 - [TEST_AND_RELEASE.md](TEST_AND_RELEASE.md)：自动化、真实服务、打包、校验和 GitHub Release 门禁。
-- [v0.12.19 发布正文](../../release-v01219/RELEASE_NOTES.md)：当前版本的本地与 GitHub Release 正文源。
+- [v0.12.20 发布正文](../../release-v01220/RELEASE_NOTES.md)：当前版本的本地 Release 正文源；GitHub 上传按用户要求暂缓。
 - [releases/README.md](releases/README.md)：旧版本发布记录按系列分类后的索引。
 
 ### 开发与交接
