@@ -1,22 +1,34 @@
 ; FocusLink NSIS 自定义安装脚本
 ; 在安装新版前自动关闭运行中的 FocusLink 进程，避免用户手动操作
 
-; 定义 customCheckAppRunning 后 electron-builder 不再自动载入这两个默认依赖；
-; 安装器与卸载器构建都需要它们来执行原生 _CHECK_APP_RUNNING。
-!include "getProcessInfo.nsh"
-Var pid
+; 使用 nsProcess 做精确的进程探测与关闭；不依赖安装器进程的 PATH。
+!include "nsProcess.nsh"
+!ifndef BUILD_UNINSTALLER
+Var focuslinkCloseAttempt
+!endif
 
-; electron-builder 在 install section 里还会执行内置 CHECK_APP_RUNNING。
-; 隔离发布 smoke 必须同时绕过这一层，否则 /S 会在后台等待运行中提示框。
-; 正常安装没有该进程级环境变量，仍完整执行默认关闭与占用检查。
+; electron-builder 的默认检查会再次竞态探测并弹出“无法关闭”。这里改为
+; 已确认退出就直接放行；仍存在时再强杀并复查，只有权限确实不足才提示。
+!ifndef BUILD_UNINSTALLER
 !macro customCheckAppRunning
   ReadEnvStr $R9 "FOCUSLINK_INSTALLER_SKIP_CLOSE"
   StrCmp $R9 "1" focuslink_check_app_running_done
 
-  !insertmacro _CHECK_APP_RUNNING
+  focuslink_check_app_running_retry:
+  ${nsProcess::FindProcess} "${APP_EXECUTABLE_FILENAME}" $R0
+  StrCmp $R0 "0" 0 focuslink_check_app_running_done
+
+  ${nsProcess::KillProcess} "${APP_EXECUTABLE_FILENAME}" $R0
+  Sleep 900
+  ${nsProcess::FindProcess} "${APP_EXECUTABLE_FILENAME}" $R0
+  StrCmp $R0 "0" 0 focuslink_check_app_running_done
+
+  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(appCannotBeClosed)" /SD IDCANCEL IDRETRY focuslink_check_app_running_retry
+  Quit
 
   focuslink_check_app_running_done:
 !macroend
+!endif
 
 ; ── customInit：在 .onInit 中执行，早于 CHECK_APP_RUNNING ──
 ; 此钩子在安装器检查应用是否运行之前就强制结束 FocusLink 进程
@@ -26,19 +38,23 @@ Var pid
   ReadEnvStr $R9 "FOCUSLINK_INSTALLER_SKIP_CLOSE"
   StrCmp $R9 "1" focuslink_custom_init_done
 
-  ; 1. 先尝试优雅关闭（发送 WM_CLOSE）
-  nsExec::ExecToLog 'taskkill /IM FocusLink.exe'
-  Pop $0
+  ; 1. 先向所有同名进程发送关闭请求。
+  ${nsProcess::CloseProcess} "${APP_EXECUTABLE_FILENAME}" $0
+  StrCpy $focuslinkCloseAttempt 0
 
-  ; 2. 等待进程退出（最多 2 秒）
-  Sleep 2000
+  ; 2. 最多等待 2 秒，让 before-quit 完成持久化与数据库收尾。
+  focuslink_wait_graceful:
+  ${nsProcess::FindProcess} "${APP_EXECUTABLE_FILENAME}" $0
+  StrCmp $0 "0" 0 focuslink_custom_init_done
+  IntOp $focuslinkCloseAttempt $focuslinkCloseAttempt + 1
+  IntCmp $focuslinkCloseAttempt 8 focuslink_force_close 0 focuslink_force_close
+  Sleep 250
+  Goto focuslink_wait_graceful
 
-  ; 3. 如果仍然存在，强制结束
-  nsExec::ExecToLog 'taskkill /F /IM FocusLink.exe /T'
-  Pop $0
-
-  ; 4. 额外等待确保文件句柄释放
-  Sleep 500
+  ; 3. 托盘模式拦截普通关闭时，使用插件强制结束全部同名进程。
+  focuslink_force_close:
+  ${nsProcess::KillProcess} "${APP_EXECUTABLE_FILENAME}" $0
+  Sleep 800
 
   focuslink_custom_init_done:
 !macroend
@@ -48,9 +64,8 @@ Var pid
   ReadEnvStr $R9 "FOCUSLINK_INSTALLER_SKIP_CLOSE"
   StrCmp $R9 "1" focuslink_preinstall_done
 
-  ; 再次确保进程已关闭（防御性处理）
-  nsExec::ExecToLog 'taskkill /F /IM FocusLink.exe /T'
-  Pop $0
+  ; 文件替换前最后一次无弹窗复查；customCheckAppRunning 已负责权限失败提示。
+  ${nsProcess::KillProcess} "${APP_EXECUTABLE_FILENAME}" $0
   Sleep 500
 
 

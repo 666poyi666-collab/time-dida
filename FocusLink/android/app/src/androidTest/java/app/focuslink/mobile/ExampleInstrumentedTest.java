@@ -32,7 +32,7 @@ public class ExampleInstrumentedTest {
 
         assertEquals("app.focuslink.mobile", appContext.getPackageName());
         assertEquals(
-            "0.12.16",
+            "0.12.17",
             appContext
                 .getPackageManager()
                 .getPackageInfo(appContext.getPackageName(), 0)
