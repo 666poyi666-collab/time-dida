@@ -2,11 +2,11 @@
 
 > 发布日期：2026-07-20
 >
-> 对应源码：`SOURCE_COMMIT`
+> 对应源码：`6d5f10e`
 >
 > 发布类型：本地候选版（GitHub 暂缓）
 >
-> 验证状态：构建后填写
+> 验证状态：已通过本地门禁
 
 ## 本次更新
 
@@ -30,13 +30,16 @@
 
 ## 验证
 
-- 最终构建后填写。
+- format、TypeScript、ESLint、46 个测试文件共 354 项测试、audit 0 漏洞、build、dist 与 Electron 回归全部通过。
+- 真实执行“安装 0.12.17 → 启动旧版 4 个进程 → 运行 0.12.18 覆盖安装”：两次安装退出码均为 0，旧进程归零，注册版本更新为 0.12.18。
+- 安装版、解包版和便携版均回读 `0.12.18 / 6d5f10e`，主工作台结构与暂停色令牌正确。
+- Android unit/lint/assemble 通过；华为 Android 12 与小米 Android 15 各通过 3/3 instrumentation，并安装回读 `0.12.18 / versionCode 1218`。
 
 ## 下载与校验
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.12.18-x64.exe` | `FINAL_SHA256` |
-| `FocusLink-0.12.18-x64-portable.exe` | `FINAL_SHA256` |
+| `FocusLink-0.12.18-x64.exe` | `50BC011D8432F471140E016A80D2823B8A4C160654F16E61433C2F8DD3743677` |
+| `FocusLink-0.12.18-x64-portable.exe` | `63E3CD89754D1BEF93AF560A125B828E4C13BC61201BFE130202DC62A0FC7BED` |
 
 同时提供 `SHA256SUMS.txt`。
