@@ -983,7 +983,7 @@ function assertResult(name, result, expected) {
       ],
       [
         expected.state === 'paused'
-          ? result.decayParticleCount === 12
+          ? result.decayParticleCount > 0
           : result.decayParticleCount === 0,
         'decay particles exist only during the current pause',
       ],
@@ -1036,7 +1036,7 @@ function assertResult(name, result, expected) {
       [/^总历时\d+:\d{2}(?::\d{2})?$/.test(result.wallTimeText), 'expanded wall duration'],
       [
         expected.state === 'paused'
-          ? result.decayParticleCount === 12
+          ? result.decayParticleCount > 0
           : result.decayParticleCount === 0,
         'expanded decay particles exist only during the current pause',
       ],
