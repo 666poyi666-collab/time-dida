@@ -461,6 +461,7 @@ export function MiniWindow() {
 
             <div className="mini-expanded-body">
               <div className="mini-focus-core">
+                <span className="mini-current-label">{isPaused ? '本段暂停' : '本段专注'}</span>
                 <div
                   className={`mini-display-time mini-expanded-time ${isLongTime ? 'mini-time-long' : ''}`}
                   data-testid="mini-current-time"

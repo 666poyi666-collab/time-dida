@@ -352,10 +352,28 @@
   display: grid;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: minmax(0, 1fr) 12px;
+  grid-template-rows: 9px minmax(0, 1fr) 12px;
   align-items: stretch;
   overflow: hidden;
   padding: 0 7px 1px 8px;
+}
+
+.mini-current-label {
+  align-self: end;
+  color: rgb(var(--app-muted));
+  font-size: 7px;
+  font-weight: 620;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.mini-window-running .mini-current-label {
+  color: rgb(var(--app-success));
+}
+
+.mini-window-paused .mini-current-label {
+  color: rgb(var(--app-pause));
 }
 
 .mini-expanded-time {
@@ -364,7 +382,7 @@
   align-items: center;
   overflow: hidden;
   color: rgb(var(--app-text));
-  font-size: 26px;
+  font-size: 23px;
   font-weight: 570;
   letter-spacing: -0.06em;
   line-height: 1;

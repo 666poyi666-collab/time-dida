@@ -33,6 +33,7 @@ import {
   setMeta,
 } from '../db/index.js';
 import { transition, getToggleEvent } from './stateMachine.js';
+import { FINISHED_PRESENTATION_HOLD_MS } from '@shared/focus/bandMath';
 import type {
   TimerState,
   TimerSnapshot,
@@ -407,12 +408,12 @@ export class TimerManager {
       wallMs: this.session?.wallElapsedMs,
     });
     this.emit();
-    // 完成后自动重置为 idle，保留数据
+    // 完成后先保留结算画面，让时间之带完成拉远并稳定冻结，再自动回到 idle。
     if (this.resetTimeout) clearTimeout(this.resetTimeout);
     this.resetTimeout = setTimeout(() => {
       this.resetTimeout = null;
       this.reset();
-    }, 1500);
+    }, FINISHED_PRESENTATION_HOLD_MS);
     return this.getSnapshot();
   }
 
@@ -451,7 +452,7 @@ export class TimerManager {
     return false;
   }
 
-  /** 若计时器卡在 finished 状态（1.5s 自动重置窗口内），立即重置为 idle。
+  /** 若计时器仍在 finished 结算展示窗口内，立即重置为 idle。
    *  用于删除历史记录后避免用户回到计时界面看到 finished 的 UI 空洞。 */
   resetIfFinished(): void {
     if (this.state === 'finished') {

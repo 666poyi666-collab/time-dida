@@ -18,6 +18,12 @@ export const BAND_RUNNING_MOTION_MS = 420;
 /** 暂停态每秒侵蚀动作窗口；碎片必须在下一秒前熄灭。 */
 export const BAND_PAUSE_MOTION_MS = 860;
 
+/**
+ * 结束后保留结算画面的时间。必须长于拉远动画与完成提示的组合时长，
+ * 避免刚冻结的时间之带被自动归零打断。
+ */
+export const FINISHED_PRESENTATION_HOLD_MS = 3_000;
+
 /** 时间之带的目标尺度：专注=秒级近景；暂停/空闲/结束=远景 */
 export function bandScaleForState(state: TimerState | string): number {
   return state === 'running' ? BAND_SCALE_NEAR : BAND_SCALE_FAR;

@@ -10,6 +10,7 @@ import {
   type LiveFocusTaskContext,
 } from '@shared/sync/liveFocusProtocol';
 import { normalizeDeviceSyncEndpoint } from '@shared/sync/deviceProtocol';
+import { FINISHED_PRESENTATION_HOLD_MS } from '@shared/focus/bandMath';
 import { logger } from '../logger.js';
 import { getSession } from '../db/index.js';
 import {
@@ -216,7 +217,10 @@ export class FocusTimerController {
       if (!imported) throw new Error('实时会话已结束，但权威账本尚未导入本机');
       if (imported.status === 'finished') {
         this.publish({ ...current, state: 'finished', sessionId: imported.id });
-        setTimeout(() => this.publish(this.toTimerSnapshot(value.snapshot, Date.now())), 1_500);
+        setTimeout(
+          () => this.publish(this.toTimerSnapshot(value.snapshot, Date.now())),
+          FINISHED_PRESENTATION_HOLD_MS,
+        );
       } else {
         this.publish(this.toTimerSnapshot(value.snapshot, Date.now()));
       }
@@ -253,7 +257,10 @@ export class FocusTimerController {
           if (!imported) throw new Error('远端实时会话已结束，但权威账本尚未导入本机');
           if (imported.status === 'finished') {
             this.publish({ ...previous, state: 'finished', sessionId: imported.id });
-            setTimeout(() => this.publish(this.toTimerSnapshot(next.snapshot, Date.now())), 1_500);
+            setTimeout(
+              () => this.publish(this.toTimerSnapshot(next.snapshot, Date.now())),
+              FINISHED_PRESENTATION_HOLD_MS,
+            );
           } else {
             this.publish(this.toTimerSnapshot(next.snapshot, Date.now()));
           }
