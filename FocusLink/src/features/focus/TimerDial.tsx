@@ -1,8 +1,8 @@
 // 计时仪表：同一主时间的五种真实不同的机械/排版表现。
 // - standard 标准等宽：JetBrains Mono，沉稳的仪器读数
 // - flip     翻页机械：Oswald + 上下分片翻牌，中央转轴
-// - pixel    像素点阵：5×7 点阵数字 + 随累计专注点亮的专注核心
-// - thin     极细编辑：Inter Tight 极细字重，排版感
+// - pixel    像素点阵：7×9 整数网格数字 + 随累计专注点亮的专注核心
+// - thin     高反差编辑：Bodoni Moda 衬线字，排版感
 // 状态色语义统一：running=专注强调色，paused=暂停红，其余=墨色。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlipDigits } from '../../ui/FlipDigits';
@@ -15,9 +15,28 @@ import {
   FOCUS_CORE_SIZE,
   focusCoreOrder,
   focusCoreLitCount,
+  advanceFlipMachine,
+  createFlipMachine,
+  updateFlipMachine,
 } from '@shared/timerInstruments';
 
 export type TimerStyleName = 'standard' | 'flip' | 'pixel' | 'thin' | 'segment';
+
+function useReducedMotionPreference(): boolean {
+  const [reduced, setReduced] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const onChange = () => setReduced(media.matches);
+    onChange();
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+  return reduced;
+}
 
 export function TimerDial({
   ms,
@@ -44,7 +63,11 @@ export function TimerDial({
   }
   return (
     <div className={`timer-dial dial-standard state-${state}`} aria-label={text}>
-      <FlipDigits value={text} />
+      <span className="instrument-chrome-label">ELAPSED</span>
+      <span className="instrument-chrome-digits">{text}</span>
+      <span className="instrument-chrome-state">
+        {state === 'running' ? 'LIVE / SEC' : state === 'paused' ? 'HOLD / SEC' : 'READY'}
+      </span>
     </div>
   );
 }
@@ -101,54 +124,48 @@ function SegmentDial({ text, state }: { text: string; state: string }) {
 
 /* ─── 翻页机械 ─────────────────────────────────────────────── */
 
-const FLIP_MS = 260;
-
-function FlipChar({ char }: { char: string }) {
-  const committedRef = useRef(char);
-  const [transition, setTransition] = useState({
-    from: char,
-    to: char,
-    active: false,
-    sequence: 0,
-  });
+function FlipChar({ char, animate }: { char: string; animate: boolean }) {
+  const [machine, setMachine] = useState(() => createFlipMachine(char));
   useEffect(() => {
-    const from = committedRef.current;
-    if (char === from) return undefined;
-    committedRef.current = char;
-    setTransition((previous) => ({
-      from,
-      to: char,
-      active: true,
-      sequence: previous.sequence + 1,
-    }));
-    const id = window.setTimeout(() => {
-      setTransition((current) =>
-        current.to === char ? { ...current, active: false, from: char } : current,
-      );
-    }, FLIP_MS + 24);
-    return () => window.clearTimeout(id);
-  }, [char]);
+    setMachine((current) => updateFlipMachine(current, char, animate));
+  }, [animate, char]);
 
-  const flipping = transition.active;
-  const current = transition.to;
-  const previous = transition.from;
+  const active = machine.phase !== 'steady';
+  const top = active ? machine.to : machine.shown;
+  const bottom = active ? machine.from : machine.shown;
   return (
-    <span className={`flip-card ${flipping ? 'is-flipping' : ''}`}>
-      {/* 静态上半：立即显示新值，被翻下的上瓣暂时遮住 */}
+    <span className={`flip-card phase-${machine.phase}`} data-sequence={machine.sequence}>
       <span className="flip-half flip-top">
-        <span className="flip-glyph">{current}</span>
+        <span className="flip-glyph">{top}</span>
       </span>
-      {/* 静态下半：动画期间显示旧值，上瓣翻过后被新下瓣覆盖 */}
       <span className="flip-half flip-bottom">
-        <span className="flip-glyph">{flipping ? previous : current}</span>
+        <span className="flip-glyph">{bottom}</span>
       </span>
-      {flipping && (
-        <span className="flip-animation" key={transition.sequence} aria-hidden="true">
-          <span className="flip-half flip-top flip-flap-top">
-            <span className="flip-glyph">{previous}</span>
+      {machine.phase === 'fold' && (
+        <span className="flip-animation" key={`fold-${machine.sequence}`} aria-hidden="true">
+          <span
+            className="flip-half flip-top flip-flap-top"
+            onAnimationEnd={() =>
+              setMachine((current) =>
+                current.phase === 'fold' ? advanceFlipMachine(current) : current,
+              )
+            }
+          >
+            <span className="flip-glyph">{machine.from}</span>
           </span>
-          <span className="flip-half flip-bottom flip-flap-bottom">
-            <span className="flip-glyph">{current}</span>
+        </span>
+      )}
+      {machine.phase === 'unfold' && (
+        <span className="flip-animation" key={`unfold-${machine.sequence}`} aria-hidden="true">
+          <span
+            className="flip-half flip-bottom flip-flap-bottom"
+            onAnimationEnd={() =>
+              setMachine((current) =>
+                current.phase === 'unfold' ? advanceFlipMachine(current) : current,
+              )
+            }
+          >
+            <span className="flip-glyph">{machine.to}</span>
           </span>
         </span>
       )}
@@ -158,6 +175,8 @@ function FlipChar({ char }: { char: string }) {
 }
 
 function FlipDial({ text, state }: { text: string; state: string }) {
+  const reducedMotion = useReducedMotionPreference();
+  const animate = !reducedMotion && (state === 'running' || state === 'paused');
   return (
     <div className={`timer-dial dial-flip state-${state}`} aria-label={text}>
       {Array.from(text).map((ch, i) =>
@@ -166,7 +185,7 @@ function FlipDial({ text, state }: { text: string; state: string }) {
             :
           </span>
         ) : (
-          <FlipChar char={ch} key={`d-${i}`} />
+          <FlipChar char={ch} animate={animate} key={`d-${i}`} />
         ),
       )}
     </div>
@@ -175,8 +194,8 @@ function FlipDial({ text, state }: { text: string; state: string }) {
 
 /* ─── 像素点阵 ─────────────────────────────────────────────── */
 
-const CELL = 1;
-const GAP = 0.16;
+const CELL = 10;
+const GAP = 2;
 const CHAR_W = PIXEL_FONT_COLS * (CELL + GAP);
 const COLON_W = 2 * (CELL + GAP);
 
@@ -230,6 +249,7 @@ function PixelDial({ text, state, coreRatio }: { text: string; state: string; co
       <svg
         className="pixel-digits"
         viewBox={`0 0 ${width} ${height}`}
+        shapeRendering="crispEdges"
         role="img"
         aria-hidden="true"
       >
@@ -240,6 +260,9 @@ function PixelDial({ text, state, coreRatio }: { text: string; state: string; co
           return node;
         })}
       </svg>
+      <span className="pixel-spec" aria-hidden="true">
+        DOT MATRIX · 7×9
+      </span>
       <div className="pixel-core" title={`本轮充能 ${Math.round(coreRatio * 100)}%`}>
         <svg viewBox={`0 0 ${FOCUS_CORE_SIZE} ${FOCUS_CORE_SIZE}`} aria-hidden="true">
           {FOCUS_CORE_GRID.flatMap((row, cy) =>

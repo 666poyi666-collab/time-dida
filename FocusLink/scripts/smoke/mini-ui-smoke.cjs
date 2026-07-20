@@ -266,6 +266,15 @@ async function inspectMini(mini) {
       );
     };
     const shellRect = shell?.getBoundingClientRect() || null;
+    const shellContentRect =
+      shellRect && shellStyle
+        ? {
+            left: shellRect.left + Number.parseFloat(shellStyle.borderLeftWidth || '0'),
+            top: shellRect.top + Number.parseFloat(shellStyle.borderTopWidth || '0'),
+            right: shellRect.right - Number.parseFloat(shellStyle.borderRightWidth || '0'),
+            bottom: shellRect.bottom - Number.parseFloat(shellStyle.borderBottomWidth || '0'),
+          }
+        : null;
     const isInsideShell = (element) => {
       if (!element || !shellRect || !isVisible(element)) return false;
       const rect = element.getBoundingClientRect();
@@ -275,6 +284,17 @@ async function inspectMini(mini) {
         rect.top >= shellRect.top - tolerance &&
         rect.right <= shellRect.right + tolerance &&
         rect.bottom <= shellRect.bottom + tolerance
+      );
+    };
+    const isInsideContent = (element) => {
+      if (!element || !shellContentRect || !isVisible(element)) return false;
+      const rect = element.getBoundingClientRect();
+      const tolerance = 0.5;
+      return (
+        rect.left >= shellContentRect.left - tolerance &&
+        rect.top >= shellContentRect.top - tolerance &&
+        rect.right <= shellContentRect.right + tolerance &&
+        rect.bottom <= shellContentRect.bottom + tolerance
       );
     };
     const inspectElement = (selector) => {
@@ -320,19 +340,16 @@ async function inspectMini(mini) {
       disabled: button.disabled,
       visible: isVisible(button),
       insideShell: isInsideShell(button),
+      insideContent: isInsideContent(button),
       rect: rectOf(button),
     }));
-    const glyphs = primaryTime ? [...primaryTime.querySelectorAll('.motion-digit-flip')] : [];
     const primaryTimeText = normalizeText(primaryTime?.textContent);
-    const expectedDigitCount = (primaryTimeText.match(/\\d/g) || []).length;
-    const allGlyphsVisible =
-      glyphs.length > 0 && glyphs.every((glyph) => isVisible(glyph) && isInsideShell(glyph));
     const timeComplete =
       /^(?:\\d+:)?\\d{2}:\\d{2}$/.test(primaryTimeText) &&
       !primaryTimeText.includes('…') &&
-      glyphs.length === expectedDigitCount &&
-      allGlyphsVisible &&
-      isInsideShell(primaryTime);
+      isVisible(primaryTime) &&
+      isInsideShell(primaryTime) &&
+      primaryTime.scrollWidth <= primaryTime.clientWidth + 1;
 
     const metricLabels = [...document.querySelectorAll('.mini-metric > span')].map((element) =>
       normalizeText(element.textContent)
@@ -344,6 +361,7 @@ async function inspectMini(mini) {
       ready: Boolean(shell),
       shellClass: shell?.className || null,
       shellRect: rectOf(shell),
+      shellContentRect,
       focusToken: rootStyle.getPropertyValue('--app-success').trim(),
       pauseToken: rootStyle.getPropertyValue('--app-pause').trim(),
       accentToken: rootStyle.getPropertyValue('--app-accent').trim(),
@@ -361,6 +379,7 @@ async function inspectMini(mini) {
         ? Number(edgeProgress.getAttribute('aria-valuenow'))
         : null,
       edgeProgressFillWidth: edgeProgressFill?.getBoundingClientRect().width || 0,
+      decayParticleCount: document.querySelectorAll('.mini-decay-particles i').length,
       mode: shell?.getAttribute('data-mode') || null,
       dockingEdge: shell?.getAttribute('data-docking-edge') || null,
       hasMaterialGlow: Boolean(document.querySelector('.mini-material-glow')),
@@ -374,7 +393,8 @@ async function inspectMini(mini) {
       currentLabel: normalizeText(document.querySelector('.mini-current-label')?.textContent),
       taskTitle: normalizeText(document.querySelector('.mini-task-title')?.textContent),
       primaryTimeText,
-      timeDigitCount: glyphs.length,
+      primaryTimeScrollWidth: primaryTime?.scrollWidth || 0,
+      primaryTimeClientWidth: primaryTime?.clientWidth || 0,
       timeComplete,
       collapsedContentText: normalizeText(
         document.querySelector('[data-testid="mini-collapsed-content"]')?.textContent
@@ -877,8 +897,15 @@ function assertResult(name, result, expected) {
       'start and resume use brand accent',
     ],
     [
-      result.primaryTimeColor === expectedRgb(result.primaryTextToken),
-      'neutral primary time color',
+      result.primaryTimeColor ===
+        expectedRgb(
+          expected.state === 'running'
+            ? result.focusToken
+            : expected.state === 'paused'
+              ? result.pauseToken
+              : result.primaryTextToken,
+        ),
+      'primary time follows focus, pause or neutral state color',
     ],
     [result.shellBackdropFilter === 'none', 'no mini backdrop filter'],
     [result.shellBackgroundImage === 'none', 'solid mini surface'],
@@ -890,17 +917,15 @@ function assertResult(name, result, expected) {
     [isTransparent(result.bodyBackground), 'transparent body'],
     [result.timeComplete, 'complete unclipped primary time'],
     [
-      result.timeDigitCount === (result.primaryTimeText.match(/\d/g) || []).length,
-      'all time digits',
-    ],
-    [
       result.shellRect?.width === expected.size.width &&
         Math.abs(result.shellRect?.height - result.viewport[1]) < 1,
       'shell fills viewport',
     ],
     [
-      result.buttons.every((button) => button.visible && button.insideShell),
-      'buttons inside shell',
+      result.buttons.every(
+        (button) => button.visible && button.insideShell && button.insideContent,
+      ),
+      'buttons inside shell content box',
     ],
     [
       result.screenshotSize.width === Math.round(expected.size.width * result.devicePixelRatio),
@@ -954,7 +979,13 @@ function assertResult(name, result, expected) {
         Number.isFinite(result.edgeProgressValue) &&
           result.edgeProgressValue >= 0 &&
           result.edgeProgressValue <= 100,
-        'collapsed progress is a real bounded focus share',
+        'collapsed second-decay rail is bounded',
+      ],
+      [
+        expected.state === 'paused'
+          ? result.decayParticleCount === 12
+          : result.decayParticleCount === 0,
+        'decay particles exist only during the current pause',
       ],
       [result.primaryText === null && result.secondaryText === null, 'no timer controls collapsed'],
     );
@@ -1003,6 +1034,12 @@ function assertResult(name, result, expected) {
         'expanded metric durations',
       ],
       [/^总历时\d+:\d{2}(?::\d{2})?$/.test(result.wallTimeText), 'expanded wall duration'],
+      [
+        expected.state === 'paused'
+          ? result.decayParticleCount === 12
+          : result.decayParticleCount === 0,
+        'expanded decay particles exist only during the current pause',
+      ],
     );
   }
   const failed = assertions.filter(([passed]) => !passed).map(([, label]) => label);

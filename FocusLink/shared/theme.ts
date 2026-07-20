@@ -9,6 +9,8 @@ export const FONT_PROFILES = [
   'wenkai',
   'zhisong',
   'marker',
+  'xihei',
+  'smiley',
 ] as const satisfies readonly AppSettings['fontProfile'][];
 
 export const TIMER_STYLES = [

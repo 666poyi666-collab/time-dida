@@ -25,5 +25,5 @@
       "@shared/*": ["shared/*"]
     }
   },
-  "include": ["src", "shared", "electron", "tests"]
+  "include": ["src", "mobile", "shared", "electron", "cloud", "tests", "*.config.ts"]
 }

@@ -495,7 +495,15 @@ async function setTomatodoSubjectForSegmentUnlocked(
     }
 
     const config = getTomatodoConfig();
+    const dbPath = config ? resolveTomatodoDbPath(config.dbPath) : null;
+    // A failed bridge update must not disappear merely because the existing record still carries
+    // isSynced=1 for its previous subject. Remember that marker-backed intent so the background
+    // retry can reconcile the subject once a verified bridge is available again.
+    const markerExistedBeforeUpdate = dbPath
+      ? getTomatodoRecordState(dbPath, segmentId).exists
+      : false;
     let external: ExistingRecordUpdateResult;
+    let shouldRetryMarkerBackedUpdate = false;
     if (config && (await isTomatodoRunningAsync())) {
       const bridge = await updateTomatodoSubjectThroughBridge(
         segmentId,
@@ -507,8 +515,14 @@ async function setTomatodoSubjectForSegmentUnlocked(
         updatedCount: bridge.localChanged ? 1 : 0,
         error: bridge.error ?? bridge.cloudError,
       };
+      shouldRetryMarkerBackedUpdate =
+        (!bridge.available || !bridge.ok) && (bridge.recordFound || markerExistedBeforeUpdate);
     } else {
       external = updateExistingTomatodoRecords([updated], config);
+      shouldRetryMarkerBackedUpdate = !external.ok && markerExistedBeforeUpdate;
+    }
+    if (shouldRetryMarkerBackedUpdate) {
+      enqueueDurableTomatodoSegments([segmentId]);
     }
     if (!external.ok) {
       logger.warn(
@@ -562,6 +576,15 @@ async function setTomatodoSubjectsForSegmentsUnlocked(
       .map((segmentId) => getSegment(segmentId))
       .filter((segment): segment is FocusSegment => segment !== null);
     const config = getTomatodoConfig();
+    const dbPath = config ? resolveTomatodoDbPath(config.dbPath) : null;
+    const markerBackedIds = new Set(
+      dbPath
+        ? updatedSegments
+            .filter((segment) => getTomatodoRecordState(dbPath, segment.id).exists)
+            .map((segment) => segment.id)
+        : [],
+    );
+    const retryIds: string[] = [];
     let external: ExistingRecordUpdateResult;
     if (config && (await isTomatodoRunningAsync())) {
       let foundCount = 0;
@@ -575,6 +598,12 @@ async function setTomatodoSubjectsForSegmentsUnlocked(
         if (bridge.recordFound) foundCount += 1;
         if (bridge.localChanged) externalUpdatedCount += 1;
         if (!bridge.available || !bridge.ok) error ??= bridge.error ?? bridge.cloudError;
+        if (
+          (!bridge.available || !bridge.ok) &&
+          (bridge.recordFound || markerBackedIds.has(segment.id))
+        ) {
+          retryIds.push(segment.id);
+        }
       }
       external = {
         ok: !error,
@@ -584,6 +613,10 @@ async function setTomatodoSubjectsForSegmentsUnlocked(
       };
     } else {
       external = updateExistingTomatodoRecords(updatedSegments, config);
+      if (!external.ok) retryIds.push(...markerBackedIds);
+    }
+    if (retryIds.length > 0) {
+      enqueueDurableTomatodoSegments(retryIds);
     }
     if (!external.ok) {
       logger.warn('tomatodoSync', 'manual subject batch saved locally but external update failed', {
@@ -663,18 +696,22 @@ export function getTomatodoSyncStatus(sessionId: string): {
   }
   const dbPath = resolveTomatodoDbPath(config.dbPath);
   const segments = listSegments(sessionId);
+  const durablePendingIds = new Set(readDurablePendingSegmentIds());
   return {
     enabled: true,
     dbPath,
     segments: segments.map((s) => {
       const resolution = getSubjectResolutionForSegment(s, config);
       const recordState = getTomatodoRecordState(dbPath, s.id);
+      // A durable intent can represent a newer subject than the still-synced external record.
+      // Until that intent is replayed, presenting the old isSynced=1 as current would be false.
+      const cloudSynced = recordState.cloudSynced && !durablePendingIds.has(s.id);
       return {
         segmentId: s.id,
-        synced: recordState.cloudSynced,
+        synced: cloudSynced,
         writtenLocally: recordState.exists,
-        cloudSynced: recordState.cloudSynced,
-        state: recordState.cloudSynced
+        cloudSynced,
+        state: cloudSynced
           ? ('cloud-synced' as const)
           : recordState.exists
             ? ('local-pending' as const)

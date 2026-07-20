@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="FocusLink">
+  <rect width="512" height="512" fill="#12201b"/>
+  <path d="M146 366V146h180M146 230h140" fill="none" stroke="#f2f3ed" stroke-width="50" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M278 206v160h88" fill="none" stroke="#28b17b" stroke-width="50" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M258 230h28" stroke="#f2f3ed" stroke-width="50" stroke-linecap="square"/>
+</svg>

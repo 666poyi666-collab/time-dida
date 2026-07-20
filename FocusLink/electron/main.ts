@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { logger } from './logger.js';
 import { initDatabase, closeDatabase, listSegments, getSetting, setSetting } from './db/index.js';
 import { TimerManager } from './timer/manager.js';
+import { FocusTimerController } from './timer/focusTimerController.js';
 import { createTray, destroyTray } from './tray.js';
 import { registerIpc, setTimerForHotkeys } from './ipc.js';
 import { getSettings, updateSettings } from './settingsStore.js';
@@ -57,6 +58,7 @@ import {
   uploadPendingTomatodoRecords,
   getPendingTomatodoCount,
 } from './sync/tomatodoSyncService.js';
+import { runAutomaticDeviceSync } from './sync/deviceSyncService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -80,7 +82,8 @@ let miniDockTransitionActive = false;
 let miniDockSnapBounds: Electron.Rectangle | null = null;
 let miniBoundsMutationUntil = 0;
 let miniEdgeSuppressUntil = 0;
-let timer: TimerManager | null = null;
+let localTimer: TimerManager | null = null;
+let timer: FocusTimerController | null = null;
 // 标记用户真正想退出（点托盘"退出"），区分于"关闭窗口最小化到托盘"
 let isQuitting = false;
 // 上次计时器状态，用于检测状态转换触发小窗自动显示/隐藏
@@ -818,6 +821,23 @@ async function autoSyncFinishedSession(sessionId: string): Promise<void> {
   autoSyncSessions.add(sessionId);
   const operations: Promise<unknown>[] = [];
 
+  // FocusLink's own cross-device ledger replication is a separate domain from dida/TomaToDo.
+  // It only exports completed bundles and never exposes provider credentials or local bridges.
+  operations.push(
+    runAutomaticDeviceSync()
+      .then((result) => {
+        if (result && (result.pushed > 0 || result.imported > 0)) {
+          logger.info('deviceSync', 'auto sync after focus finished', result);
+        }
+      })
+      .catch((error) => {
+        logger.warn('deviceSync', 'auto sync after focus finished failed', {
+          sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }),
+  );
+
   // 番茄 Todo 同步：独立并行通道，不受 dida syncMode 影响，按学科分类写入本地库
   operations.push(
     syncSessionToTomatodo(sessionId)
@@ -910,9 +930,14 @@ function ensureTrayAndHotkeys(): void {
     // 快捷键 handler
     const hotkeyHandlers: HotkeyHandlers = {
       toggleTimer: () => {
-        timer?.toggle();
+        void timer
+          ?.toggle()
+          .catch((error) => logger.warn('hotkey', 'toggle failed', { error: String(error) }));
       },
-      stopTimer: () => timer?.stop(),
+      stopTimer: () =>
+        void timer
+          ?.stop()
+          .catch((error) => logger.warn('hotkey', 'stop failed', { error: String(error) })),
       toggleWindow: () => toggleMainWindow(),
       linkTask: () => {
         mainWindow?.show();
@@ -990,7 +1015,8 @@ app.whenReady().then(() => {
       });
     }
   }
-  timer = new TimerManager();
+  localTimer = new TimerManager();
+  timer = new FocusTimerController(localTimer);
   timer.setSegmentBehavior(settings.segmentBehavior);
 
   mainWindow = createMainWindow();
@@ -1001,6 +1027,9 @@ app.whenReady().then(() => {
     // 计时行为变更
     if (domains.includes('general')) {
       timer.setSegmentBehavior(s.segmentBehavior);
+    }
+    if (domains.includes('deviceSync')) {
+      timer.reloadConfiguration();
     }
     // 只有快捷键域变更才重新注册 - 主题/小窗/任务来源变更不再触发快捷键重注册
     if (domains.includes('hotkeys')) {
@@ -1032,6 +1061,12 @@ app.whenReady().then(() => {
       });
     });
 
+  void runAutomaticDeviceSync().catch((error) => {
+    logger.warn('deviceSync', 'startup sync failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+
   // 启动后立即检查，并持续探测番茄 Todo：用户晚于 FocusLink 启动客户端时也能自动补传。
   const TOMATODO_UPLOAD_INTERVAL_MS = 20_000;
   let tomatodoUploadInFlight = false;
@@ -1057,6 +1092,16 @@ app.whenReady().then(() => {
   };
   runTomatodoPendingUpload();
   setInterval(runTomatodoPendingUpload, TOMATODO_UPLOAD_INTERVAL_MS);
+
+  const DEVICE_SYNC_INTERVAL_MS = 60_000;
+  const deviceSyncInterval = setInterval(() => {
+    void runAutomaticDeviceSync().catch((error) => {
+      logger.warn('deviceSync', 'periodic sync failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }, DEVICE_SYNC_INTERVAL_MS);
+  deviceSyncInterval.unref?.();
 
   // 专注小窗 IPC 控制
   ipcMain.on('mini:show', () => showMiniWindow());
@@ -1092,7 +1137,7 @@ app.whenReady().then(() => {
   });
   powerMonitor.on('resume', () => {
     logger.info('main', 'system resume');
-    timer?.recover();
+    timer?.reconnect();
   });
 
   app.on('activate', () => {

@@ -25,6 +25,7 @@ describe('settings partial update policy', () => {
     expect(next.hotkeys).toEqual(DEFAULT_SETTINGS.hotkeys);
     expect(next.miniWindow).toEqual(DEFAULT_SETTINGS.miniWindow);
     expect(next.tomatodo).toEqual(DEFAULT_SETTINGS.tomatodo);
+    expect(next.deviceSync).toEqual(DEFAULT_SETTINGS.deviceSync);
   });
 
   it('deep-merges a nested branch without erasing sibling fields', () => {
@@ -63,6 +64,17 @@ describe('settings partial update policy', () => {
     const next = mergeSettings(DEFAULT_SETTINGS, { focusColor: 'violet', timerStyle: 'pixel' });
 
     expect(detectSettingsChangedDomains(DEFAULT_SETTINGS, next)).toEqual(['theme']);
+  });
+
+  it('migrates and isolates the FocusLink device-sync settings domain', () => {
+    const legacy = { ...DEFAULT_SETTINGS } as Partial<AppSettings>;
+    delete legacy.deviceSync;
+    const migrated = mergeSettings(DEFAULT_SETTINGS, legacy);
+    const enabled = mergeSettings(migrated, { deviceSync: { enabled: true } });
+
+    expect(migrated.deviceSync).toEqual(DEFAULT_SETTINGS.deviceSync);
+    expect(enabled.deviceSync).toEqual({ ...DEFAULT_SETTINGS.deviceSync, enabled: true });
+    expect(detectSettingsChangedDomains(migrated, enabled)).toEqual(['deviceSync']);
   });
 
   it('adds the single-theme defaults to legacy settings and preserves appearance changes', () => {

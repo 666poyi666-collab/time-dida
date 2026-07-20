@@ -16,8 +16,12 @@ Do not turn it into a chat app, generic dashboard, or landing page.
 ## Directory Ownership
 
 - `FocusLink/src/`: renderer UI only.
+- `FocusLink/src/mobile/`: the responsive Web/PWA/Capacitor renderer; it must not duplicate Electron business services or claim unavailable desktop capabilities.
 - `FocusLink/electron/`: Electron main process, SQLite access, timer manager, dida CLI provider, sync queue.
 - `FocusLink/shared/`: shared types, version constants, and pure policies.
+- `FocusLink/cloud/`: FocusLink device-sync HTTP backend only. The current implementation is a loopback-first test backend, not a production identity service.
+- `FocusLink/mobile/`: mobile/Web HTML entry and PWA static assets only; TypeScript UI stays in `src/mobile/`.
+- `FocusLink/android/`: generated Capacitor Android shell and thin native integrations only; do not copy TypeScript product logic into Kotlin/Java.
 - `FocusLink/frontend-design/`: the only product/UI/interaction documentation tree; begin at `FocusLink/frontend-design/README.md`.
 - `FocusLink/backend-design/`: the only architecture/IPC/data/test/release documentation tree; begin at `FocusLink/backend-design/README.md`.
 - `FocusLink/`: the only source workspace. Build, test, design, and development commands run from here.

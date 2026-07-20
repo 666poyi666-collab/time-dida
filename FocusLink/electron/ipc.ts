@@ -1,7 +1,7 @@
 // IPC 处理器 - 主进程接收渲染进程调用
 // 所有 IPC 通道类型安全；关键操作写日志
 import { ipcMain, BrowserWindow, app } from 'electron';
-import type { TimerManager } from './timer/manager.js';
+import type { FocusTimerController } from './timer/focusTimerController.js';
 import { LocalTaskProvider } from './tasks/localProvider.js';
 import { refreshTaskWorkspace, setTaskCompleted } from './tasks/workspaceService.js';
 import {
@@ -46,6 +46,11 @@ import {
   ensureTomatodoBridge,
   getTomatodoBridgeStatus,
 } from './integrations/tomatodo/bridgeLifecycle.js';
+import {
+  configureDeviceSync,
+  getDeviceSyncStatus,
+  runDeviceSync,
+} from './sync/deviceSyncService.js';
 import {
   listSessions,
   listSessionsInRange,
@@ -104,7 +109,7 @@ async function deleteDidaFocusForSegment(segment: FocusSegment): Promise<boolean
 }
 
 export function registerIpc(
-  timer: TimerManager,
+  timer: FocusTimerController,
   window: BrowserWindow,
   onSettingsChanged: (domains: SettingsDomain[], next: AppSettings) => void,
 ): void {
@@ -586,6 +591,22 @@ export function registerIpc(
     return result;
   });
 
+  // ============ FocusLink 跨设备同步（与 dida sync_queue 独立） ============
+  ipcMain.handle('device-sync:status', () => getDeviceSyncStatus());
+  ipcMain.handle('device-sync:configure', (_e, input) => {
+    const status = configureDeviceSync(input);
+    const next = getSettings();
+    onSettingsChanged(['deviceSync'], next);
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) {
+        w.webContents.send('settings:changed', next);
+        w.webContents.send('settings:domain-changed', ['deviceSync']);
+      }
+    }
+    return status;
+  });
+  ipcMain.handle('device-sync:run', () => runDeviceSync());
+
   // ============ 番茄 Todo 同步（独立并行通道） ============
   /** 手动同步单个 segment 到番茄 Todo */
   ipcMain.handle('tomatodo:sync-segment', (_e, segmentId: string) =>
@@ -669,8 +690,8 @@ export function applyHotkeys(window: BrowserWindow): void {
 }
 
 // helpers - 闭包引用 timer
-let _timer: TimerManager | null = null;
-export function setTimerForHotkeys(t: TimerManager): void {
+let _timer: FocusTimerController | null = null;
+export function setTimerForHotkeys(t: FocusTimerController): void {
   _timer = t;
 }
 function timer_toggle(_w: BrowserWindow): void {

@@ -561,7 +561,8 @@ export function HistoryPanel() {
       case 'delete-session':
         return {
           title: '删除专注记录',
-          description: '确认删除这条专注记录？本地记录和已同步到滴答云端的专注记录都将被删除。',
+          description:
+            '确认删除这条专注记录？FocusLink 本地记录和已同步到滴答云端的专注记录都将被删除；番茄 To-do 仅清理本机记录，当前不支持远端删除。',
           confirmLabel: '删除',
         };
       case 'batch-all':

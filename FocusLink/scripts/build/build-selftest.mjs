@@ -16,6 +16,7 @@ for (const entry of [
   'selftest.ts',
   'crash-recovery.ts',
   'task-test.ts',
+  'device-sync-db.ts',
   'dida-task-state-smoke.ts',
   'tomatodo-cloud-real-smoke.ts',
 ]) {

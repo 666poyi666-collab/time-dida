@@ -15,6 +15,22 @@
 }
 
 @font-face {
+  font-family: 'LXGW Neo XiHei';
+  src: url('../assets/fonts/LXGWNeoXiHei.ttf') format('truetype');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: 'Smiley Sans';
+  src: url('../assets/fonts/SmileySans-Oblique.woff2') format('woff2');
+  font-display: swap;
+  font-style: oblique;
+  font-weight: 100 900;
+}
+
+@font-face {
   font-family: 'LXGW Marker Gothic';
   src: url('../assets/fonts/LXGWMarkerGothic-Regular.ttf') format('truetype');
   font-display: swap;
@@ -263,6 +279,7 @@ body {
   font-size: 13.5px;
   line-height: 1.5;
   font-feature-settings: 'kern';
+  font-synthesis: none;
   -webkit-font-smoothing: auto;
   text-rendering: optimizeLegibility;
 }
@@ -277,6 +294,12 @@ body {
 }
 .font-profile-marker {
   --font-ui: 'LXGW Marker Gothic', 'Noto Sans SC Variable', sans-serif;
+}
+.font-profile-xihei {
+  --font-ui: 'LXGW Neo XiHei', 'Noto Sans SC Variable', sans-serif;
+}
+.font-profile-smiley {
+  --font-ui: 'Smiley Sans', 'Noto Sans SC Variable', sans-serif;
 }
 html.mini-window-page,
 html.mini-window-page body,

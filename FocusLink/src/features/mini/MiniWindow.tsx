@@ -1,6 +1,7 @@
 // Two-preset focus companion: a dense control panel and a dockable edge strip.
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import type { FocusLinkAPI } from '@shared/ipc/api';
 import type { AppSettings, TimerSnapshot } from '@shared/types';
 import {
   FOCUS_COLORS,
@@ -12,9 +13,8 @@ import {
   resolveThemeAppearance,
   resolveTimerStyle,
 } from '@shared/theme';
-import { FlipDigits } from '../../ui/FlipDigits';
-import { Icon } from '../../ui/Icon';
 import { formatDuration, formatDurationPadded } from '../../lib/time';
+import { FocusGlyph } from '../../ui/icons/FocusGlyph';
 import { resolveMiniTaskDisplayMode, type MiniTaskDisplayMode } from './miniDisplayPolicy';
 import {
   getCumulativeActiveMs,
@@ -30,7 +30,6 @@ const STATE_META: Record<
   TimerSnapshot['state'],
   {
     label: string;
-    currentLabel: string;
     stripLabel: string;
     textClass: string;
     dotClass: string;
@@ -38,35 +37,30 @@ const STATE_META: Record<
 > = {
   idle: {
     label: '待开始',
-    currentLabel: '当前专注',
     stripLabel: '专注',
     textClass: 'text-fg-muted',
     dotClass: 'bg-fg-subtle',
   },
   running: {
     label: '专注中',
-    currentLabel: '本段专注',
     stripLabel: '专注',
     textClass: 'text-success',
     dotClass: 'state-dot-running',
   },
   paused: {
     label: '已暂停',
-    currentLabel: '本段暂停',
     stripLabel: '暂停',
     textClass: 'text-pause',
     dotClass: 'bg-pause',
   },
   finished: {
     label: '已结束',
-    currentLabel: '本轮专注',
     stripLabel: '完成',
     textClass: 'text-success',
     dotClass: 'bg-success',
   },
   stopping: {
     label: '结束中',
-    currentLabel: '本轮专注',
     stripLabel: '结束',
     textClass: 'text-fg-muted',
     dotClass: 'bg-fg-subtle',
@@ -81,6 +75,47 @@ const panelMotion = {
 const MINI_SHELL_STYLE = {
   '--mini-dock-transition-duration': `${MINI_WINDOW_DOCK_TRANSITION_MS}ms`,
 } as CSSProperties;
+
+type MiniTimerControls = Pick<FocusLinkAPI['timer'], 'reset' | 'stop' | 'toggle'>;
+
+export function resolveMiniPrimaryAction(state: TimerSnapshot['state']): {
+  label: string;
+  glyph: 'pause' | 'play' | 'stop';
+  disabled: boolean;
+} {
+  switch (state) {
+    case 'running':
+      return { label: '暂停', glyph: 'pause', disabled: false };
+    case 'paused':
+      return { label: '继续', glyph: 'play', disabled: false };
+    case 'stopping':
+      return { label: '结束中', glyph: 'stop', disabled: true };
+    case 'idle':
+    case 'finished':
+      return { label: '开始', glyph: 'play', disabled: false };
+  }
+}
+
+export function isMiniStopDisabled(state: TimerSnapshot['state']): boolean {
+  return state === 'idle' || state === 'finished' || state === 'stopping';
+}
+
+export async function triggerMiniToggle(
+  state: TimerSnapshot['state'],
+  timer: MiniTimerControls,
+): Promise<TimerSnapshot | null> {
+  if (state === 'stopping') return null;
+  if (state === 'finished') await timer.reset();
+  return timer.toggle();
+}
+
+export async function triggerMiniStop(
+  state: TimerSnapshot['state'],
+  timer: MiniTimerControls,
+): Promise<TimerSnapshot | null> {
+  if (state === 'stopping') return null;
+  return timer.stop();
+}
 
 function applyThemeClass(settings: AppSettings): void {
   const root = document.documentElement;
@@ -237,9 +272,10 @@ export function MiniWindow() {
 
   const state = snapshot?.state ?? 'idle';
   const meta = STATE_META[state];
+  const primaryAction = resolveMiniPrimaryAction(state);
   const nowMs = Date.now();
   const taskTitleRef = useRef<HTMLSpanElement>(null);
-  // 任务名显示策略：1=单行完整；2=两行完整；3=极长，单行克制滚动
+  // 任务名显示策略：装得下时单行完整；否则自动往返，reduced-motion 下改为可键盘滚动。
   const [taskDisplay, setTaskDisplay] = useState<MiniTaskDisplayMode>('single');
   const currentFocusMs = getCurrentSegmentDisplayMs(snapshot, nowMs);
   const currentPauseMs = getCurrentPauseDisplayMs(snapshot, nowMs);
@@ -250,46 +286,63 @@ export function MiniWindow() {
   useEffect(() => {
     const el = taskTitleRef.current;
     if (!el || collapsed) return;
-    // 21px 任务行只放单行：装得下就完整显示，装不下走克制滚动（不用省略号/渐隐）
-    setTaskDisplay(resolveMiniTaskDisplayMode(el.scrollWidth, el.clientWidth, !!reduceMotion));
-  }, [currentTaskTitle, collapsed, reduceMotion]);
+    const container = el.parentElement;
+    if (!container) return;
+    let cancelled = false;
+    const measure = () => {
+      if (cancelled) return;
+      setTaskDisplay(
+        resolveMiniTaskDisplayMode(el.scrollWidth, container.clientWidth, !!reduceMotion),
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    measure();
+    void document.fonts.ready.then(measure);
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
+  }, [currentTaskTitle, collapsed, reduceMotion, settings?.fontProfile]);
   const isRunning = state === 'running';
   const isPaused = state === 'paused';
-  const isIdle = state === 'idle' || state === 'finished';
   const primaryMs = isPaused ? currentPauseMs : currentFocusMs;
   const primaryButtonClass = isRunning
     ? 'mini-action-hold'
     : isPaused
       ? 'mini-action-resume'
       : 'mini-action-focus';
-  const displayPrimaryMs = isIdle ? (state === 'finished' ? currentFocusMs : 0) : primaryMs;
+  const displayPrimaryMs =
+    state === 'finished' || state === 'stopping'
+      ? cumulativeActiveMs
+      : state === 'idle'
+        ? 0
+        : primaryMs;
   const compactTime = useMemo(() => formatDurationPadded(displayPrimaryMs), [displayPrimaryMs]);
   // 进入小时档（"H:MM:SS"）后数字串变长，两态都换用紧凑字号防止 184px 溢出
   const isLongTime = compactTime.length > 5;
-  const focusShare = useMemo(() => {
-    if (wallElapsedMs <= 0) return 0;
-    return Math.max(0, Math.min(100, Math.round((cumulativeActiveMs / wallElapsedMs) * 100)));
-  }, [cumulativeActiveMs, wallElapsedMs]);
-  // 进度轨上的红色暂停段：紧随 accent 专注段之后，合计不超过 100%
-  const pauseShare = useMemo(() => {
-    if (wallElapsedMs <= 0) return 0;
-    const share = Math.round((cumulativePauseMs / wallElapsedMs) * 100);
-    return Math.max(0, Math.min(100 - focusShare, share));
-  }, [cumulativePauseMs, wallElapsedMs, focusShare]);
+  // 消逝轨不是“专注率进度条”，只表达当前这一分钟已经流走了多少秒。
+  const minuteProgress = Math.max(0, Math.min(100, ((displayPrimaryMs / 1000) % 60) * (100 / 60)));
 
   const handleToggle = useCallback(
     async (event: React.MouseEvent) => {
       event.stopPropagation();
-      if (state === 'finished') await window.focuslink.timer.reset();
-      setSnapshot(await window.focuslink.timer.toggle());
+      if (state === 'stopping') return;
+      const next = await triggerMiniToggle(state, window.focuslink.timer);
+      if (next) setSnapshot(next);
     },
     [state],
   );
 
-  const handleStop = useCallback(async (event: React.MouseEvent) => {
-    event.stopPropagation();
-    setSnapshot(await window.focuslink.timer.stop());
-  }, []);
+  const handleStop = useCallback(
+    async (event: React.MouseEvent) => {
+      event.stopPropagation();
+      if (state === 'stopping') return;
+      const next = await triggerMiniStop(state, window.focuslink.timer);
+      if (next) setSnapshot(next);
+    },
+    [state],
+  );
 
   const handleCollapse = useCallback((event: React.MouseEvent) => {
     event.stopPropagation();
@@ -329,7 +382,6 @@ export function MiniWindow() {
       onDoubleClick={collapsed ? handleExpand : undefined}
       title={collapsed ? '点击箭头展开；拖离屏幕边缘也会自动展开' : undefined}
     >
-      <span className="mini-state-rail" aria-hidden="true" />
       <span className="mini-dock-cue" aria-hidden="true" />
 
       <AnimatePresence mode="sync" initial={false}>
@@ -338,34 +390,17 @@ export function MiniWindow() {
             key="collapsed"
             className="mini-collapsed-content"
             data-testid="mini-collapsed-content"
-            initial={reduceMotion ? false : { opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 1 }}
+            animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={reduceMotion ? { duration: 0 } : panelMotion}
           >
-            <span
-              className="mini-edge-progress no-drag"
-              role="progressbar"
-              aria-label="本轮专注占比"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={focusShare}
-              aria-valuetext={`有效专注占总历时 ${focusShare}%`}
-              style={{ '--mini-progress': `${focusShare}%` } as CSSProperties}
-            >
-              <span className="mini-edge-progress-fill" />
-              <span
-                className="mini-edge-progress-pause"
-                aria-hidden="true"
-                style={
-                  {
-                    '--mini-pause-start': `${focusShare}%`,
-                    '--mini-pause-width': `${pauseShare}%`,
-                  } as CSSProperties
-                }
-              />
-              <span className="mini-edge-progress-glint" aria-hidden="true" />
-            </span>
+            <MiniSecondRail
+              progress={minuteProgress}
+              second={Math.floor((displayPrimaryMs / 1000) % 60)}
+              paused={isPaused}
+              compact
+            />
             <div className="mini-collapsed-current">
               <span className="mini-collapsed-state">
                 <span className={`mini-state-dot ${meta.dotClass}`} aria-hidden="true" />
@@ -375,11 +410,11 @@ export function MiniWindow() {
                 className={`mini-display-time mini-collapsed-time ${isLongTime ? 'mini-time-long' : ''}`}
                 data-testid="mini-current-time"
               >
-                <FlipDigits value={compactTime} />
+                {compactTime}
               </div>
             </div>
             <MiniIconButton label="展开" testId="mini-expand" onClick={handleExpand}>
-              <Icon.ChevronRight size="xs" />
+              <FocusGlyph glyph="expand" size={12} />
             </MiniIconButton>
           </motion.section>
         ) : (
@@ -387,106 +422,161 @@ export function MiniWindow() {
             key="expanded"
             className="mini-expanded-content"
             data-testid="mini-expanded-content"
-            initial={reduceMotion ? false : { opacity: 0, scale: 0.985, y: 2 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: reduceMotion ? 1 : 0.985 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 2 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: reduceMotion ? 0 : 1 }}
             transition={reduceMotion ? { duration: 0 } : panelMotion}
           >
             <header className="mini-expanded-header">
               <MiniStateBadge state={state} />
+              <div
+                className={`mini-task-block ${
+                  taskDisplay === 'single'
+                    ? ''
+                    : taskDisplay === 'scroll'
+                      ? 'is-scroll'
+                      : 'is-marquee'
+                }`}
+                tabIndex={taskDisplay === 'scroll' ? 0 : undefined}
+                aria-label={`当前任务：${currentTaskTitle}`}
+              >
+                <span
+                  ref={taskTitleRef}
+                  className="mini-task-title"
+                  data-testid="mini-task-title"
+                  title={currentTaskTitle}
+                >
+                  {currentTaskTitle}
+                </span>
+              </div>
               <div className="mini-header-actions">
                 <MiniIconButton label="打开主窗口" testId="mini-open-main" onClick={handleOpenMain}>
-                  <Icon.Maximize size="xs" />
+                  <FocusGlyph glyph="main-window" size={12} />
                 </MiniIconButton>
                 <MiniIconButton label="收起" testId="mini-collapse" onClick={handleCollapse}>
-                  <Icon.ChevronDown size="xs" />
+                  <FocusGlyph glyph="collapse" size={12} />
                 </MiniIconButton>
               </div>
             </header>
 
-            <div
-              className={`mini-task-block ${
-                taskDisplay === 'single'
-                  ? ''
-                  : taskDisplay === 'scroll'
-                    ? 'is-scroll'
-                    : 'is-marquee'
-              }`}
-            >
-              <span
-                ref={taskTitleRef}
-                className="mini-task-title"
-                data-testid="mini-task-title"
-                title={currentTaskTitle}
-              >
-                {currentTaskTitle}
-              </span>
-            </div>
-
             <div className="mini-expanded-body">
               <div className="mini-focus-core">
-                <span className={`mini-current-label ${meta.textClass}`}>{meta.currentLabel}</span>
                 <div
                   className={`mini-display-time mini-expanded-time ${isLongTime ? 'mini-time-long' : ''}`}
                   data-testid="mini-current-time"
                 >
-                  <FlipDigits value={compactTime} />
+                  {compactTime}
                 </div>
+                <MiniSecondRail
+                  progress={minuteProgress}
+                  second={Math.floor((displayPrimaryMs / 1000) % 60)}
+                  paused={isPaused}
+                />
               </div>
 
-              <div className="mini-metric-rail" data-testid="mini-metric-rail">
-                <MiniMetric
-                  label="累计专注"
-                  value={formatDuration(cumulativeActiveMs)}
-                  tone="focus"
-                  testId="mini-focus-total"
-                />
-                <MiniMetric
-                  label="累计暂停"
-                  value={formatDuration(cumulativePauseMs)}
-                  tone="pause"
-                  testId="mini-pause-total"
-                />
-                <MiniMetric
-                  label="总历时"
-                  value={formatDuration(wallElapsedMs)}
-                  tone="neutral"
-                  testId="mini-wall-total"
-                />
+              <div className="mini-side-console">
+                <div className="mini-metric-rail" data-testid="mini-metric-rail">
+                  <MiniMetric
+                    label="累计专注"
+                    value={formatDuration(cumulativeActiveMs)}
+                    tone="focus"
+                    testId="mini-focus-total"
+                  />
+                  <MiniMetric
+                    label="累计暂停"
+                    value={formatDuration(cumulativePauseMs)}
+                    tone="pause"
+                    testId="mini-pause-total"
+                  />
+                  <MiniMetric
+                    label="总历时"
+                    value={formatDuration(wallElapsedMs)}
+                    tone="neutral"
+                    testId="mini-wall-total"
+                  />
+                </div>
+                <footer className="mini-expanded-footer">
+                  <div className="mini-action-dock">
+                    <motion.button
+                      className={`mini-primary-button ${primaryButtonClass} no-drag`}
+                      data-testid="mini-primary-action"
+                      onClick={handleToggle}
+                      disabled={primaryAction.disabled}
+                      aria-busy={state === 'stopping'}
+                      whileTap={{ scale: 0.98 }}
+                      transition={{ duration: 0.12 }}
+                    >
+                      <FocusGlyph glyph={primaryAction.glyph} size={12} />
+                      {primaryAction.label}
+                    </motion.button>
+                    <motion.button
+                      className="mini-secondary-button no-drag"
+                      data-testid="mini-stop"
+                      onClick={handleStop}
+                      disabled={isMiniStopDisabled(state)}
+                      whileTap={{ scale: 0.98 }}
+                      transition={{ duration: 0.12 }}
+                    >
+                      <FocusGlyph glyph="stop" size={12} />
+                      结束
+                    </motion.button>
+                  </div>
+                </footer>
               </div>
             </div>
-
-            <footer className="mini-expanded-footer">
-              <div className="mini-action-dock">
-                <motion.button
-                  className={`mini-primary-button ${primaryButtonClass} no-drag`}
-                  data-testid="mini-primary-action"
-                  onClick={handleToggle}
-                  whileHover={{ y: -1 }}
-                  whileTap={{ y: 0, scale: 0.98 }}
-                  transition={{ duration: 0.12 }}
-                >
-                  {state === 'running' ? <Icon.Pause size="xs" /> : <Icon.Play size="xs" />}
-                  {state === 'running' ? '暂停' : state === 'paused' ? '继续' : '开始'}
-                </motion.button>
-                <motion.button
-                  className="mini-secondary-button no-drag"
-                  data-testid="mini-stop"
-                  onClick={handleStop}
-                  disabled={state === 'idle' || state === 'finished'}
-                  whileHover={{ y: -1 }}
-                  whileTap={{ y: 0, scale: 0.98 }}
-                  transition={{ duration: 0.12 }}
-                >
-                  <Icon.Square size="xs" />
-                  结束
-                </motion.button>
-              </div>
-            </footer>
           </motion.section>
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function MiniSecondRail({
+  progress,
+  second,
+  paused,
+  compact = false,
+}: {
+  progress: number;
+  second: number;
+  paused: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <span
+      className={`mini-second-rail ${compact ? 'mini-edge-progress' : 'mini-expanded-progress'} ${paused ? 'is-paused' : 'is-focus'} no-drag`}
+      role="progressbar"
+      aria-label="当前分钟时间消逝"
+      aria-valuemin={0}
+      aria-valuemax={60}
+      aria-valuenow={second}
+      aria-valuetext={`当前分钟已过去 ${second} 秒`}
+      style={{ '--mini-progress': `${progress}%` } as CSSProperties}
+    >
+      <span className="mini-second-rail-fill mini-edge-progress-fill" />
+      <span className="mini-second-front" aria-hidden="true" />
+      {paused && <MiniDecayParticles fromEdge={progress < 12} />}
+    </span>
+  );
+}
+
+function MiniDecayParticles({ fromEdge }: { fromEdge: boolean }) {
+  return (
+    <span className={`mini-decay-particles ${fromEdge ? 'from-edge' : ''}`} aria-hidden="true">
+      {Array.from({ length: 18 }, (_, index) => (
+        <i
+          key={index}
+          style={
+            {
+              '--particle-index': index,
+              '--particle-size': `${0.75 + (index % 4) * 0.45}px`,
+              '--particle-x': `${(fromEdge ? 1 : -1) * (3 + (index % 6) * 1.55)}px`,
+              '--particle-y': `${(index % 2 === 0 ? -1 : 1) * (2 + (index % 5) * 1.15)}px`,
+            } as CSSProperties
+          }
+        />
+      ))}
+    </span>
   );
 }
 

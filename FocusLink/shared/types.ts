@@ -249,8 +249,8 @@ export interface AppSettings {
   focusColor: 'emerald' | 'cobalt' | 'violet' | 'amber' | 'graphite';
   /** 主计时数字的仪表样式。特色只作用于读数，不构成完整主题。 */
   timerStyle: 'standard' | 'flip' | 'pixel' | 'thin' | 'segment';
-  /** 主界面排版气质：现代无衬线、文楷、新致宋、漫黑四套不同字形门类。 */
-  fontProfile: 'noto' | 'wenkai' | 'zhisong' | 'marker';
+  /** 主界面排版气质：正文、楷体、宋体、马克笔、正线细黑与窄体展示字。 */
+  fontProfile: 'noto' | 'wenkai' | 'zhisong' | 'marker' | 'xihei' | 'smiley';
   segmentBehavior: 'new-segment' | 'continue-segment';
   syncMode: 'focus-record' | 'comment' | 'local-only';
   experimentalFocusEnabled: boolean;
@@ -278,11 +278,20 @@ export interface AppSettings {
   };
   /** 番茄 Todo 本地同步配置 */
   tomatodo: TomatodoConfig;
+  /** FocusLink 自有的跨设备账本同步；与滴答/番茄 To-do 投递完全独立。 */
+  deviceSync: DeviceSyncSettings;
 }
 
 /** 设置变更域 - 用于按域分流处理副作用，避免主题保存触发快捷键重注册 */
 export type SettingsDomain =
-  'theme' | 'hotkeys' | 'miniWindow' | 'taskProvider' | 'layout' | 'general' | 'tomatodo';
+  | 'theme'
+  | 'hotkeys'
+  | 'miniWindow'
+  | 'taskProvider'
+  | 'layout'
+  | 'general'
+  | 'tomatodo'
+  | 'deviceSync';
 
 /** 主界面左右分栏布局配置 */
 export interface LayoutConfig {
@@ -352,6 +361,18 @@ export interface TomatodoConfig {
   defaultSubject: TomatodoSubject;
 }
 
+/**
+ * Portable FocusLink ledger replication settings. The access token is deliberately absent and is
+ * stored by the Electron credential layer (or by the web surface's explicit session storage).
+ */
+export interface DeviceSyncSettings {
+  enabled: boolean;
+  endpoint: string;
+  autoSync: boolean;
+  /** PC controls and mirrors the account-scoped live focus session. Explicit opt-in. */
+  liveControlEnabled: boolean;
+}
+
 /** 默认设置 */
 export const DEFAULT_SETTINGS: AppSettings = {
   hotkeys: {
@@ -415,6 +436,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
     enabled: false,
     dbPath: '',
     defaultSubject: '学习',
+  },
+  deviceSync: {
+    enabled: false,
+    endpoint: 'http://127.0.0.1:8787',
+    autoSync: true,
+    liveControlEnabled: false,
   },
 };
 

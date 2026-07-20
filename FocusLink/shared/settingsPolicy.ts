@@ -64,6 +64,9 @@ export function detectSettingsChangedDomains(
   if (JSON.stringify(prev.tomatodo) !== JSON.stringify(next.tomatodo)) {
     domains.push('tomatodo');
   }
+  if (JSON.stringify(prev.deviceSync) !== JSON.stringify(next.deviceSync)) {
+    domains.push('deviceSync');
+  }
   if (
     prev.segmentBehavior !== next.segmentBehavior ||
     prev.syncMode !== next.syncMode ||

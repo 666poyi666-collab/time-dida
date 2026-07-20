@@ -22,22 +22,22 @@
   width: 100%;
   height: 100%;
   fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
+  stroke-width: 3;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
-.brand-mark-track {
-  opacity: 0.24;
+.brand-mark-f,
+.brand-mark-cross {
+  stroke: rgb(var(--app-text));
 }
 
-.brand-mark-progress,
-.brand-mark-link,
-.brand-mark-node {
-  stroke-linecap: round;
+.brand-mark-l {
+  stroke: rgb(var(--app-accent));
 }
 
-.state-running .brand-mark {
-  filter: drop-shadow(0 0 9px rgb(var(--app-accent) / 0.35));
+.state-paused .brand-mark-l {
+  stroke: rgb(var(--app-pause));
 }
 
 .commandbar-status {

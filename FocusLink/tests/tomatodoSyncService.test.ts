@@ -33,11 +33,16 @@ vi.mock('../electron/db/index', () => ({
     if (harness.segment) harness.segment = { ...harness.segment, tomatodoSubject: subject };
   },
   setSegmentsTomatodoSubject: (ids: string[], subject: TomatodoSubject | null) => {
+    let updatedCount = 0;
     if (harness.segment && ids.includes(harness.segment.id)) {
       harness.segment = { ...harness.segment, tomatodoSubject: subject };
-      return 1;
+      updatedCount += 1;
     }
-    return 0;
+    if (harness.extraSegment && ids.includes(harness.extraSegment.id)) {
+      harness.extraSegment = { ...harness.extraSegment, tomatodoSubject: subject };
+      updatedCount += 1;
+    }
+    return updatedCount;
   },
 }));
 
@@ -79,7 +84,9 @@ vi.mock('../electron/logger', () => ({
 }));
 
 import {
+  getTomatodoSyncStatus,
   setTomatodoSubjectForSegment,
+  setTomatodoSubjectsForSegments,
   syncSessionToTomatodo,
   syncSegmentToTomatodo,
   uploadPendingTomatodoRecords,
@@ -138,6 +145,76 @@ describe('tomatodo sync service bridge safety and state', () => {
       externalFoundCount: 0,
       externalUpdatedCount: 0,
     });
+    expect(JSON.parse(harness.settings.get('tomatodo.pendingSegmentIdsV060') ?? '[]')).toEqual([]);
+  });
+
+  it('persists a marker-backed subject update when the running bridge is unavailable', async () => {
+    harness.recordStates.set('segment-1', { exists: true, cloudSynced: true });
+    harness.updateBridge.mockResolvedValue({
+      available: false,
+      ok: false,
+      recordFound: false,
+      localWritten: false,
+      localChanged: false,
+      uploadConfirmed: false,
+      cloudRecordReadbackSupported: false,
+      skipped: false,
+      error: 'tomatodo_bridge_unavailable',
+    });
+
+    const result = await setTomatodoSubjectForSegment('segment-1', '数学');
+
+    expect(result).toMatchObject({ ok: false, updatedCount: 1, externalFoundCount: 0 });
+    expect(JSON.parse(harness.settings.get('tomatodo.pendingSegmentIdsV060') ?? '[]')).toEqual([
+      'segment-1',
+    ]);
+    expect(getTomatodoSyncStatus('session-1').segments[0]).toMatchObject({
+      segmentId: 'segment-1',
+      writtenLocally: true,
+      cloudSynced: false,
+      state: 'local-pending',
+      subject: '数学',
+    });
+  });
+
+  it('persists only marker-backed failures from a batch subject update', async () => {
+    harness.extraSegment = {
+      ...makeSegment(),
+      id: 'segment-2',
+      startedAt: 62_000,
+      endedAt: 122_000,
+    };
+    harness.recordStates.set('segment-1', { exists: true, cloudSynced: true });
+    harness.updateBridge
+      .mockResolvedValueOnce({
+        available: false,
+        ok: false,
+        recordFound: false,
+        localWritten: false,
+        localChanged: false,
+        uploadConfirmed: false,
+        cloudRecordReadbackSupported: false,
+        skipped: false,
+        error: 'tomatodo_bridge_unavailable',
+      })
+      .mockResolvedValueOnce({
+        available: false,
+        ok: false,
+        recordFound: false,
+        localWritten: false,
+        localChanged: false,
+        uploadConfirmed: false,
+        cloudRecordReadbackSupported: false,
+        skipped: false,
+        error: 'tomatodo_bridge_unavailable',
+      });
+
+    const result = await setTomatodoSubjectsForSegments(['segment-1', 'segment-2'], '物理');
+
+    expect(result).toMatchObject({ ok: false, updatedCount: 2 });
+    expect(JSON.parse(harness.settings.get('tomatodo.pendingSegmentIdsV060') ?? '[]')).toEqual([
+      'segment-1',
+    ]);
   });
 
   it('fails safely when the running app bridge is unavailable and never writes JSON directly', async () => {

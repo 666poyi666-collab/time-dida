@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="FocusLink">
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="#12201b"/>
+  <path d="M122 398V114h232M122 224h180" fill="none" stroke="#f2f3ed" stroke-width="62" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M292 192v206h104" fill="none" stroke="#28b17b" stroke-width="62" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M266 224h36" stroke="#f2f3ed" stroke-width="62" stroke-linecap="square"/>
+  <path d="M218 132v34M254 132v34M290 132v34" stroke="#59665f" stroke-width="12"/>
+</svg>

@@ -2,9 +2,15 @@
 /FocusLink/dist/
 /FocusLink/dist-electron/
 /FocusLink/dist-selftest/
+/FocusLink/dist-mobile/
+/FocusLink/dist-cloud/
+/FocusLink/.tmp/
+/FocusLink/.visual-dist*/
+/FocusLink/.visual-review-*/
 release/
 release-v*/*
 !release-v*/RELEASE_NOTES.md
+/visual-unpacked-v*/
 *.log
 .env
 .env.local

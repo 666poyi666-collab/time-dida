@@ -2,16 +2,18 @@
 
 > 适用版本：v0.12.x
 >
+> 当前实现：v0.12.16
+>
 > 文档责任：Electron 主进程、SQLite、IPC、任务 Provider、同步、测试与发布。
 
 这个目录是后端设计与维护的唯一规范入口。`electron/` 和 `shared/` 是运行时事实，本文档负责解释不变量与验收边界；不再维护 `docs/`、`backend/` 或 `shared-contract/` 的平行文稿。
 
 ## 阅读顺序
 
-1. [BACKEND_SPEC.md](BACKEND_SPEC.md)：架构、数据、IPC、计时、任务和双同步的单一真相。
+1. [BACKEND_SPEC.md](BACKEND_SPEC.md)：架构、数据、IPC、计时、任务、第三方投递与跨设备同步的单一真相。
 2. [TEST_AND_RELEASE.md](TEST_AND_RELEASE.md)：自动化、真实服务、打包、校验和 GitHub Release 门禁。
 3. [AI_HANDOFF_CHECKLIST.md](AI_HANDOFF_CHECKLIST.md)：新 AI 或维护者的接手/交付清单。
-4. [v0.12.13 发布正文](../../release-v01213/RELEASE_NOTES.md)：完成发布后必须与本地发布目录和 GitHub Release 一致；历史 Release 正文源见 releases/ 目录。
+4. [v0.12.16 发布正文](../../release-v01216/RELEASE_NOTES.md)：完成发布后必须与本地发布目录和 GitHub Release 一致；历史 Release 正文源见 releases/ 目录。
 5. [releases/v0.11.2.md](releases/v0.11.2.md)：被发布记录路径契约阻断后的离线发布记录；公开 tag 不移动，未创建 GitHub Release。
 6. [releases/v0.11.1.md](releases/v0.11.1.md)：更早的离线发布记录。
 7. [../frontend-design/FRONTEND_SPEC.md](../frontend-design/FRONTEND_SPEC.md)：用户可见行为、主题、动效与小窗表现。
@@ -27,7 +29,9 @@
 | `electron/tasks/` | 滴答工作台、本地兼容任务与 dida CLI Provider |
 | `electron/integrations/` | TickTick OAuth 与番茄 To-do 适配 |
 | `electron/sync/` | dida 队列与番茄持久补传 |
+| `cloud/` | FocusLink 已结束账本与实时会话协议的本地测试 HTTP 后端；不承载生产身份承诺 |
 | `shared/` | 跨进程类型、IPC API 和纯策略 |
+| `shared/sync/` | 多端传输 DTO、校验、幂等指纹与端点安全策略 |
 | `tests/` | 快速、隔离、可重复的回归测试 |
 | `scripts/` | 构建、回归和真实 smoke |
 

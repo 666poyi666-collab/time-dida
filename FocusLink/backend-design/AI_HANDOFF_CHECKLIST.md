@@ -40,6 +40,13 @@
 - [ ] 番茄已普通运行但无桥时绝不杀进程/重启；后台启动与周期重试绝不擅自启动外部应用。
 - [ ] 番茄桥接启动/发现改动已运行无写入的 `npm run smoke:tomatodo:bridge`，验证标准路径、身份校验与不终止已运行普通实例。
 - [ ] 真实外部验证使用临时任务/记录，并在结束后清理。
+- [ ] FocusLink 跨设备账本与 dida/TomaToDo 队列保持独立；completed bundle 仍只发送已结束 session，不发送第三方凭据、`cloudFocusId` 或桌面本地设置。
+- [ ] 实时控制平面以服务端 revision 为权威；command id 重放、id 复用、expected revision 冲突、错误 session、非法迁移和单账号隔离均有测试。
+- [ ] finish/abort 原子闭合 segment/pause 并写入现有 completed ledger；进程重启保持活动时间边界与命令幂等，旧 v1 测试存储可迁移。
+- [ ] 长轮询有上限，客户端断开会释放 waiter；移动端切账号/页面隐藏/卸载会取消旧请求，不让旧账号快照回填。
+- [ ] Android 通知/Tile 只排队带 session/revision 的 native command，原生层不推进计时或在云端确认前翻转状态。
+- [ ] 账本 `opId` 重放幂等、revision 冲突、cursor 分页、Bearer 鉴权、CORS 与 1 MiB 上限有契约测试；completed bundle 不携带活动会话字段。
+- [ ] 拉回新会话使用单事务导入且不自动触发第三方副作用；远端更新/删除未有显式策略时报告冲突，不静默覆盖。
 
 ## 稳定性与诊断
 
@@ -51,6 +58,7 @@
 
 - [ ] 更新 `BACKEND_SPEC.md`、根 [CHANGELOG.md](../../CHANGELOG.md) 和当前 Release 正文源。
 - [ ] 完成 [TEST_AND_RELEASE.md](TEST_AND_RELEASE.md) 全部门禁。
+- [ ] 多端改动额外构建 Web/PWA 与测试云；Android 必须通过 Capacitor sync、unit/lint/assemble、前台通知/Tile instrumentation 与华为/小米双机 smoke。
 - [ ] 真实 UI smoke 完成“完成 → 撤销 → 再完成 → 完成列表找回 → 恢复”并清理临时任务。
 - [ ] release 目录只有两个 exe、SHA256 和 Release notes。
 - [ ] Git commit 元数据干净后重新构建正式包，校验 hash。

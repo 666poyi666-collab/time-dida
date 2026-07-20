@@ -404,6 +404,55 @@ async function main() {
   await delay(900);
   process.stderr.write('[ui-smoke] capture running\n');
   results.running = await capture('running', 'running');
+  await evaluate("window.focuslink.settings.set({ timerStyle: 'flip' })");
+  await delay(80);
+  results.flipCycle = await evaluate(`new Promise((resolve) => {
+    const startedAt = Date.now();
+    let sawFold = false;
+    let sawUnfold = false;
+    const poll = () => {
+      const cards = [...document.querySelectorAll('.dial-flip .flip-card')];
+      sawFold ||= cards.some((card) => card.classList.contains('phase-fold'));
+      sawUnfold ||= cards.some((card) => card.classList.contains('phase-unfold'));
+      const settled =
+        cards.length > 0 && cards.every((card) => card.classList.contains('phase-steady'));
+      if ((sawFold && sawUnfold && settled) || Date.now() - startedAt > 2600) {
+        resolve({
+          cardCount: cards.length,
+          sawFold,
+          sawUnfold,
+          settled,
+          animationNodeCount: document.querySelectorAll('.dial-flip .flip-animation').length,
+        });
+        return;
+      }
+      setTimeout(poll, 16);
+    };
+    poll();
+  })`);
+  await send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+  });
+  await delay(120);
+  const reducedFlipBefore = await evaluate(
+    `document.querySelector('.dial-flip')?.getAttribute('aria-label') || null`,
+  );
+  await delay(1200);
+  results.reducedMotionFlip = await evaluate(`(() => {
+    const cards = [...document.querySelectorAll('.dial-flip .flip-card')];
+    return {
+      before: ${JSON.stringify(reducedFlipBefore)},
+      after: document.querySelector('.dial-flip')?.getAttribute('aria-label') || null,
+      allSteady:
+        cards.length > 0 && cards.every((card) => card.classList.contains('phase-steady')),
+      animationNodeCount: document.querySelectorAll('.dial-flip .flip-animation').length,
+    };
+  })()`);
+  await send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }],
+  });
+  await evaluate("window.focuslink.settings.set({ timerStyle: 'standard' })");
+  await delay(120);
   const immersiveClicked = await evaluate(`(() => {
     const button = document.querySelector('.focus-immersive-toggle[title="全屏进入沉浸模式"]');
     if (!button) return false;
@@ -449,18 +498,32 @@ async function main() {
   process.stderr.write('[ui-smoke] capture paused\n');
   results.paused = await capture('paused', 'paused');
   await evaluate('window.focuslink.timer.stop()');
-  await delay(250);
+  await inspectState('finished');
+  await delay(900);
+  results.finishedFreeze = {
+    before: await evaluate(`(() => ({
+      time: document.querySelector('.timer-dial')?.getAttribute('aria-label') || null,
+      canvas: document.querySelector('.ribbon-canvas')?.toDataURL() || null,
+    }))()`),
+  };
+  await delay(850);
+  results.finishedFreeze.after = await evaluate(`(() => ({
+    time: document.querySelector('.timer-dial')?.getAttribute('aria-label') || null,
+    canvas: document.querySelector('.ribbon-canvas')?.toDataURL() || null,
+  }))()`);
   await evaluate('document.querySelector(\'button[aria-label="统计"]\')?.click()');
   await waitForAnyText(['时间范围', '当前时间范围没有专注记录', '加载失败']);
   await delay(650);
   results.history = await captureScreen('history');
   results.historyInspection = await evaluate(`(() => ({
-    hasDashboard: Boolean(document.querySelector('.analytics-dashboard')),
-    dashboardTitle: document.querySelector('.analytics-heading h2')?.textContent?.trim() || null,
-    kpiCount: document.querySelectorAll('.analytics-kpi').length,
-    panelCount: document.querySelectorAll('.analytics-panel').length,
-    hasWeave: Boolean(document.querySelector('.weave-canvas')),
-    hasTaskRanking: Boolean(document.querySelector('.task-ranking')),
+    hasDashboard: Boolean(document.querySelector('.stats-dashboard')),
+    dashboardTitle: document.querySelector('.stats-brief-copy h2')?.textContent?.trim() || null,
+    kpiCount: document.querySelectorAll('.stats-metric').length,
+    panelCount: document.querySelectorAll('.stats-panel').length,
+    hasTimeline: Boolean(document.querySelector('.stats-timeline-detail')),
+    hasTaskRanking: Boolean(document.querySelector('.stats-task-list')),
+    taskRowCount: document.querySelectorAll('.stats-task-row').length,
+    hasPauseCost: Boolean(document.querySelector('.stats-pause-cost')),
     hasSessionTable: Boolean(document.querySelector('.session-performance-list')),
     hasAbstractSwitcher: Boolean(document.querySelector('.insight-view-switch')),
     hasRing: Boolean(document.querySelector('.history-focus-ring')),
@@ -468,8 +531,23 @@ async function main() {
     activeRange: [...document.querySelectorAll('.history-filter-row button')]
       .find((button) => button.classList.contains('bg-accent'))?.textContent?.trim() || null,
     nextDayDisabled: Boolean(document.querySelector('.history-day-navigator > button:last-child')?.disabled),
-    dashboardBorder: getComputedStyle(document.querySelector('.analytics-dashboard')).borderTopWidth,
+    dashboardBorder: getComputedStyle(document.querySelector('.stats-dashboard')).borderTopWidth,
   }))()`);
+  results.historyMinimum = await inspectMainWindowSize(980, 660);
+  results.historyMinimum.dashboard = await evaluate(`(() => {
+    const dashboard = document.querySelector('.stats-dashboard');
+    const rect = dashboard?.getBoundingClientRect();
+    return {
+      present: Boolean(dashboard),
+      left: rect?.left ?? null,
+      right: rect?.right ?? null,
+      width: rect?.width ?? null,
+      viewportWidth: window.innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    };
+  })()`);
+  await evaluate(`window.resizeTo(${originalWindowSize[0]}, ${originalWindowSize[1]})`);
+  await delay(400);
   results.historyTodayLabel = await evaluate(
     `document.querySelector('.history-day-current strong')?.textContent?.trim() || null`,
   );
@@ -500,8 +578,8 @@ async function main() {
       activeRange: [...document.querySelectorAll('.history-filter-row button')]
         .find((button) => button.getAttribute('aria-pressed') === 'true')?.textContent?.trim() || null,
       hasDayNavigator: Boolean(document.querySelector('.history-day-navigator')),
-      hasMatrix: Boolean(document.querySelector('.matrix-canvas')),
-      hasWeave: Boolean(document.querySelector('.weave-canvas')),
+      hasTrend: Boolean(document.querySelector('.stats-trend-chart')),
+      hasLegacyVisual: Boolean(document.querySelector('.matrix-canvas, .weave-canvas, .beads-canvas, .mosaic')),
     }))()`);
   }
   const singleDayClicked = await evaluate(`(() => {
@@ -518,8 +596,8 @@ async function main() {
       .find((button) => button.getAttribute('aria-pressed') === 'true')?.textContent?.trim() || null,
     label: document.querySelector('.history-day-current strong')?.textContent?.trim() || null,
     nextDisabled: Boolean(document.querySelector('.history-day-navigator > button:last-child')?.disabled),
-    hasWeave: Boolean(document.querySelector('.weave-canvas')),
-    hasMatrix: Boolean(document.querySelector('.matrix-canvas')),
+    hasTimeline: Boolean(document.querySelector('.stats-timeline-detail')),
+    hasTrend: Boolean(document.querySelector('.stats-trend-chart')),
   }))()`);
   await evaluate('document.querySelector(\'button[aria-label="设置"]\')?.click()');
   await waitForAnyText(['外观', '界面与体验']);
@@ -547,9 +625,9 @@ async function main() {
   await evaluate(`document.querySelector(${JSON.stringify(toggleSelector)})?.click()`);
   await delay(280);
   results.toggleInspection.restored = await inspectToggle(toggleSelector);
-  // 界面字体：四种设置必须落到四套真实字形，而不是同一黑体的不同字重。
+  // 界面字体：六种设置必须落到真实不同字形，而不是同一黑体的不同字重。
   results.interfaceFonts = {};
-  for (const profile of ['noto', 'wenkai', 'zhisong', 'marker']) {
+  for (const profile of ['noto', 'wenkai', 'zhisong', 'marker', 'xihei', 'smiley']) {
     await evaluate(`window.focuslink.settings.set({ fontProfile: '${profile}' })`);
     await delay(240);
     results.interfaceFonts[profile] = await evaluate(`(() => ({
@@ -611,6 +689,20 @@ async function main() {
     [results.running.themeFamily === null, 'legacy theme family is no longer written'],
     [results.running.ledgerVisible, 'running ledger opens after UI start'],
     [
+      results.flipCycle.cardCount > 0 &&
+        results.flipCycle.sawFold &&
+        results.flipCycle.sawUnfold &&
+        results.flipCycle.settled &&
+        results.flipCycle.animationNodeCount === 0,
+      'flip clock completes fold, unfold and steady phases without a stuck flap',
+    ],
+    [
+      results.reducedMotionFlip.before !== results.reducedMotionFlip.after &&
+        results.reducedMotionFlip.allSteady &&
+        results.reducedMotionFlip.animationNodeCount === 0,
+      'reduced-motion flip clock advances by static commits',
+    ],
+    [
       results.immersive.present &&
         results.immersive.state === 'running' &&
         results.immersive.rect?.[2] === results.immersive.viewport[0] &&
@@ -644,6 +736,11 @@ async function main() {
     [results.paused.workspaceClass.includes('state-paused'), 'paused workspace state class'],
     [results.paused.primaryText === '继续', 'paused primary action'],
     [Boolean(results.paused.stateMomentText?.startsWith('暂停于')), 'pause time is visible'],
+    [
+      results.finishedFreeze.before.time === results.finishedFreeze.after.time &&
+        results.finishedFreeze.before.canvas === results.finishedFreeze.after.canvas,
+      'finished timer and temporal band remain visually frozen after the zoom settles',
+    ],
     [
       results.idle.primaryBackground.includes(results.idle.accentToken.split(' ').join(', ')),
       'idle primary uses the selected global accent',
@@ -683,12 +780,15 @@ async function main() {
     [results.historyInspection.hasDashboard, 'history renders the rebuilt analytics dashboard'],
     [results.historyInspection.kpiCount === 4, 'history exposes four familiar core KPIs'],
     [
-      results.historyInspection.panelCount === 3,
-      'history has trend, allocation and session panels',
+      results.historyInspection.panelCount === 2 && results.historyInspection.hasPauseCost,
+      'history has rhythm, allocation and pause-cost sections',
     ],
-    [results.historyInspection.hasWeave, 'single-day history renders the 24-hour timeline'],
+    [
+      results.historyInspection.hasTimeline,
+      'single-day history renders the readable activity timeline',
+    ],
     [results.historyInspection.hasTaskRanking, 'history renders a readable task ranking'],
-    [results.historyInspection.hasSessionTable, 'history renders the recent-session table'],
+    [!results.historyInspection.hasSessionTable, 'dashboard does not duplicate the session ledger'],
     [
       !results.historyInspection.hasAbstractSwitcher,
       'history removes the abstract visualization switcher',
@@ -696,6 +796,16 @@ async function main() {
     [
       results.historyInspection.dashboardBorder !== '0px',
       'dashboard has one shared outer boundary',
+    ],
+    [
+      results.historyMinimum.bodyScroll[0] <= results.historyMinimum.viewport[0] &&
+        results.historyMinimum.dashboard.present &&
+        results.historyMinimum.dashboard.left >= 0 &&
+        results.historyMinimum.dashboard.right <=
+          results.historyMinimum.dashboard.viewportWidth + 1 &&
+        results.historyMinimum.dashboard.scrollWidth <=
+          results.historyMinimum.dashboard.viewportWidth,
+      'dashboard stays inside the 980px minimum viewport without horizontal overflow',
     ],
     [!results.historyInspection.hasRing, 'history removes decorative focus composition ring'],
     [results.historyInspection.hasDayNavigator, 'history defaults to single-day navigation'],
@@ -713,28 +823,31 @@ async function main() {
     ],
     [
       results.historyRanges['近 7 天']?.activeRange === '近 7 天' &&
-        results.historyRanges['近 7 天']?.hasMatrix &&
+        results.historyRanges['近 7 天']?.hasTrend &&
+        !results.historyRanges['近 7 天']?.hasLegacyVisual &&
         !results.historyRanges['近 7 天']?.hasDayNavigator,
-      'history switches to the seven-day rhythm matrix',
+      'history switches to the seven-day activity trend',
     ],
     [
       results.historyRanges['半个月']?.activeRange === '半个月' &&
-        results.historyRanges['半个月']?.hasMatrix &&
+        results.historyRanges['半个月']?.hasTrend &&
+        !results.historyRanges['半个月']?.hasLegacyVisual &&
         !results.historyRanges['半个月']?.hasDayNavigator,
-      'history switches to the fifteen-day rhythm matrix',
+      'history switches to the fifteen-day activity trend',
     ],
     [
       results.historyRanges['1 个月']?.activeRange === '1 个月' &&
-        results.historyRanges['1 个月']?.hasMatrix &&
+        results.historyRanges['1 个月']?.hasTrend &&
+        !results.historyRanges['1 个月']?.hasLegacyVisual &&
         !results.historyRanges['1 个月']?.hasDayNavigator,
-      'history switches to the thirty-day rhythm matrix',
+      'history switches to the thirty-day activity trend',
     ],
     [
       results.historyReturnedSingleDay.activeRange === '单日' &&
         results.historyReturnedSingleDay.label === results.historyTodayLabel &&
         results.historyReturnedSingleDay.nextDisabled &&
-        results.historyReturnedSingleDay.hasWeave &&
-        !results.historyReturnedSingleDay.hasMatrix,
+        results.historyReturnedSingleDay.hasTimeline &&
+        !results.historyReturnedSingleDay.hasTrend,
       'history returns from range presets to today single-day data',
     ],
     [results.toggleInspection.before?.role === 'switch', 'settings toggle uses switch semantics'],
@@ -788,8 +901,8 @@ async function main() {
       'timer style setting applies the matching instrument class',
     ],
     [
-      Object.values(results.interfaceFonts).every((font) => font.previewCount === 4),
-      'settings renders all four interface font families',
+      Object.values(results.interfaceFonts).every((font) => font.previewCount === 6),
+      'settings renders all six interface font families',
     ],
     [
       results.interfaceFonts.noto?.rootFontClass === 'font-profile-noto' &&
@@ -799,8 +912,12 @@ async function main() {
         results.interfaceFonts.zhisong?.rootFontClass === 'font-profile-zhisong' &&
         results.interfaceFonts.zhisong?.bodyFontFamily.includes('LXGW Neo ZhiSong') &&
         results.interfaceFonts.marker?.rootFontClass === 'font-profile-marker' &&
-        results.interfaceFonts.marker?.bodyFontFamily.includes('LXGW Marker Gothic'),
-      'interface font setting applies four genuinely different families',
+        results.interfaceFonts.marker?.bodyFontFamily.includes('LXGW Marker Gothic') &&
+        results.interfaceFonts.xihei?.rootFontClass === 'font-profile-xihei' &&
+        results.interfaceFonts.xihei?.bodyFontFamily.includes('LXGW Neo XiHei') &&
+        results.interfaceFonts.smiley?.rootFontClass === 'font-profile-smiley' &&
+        results.interfaceFonts.smiley?.bodyFontFamily.includes('Smiley Sans'),
+      'interface font setting applies six genuinely different families',
     ],
     [
       results.taskLightInspection.bodyScroll[0] === results.taskLightInspection.viewport[0],

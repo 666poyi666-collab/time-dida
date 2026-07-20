@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相
+> 状态：v0.12.x 后端单一真相；当前实现 v0.12.16
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -157,12 +157,53 @@ Provider 的稳定能力应包括：
 - 已核对番茄 ToDo 1.6.2：`cloudSyncFetchTodo` 只读取待办数据，CloudSyncService 只提供 `fetchTodoData` / `uploadRecordData`，没有专注 PCRecord 的独立云端回读或远端删除 API。因此 bridge 返回 `uploadConfirmed` 与 `cloudRecordReadbackSupported=false`；删除结果固定声明 `local-record-only` 与 `remoteDeleteSupported=false`。
 - 未识别学科统一归入“学习”；迁移只处理 FocusLink marker 记录，不碰用户其他数据。
 - 写盘使用同目录临时文件、fsync、原子替换和备份；Windows `EACCES/EBUSY/EPERM` 做有界退避，持续失败保留旧库。
-- 学科更改可请求重新上传；删除只能确认本地 marker 清理。没有远端 API 时不得声称已回读或已清理云端记录，两个同步域互不冒充对方成功。
+- 学科更改可请求重新上传；已有 marker 的单个/批量学科修改若因桥不可用或上传失败未写入外部记录，必须把 segment id 写入 durable queue。队列清空前，即使旧番茄记录仍为 `isSynced=1`，状态也必须显示“待上传”，不能把旧学科的成功与新本地选择拼成“上传已确认”。
+- 删除只能确认本地 marker 清理。没有远端 API 时不得声称已回读或已清理云端记录，两个同步域互不冒充对方成功。
 
-## 8. 小窗与边缘状态
+## 8. FocusLink 跨设备同步
 
-- 只有 `collapsed` 和 `expanded` 两种合法尺寸，数值唯一来自 `shared/miniWindowLayout.ts`。当前为 `184×35` 与 `280×84`，不引入第三尺寸；常量变化必须同步更新前端规范。
-- collapsed renderer 契约仅允许进度/状态、当前时间、底部 2px 真实专注占比进度轨和展开入口；不传达任务详情、三组累计或其他控制。expanded 契约须完整呈现任务名、当前时间、累计专注/暂停/总历时与全部控制，时间与按钮分属独立网格行、结构上不重叠。验收字号为 collapsed 25px、expanded 21px。
+跨设备同步是独立于 dida `sync_queue` 与番茄 To-do durable queue 的第三个同步域。它复制
+FocusLink 自己的专注账本，不代表记录已经写入滴答或番茄 To-do，也不得复用后两者的状态文案。
+
+已结束账本平面以完整会话包为原子单元：`FocusSession + FocusSegment[] + PauseEvent[]`。协议真值
+位于 `shared/sync/deviceProtocol.ts`，固定包含 `protocolVersion`、设备 ID、幂等 `opId`、实体
+revision、服务端单调 change sequence 与不透明 cursor。规则如下：
+
+- 账本平面仍只复制 `finished` / `aborted` 会话；活动快照和控制命令绝不塞进 completed bundle，也不改变现有桌面端已结束会话补传语义。
+- `cloudFocusId`、第三方投递结果、CLI/OAuth 凭据、TomaToDo 路径、窗口/快捷键/小窗设置均不进入会话包。
+- 服务端以 `(account, opId)` 去重；稳定 `opId` 同时包含实体、正文与 `baseRevision`，相同 op 重放返回 `duplicate`，`baseRevision` 过期返回 `conflict`，不使用客户端 `updatedAt` 静默覆盖。
+- Electron 以 SQLite 完成会话为耐久事实源，网络失败后下次重新扫描补传；cursor、每个会话的已确认 revision/fingerprint 与未解决冲突写入同一个原子 `app_meta` 检查点。检查点按“规范化 endpoint + token 的不可逆摘要”分区，切换服务/账号不得复用旧状态；服务明确返回 `invalid_cursor` 时清理当前分区并完整重试一次。
+- 拉回的全新会话在一个 SQLite 事务中插入 session/segments/pauses；不会自动触发 dida 或 TomaToDo 副作用。同一次 cursor catch-up 的所有响应页先在内存按实体折叠到最新 revision，完整收敛后才写 SQLite 与原子检查点；中途断网不会暴露旧 revision。拉取完成后的既有记录或已改动的同 ID 正文写入耐久冲突箱。冲突未解决时界面不得清空错误或宣称完全收敛。
+- 服务端对 cursor 之后同一实体的多次历史 revision 先折叠为最新状态，再按 change sequence、条数与响应字节预算分页；全新设备不得先导入旧 revision 再把同一批历史误判为本地冲突。
+- 当前桌面端不执行远端删除，也不自动覆盖已有会话；删除/编辑冲突需要后续显式清理与合并流程。
+- Electron 访问令牌只经 `safeStorage` 加密落盘，不进入 `AppSettings`、renderer 日志或多端 payload。
+
+`cloud/` 当前只是可运行的测试后端：默认监听 `127.0.0.1`，启动必须显式提供
+`FOCUSLINK_CLOUD_TEST_TOKEN`，执行精确 CORS allowlist、Bearer 鉴权、512 KiB 单会话包上限与请求/响应各 1 MiB 字节预算；请求和响应都按序列化字节切页，可用
+忽略目录中的单进程 JSON 文件持久化。它没有生产账号、PKCE/OIDC、租户数据库、备份、KMS、
+限流、审计或多实例协调，绝不能作为公开互联网生产服务。生产接入前必须补齐 HTTPS 与正式身份、
+设备撤销、refresh token 轮换、服务端数据库/备份/监控和 cursor 压缩/过期恢复。
+
+实时活动会话是独立控制平面，协议真值位于 `shared/sync/liveFocusProtocol.ts`。Web/PWA、Android
+与显式开启实时控制的 Electron 同步同一账号下的唯一活动会话。Electron 由
+`timer/focusTimerController.ts` 统一承接 IPC、托盘、快捷键和窗口快照；实时模式中本地
+`TimerManager` 必须保持 idle，不得生成第二份活动账本。实时规则如下：
+
+- 状态仅为 `idle / running / paused`，合法迁移是 `idle→running`、`running→paused`、`paused→running` 以及活动态经 `finish/abort` 回到 idle。服务端持有 revision 与时间边界，客户端只做显示外推。
+- 每个命令含随机稳定 `commandId`、发起 `deviceId`、目标 `sessionId` 与 `expectedRevision`；相同正文重放返回 duplicate，同 id 不同正文被拒绝，旧 revision 返回 conflict 和最新快照。
+- start 由客户端生成 session id，可携带有界标题与可选任务上下文；同一账号一次只能有一个活动会话。pause/resume/finish/abort 必须命中当前 session，陈旧通知或快捷设置动作不能作用于下一轮。
+- `GET /v1/live` 返回当前快照；`GET /v1/live/wait` 只在 revision 前进或有界超时后返回，HTTP 断开必须释放 waiter；`POST /v1/live/command` 处理幂等命令。三者都复用 Bearer 账号隔离与精确 CORS。
+- 每个响应给出 `serverTime`，并把 active/pause/wall 三时间物化到该时刻。running 后只有 active 与 wall 增长，paused 后只有 pause 与 wall 增长；客户端从该基点逐秒显示，不能用本机时间改写云端事实。
+- finish/abort 在同一次持久化提交中闭合当前 segment/pause、生成通过 completed-bundle 校验的完整 Session/Segment/Pause，并写入现有账本 change log；其他设备随后用原 cursor 协议拉回，不能观察半个会话。
+- 实时快照携带 segment/pause 边界；Electron 以 `serverTime` 计算本机时钟偏移后投影 `TimerSnapshot`。由任一设备结束时，Electron 必须先运行账本拉取并确认完整 bundle 已进入 SQLite，再发出 `finished` 快照触发 dida/TomaToDo 副作用。
+- 实时快照、命令幂等记录与 completed ledger 共用账号级原子 JSON 提交并向后兼容旧测试文件；进程重启后必须保留活动时间边界和命令去重。该 JSON 仍只允许单进程本地测试。
+- dida 和番茄 To-do 始终是桌面副作用。移动命令与实时快照不携带凭据或伪造投递结果；结束会话进入 FocusLink 账本后，只有桌面端真实执行相应队列并得到可验证结果才能显示外部同步成功。
+- Android 前台 Service、通知动作与 Quick Settings Tile 是薄传输层：只保存最后一次已确认快照和至少一次 native command 队列，不自行推进业务计时，不在云端确认前乐观翻转。待处理动作必须含 session/revision 并支持冷启动 drain/ack。Android 12+ 的通知动作必须直接使用 Activity PendingIntent，不得经 Receiver/Service 再拉起 Activity；Tile 的 pending 展示保持 inactive 且可点击打开 App，避免 OEM 缓存 unavailable 后永久无法自愈。
+
+## 9. 小窗与边缘状态
+
+- 只有 `collapsed` 和 `expanded` 两种合法尺寸，数值唯一来自 `shared/miniWindowLayout.ts`。当前为 `184×35` 与 `256×70`，不引入第三尺寸；常量变化必须同步更新前端规范。
+- collapsed renderer 契约仅允许进度/状态、当前时间、底部 2px 当前分钟秒级消逝轨和展开入口；该轨不是专注率。不传达任务详情、三组累计或其他控制。expanded 契约须在 74px 内容盒内完整呈现任务名、当前时间、累计专注/暂停/总历时与全部控制，时间与按钮分属独立网格行、结构上不重叠或换行。验收字号为 collapsed 25px、expanded 至少 21px。
 - Electron 主进程持有真实 bounds、当前显示器 work area、吸附边缘和窗口状态。
 - Windows 通过 `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` 明确区分按住与释放；按住不动时不得用 move 事件静默时间猜测释放。真正结束后才计算最近合法边缘，使用进入 14px / 离开 30px 双阈值；先吸附并保持 expanded 尺寸，renderer 接收 `mini:dock-transition` 显示 320ms 收束反馈，之后才切换 collapsed；过渡中再次 native move 必须取消待折叠任务。程序化 bounds 允许 2px DPI 归一化误差。
 - 展开必须向 work area 内部生长并校正坐标；多显示器、负坐标和不同缩放比均要覆盖。
@@ -170,14 +211,14 @@ Provider 的稳定能力应包括：
 - 手动展开、显式收起、主题/状态变化和重启恢复通过稳定事件广播，不由 renderer 猜测 native resize。
 - 不恢复 freeform resize。旧宽高在设置迁移时归一化到最近合法预设。
 
-## 9. renderer 健康、日志与托盘生命周期
+## 10. renderer 健康、日志与托盘生命周期
 
 - 主窗和小窗都监听 `unresponsive`、`responsive`、`render-process-gone` 和 `did-finish-load`。短暂阻塞先给 5 秒恢复窗口；仍无响应时用 `reloadIgnoringCache()` 重建 renderer。
 - 受控恢复每 60 秒最多 3 次，超限后等到时间窗重置，禁止无界重载循环。计时器、session 和 SQLite 事实留在主进程，renderer 恢复不能终止当前专注。
 - 日志元数据序列化必须保留 `Error.name/message/stack/cause`，支持 bigint 与循环对象降级；不得再把未捕获异常记成无信息的 `{}`，日志失败也不得触发第二次异常。
 - 托盘、快捷键与主 snapshot 广播的运行时初始化必须幂等。窗口 `ready-to-show` 与已加载回退竞态只能创建一个托盘和一份 snapshot 监听；设置更新不重建托盘。退出时解除可解除监听并销毁托盘。
 
-## 10. 数据安全与迁移
+## 11. 数据安全与迁移
 
 - schema 迁移单调、幂等，在事务中执行；禁止无版本地重写用户数据库。
 - 删除 session/segment 使用事务并协调两个外部同步域。外部清理失败时保留足够本地事实供重试。
@@ -185,7 +226,7 @@ Provider 的稳定能力应包括：
 - 回归/自测只使用隔离的 `test-data` 或临时目录，不打开用户真实 Electron/FocusLink 数据。
 - 用户数据导出支持 JSON/CSV/Markdown，但导出不改变同步状态。
 
-## 11. 状态文案契约
+## 12. 状态文案契约
 
 - `已关联 / 未关联`：本地 task id 是否存在。
 - `已同步 / 未同步 / 同步失败`：dida 队列是否得到云端可验证结果。
@@ -193,7 +234,7 @@ Provider 的稳定能力应包括：
 - session 没有默认任务但存在已关联 segment 时，摘要不能显示“未关联”。
 - 禁止“可同步”“应该成功”等无法证明结果的状态。
 
-## 12. 变更规则
+## 13. 变更规则
 
 - 计时语义变化：更新状态机/manager、shared selector、数据库、恢复测试和 45+5+45 场景。
 - 任务能力变化：更新 CLI 优先/OAuth 后备连接策略、IPC、`completedAt` 缓存、分阶段加载、任务页、6 秒撤销与失败回滚测试。

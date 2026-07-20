@@ -387,10 +387,9 @@ function BrandMark({ state }: { state: string }) {
       title="FocusLink"
     >
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path className="brand-mark-track" d="M6.6 12a5.4 5.4 0 0 1 9.62-3.36" />
-        <path className="brand-mark-progress" d="M17.4 12a5.4 5.4 0 0 1-9.62 3.36" />
-        <path className="brand-mark-link" d="M9.3 12h5.4" />
-        <circle className="brand-mark-node" cx="17.65" cy="6.35" r="1.35" />
+        <path className="brand-mark-f" d="M5 20V4h12M5 11h9" />
+        <path className="brand-mark-l" d="M15 9v11h5" />
+        <path className="brand-mark-cross" d="M12 11h3" />
       </svg>
     </div>
   );

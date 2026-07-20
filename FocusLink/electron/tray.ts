@@ -1,15 +1,16 @@
 // 系统托盘 - 显示/隐藏窗口、开始/暂停/继续、结束、专注小窗、设置、退出
 // 托盘图标：使用 build/tray.ico；状态变化时叠加色调（运行/暂停/完成）
-import { Tray, Menu, nativeImage, BrowserWindow, app } from 'electron';
+import { Tray, Menu, nativeImage, nativeTheme, BrowserWindow, app } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { TimerManager } from './timer/manager.js';
+import type { FocusTimerController } from './timer/focusTimerController.js';
 import type { TimerState } from '@shared/types';
 import { logger } from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let tray: Tray | null = null;
+let trayThemeListener: (() => void) | null = null;
 
 export interface TrayCallbacks {
   onShowMini?: () => void;
@@ -19,27 +20,30 @@ export interface TrayCallbacks {
   onResetMini?: () => void;
 }
 
-/** 生成状态托盘 SVG：小尺寸保持单环 + 中心点，颜色随计时状态变化。 */
-function makeStateSvg(state: TimerState): string {
-  const tones: Record<TimerState, { ring: string; arc: string; dot: string }> = {
-    idle: { ring: '#4b514d', arc: '#8b938d', dot: '#4e4eb2' },
-    running: { ring: '#313a35', arc: '#138459', dot: '#4e4eb2' },
-    paused: { ring: '#313a35', arc: '#c24b5b', dot: '#c24b5b' },
-    stopping: { ring: '#313a35', arc: '#4e4eb2', dot: '#9696ca' },
-    finished: { ring: '#313a35', arc: '#23845f', dot: '#138459' },
+/** 生成状态托盘 SVG：F/L 两条时间材料相互穿插，L 使用当前状态色。 */
+function makeStateSvg(state: TimerState, darkBackground: boolean): string {
+  const tones: Record<TimerState, string> = {
+    idle: '#7D8781',
+    running: '#20A975',
+    paused: '#D24339',
+    stopping: '#87918B',
+    finished: '#20A975',
   };
   const tone = tones[state] ?? tones.idle;
+  const mark = darkBackground ? '#F2F3ED' : '#17221E';
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-  <path d="M12 4.5a7.5 7.5 0 1 1 0 15a7.5 7.5 0 0 1 0-15Z" fill="none" stroke="${tone.ring}" stroke-width="2.4" stroke-linecap="round"/>
-  <path d="M12 4.5a7.5 7.5 0 0 1 6.5 11.25" fill="none" stroke="${tone.arc}" stroke-width="2.8" stroke-linecap="round"/>
-  <circle cx="12" cy="12" r="2.3" fill="${tone.dot}"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <path d="M4.5 4.5v23M4.5 4.5h17M4.5 14.5h13" fill="none" stroke="${mark}" stroke-width="5.2" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M19.5 12v15.5h8" fill="none" stroke="${tone}" stroke-width="4.4" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M15.5 14.5h4" stroke="${mark}" stroke-width="5.2" stroke-linecap="square"/>
 </svg>`;
 }
 
 /** 加载托盘图标：优先用状态 SVG，失败时回退到 build/tray.ico */
 function makeIcon(state: TimerState): Electron.NativeImage {
-  const stateIcon = nativeImage.createFromBuffer(Buffer.from(makeStateSvg(state), 'utf-8'));
+  const stateIcon = nativeImage.createFromBuffer(
+    Buffer.from(makeStateSvg(state, nativeTheme.shouldUseDarkColors), 'utf-8'),
+  );
   if (!stateIcon.isEmpty()) return stateIcon;
 
   const iconPath = app.isPackaged
@@ -55,14 +59,16 @@ function makeIcon(state: TimerState): Electron.NativeImage {
       error: err instanceof Error ? err.message : String(err),
     });
   }
-  const fallback = nativeImage.createFromBuffer(Buffer.from(makeStateSvg(state), 'utf-8'));
+  const fallback = nativeImage.createFromBuffer(
+    Buffer.from(makeStateSvg(state, nativeTheme.shouldUseDarkColors), 'utf-8'),
+  );
   fallback.setTemplateImage(true);
   return fallback;
 }
 
 export function createTray(
   window: BrowserWindow,
-  timer: TimerManager,
+  timer: FocusTimerController,
   callbacks: TrayCallbacks = {},
 ): Tray {
   tray = new Tray(makeIcon('idle'));
@@ -94,12 +100,18 @@ export function createTray(
       { label: `状态：${stateLabel}`, enabled: false },
       {
         label: toggleLabel,
-        click: () => timer.toggle(),
+        click: () =>
+          void timer
+            .toggle()
+            .catch((error) => logger.warn('tray', 'toggle failed', { error: String(error) })),
       },
       {
         label: '结束专注',
         enabled: state === 'running' || state === 'paused',
-        click: () => timer.stop(),
+        click: () =>
+          void timer
+            .stop()
+            .catch((error) => logger.warn('tray', 'stop failed', { error: String(error) })),
       },
       { type: 'separator' },
       {
@@ -159,6 +171,8 @@ export function createTray(
 
   rebuild();
   timer.onSnapshot(rebuild);
+  trayThemeListener = rebuild;
+  nativeTheme.on('updated', trayThemeListener);
 
   tray.on('click', () => {
     if (window.isVisible()) {
@@ -182,6 +196,10 @@ function formatMs(ms: number): string {
 }
 
 export function destroyTray(): void {
+  if (trayThemeListener) {
+    nativeTheme.removeListener('updated', trayThemeListener);
+    trayThemeListener = null;
+  }
   if (tray) {
     tray.destroy();
     tray = null;

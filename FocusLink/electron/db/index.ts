@@ -16,6 +16,7 @@ import type {
   SyncStatus,
   TomatodoSubject,
 } from '@shared/types';
+import type { DeviceSyncSessionBundle } from '@shared/sync/deviceProtocol';
 
 let db: Database.Database | null = null;
 
@@ -192,6 +193,62 @@ export function listSessions(limit = 100): FocusSession[] {
     linkedSegmentCount: Number(row.linked_segment_count ?? 0),
     ticktickLinkedSegmentCount: Number(row.ticktick_linked_segment_count ?? 0),
   }));
+}
+
+/** Cross-device replication source. Active sessions never leave their owner device. */
+export function listFinishedSessionsForDeviceSync(): FocusSession[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM focus_sessions
+       WHERE status IN ('finished', 'aborted') AND ended_at IS NOT NULL
+       ORDER BY started_at ASC`,
+    )
+    .all() as SessionRow[];
+  return rows.map(rowToSession);
+}
+
+/**
+ * Atomically imports a completed session bundle received from FocusLink device sync. External
+ * dida/TomaToDo queues are intentionally untouched: third-party side effects remain owned by the
+ * device that created the record.
+ */
+export function insertDeviceSyncBundleIfMissing(bundle: DeviceSyncSessionBundle): boolean {
+  const database = getDb();
+  if (getSession(bundle.session.id)) return false;
+
+  const insert = database.transaction(() => {
+    database
+      .prepare(
+        `INSERT INTO focus_sessions
+          (id, title, status, started_at, ended_at, active_elapsed_ms, pause_elapsed_ms,
+           wall_elapsed_ms, default_task_id, default_task_source, default_task_title, note,
+           created_at, updated_at)
+         VALUES (@id, @title, @status, @startedAt, @endedAt, @activeElapsedMs, @pauseElapsedMs,
+           @wallElapsedMs, @defaultTaskId, @defaultTaskSource, @defaultTaskTitle, @note,
+           @createdAt, @updatedAt)`,
+      )
+      .run(bundle.session);
+
+    const insertSegmentStatement = database.prepare(
+      `INSERT INTO focus_segments
+        (id, session_id, task_id, task_source, title, started_at, ended_at,
+         active_elapsed_ms, note, cloud_focus_id, tomatodo_subject, created_at, updated_at)
+       VALUES (@id, @sessionId, @taskId, @taskSource, @title, @startedAt, @endedAt,
+         @activeElapsedMs, @note, NULL, @tomatodoSubject, @createdAt, @updatedAt)`,
+    );
+    for (const segment of bundle.segments) insertSegmentStatement.run(segment);
+
+    const insertPauseStatement = database.prepare(
+      `INSERT INTO pause_events
+        (id, session_id, segment_id, pause_started_at, pause_ended_at, duration_ms,
+         reason, created_at, updated_at)
+       VALUES (@id, @sessionId, @segmentId, @pauseStartedAt, @pauseEndedAt, @durationMs,
+         @reason, @createdAt, @updatedAt)`,
+    );
+    for (const pause of bundle.pauses) insertPauseStatement.run(pause);
+  });
+  insert();
+  return true;
 }
 
 /** Read-only analytics source; unlike the history list this is range-bounded, not row-limited. */

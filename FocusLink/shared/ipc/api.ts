@@ -165,6 +165,44 @@ export interface RunPendingResult {
   failed: number;
 }
 
+export interface DeviceSyncConfigureInput {
+  enabled: boolean;
+  endpoint: string;
+  autoSync: boolean;
+  liveControlEnabled?: boolean;
+  /** Omit to keep the existing token; null or an empty string clears it. */
+  accessToken?: string | null;
+}
+
+export interface DeviceSyncStatus {
+  enabled: boolean;
+  endpoint: string;
+  autoSync: boolean;
+  liveControlEnabled: boolean;
+  liveConnected: boolean;
+  liveRevision: number | null;
+  liveState: 'idle' | 'running' | 'paused' | 'disconnected';
+  configured: boolean;
+  tokenConfigured: boolean;
+  deviceId: string;
+  cursor: string | null;
+  running: boolean;
+  lastSyncAt: number | null;
+  lastError: string | null;
+  unresolvedConflicts: number;
+}
+
+export interface DeviceSyncRunResult {
+  pushed: number;
+  pulled: number;
+  imported: number;
+  duplicates: number;
+  conflicts: number;
+  rejected: number;
+  cursor: string;
+  unresolvedConflicts: number;
+}
+
 export interface ResyncSegmentResult {
   ok: boolean;
   queued?: boolean;
@@ -380,6 +418,12 @@ export interface FocusLinkAPI {
     retry(id: string): Promise<void>;
     runPending(): Promise<RunPendingResult>;
     resyncSegment(segmentId: string): Promise<ResyncSegmentResult>;
+  };
+  /** FocusLink ledger replication. This is intentionally separate from dida `sync`. */
+  deviceSync: {
+    status(): Promise<DeviceSyncStatus>;
+    configure(input: DeviceSyncConfigureInput): Promise<DeviceSyncStatus>;
+    syncNow(): Promise<DeviceSyncRunResult>;
   };
   tomatodo: {
     syncSegment(segmentId: string): Promise<TomatodoSyncSegmentResult>;

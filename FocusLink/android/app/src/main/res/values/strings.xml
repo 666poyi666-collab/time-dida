@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FocusLink</string>
+    <string name="title_activity_main">FocusLink</string>
+    <string name="package_name">app.focuslink.mobile</string>
+    <string name="custom_url_scheme">app.focuslink.mobile</string>
+    <string name="focus_runtime_channel_name">专注状态</string>
+    <string name="focus_runtime_channel_description">显示当前专注状态和跨设备控制</string>
+    <string name="focus_runtime_running">专注进行中</string>
+    <string name="focus_runtime_paused">专注已暂停</string>
+    <string name="focus_runtime_open_app">打开 FocusLink 刷新状态</string>
+    <string name="focus_runtime_waiting">正在等待云端确认</string>
+    <string name="focus_runtime_pause">暂停</string>
+    <string name="focus_runtime_resume">继续</string>
+    <string name="focus_runtime_finish">结束</string>
+    <string name="focus_runtime_tile_label">FocusLink 专注</string>
+    <string name="focus_runtime_tile_open">打开 FocusLink</string>
+    <string name="focus_runtime_tile_pause">暂停专注</string>
+    <string name="focus_runtime_tile_resume">继续专注</string>
+    <string name="focus_runtime_tile_waiting">等待同步</string>
+</resources>

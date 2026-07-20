@@ -10,14 +10,16 @@ export default [
       "node_modules/",
       "dist/",
       "dist-electron/",
+      "dist-mobile/",
+      "dist-cloud/",
+      "android/",
       "release-v*/",
-      "*.config.*",
-      "eslint.config.js",
+      "eslint.config.*",
       "shared/version.generated.ts",
     ],
   },
   {
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "mobile/**/*.{ts,tsx}"],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
@@ -47,7 +49,7 @@ export default [
     },
   },
   {
-    files: ["electron/**/*.ts"],
+    files: ["electron/**/*.ts", "cloud/**/*.ts", "*.config.ts"],
     languageOptions: {
       parser: tsparser,
       parserOptions: {

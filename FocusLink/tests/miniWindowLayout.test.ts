@@ -19,8 +19,8 @@ import {
 } from '../shared/miniWindowLayout';
 
 describe('mini window layout policy', () => {
-  it('locks the two product-owned sizes: 280x84 expanded, 184x35 collapsed', () => {
-    expect(MINI_WINDOW_EXPANDED_SIZE).toEqual({ width: 280, height: 84 });
+  it('locks the two product-owned sizes: 256x70 expanded, 184x35 collapsed', () => {
+    expect(MINI_WINDOW_EXPANDED_SIZE).toEqual({ width: 256, height: 70 });
     expect(MINI_WINDOW_COLLAPSED_SIZE).toEqual({ width: 184, height: 35 });
     expect(MINI_WINDOW_SIZE_PRESETS).toHaveLength(2);
   });
@@ -80,7 +80,7 @@ describe('mini window layout policy', () => {
 
   it('keeps the expanded window inside the display work area', () => {
     expect(
-      fitMiniWindowInWorkArea({ x: 1660, y: 1010 }, MINI_WINDOW_EXPANDED_SIZE, {
+      fitMiniWindowInWorkArea({ x: 1700, y: 1010 }, MINI_WINDOW_EXPANDED_SIZE, {
         x: 0,
         y: 0,
         width: 1920,

@@ -25,15 +25,70 @@ npm run build
 npm run regression:electron
 ```
 
-使用 `scripts/regression/` 的自测与崩溃恢复流程时，所有 user data 和结果写入项目忽略的 `test-data/` 或系统临时目录。生成的 `dist-selftest/`、`*-result.json` 与测试数据完成后删除，不进入 release。
+使用 `scripts/regression/` 的自测、跨设备三表原子导入与崩溃恢复流程时，所有 user data 和结果写入项目忽略的 `test-data/` 或系统临时目录。生成的 `dist-selftest/`、`*-result.json` 与测试数据完成后删除，不进入 release。
+
+### Web、测试云与 Android
+
+涉及跨设备协议或移动端时额外运行：
+
+```bash
+npm run build:web
+npm run build:cloud
+npm run android:sync
+```
+
+账本协议测试必须覆盖 Bearer 鉴权、精确 CORS、512 KiB bundle/1 MiB 请求与响应字节预算、`opId` 重放及正文回退、
+`baseRevision` 冲突、按连接分区的原子检查点、耐久冲突状态、`invalid_cursor` 恢复、单调 cursor 分页与账号隔离。
+实时协议额外覆盖 start/pause/resume/finish/abort 合法迁移、command id 重放与复用、expected revision 冲突、
+错误 session、单账号唯一活动会话、running/paused 三时间增长、长轮询变化/超时/断连清理、进程重启恢复，
+以及 finish/abort 与 completed ledger 的原子衔接。浏览器在 360×800 / 412×915 和平板横竖屏下验证首次拉取、
+双客户端实时控制、并发冲突、断网本机推算与缓存、重连、错误 token、移除 token 与清除本机缓存；PWA
+离线壳不能依赖已经打开第二次才缓存的 hash 资源，也不得缓存 Bearer 接口响应。
+
+正式交付 Android APK 前，安装与工程要求匹配的 Android SDK 后从 `android/` 运行：
+
+```bash
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+./gradlew :app:connectedDebugAndroidTest
+```
+
+至少覆盖当前 minSdk 24 与 targetSdk 35 设备；minSdk 不得低于按域 Network Security Config 生效的 API 24。
+原生前台 Service 只显示云端已确认快照并转发通知/Tile 动作，不能复制业务计时状态机。必须验证通知权限允许/拒绝、
+暂停/继续/结束、陈旧 revision、WebView 冷启动 drain/ack、进程杀死后安全恢复和结束后移除前台通知；未通过这些门禁
+不得宣称 Android 已支持可靠后台控制。`cloud/` 仍是 loopback-first 测试后端，没有生产身份、数据库、备份与监控时
+不得公开部署或写成正式云服务。
+
+Android 门禁限定 `:app:`，只测试最终可交付 APK；不要让 Gradle 根任务选择器额外构建 Capacitor
+生成库中没有产品测试源码的 instrumentation APK。
+
+网络 ADB 双机验证必须先用 `adb devices -l` 核对两个唯一序列号，安装、日志和反向端口命令均显式传
+`adb -s <serial>`。测试云继续只监听 PC 回环地址；每台设备分别配置
+`adb -s <serial> reverse tcp:8787 tcp:<host-port>`，App 仍连接 `http://127.0.0.1:8787`，不得为了真机
+调试而放宽 Android 明文网络规则或让测试云监听局域网。逐台跑连接测试时设置 `ANDROID_SERIAL` 后执行
+`:app:connectedDebugAndroidTest`，并核对两台设备各自的测试报告与安装版本。
+
+instrumentation 中的 native store 测试必须使用隔离的 SharedPreferences，禁止清空真机正在使用的
+`focus_runtime_native_v1`。Gradle connected 任务可能在收尾卸载目标调试包，因此只能在专用测试设备
+或配置实时链路之前运行；需要保留已配置真机时，分别 `adb install -r` target/test APK、执行
+`am instrument`，最后只卸载 `.test` 包，随后复核目标包、token/缓存和 native command 队列仍在。
+
+`android/app/src/test/java/app/focuslink/mobile/FocusLinkConfigTest.java` 必须校验构建产物的
+`BuildConfig.VERSION_NAME` 与本次 `android/app/build.gradle` 配置一致；该单元测试属于 Android APK
+交付门禁，不得以 TypeScript 门禁已通过代替。
+
+双机实时 smoke 必须在两个序列号上安装同一 APK、授予或显式拒绝通知权限并保持各自 reverse。设备 A 开始后
+设备 B 应在一个长轮询周期内显示同一 session；依次从两台设备执行暂停/继续，确认 revision 单调且三时间守恒；
+制造同 revision 并发动作时只能一个 applied，另一台刷新 conflict 快照。结束后两台都回到 idle、账本各出现且只出现
+一份完整会话，前台通知消失。移除一台 reverse 后应保留缓存并标为离线推算，恢复后收敛；最后检查 logcat 无 crash、
+ANR、ForegroundServiceStartNotAllowedException 或通知通道错误。
 
 ### UI smoke
 
 - 主窗覆盖深浅主题的 idle、running、paused、任务、统计、设置和 TaskPicker。
-- 契约断言覆盖四套真实界面字体、五套计时仪表、canvas 时间之带实时渲染、统计日报的 KPI/单日时间轴/多日趋势/任务排行/最近会话表，以及 Electron 原生全屏沉浸覆盖层和进入过渡。
+- 契约断言覆盖六套真实界面字体、五套计时仪表、7×9 点阵、翻页 `fold/unfold/steady` DOM 闭环、canvas 时间之带实时渲染与 finished 冻结、统计日报的 KPI/双尺度单日时间轴/多日堆叠柱/100% 任务构成带/暂停损耗，以及 Electron 原生全屏沉浸覆盖层和进入过渡。
 - 视觉断言要确认主工作面无大面积 `backdrop-filter`/blur/光晕，文字对比与字号下限符合前端规范，reduced-motion 无持续呼吸或位移。
-- 覆盖默认尺寸、最小尺寸、1280×720、键盘焦点和无横向溢出。
-- 小窗覆盖 expanded/collapsed、running/paused、实时主题/字体切换、透明边界、DPR、多显示器 work area 和四边吸附；Windows 原生拖拽必须由 `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` 区分按住与释放，断言收起态仅有进度/状态、当前时间、2px 进度轨和展开入口，展开态在 `280×84` 内完整显示任务名、三项累计与全部控制且时间与按钮分行，并覆盖 320ms 收束与过渡中拖动取消。
+- 覆盖默认尺寸、980×660 最小尺寸、1280×720、键盘焦点和无横向溢出；多日柱图的每日精确值必须可键盘聚焦。
+- 小窗覆盖 expanded/collapsed、running/paused、实时主题/字体切换、透明边界、DPR、多显示器 work area 和四边吸附；Windows 原生拖拽必须由 `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` 区分按住与释放，断言收起态仅有状态、当前时间、60 格当前分钟秒轨和展开入口，展开态在 `256×70` 外框内完整显示任务名、三项累计与全部控制，时间与按钮分区且按钮不换行；暂停粒子必须跟随消逝边界，并覆盖 320ms 收束与过渡中拖动取消。
 - 小窗尺寸以 BrowserWindow 内容 viewport、填满 viewport 的 shell 和截图像素为三重事实；Chromium 的 `window.outerWidth/outerHeight` 在 Windows runner 可能包含不可见系统边框，只能用于诊断和重复命令前后不变性，不能作为固定内容尺寸的发布断言。
 - 关闭 smoke 后删除临时 user-data 必须允许 Windows 日志尾写入的有界重试；清理错误不得覆盖首个产品/断言错误。
 - 统计 smoke 连续快速展开不同会话、在计时 tick 中滚动/切换页面，确认旧请求不会覆盖新详情，退出页不拦截鼠标。
@@ -47,7 +102,7 @@ npm run regression:electron
 ```bash
 npm run smoke:dida
 npm run smoke:dida:state
-npm run smoke:dida:ui -- ../release-v0115/win-unpacked/FocusLink.exe
+npm run smoke:dida:ui -- ../release-v01214/win-unpacked/FocusLink.exe
 ```
 
 第三条必须指向本次刚构建的 unpacked 可执行文件；脚本不会猜测旧版本资产。
@@ -72,7 +127,7 @@ npm run smoke:dida:ui -- ../release-v0115/win-unpacked/FocusLink.exe
 - 未识别标题落入“学习”；已知学科映射正确。
 - 重复写入 marker 不产生重复记录。
 - `smoke:tomatodo:bridge` 必须无业务写入地验证标准路径按需启动、番茄 ToDo 标题与特征 electronAPI 方法校验，以及已运行普通实例绝不被结束；错误页面必须被拒绝。
-- 修改学科会请求重新上传；删除 smoke 只验证本地 marker 清理与幂等。当前 API 不支持远端记录删除，结果必须明确报告 `remoteDeleteSupported=false`、`remoteCleanupVerified=false`。
+- 修改已有 marker 的学科会请求重新上传；桥不可用或上传失败时必须留下 durable pending，旧 `isSynced=1` 不得掩盖新学科待上传状态。删除 smoke 只验证本地 marker 清理与幂等。当前 API 不支持远端记录删除，结果必须明确报告 `remoteDeleteSupported=false`、`remoteCleanupVerified=false`。
 - smoke 从第一次写入尝试开始就在 `finally` 按唯一 marker 尽力清理，覆盖“写入已发生但响应丢失”；不得破坏用户既有记录。若需要确认云端无临时记录，只能在番茄 ToDo 服务端/其他已绑定端人工核对，不能由本 smoke 宣称。
 
 ## 2. 版本一致性
@@ -83,10 +138,15 @@ npm run smoke:dida:ui -- ../release-v0115/win-unpacked/FocusLink.exe
 - `package-lock.json`
 - `shared/version.ts`
 - `electron-builder.yml` 的输出目录
+- `android/app/build.gradle` 的 `versionName` 与 `versionCode`
+- `android/app/src/test/java/app/focuslink/mobile/FocusLinkConfigTest.java` 的版本断言
 - 根目录 `README.md`
 - 根目录 `CHANGELOG.md`
 - `frontend-design/` 与 `backend-design/` 的适用版本
 - 当前版本 `release-v*/RELEASE_NOTES.md`
+
+Android `versionCode` 必须为正整数，且高于此前所有已发布或测试分发 APK 的值；每次分发都只能单调递增，
+不得因语义版本回退、补发或重建而复用或降低。`versionName` 及其单元测试断言必须与本次版本策略同步更新。
 
 目录规则：`0.11.5 → release-v0115`，`0.2.10 → release-v0210`。发布目录位于源码工作区父级；仓库本地只保留最新三个 release 目录，更老的安装包由 GitHub Releases 长期保存。
 

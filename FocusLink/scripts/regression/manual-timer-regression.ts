@@ -217,6 +217,8 @@ describe('manual-timer-regression: 5/3/4/2/6 场景', () => {
     const cumPause = getCumulativePauseMs(finalSnap, now);
     const wall = getWallElapsedMs(finalSnap);
     const taskTitle = getCurrentTaskTitle(finalSnap);
+    const miniPrimary =
+      finalSnap.state === 'finished' || finalSnap.state === 'stopping' ? cumActive : currentSeg;
 
     // ===== 输出完整验收报告 =====
     console.log('\n');
@@ -262,7 +264,7 @@ describe('manual-timer-regression: 5/3/4/2/6 场景', () => {
     console.log('\n--- MiniWindow 显示值 (展开态核心信息) ---');
     console.log(`  状态: ${finalSnap.state}`);
     console.log(`  当前任务: ${taskTitle ?? '未关联'}`);
-    console.log(`  当前专注: ${formatDuration(currentSeg)}  (${currentSeg}ms)`);
+    console.log(`  主读数 (本轮专注): ${formatDuration(miniPrimary)}  (${miniPrimary}ms)`);
     console.log(`  累计专注: ${formatDuration(cumActive)}  (${cumActive}ms)`);
     console.log(`  当前暂停: ${formatDuration(currentPause)}  (${currentPause}ms)`);
     console.log(`  累计暂停: ${formatDuration(cumPause)}  (${cumPause}ms)`);

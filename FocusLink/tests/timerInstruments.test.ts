@@ -5,9 +5,14 @@ import { formatDurationPadded } from '../src/lib/time';
 import {
   FOCUS_CORE_GRID,
   PIXEL_FONT,
+  PIXEL_FONT_COLS,
+  PIXEL_FONT_ROWS,
+  advanceFlipMachine,
+  createFlipMachine,
   focusCoreLitCount,
   focusCoreOrder,
   pixelCells,
+  updateFlipMachine,
 } from '../shared/timerInstruments';
 
 describe('计时仪表样式解析与旧值迁移', () => {
@@ -34,14 +39,14 @@ describe('计时仪表样式解析与旧值迁移', () => {
 });
 
 describe('像素点阵字库', () => {
-  it('0-9 与冒号都有 5×7 定义，行掩码不越界', () => {
+  it('0-9 与冒号都有 7×9 定义，行掩码不越界', () => {
     for (const ch of ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':']) {
       const rows = PIXEL_FONT[ch];
       expect(rows).toBeDefined();
-      expect(rows.length).toBe(7);
+      expect(rows.length).toBe(PIXEL_FONT_ROWS);
       for (const mask of rows) {
         expect(mask).toBeGreaterThanOrEqual(0);
-        expect(mask).toBeLessThan(1 << 5);
+        expect(mask).toBeLessThan(1 << PIXEL_FONT_COLS);
       }
     }
   });
@@ -52,20 +57,45 @@ describe('像素点阵字库', () => {
     // 0 的四个角应为空（闭环轮廓）
     const zero = new Set(pixelCells('0').map(([x, y]) => `${x},${y}`));
     expect(zero.has('0,0')).toBe(false);
-    expect(zero.has('4,0')).toBe(false);
-    expect(zero.has('0,6')).toBe(false);
-    expect(zero.has('4,6')).toBe(false);
+    expect(zero.has('6,0')).toBe(false);
+    expect(zero.has('0,8')).toBe(false);
+    expect(zero.has('6,8')).toBe(false);
     // 8 的中间行应满格
     const eight = new Set(pixelCells('8').map(([x, y]) => `${x},${y}`));
-    expect(eight.has('1,3')).toBe(true);
     expect(eight.has('2,3')).toBe(true);
     expect(eight.has('3,3')).toBe(true);
+    expect(eight.has('4,3')).toBe(true);
   });
 
   it('冒号只有中间列的上下两点', () => {
     const cells = pixelCells(':');
-    expect(cells.every(([x]) => x === 2)).toBe(true);
-    expect(cells.length).toBe(4);
+    expect(cells.every(([x]) => x === 2 || x === 3)).toBe(true);
+    expect(cells.length).toBe(8);
+  });
+});
+
+describe('翻页机械状态机', () => {
+  it('完整经过折下、翻起、提交三阶段', () => {
+    const fold = updateFlipMachine(createFlipMachine('9'), '0', true);
+    expect(fold).toMatchObject({ shown: '9', from: '9', to: '0', phase: 'fold' });
+    const unfold = advanceFlipMachine(fold);
+    expect(unfold.phase).toBe('unfold');
+    expect(advanceFlipMachine(unfold)).toMatchObject({ shown: '0', phase: 'steady' });
+  });
+
+  it('动画中只保留最新目标，不中途篡改当前 from/to', () => {
+    let machine = updateFlipMachine(createFlipMachine('7'), '8', true);
+    machine = updateFlipMachine(machine, '9', true);
+    machine = updateFlipMachine(machine, '0', true);
+    expect(machine).toMatchObject({ from: '7', to: '8', queued: '0', phase: 'fold' });
+    machine = advanceFlipMachine(machine);
+    machine = advanceFlipMachine(machine);
+    expect(machine).toMatchObject({ shown: '8', from: '8', to: '0', phase: 'fold' });
+  });
+
+  it('finished/idle 归零直接静态提交，不播放翻页', () => {
+    const active = updateFlipMachine(createFlipMachine('5'), '6', true);
+    expect(updateFlipMachine(active, '0', false)).toMatchObject({ shown: '0', phase: 'steady' });
   });
 });
 

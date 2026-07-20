@@ -119,6 +119,12 @@ const api = {
     runPending: () => ipcRenderer.invoke('sync:run-pending'),
     resyncSegment: (segmentId: string) => ipcRenderer.invoke('sync:resync-segment', segmentId),
   },
+  deviceSync: {
+    status: () => ipcRenderer.invoke('device-sync:status'),
+    configure: (input: Parameters<FocusLinkAPI['deviceSync']['configure']>[0]) =>
+      ipcRenderer.invoke('device-sync:configure', input),
+    syncNow: () => ipcRenderer.invoke('device-sync:run'),
+  },
   tomatodo: {
     syncSegment: (segmentId: string) => ipcRenderer.invoke('tomatodo:sync-segment', segmentId),
     syncSession: (sessionId: string) => ipcRenderer.invoke('tomatodo:sync-session', sessionId),

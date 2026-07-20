@@ -1,6 +1,6 @@
 {
   "name": "focuslink",
-  "version": "0.12.13",
+  "version": "0.12.16",
   "description": "FocusLink - 全局快捷键驱动的专注时间记录器 + 滴答清单任务关联器",
   "author": "FocusLink",
   "main": "dist-electron/main.js",
@@ -11,6 +11,16 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:web": "vite --config vite.mobile.config.ts",
+    "build:web": "vite build --config vite.mobile.config.ts",
+    "preview:web": "vite preview --config vite.mobile.config.ts",
+    "dev:cloud": "tsx cloud/server.ts",
+    "build:cloud": "vite build --config vite.cloud.config.ts",
+    "android:sync": "npm run build:web && cap sync android",
+    "android:open": "cap open android",
+    "android:test": "android\\gradlew.bat -p android :app:testDebugUnitTest :app:lintDebug",
+    "android:test:connected": "android\\gradlew.bat -p android :app:connectedDebugAndroidTest",
+    "android:build:debug": "npm run android:sync && android\\gradlew.bat -p android :app:assembleDebug",
     "gen-version": "node scripts/build/gen-version.js",
     "build": "npm run gen-version && tsc --noEmit && vite build",
     "dist": "npm run build && electron-builder",
@@ -19,7 +29,7 @@
     "test:watch": "vitest",
     "manual-test": "vitest run scripts/regression/manual-timer-regression.ts",
     "build:selftest": "node scripts/build/build-selftest.mjs",
-    "regression:electron": "npm run build:selftest && electron dist-selftest/selftest.cjs && electron dist-selftest/task-test.cjs && electron dist-selftest/crash-recovery.cjs start && electron dist-selftest/crash-recovery.cjs recover-running && electron dist-selftest/crash-recovery.cjs recover-paused",
+    "regression:electron": "npm run build:selftest && electron dist-selftest/selftest.cjs && electron dist-selftest/task-test.cjs && electron dist-selftest/device-sync-db.cjs && electron dist-selftest/crash-recovery.cjs start && electron dist-selftest/crash-recovery.cjs recover-running && electron dist-selftest/crash-recovery.cjs recover-paused",
     "build:icons": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build/make-minimal-icons.ps1",
     "smoke:ui": "node scripts/smoke/ui-state-smoke.cjs",
     "smoke:mini": "node scripts/smoke/mini-ui-smoke.cjs",
@@ -31,12 +41,14 @@
     "typecheck": "tsc --noEmit",
     "postinstall": "electron-builder install-app-deps",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{ts,js,mjs,cjs}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{ts,js,mjs,cjs}\"",
-    "lint": "eslint \"src/**/*.{ts,tsx}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"tests/**/*.ts\"",
-    "lint:fix": "eslint --fix \"src/**/*.{ts,tsx}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"tests/**/*.ts\""
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"cloud/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{ts,js,mjs,cjs}\" \"mobile/**/*.{html,js,json,webmanifest,ts,tsx}\" \"*.config.ts\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"cloud/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{ts,js,mjs,cjs}\" \"mobile/**/*.{html,js,json,webmanifest,ts,tsx}\" \"*.config.ts\"",
+    "lint": "eslint \"src/**/*.{ts,tsx}\" \"mobile/**/*.{ts,tsx}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"cloud/**/*.ts\" \"tests/**/*.ts\" \"*.config.ts\"",
+    "lint:fix": "eslint --fix \"src/**/*.{ts,tsx}\" \"mobile/**/*.{ts,tsx}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"cloud/**/*.ts\" \"tests/**/*.ts\" \"*.config.ts\""
   },
   "dependencies": {
+    "@capacitor/android": "7.6.8",
+    "@capacitor/core": "7.6.8",
     "@fontsource-variable/bodoni-moda": "^5.3.0",
     "@fontsource-variable/noto-sans-sc": "^5.3.0",
     "@fontsource-variable/oswald": "^5.2.8",
@@ -49,6 +61,7 @@
     "zustand": "^4.5.4"
   },
   "devDependencies": {
+    "@capacitor/cli": "7.6.8",
     "@electron/rebuild": "^3.6.0",
     "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^7.6.11",
@@ -70,6 +83,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwindcss": "^3.4.6",
+    "tsx": "^4.23.1",
     "typescript": "^5.5.3",
     "vite": "^5.3.4",
     "vite-plugin-electron": "^0.28.6",

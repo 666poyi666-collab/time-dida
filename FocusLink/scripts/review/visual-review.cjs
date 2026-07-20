@@ -1,6 +1,6 @@
 // Visual review driver: launches the locally built app (dist/ + dist-electron/)
 // with CDP, walks every primary surface in both themes and captures screenshots.
-// Usage: node scripts/review/visual-review.cjs [outputDir]
+// Usage: node scripts/review/visual-review.cjs [outputDir] [path-to-packaged-exe]
 // Requires `npm run build` first. Never touches user data (isolated user-data-dir).
 const fs = require('node:fs');
 const os = require('node:os');
@@ -13,16 +13,23 @@ const repoRoot = path.resolve(root, '..');
 const outputDir = path.resolve(
   process.argv[2] || path.join(repoRoot, 'visual-review', 'redesign-0116'),
 );
+const packagedExecutable = process.argv[3] ? path.resolve(process.argv[3]) : null;
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'focuslink-review-'));
 let port = 0;
 
 fs.mkdirSync(outputDir, { recursive: true });
 
 const app = spawn(
-  process.platform === 'win32'
-    ? path.join(root, 'node_modules', 'electron', 'dist', 'electron.exe')
-    : path.join(root, 'node_modules', '.bin', 'electron'),
-  ['.', `--remote-debugging-port=${port}`, `--user-data-dir=${userDataDir}`, '--hidden'],
+  packagedExecutable ||
+    (process.platform === 'win32'
+      ? path.join(root, 'node_modules', 'electron', 'dist', 'electron.exe')
+      : path.join(root, 'node_modules', '.bin', 'electron')),
+  [
+    ...(packagedExecutable ? [] : ['.']),
+    `--remote-debugging-port=${port}`,
+    `--user-data-dir=${userDataDir}`,
+    '--hidden',
+  ],
   { cwd: root, stdio: 'ignore', windowsHide: true },
 );
 
@@ -139,7 +146,13 @@ async function waitForTimerState(session, expected) {
     if (state === expected) return;
     await delay(120);
   }
-  throw new Error(`Timer did not reach ${expected}`);
+  const diagnostics = await session.evaluate(`(() => ({
+    state: document.querySelector('.focus-console')?.dataset.state || null,
+    activeView:
+      document.querySelector('.edge-dock-button.active')?.getAttribute('aria-label') || null,
+    bodyText: document.body.innerText.slice(0, 180),
+  }))()`);
+  throw new Error(`Timer did not reach ${expected}: ${JSON.stringify(diagnostics)}`);
 }
 
 async function captureMainStates(session, theme) {
@@ -158,16 +171,14 @@ async function captureMainStates(session, theme) {
   await delay(300);
 
   await session.evaluate(`(() => {
-    const button = document.querySelector('.timer-controls button');
-    if (button && button.textContent.includes('开始专注')) button.click();
+    document.querySelector('.timer-controls .btn-main-action')?.click();
   })()`);
   await waitForTimerState(session, 'running');
   await delay(1400);
   await session.shot(`${theme}-02-timer-running`);
 
   await session.evaluate(`(() => {
-    const button = document.querySelector('.timer-controls button');
-    if (button && button.textContent.includes('暂停专注')) button.click();
+    document.querySelector('.timer-controls .btn-main-action')?.click();
   })()`);
   await waitForTimerState(session, 'paused');
   await session.shot(`${theme}-03-timer-paused`);
@@ -183,6 +194,13 @@ async function captureMainStates(session, theme) {
   await goView(session, '统计');
   await delay(500);
   await session.shot(`${theme}-06-history`);
+  await session.evaluate(`(() => {
+    const button = [...document.querySelectorAll('.history-filter-row button')]
+      .find((item) => item.textContent?.trim() === '近 7 天');
+    button?.click();
+  })()`);
+  await delay(500);
+  await session.shot(`${theme}-06b-history-7d`);
 
   await goView(session, '设置');
   await session.shot(`${theme}-07-settings`);
@@ -230,7 +248,7 @@ async function main() {
   const mainTarget = await waitForTarget(
     (target) =>
       target.type === 'page' &&
-      /^https?:/.test(String(target.url)) &&
+      /^(https?|file):/.test(String(target.url)) &&
       !String(target.url).includes('mini.html'),
     'main renderer',
   );
@@ -306,7 +324,7 @@ main()
         ? (await listTargets()).find(
             (target) =>
               target.type === 'page' &&
-              /^https?:/.test(String(target.url)) &&
+              /^(https?|file):/.test(String(target.url)) &&
               !String(target.url).includes('mini.html'),
           )
         : null;
