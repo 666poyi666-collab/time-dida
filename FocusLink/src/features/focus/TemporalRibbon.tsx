@@ -10,17 +10,29 @@ import {
   BAND_SCALE_FAR,
   BAND_SCALE_NEAR,
   BAND_ZOOM_MS,
+  PARTICLE_FIELD_PAUSE_DENSITY,
   bandDetailMix,
   bandDisplaySeconds,
   bandEventPhaseMs,
   bandEventSecond,
   bandScaleForState,
   easeInOutQuart,
+  fieldParticleSpec,
   interpolateZoomScale,
   macroTickAlpha,
+  mixRgb,
+  particleAgedColor,
+  particleAshColor,
+  particleCellHash,
+  particleFieldParams,
+  particleFieldStepSec,
+  particleToneColor,
+  particleTraceFade,
   pauseDissolveParticles,
   secondTickAlpha,
+  traceResidueDot,
 } from '@shared/focus/bandMath';
+import type { RgbTuple } from '@shared/focus/bandMath';
 import type { TimerSnapshot, TimerState } from '@shared/types';
 
 type Moment = {
@@ -56,6 +68,15 @@ type ActivePause = {
   materialStart: number;
   end: number;
   elapsedMs: number;
+};
+
+type MomentKind = 'focus' | 'pause';
+
+type ParticlePalette = {
+  base: RgbTuple;
+  deep: RgbTuple;
+  soft: RgbTuple;
+  ash: RgbTuple;
 };
 
 function useReducedMotion(): boolean {
@@ -366,6 +387,29 @@ function renderBand(
   const fontSmallNumber = `9px ${raw('--font-number') || 'monospace'}`;
   const fontUi = `600 10px ${raw('--font-ui') || 'sans-serif'}`;
 
+  // 粒子场调色板：专注/暂停各三档色 + 褪向主题灰的灰烬色，全部从 CSS 变量派生。
+  const tuple = (value: string): RgbTuple => {
+    const [r = 0, g = 0, b = 0] = value.split(',').map((part) => Number(part.trim()));
+    return [r, g, b];
+  };
+  const mutedTuple = tuple(colors.muted);
+  const focusBase = tuple(colors.focus);
+  const pauseBase = tuple(colors.pause);
+  const particlePalettes: Record<MomentKind, ParticlePalette> = {
+    focus: {
+      base: focusBase,
+      deep: tuple(colors.focusDeep),
+      soft: tuple(colors.focusSoft),
+      ash: particleAshColor(focusBase, mutedTuple),
+    },
+    pause: {
+      base: pauseBase,
+      deep: mixRgb(pauseBase, tuple(colors.ink), 0.3),
+      soft: tuple(colors.pauseSoft),
+      ash: particleAshColor(pauseBase, mutedTuple),
+    },
+  };
+
   let zoomEnergy = 0;
   if (engine.zoom) {
     const progress = Math.min(1, (performance.now() - engine.zoom.start) / engine.zoom.duration);
@@ -441,30 +485,39 @@ function renderBand(
       continue;
     }
 
-    if (moment.type === 'focus') {
-      drawFocusMaterial(ctx, {
-        startX,
-        endX,
-        fieldTop,
-        fieldBottom,
-        scale,
-        visibleStart,
-        visibleEnd,
-        toX,
-        colors,
-      });
-    } else {
+    const kind: MomentKind = moment.type;
+    const tint = kind === 'pause' ? colors.pause : colors.focus;
+    drawMomentTrace(ctx, {
+      startX,
+      endX,
+      fieldTop,
+      fieldBottom,
+      pointerX,
+      scrollPx: displaySeconds * scale,
+      viewportWidth: width,
+      scale,
+      tint,
+    });
+    drawMomentParticleField(ctx, {
+      startSec: moment.startedAt / 1000,
+      endSec: endMs / 1000,
+      displaySeconds,
+      visibleStart,
+      visibleEnd,
+      pointerX,
+      viewportWidth: width,
+      scale,
+      fieldTop,
+      fieldBottom,
+      palette: particlePalettes[kind],
+      densityScale: kind === 'pause' ? PARTICLE_FIELD_PAUSE_DENSITY : 1,
+      timeSec: displaySeconds,
+      reducedMotion: input.reducedMotion,
+    });
+    if (kind === 'pause') {
       const elapsedMs = currentPause
         ? Math.max(0, input.nowMs - (input.pauseStartedAt ?? moment.startedAt))
         : 0;
-      drawPauseMaterial(ctx, {
-        startX,
-        endX,
-        fieldTop,
-        fieldBottom,
-        current: currentPause,
-        colors,
-      });
       if (currentPause) {
         activePause = {
           materialStart: Math.max(0, startX),
@@ -481,6 +534,18 @@ function renderBand(
   futureShade.addColorStop(1, `rgba(${colors.ink},0.085)`);
   ctx.fillStyle = futureShade;
   ctx.fillRect(pointerX, fieldTop, width - pointerX, actualFieldHeight);
+
+  // 暂停粒子绘制在材料层之上、刻度层之下，避免遮挡可读的时间数字。
+  if (input.state === 'paused' && activePause) {
+    drawPauseDissolve(ctx, {
+      ...activePause,
+      fieldTop,
+      fieldBottom,
+      pulseAge,
+      reducedMotion: input.reducedMotion,
+      colors,
+    });
+  }
 
   drawIntegratedTicks(ctx, {
     width,
@@ -517,15 +582,6 @@ function renderBand(
       fieldTop,
       fieldBottom,
       eventSecond: wholeSecond,
-      pulseAge,
-      reducedMotion: input.reducedMotion,
-      colors,
-    });
-  } else if (input.state === 'paused' && activePause) {
-    drawPauseDissolve(ctx, {
-      ...activePause,
-      fieldTop,
-      fieldBottom,
       pulseAge,
       reducedMotion: input.reducedMotion,
       colors,
@@ -629,92 +685,174 @@ function drawMaterialBed(
   }
 }
 
-function drawFocusMaterial(
+/**
+ * 痕迹层：粒子消散后留下的渍痕。画在材料床之上、粒子场之下，
+ * 全部锚定世界坐标并随时间轴平移/缩放，强度随距“现在”渐淡。
+ */
+function drawMomentTrace(
   ctx: CanvasRenderingContext2D,
   input: {
     startX: number;
     endX: number;
     fieldTop: number;
     fieldBottom: number;
+    pointerX: number;
+    scrollPx: number;
+    viewportWidth: number;
     scale: number;
-    visibleStart: number;
-    visibleEnd: number;
-    toX: (ms: number) => number;
-    colors: BandColors;
+    tint: string;
   },
 ): void {
   const width = input.endX - input.startX;
   if (width <= 0) return;
   const fieldHeight = input.fieldBottom - input.fieldTop;
-  const material = ctx.createLinearGradient(0, input.fieldTop, 0, input.fieldBottom);
-  material.addColorStop(0, `rgba(${input.colors.focusDeep},0.98)`);
-  material.addColorStop(0.055, `rgba(${input.colors.focus},0.96)`);
-  material.addColorStop(0.54, `rgba(${input.colors.focus},0.83)`);
-  material.addColorStop(0.94, `rgba(${input.colors.focusDeep},0.9)`);
-  material.addColorStop(1, `rgba(${input.colors.ink},0.18)`);
-  ctx.fillStyle = material;
-  ctx.fillRect(input.startX, input.fieldTop, width, fieldHeight);
+  const fadeAt = (x: number) =>
+    particleTraceFade(input.pointerX - x, input.viewportWidth, input.scale);
 
-  ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  ctx.fillRect(input.startX, input.fieldTop + 1.5, width, 1);
-  ctx.fillStyle = `rgba(${input.colors.focusDeep},0.54)`;
-  ctx.fillRect(input.startX, input.fieldBottom - 2, width, 1);
-
-  // 近景每一秒都是时间材料上的真实切槽，而不是材料下方另一条进度。
-  if (input.scale >= 3.2) {
-    const first = Math.max(Math.floor(input.visibleStart), Math.floor(input.visibleStart));
-    const last = Math.ceil(input.visibleEnd);
-    ctx.fillStyle = `rgba(${input.colors.ink},0.11)`;
-    for (let second = first; second <= last; second += 1) {
-      const x = input.toX(second * 1000);
-      if (x >= input.startX && x <= input.endX) {
-        ctx.fillRect(x, input.fieldTop + 1, 0.7, fieldHeight - 2);
-      }
-    }
-  }
-}
-
-function drawPauseMaterial(
-  ctx: CanvasRenderingContext2D,
-  input: {
-    startX: number;
-    endX: number;
-    fieldTop: number;
-    fieldBottom: number;
-    current: boolean;
-    colors: BandColors;
-  },
-): void {
-  const width = input.endX - input.startX;
-  if (width <= 0) return;
-  const fieldHeight = input.fieldBottom - input.fieldTop;
-
-  // 暂停是已经失去的时间，因此主体必须是空的。这里只留下低位、断续的余烬记录，
-  // 用来说明这段空白确实发生过，而不是重新铺一层“暂停材料”。
+  // 渐变底色：旧端（左）最淡，越接近“现在”越明显。
   const wash = ctx.createLinearGradient(input.startX, 0, input.endX, 0);
-  wash.addColorStop(0, `rgba(${input.colors.pause},0)`);
-  wash.addColorStop(0.72, `rgba(${input.colors.pause},${input.current ? 0.018 : 0.012})`);
-  wash.addColorStop(1, `rgba(${input.colors.pause},${input.current ? 0.045 : 0.025})`);
+  wash.addColorStop(0, `rgba(${input.tint},${0.035 * fadeAt(input.startX)})`);
+  wash.addColorStop(0.7, `rgba(${input.tint},${0.06 * fadeAt(input.startX + width * 0.7)})`);
+  wash.addColorStop(1, `rgba(${input.tint},${0.1 * fadeAt(input.endX)})`);
   ctx.fillStyle = wash;
   ctx.fillRect(input.startX, input.fieldTop, width, fieldHeight);
 
-  const baselineY = input.fieldBottom - 2;
-  const ember = ctx.createLinearGradient(input.startX, 0, input.endX, 0);
-  ember.addColorStop(0, `rgba(${input.colors.pause},0.05)`);
-  ember.addColorStop(0.62, `rgba(${input.colors.pause},0.14)`);
-  ember.addColorStop(1, `rgba(${input.colors.pause},${input.current ? 0.38 : 0.2})`);
-  ctx.fillStyle = ember;
-  ctx.fillRect(input.startX, baselineY, width, 1);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(input.startX, input.fieldTop, width, fieldHeight);
+  ctx.clip();
 
-  // 稀疏残尘不组成纹理，只在基线附近留下不规则的消逝痕迹。
-  const speckCount = Math.min(22, Math.max(2, Math.floor(width / 19)));
-  for (let index = 0; index < speckCount; index += 1) {
-    const seed = input.startX * 0.071 + index * 17.31;
-    const x = input.startX + hash01(seed) * width;
-    const y = baselineY - hash01(seed + 8.2) * Math.min(6, fieldHeight * 0.08);
-    const alpha = 0.07 + hash01(seed + 14.9) * (input.current ? 0.14 : 0.08);
-    ctx.fillStyle = `rgba(${input.colors.pause},${alpha})`;
-    ctx.fillRect(x, y, 0.7 + hash01(seed + 21.7) * 1.2, 0.7);
+  // 幽灵斜纹：45°，锚定世界坐标（scrollPx 变化时斜纹随时间轴平移）。
+  const hatchPhase = positiveMod(input.pointerX - input.scrollPx, 14);
+  ctx.lineWidth = 2;
+  const hatchStart =
+    Math.floor((input.startX - input.fieldBottom - hatchPhase) / 14) * 14 + hatchPhase;
+  for (let k = hatchStart; k < input.endX + input.fieldBottom; k += 14) {
+    const midX = k - (input.fieldTop + input.fieldBottom) / 2;
+    const alpha = 0.05 * fadeAt(midX);
+    if (alpha <= 0.004) continue;
+    ctx.strokeStyle = `rgba(${input.tint},${alpha})`;
+    ctx.beginPath();
+    ctx.moveTo(k - input.fieldBottom, input.fieldBottom);
+    ctx.lineTo(k - input.fieldTop, input.fieldTop);
+    ctx.stroke();
+  }
+
+  // 确定性残点：7px 世界网格，hash 决定 14% 出现率与透明度。
+  const dotPhase = positiveMod(input.pointerX - input.scrollPx, 7);
+  const dotStart = input.startX - positiveMod(input.startX - dotPhase, 7);
+  for (let x = dotStart; x < input.endX; x += 7) {
+    const cellX = Math.round((x - dotPhase) / 7);
+    const fade = fadeAt(x);
+    if (fade <= 0.05) continue;
+    for (let y = input.fieldTop; y < input.fieldBottom; y += 7) {
+      const cellY = Math.round((y - input.fieldTop) / 7);
+      const dot = traceResidueDot(cellX, cellY);
+      if (!dot.present) continue;
+      ctx.fillStyle = `rgba(${input.tint},${dot.alpha * fade})`;
+      ctx.fillRect(x + dot.offsetX, y + dot.offsetY, 1.3, 1.3);
+    }
+  }
+
+  // 幽灵轮廓线：时间带上下边留下的印，透明度沿世界方向渐淡。
+  const outline = ctx.createLinearGradient(input.startX, 0, input.endX, 0);
+  outline.addColorStop(0, `rgba(${input.tint},${0.09 * fadeAt(input.startX)})`);
+  outline.addColorStop(1, `rgba(${input.tint},${0.09 * fadeAt(input.endX)})`);
+  ctx.strokeStyle = outline;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(input.startX, input.fieldTop + 0.5);
+  ctx.lineTo(input.endX, input.fieldTop + 0.5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(input.startX, input.fieldBottom - 0.5);
+  ctx.lineTo(input.endX, input.fieldBottom - 0.5);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * 粒子场：整条过去的时间带都是锚定世界坐标的确定性粒子。
+ * 紧贴“现在”几乎实心，随距离拉远密度/透明度衰减、垂直散开并轻微上浮，
+ * 逐粒子按 deathK 稀疏死亡，颜色随年龄褪向灰烬色。
+ * 运动相位来自 displaySeconds（与时间带相同的冻结时钟），非活动态像素级静止。
+ */
+function drawMomentParticleField(
+  ctx: CanvasRenderingContext2D,
+  input: {
+    startSec: number;
+    endSec: number;
+    displaySeconds: number;
+    visibleStart: number;
+    visibleEnd: number;
+    pointerX: number;
+    viewportWidth: number;
+    scale: number;
+    fieldTop: number;
+    fieldBottom: number;
+    palette: ParticlePalette;
+    densityScale: number;
+    timeSec: number;
+    reducedMotion: boolean;
+  },
+): void {
+  const stepSec = particleFieldStepSec(input.scale);
+  const cellPx = stepSec * input.scale;
+  if (cellPx <= 0.5) return;
+  // 粒子在指针前约 1 格停住，保持“现在”标线 crisp。
+  const worldMin = Math.max(input.startSec, input.visibleStart);
+  const worldMax = Math.min(input.endSec, input.visibleEnd, input.displaySeconds - stepSec);
+  if (worldMax <= worldMin) return;
+
+  const fieldHeight = input.fieldBottom - input.fieldTop;
+  const rows = Math.max(1, Math.floor(fieldHeight / cellPx));
+  const t = input.timeSec;
+  const still = input.reducedMotion;
+
+  for (let ix = Math.floor(worldMin / stepSec); ix * stepSec < worldMax; ix += 1) {
+    const columnX = (ix * stepSec - input.displaySeconds) * input.scale + input.pointerX;
+    if (columnX < -40 || columnX > input.viewportWidth + 40) continue;
+    const params = particleFieldParams(
+      input.pointerX - columnX,
+      input.viewportWidth,
+      input.scale,
+    );
+    const spawnProb = params.spawnProb * input.densityScale;
+
+    for (let iy = 0; iy < rows; iy += 1) {
+      if (particleCellHash(ix, iy) > spawnProb) continue;
+      const spec = fieldParticleSpec(ix, iy);
+      if (params.s > spec.deathK) continue;
+
+      const worldSec = (ix + spec.offsetX) * stepSec;
+      if (worldSec < worldMin || worldSec >= worldMax) continue;
+      const screenX = (worldSec - input.displaySeconds) * input.scale + input.pointerX;
+      if (screenX < -40 || screenX > input.viewportWidth + 40) continue;
+
+      const baseY = input.fieldTop + (iy + spec.offsetY) * cellPx;
+      const spread =
+        spec.dir * params.scatter * (still ? 0.55 : 0.55 + 0.45 * Math.sin(t * 0.35 + spec.phase));
+      const wobble = still ? 0 : Math.sin(t * 0.9 + spec.phase * 1.7) * 1.4;
+      const y = baseY + spread + wobble - params.rise * spec.riseK;
+      const flicker = still ? 1 : 0.78 + 0.22 * Math.sin(t * 2 + spec.phase * 3);
+      const alpha = params.alpha * flicker;
+      if (alpha <= 0.02) continue;
+
+      const size = Math.max(1.2, cellPx * spec.sizeK) * (1 - params.s * 0.35);
+      const rotation = spec.phase + (still ? 0 : Math.sin(t * 0.5 + spec.phase) * 0.3);
+      const color = particleAgedColor(
+        particleToneColor(spec.tone, input.palette.base, input.palette.deep, input.palette.soft),
+        input.palette.ash,
+        params.s,
+      );
+
+      ctx.save();
+      ctx.translate(screenX, y);
+      ctx.rotate(rotation);
+      ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
+      ctx.fillRect(-size / 2, -size / 2, size, size);
+      ctx.restore();
+    }
   }
 }
 
@@ -923,48 +1061,59 @@ function drawDissolveParticleField(
     if (particle.alpha <= 0.01) continue;
     const originX = input.edgeX - particle.originOffsetX;
     const originY = input.fieldTop + particle.originRatioY * fieldHeight;
+    const x = originX + particle.travelX * motionScale;
+    const y = originY + particle.travelY * motionScale;
+
     ctx.save();
-    ctx.translate(
-      originX + particle.travelX * motionScale,
-      originY + particle.travelY * motionScale,
-    );
+    ctx.translate(x, y);
     ctx.rotate(particle.rotation);
+
     const alpha = particle.alpha;
-    ctx.fillStyle = `rgba(${input.colors.pause},${alpha})`;
-    ctx.strokeStyle = `rgba(${input.colors.pause},${alpha})`;
-    ctx.shadowColor = `rgba(${input.colors.pause},${Math.min(0.9, alpha * 0.9)})`;
-    ctx.shadowBlur = particle.kind === 'spark' ? 7 : particle.kind === 'dust' ? 2.5 : 1;
     const size = particle.size * sizeScale;
-    if (particle.progress < 0.055) {
-      // 尚未剥离的采样点共同组成完整时间切片；随后才分化成碎片、粉尘与火花。
-      ctx.shadowBlur = 0;
-      ctx.fillRect(-size * 0.5, -size * 0.5, size, size);
-    } else if (particle.kind === 'shard') {
-      ctx.lineWidth = Math.max(0.6, size * 0.18);
-      ctx.strokeStyle = `rgba(${input.colors.ink},${alpha * 0.38})`;
+    const hot = particle.temperature;
+
+    // 颜色随温度从白热余烬过渡到暗红灰烬。
+    const r = Math.min(255, 210 + hot * 45);
+    const g = Math.min(255, 60 + hot * 120);
+    const b = Math.min(255, 40 + hot * 60);
+    const fill = `rgba(${r},${g},${b},${alpha})`;
+    const glow = `rgba(${r},${g},${b},${Math.min(0.85, alpha * 0.8)})`;
+
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = particle.kind === 'spark' ? 6 : particle.kind === 'dust' ? 2 : 0.8;
+
+    if (particle.kind === 'shard') {
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = `rgba(${input.colors.ink},${alpha * 0.35})`;
+      ctx.lineWidth = Math.max(0.5, size * 0.16);
       ctx.beginPath();
-      ctx.moveTo(-size * 0.72, -size * 0.32);
-      ctx.lineTo(size * 0.66, -size * 0.58);
-      ctx.lineTo(size * 0.48, size * 0.72);
-      ctx.lineTo(-size * 0.42, size * 0.48);
+      ctx.moveTo(-size * 0.7, -size * 0.28);
+      ctx.lineTo(size * 0.6, -size * 0.55);
+      ctx.lineTo(size * 0.45, size * 0.7);
+      ctx.lineTo(-size * 0.4, size * 0.42);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
     } else if (particle.kind === 'spark') {
       ctx.globalCompositeOperation = 'lighter';
-      ctx.lineWidth = Math.max(0.55, size * 0.5);
+      ctx.strokeStyle = `rgba(255,${180 + hot * 55},${120 + hot * 80},${alpha})`;
+      ctx.lineWidth = Math.max(0.5, size * 0.42);
+      ctx.lineCap = 'round';
+      // 火花短促，不拉成长线。
+      const sparkLen = size * (1.2 + hot * 0.8);
       ctx.beginPath();
-      ctx.moveTo(-size * 3.2, 0);
-      ctx.lineTo(size * 2.4, 0);
+      ctx.moveTo(-sparkLen * 0.5, 0);
+      ctx.lineTo(sparkLen * 0.5, 0);
       ctx.stroke();
     } else {
+      ctx.fillStyle = fill;
       ctx.beginPath();
-      ctx.arc(0, 0, size * 0.58, 0, Math.PI * 2);
+      ctx.arc(0, 0, size * 0.55, 0, Math.PI * 2);
       ctx.fill();
-      if (size > 1.15) {
-        ctx.fillStyle = `rgba(255,255,255,${alpha * 0.34})`;
+      if (size > 1.1 && hot > 0.35) {
+        ctx.fillStyle = `rgba(255,255,255,${alpha * hot * 0.4})`;
         ctx.beginPath();
-        ctx.arc(-size * 0.12, -size * 0.12, size * 0.18, 0, Math.PI * 2);
+        ctx.arc(-size * 0.1, -size * 0.1, size * 0.16, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -983,28 +1132,62 @@ function drawPauseDissolve(
   },
 ): void {
   const fieldHeight = input.fieldBottom - input.fieldTop;
-  const sourceWidth = Math.min(18, Math.max(12, fieldHeight * 0.2));
-  const pulse = input.reducedMotion ? 1 : input.pulseAge / BAND_PAUSE_MOTION_MS;
+  const sourceWidth = Math.min(42, Math.max(24, fieldHeight * 0.42));
+  const fuseY = input.fieldTop + fieldHeight * 0.68;
+  const visibleTrailStart = Math.min(input.materialStart, input.end - sourceWidth * 2.4);
 
-  // 局部碎裂锋线：短、参差、不闭合。它取代旧版的扩散椭圆和整面光晕。
-  ctx.save();
+  // 暗芯引线：已经过的路径是暗红灰烬，越接近“现在”越热。
+  ctx.strokeStyle = `rgba(${input.colors.ink},0.22)`;
+  ctx.lineWidth = 3.2;
   ctx.lineCap = 'round';
-  for (let index = 0; index < 9; index += 1) {
-    const seed = Math.floor(input.elapsedMs / 1000) * 13.7 + index * 19.3;
-    const y = input.fieldTop + 3 + hash01(seed) * Math.max(1, fieldHeight - 6);
-    const retreat = 0.8 + hash01(seed + 4.1) * 5.5;
-    const length = 1.4 + hash01(seed + 8.6) * 5;
-    const alpha = (0.24 + hash01(seed + 11.2) * 0.48) * (0.78 + (1 - pulse) * 0.22);
-    ctx.strokeStyle = `rgba(${input.colors.pause},${alpha})`;
-    ctx.lineWidth = 0.65 + hash01(seed + 15.7) * 1.15;
-    ctx.beginPath();
-    ctx.moveTo(input.end - retreat, y);
-    ctx.lineTo(input.end + length, y + (hash01(seed + 17.9) - 0.5) * 3.5);
-    ctx.stroke();
-  }
-  ctx.restore();
+  ctx.beginPath();
+  ctx.moveTo(visibleTrailStart, fuseY);
+  ctx.lineTo(input.end, fuseY);
+  ctx.stroke();
 
-  const particles = pauseDissolveParticles(input.elapsedMs, sourceWidth, input.reducedMotion);
+  const char = ctx.createLinearGradient(visibleTrailStart, 0, input.end, 0);
+  char.addColorStop(0, `rgba(${input.colors.pause},0.12)`);
+  char.addColorStop(0.55, `rgba(${input.colors.pause},0.28)`);
+  char.addColorStop(0.85, `rgba(${input.colors.pause},0.58)`);
+  char.addColorStop(1, `rgba(${input.colors.pause},0.98)`);
+  ctx.strokeStyle = char;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(visibleTrailStart, fuseY);
+  ctx.lineTo(input.end, fuseY);
+  ctx.stroke();
+
+  // 固定燃烧头：紧贴引线的小核心 + 集中热边，不形成扩散圆环或竖直色墙。
+  const headGlow = ctx.createRadialGradient(input.end, fuseY, 0, input.end, fuseY, 7);
+  headGlow.addColorStop(0, 'rgba(255,255,255,0.9)');
+  headGlow.addColorStop(0.22, `rgba(${input.colors.pause},0.52)`);
+  headGlow.addColorStop(0.55, `rgba(${input.colors.pause},0.14)`);
+  headGlow.addColorStop(1, `rgba(${input.colors.pause},0)`);
+  ctx.fillStyle = headGlow;
+  ctx.fillRect(input.end - 7, fuseY - 7, 14, 14);
+
+  ctx.fillStyle = `rgba(255,255,255,0.95)`;
+  ctx.beginPath();
+  ctx.arc(input.end, fuseY, 1.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = `rgba(${input.colors.pause},0.98)`;
+  ctx.beginPath();
+  ctx.arc(input.end, fuseY, 2.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (input.reducedMotion) {
+    // reduced-motion：保留静态灰烬语义，不播放持续粒子。
+    ctx.fillStyle = `rgba(${input.colors.pause},0.18)`;
+    for (let index = 0; index < 12; index += 1) {
+      const seed = input.elapsedMs * 0.001 + index * 17.7;
+      const x = input.end - hash01(seed) * sourceWidth;
+      const y = fuseY - 4 + hash01(seed + 8.4) * 8;
+      ctx.fillRect(x, y, 1 + hash01(seed + 3.1), 1 + hash01(seed + 12.5));
+    }
+    return;
+  }
+
+  const particles = pauseDissolveParticles(input.elapsedMs, sourceWidth, false, 1);
   drawDissolveParticleField(ctx, {
     particles,
     edgeX: input.end,
@@ -1012,16 +1195,6 @@ function drawPauseDissolve(
     fieldBottom: input.fieldBottom,
     colors: input.colors,
   });
-
-  // 前沿只是一条被不断撕开的警戒边，不再像完整进度条或呼吸灯。
-  const phase = input.reducedMotion ? 1 : Math.min(1, pulse);
-  const edgeAlpha = 0.38 + (1 - phase) * 0.28;
-  const edge = ctx.createLinearGradient(input.end - 5, 0, input.end + 1, 0);
-  edge.addColorStop(0, `rgba(${input.colors.pause},0)`);
-  edge.addColorStop(0.72, `rgba(${input.colors.pause},${edgeAlpha * 0.55})`);
-  edge.addColorStop(1, `rgba(${input.colors.pause},${edgeAlpha})`);
-  ctx.fillStyle = edge;
-  ctx.fillRect(input.end - 5, input.fieldTop, 6, fieldHeight);
 }
 
 function drawNowPointer(
