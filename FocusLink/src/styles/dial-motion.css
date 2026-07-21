@@ -1,0 +1,212 @@
+/**
+ * dial-motion.css — 计时表盘丝滑化（分工：计时表盘 / TimerDial + FlipDigits）
+ *
+ * 覆盖五套表盘的新增动效，不改动 linear-workbench.css 的任何既有规则；
+ * 需要覆盖既有动画的地方一律用更高优先级的选择器 + 新 keyframes 名。
+ *
+ * 约束：
+ *  - 缓动/时长 token 复用 motion.css（--ease-out-expo / --ease-standard / --dur-base），
+ *    均带字面量兜底，避免加载顺序问题；
+ *  - 颜色一律取自主题 CSS 变量或 currentColor（state 色由 .timer-dial.state-* 给出），
+ *    不硬编码色值；光效层透明度 ≤ 0.18；
+ *  - 每个动效在 prefers-reduced-motion 下降级为静态或仅透明度过渡
+ *   （temporal-foundation.css 的全局 0.001ms 规则之外，这里再做显式语义降级）。
+ */
+
+/* ---------- 通用：状态色切换柔化（ink ↔ success ↔ pause，240ms） ---------- */
+.timer-dial {
+  transition: color var(--dur-base, 240ms) var(--ease-standard, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+/* ---------- standard：数字变化 240ms 垂直滑动 + 淡入 ----------
+ * 覆盖 temporal-foundation.css 的 digit-settle（180ms 微缩放），
+ * 仅在表盘语境生效；FlipDigits 其余调用方保持原样。 */
+@keyframes dial-digit-slide {
+  from {
+    opacity: 0;
+    transform: translateY(0.16em);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.timer-dial .motion-digit-flip[data-changed='true'] {
+  animation: dial-digit-slide var(--dur-base, 240ms) var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/* ---------- standard：ELAPSED / LIVE / HOLD 标记随状态切换淡入换位 ----------
+ * TSX 侧对两个标记按 state 置 key，状态切换即重挂载重播一次（240ms）。 */
+@keyframes dial-marker-in {
+  from {
+    opacity: 0;
+    transform: translateY(35%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes dial-label-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.dial-standard .instrument-chrome-state {
+  animation: dial-marker-in var(--dur-base, 240ms) var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.dial-standard .instrument-chrome-label {
+  animation: dial-label-in var(--dur-base, 240ms) var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/* ---------- flip：翻页缓动优化为 expo-out ----------
+ * 保留 fold/unfold 机制与 flip-fold/flip-unfold 原规则不动，
+ * 用新 keyframes + 更高优先级选择器接管动画；总行程 160+180ms 与原版相当。 */
+@keyframes dial-flip-fold {
+  from {
+    transform: rotateX(0deg);
+    filter: brightness(1);
+  }
+  to {
+    transform: rotateX(-90deg);
+    filter: brightness(0.72);
+  }
+}
+
+@keyframes dial-flip-unfold {
+  from {
+    transform: rotateX(90deg);
+    filter: brightness(0.72);
+  }
+  to {
+    transform: rotateX(0deg);
+    filter: brightness(1);
+  }
+}
+
+.timer-dial.dial-flip .flip-flap-top {
+  animation: dial-flip-fold 160ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.timer-dial.dial-flip .flip-flap-bottom {
+  animation: dial-flip-unfold 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* flip：低透明背光。颜色取 currentColor（随 state 经 .timer-dial 的 color 过渡柔化），
+ * 伪元素整体不透明度 0.13 ≤ 0.18；静态呈现，不含运动。 */
+.timer-dial.dial-flip {
+  position: relative;
+  z-index: 0;
+}
+
+.timer-dial.dial-flip::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -8% -5%;
+  background: radial-gradient(closest-side, currentColor, transparent 72%);
+  opacity: 0.13;
+  pointer-events: none;
+}
+
+/* ---------- pixel：充能核心呼吸辉光 ----------
+ * 辉光层恒在、opacity 0；running 时淡入至 0.15（≤0.18）并做 2.4s 缩放慢呼吸；
+ * 暂停/结束即移出 running 选择器，opacity 经 360ms 过渡熄灭。 */
+.timer-dial.dial-pixel .pixel-core {
+  position: relative;
+}
+
+.timer-dial.dial-pixel .pixel-core::after {
+  content: '';
+  position: absolute;
+  inset: -16% -24%;
+  background: radial-gradient(closest-side, currentColor, transparent 70%);
+  opacity: 0;
+  transition: opacity var(--dur-page, 360ms) var(--ease-standard, cubic-bezier(0.4, 0, 0.2, 1));
+  pointer-events: none;
+}
+
+.timer-dial.dial-pixel.state-running .pixel-core::after {
+  opacity: 0.15;
+  animation: dial-core-breathe 2.4s var(--ease-standard, cubic-bezier(0.4, 0, 0.2, 1)) infinite
+    alternate;
+}
+
+@keyframes dial-core-breathe {
+  from {
+    transform: scale(0.94);
+  }
+  to {
+    transform: scale(1.06);
+  }
+}
+
+/* ---------- thin / segment：数字进位一次性扫光（≤400ms） ----------
+ * TSX 侧仅在发生进位（非最右位变化）时挂载 .dial-sweep，key 递进即重播。
+ * 光带颜色取 currentColor，元素不透明度 0.14 ≤ 0.18。 */
+.dial-thin,
+.dial-segment {
+  position: relative;
+}
+
+.timer-dial .dial-sweep {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 42%, currentColor 50%, transparent 58%);
+  background-repeat: no-repeat;
+  background-size: 220% 100%;
+  opacity: 0.14;
+  animation: dial-sweep-slide 360ms var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  pointer-events: none;
+}
+
+@keyframes dial-sweep-slide {
+  from {
+    background-position: -120% 0;
+  }
+  to {
+    background-position: 220% 0;
+  }
+}
+
+/* segment：段码亮灭 140ms 透明度过渡，消除硬闪 */
+.timer-dial.dial-segment .segment-digit path {
+  transition: opacity var(--dur-micro, 140ms) var(--ease-standard, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+/* ---------- reduced-motion 显式降级 ----------
+ * 静态呈现或仅透明度过渡；不含位移/缩放/循环。 */
+@media (prefers-reduced-motion: reduce) {
+  .timer-dial {
+    transition: none;
+  }
+
+  .timer-dial .motion-digit-flip[data-changed='true'] {
+    animation-name: dial-label-in; /* 仅透明度 */
+    animation-duration: var(--dur-micro, 140ms);
+  }
+
+  .dial-standard .instrument-chrome-state {
+    animation-name: dial-label-in; /* 仅透明度 */
+    animation-duration: var(--dur-micro, 140ms);
+  }
+
+  .timer-dial .dial-sweep {
+    display: none; /* JS 侧同步不挂载，双保险 */
+  }
+
+  .timer-dial.dial-pixel .pixel-core::after {
+    animation: none; /* 保留静态辉光，不呼吸 */
+  }
+
+  .timer-dial.dial-segment .segment-digit path {
+    transition: none;
+  }
+}

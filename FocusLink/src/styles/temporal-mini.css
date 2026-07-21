@@ -41,6 +41,30 @@
   background: rgb(var(--app-pause));
 }
 
+/* 状态点呼吸辉光：透明度 ≤0.18 的低亮度光晕，颜色取自状态 token。 */
+.mini-state-dot.state-dot-running {
+  --mini-dot-glow: var(--app-success);
+}
+
+.mini-state-dot.bg-pause {
+  --mini-dot-glow: var(--app-pause);
+}
+
+.mini-state-dot.state-dot-running,
+.mini-state-dot.bg-pause {
+  animation: mini-dot-breathe 2.6s ease-in-out infinite;
+}
+
+@keyframes mini-dot-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 2px 0 rgb(var(--mini-dot-glow) / 0.05);
+  }
+  50% {
+    box-shadow: 0 0 5px 1px rgb(var(--mini-dot-glow) / 0.18);
+  }
+}
+
 .mini-display-time,
 .mini-data-time {
   font-family: var(--font-number);
@@ -67,6 +91,14 @@
 }
 
 /* ─── 收起态：状态 / 时间 / 60 格秒轨 / 展开 ─── */
+/* 收起↔展开 240ms 交叉淡入：AnimatePresence sync 期间两态同时挂载，
+ * 绝对定位叠放避免 normal flow 上下排布造成的跳变。 */
+.mini-window-shell > .mini-collapsed-content,
+.mini-window-shell > .mini-expanded-content {
+  position: absolute;
+  inset: 0;
+}
+
 .mini-collapsed-content {
   position: relative;
   display: grid;
@@ -189,22 +221,6 @@
   background: rgb(var(--app-pause));
 }
 
-.mini-second-rail.is-paused .mini-second-rail-fill::after {
-  position: absolute;
-  top: 0;
-  right: -1px;
-  bottom: 0;
-  width: 13px;
-  background:
-    radial-gradient(circle at 16% 18%, rgb(var(--app-surface)) 0 0.8px, transparent 1px),
-    radial-gradient(circle at 58% 64%, rgb(var(--app-surface)) 0 1.2px, transparent 1.4px),
-    radial-gradient(circle at 82% 28%, rgb(var(--app-surface)) 0 0.7px, transparent 1px),
-    linear-gradient(90deg, transparent, rgb(var(--app-surface) / 0.72));
-  content: '';
-  mix-blend-mode: normal;
-  animation: mini-erode-surface 1s steps(2, end) infinite;
-}
-
 .mini-second-front {
   position: absolute;
   top: -2px;
@@ -221,88 +237,13 @@
   box-shadow: 0 0 0 1px rgb(var(--app-pause) / 0.16);
 }
 
-@keyframes mini-erode-surface {
-  50% {
-    transform: translateX(-2px);
-  }
-}
-
-/* 暂停消散粒子：同源数据驱动，不再用固定 CSS 路径无限循环。 */
-.mini-decay-particles {
+/* 暂停引线与粒子：同源 Canvas 渲染，不使用 CSS 无限动画伪造粒子。 */
+.mini-fuse-canvas {
   position: absolute;
-  top: 0;
-  left: var(--mini-progress, 0%);
-  width: 1px;
+  inset: 0;
+  width: 100%;
   height: 100%;
   pointer-events: none;
-}
-
-.mini-dissolve-halo {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 22px;
-  height: 18px;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    rgb(255 255 255 / 0.34) 0,
-    rgb(var(--app-pause) / 0.28) 22%,
-    transparent 72%
-  );
-  filter: blur(1px);
-  opacity: var(--dissolve-halo-alpha);
-  transform: translate(-52%, -50%) scale(var(--dissolve-halo-scale));
-}
-
-.mini-dissolve-wave {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 7px;
-  height: 11px;
-  border: 1px solid rgb(var(--app-pause));
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.mini-dissolve-wave.wave-primary {
-  opacity: var(--dissolve-wave-alpha);
-  transform: translate(-50%, -50%) scale(var(--dissolve-wave-scale));
-}
-
-.mini-dissolve-wave.wave-echo {
-  opacity: var(--dissolve-echo-alpha);
-  transform: translate(-50%, -50%) scale(var(--dissolve-echo-scale));
-}
-
-.mini-decay-particles i {
-  position: absolute;
-  top: var(--particle-origin-y);
-  left: var(--particle-origin-x);
-  width: var(--particle-size);
-  height: var(--particle-size);
-  background: rgb(var(--app-pause));
-  box-shadow: 0 0 4px rgb(var(--app-pause) / 0.48);
-  opacity: var(--particle-alpha);
-  transform: translate(var(--particle-x), var(--particle-y)) rotate(var(--particle-rotation));
-  transition:
-    transform 42ms linear,
-    opacity 42ms linear;
-  clip-path: polygon(0 8%, 100% 0, 84% 100%, 16% 82%);
-}
-
-.mini-decay-particles i.particle-dust {
-  border-radius: 50%;
-  clip-path: none;
-}
-
-.mini-decay-particles i.particle-spark {
-  width: var(--particle-length);
-  height: max(1px, calc(var(--particle-size) * 0.42));
-  border-radius: 999px;
-  box-shadow: 0 0 6px rgb(var(--app-pause) / 0.72);
-  clip-path: none;
 }
 
 /* ─── 展开态：70px 外框；20px 上栏 + 48px 四象限控制台 ─── */
@@ -542,6 +483,17 @@
   opacity: 0.55;
 }
 
+/* 展开态主按钮按压反馈：140ms 亮度收敛，配合 framer whileTap 缩放（140ms）。 */
+.mini-primary-button,
+.mini-secondary-button {
+  transition: filter 140ms var(--ease-out);
+}
+
+.mini-primary-button:active,
+.mini-secondary-button:active {
+  filter: brightness(0.92);
+}
+
 .mini-window-docking {
   transform: translateY(1px);
 }
@@ -550,8 +502,17 @@
   .mini-window-shell {
     transition: none;
   }
-  .mini-task-block.is-marquee .mini-task-title,
-  .mini-decay-particles i {
+  .mini-task-block.is-marquee .mini-task-title {
     animation: none;
+  }
+  /* 呼吸辉光降级为静态低透明度光晕（≤0.18）。 */
+  .mini-state-dot.state-dot-running,
+  .mini-state-dot.bg-pause {
+    animation: none;
+    box-shadow: 0 0 3px 0 rgb(var(--mini-dot-glow) / 0.12);
+  }
+  .mini-primary-button,
+  .mini-secondary-button {
+    transition: none;
   }
 }

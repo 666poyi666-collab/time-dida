@@ -1,4 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import type { MobileConnectionPreferences } from './preferences';
 
 export interface ConnectionSheetProps {
@@ -24,6 +25,7 @@ export function ConnectionSheet({
 }: ConnectionSheetProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const endpointRef = useRef<HTMLInputElement>(null);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     const previousFocus =
@@ -59,8 +61,16 @@ export function ConnectionSheet({
   };
 
   return (
-    <div className="sheet-backdrop" role="presentation" onMouseDown={onClose}>
-      <section
+    <motion.div
+      className="sheet-backdrop"
+      role="presentation"
+      onMouseDown={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: reduceMotion ? 0.12 : 0.24, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <motion.section
         ref={dialogRef}
         className="connection-sheet"
         role="dialog"
@@ -68,6 +78,14 @@ export function ConnectionSheet({
         aria-labelledby="connection-title"
         onKeyDown={keepFocusInside}
         onMouseDown={(event) => event.stopPropagation()}
+        initial={reduceMotion ? { opacity: 0 } : { y: '100%' }}
+        animate={reduceMotion ? { opacity: 1 } : { y: 0 }}
+        exit={reduceMotion ? { opacity: 0 } : { y: '100%' }}
+        transition={
+          reduceMotion
+            ? { duration: 0.12, ease: 'linear' }
+            : { type: 'spring', stiffness: 380, damping: 30 }
+        }
       >
         <div className="sheet-handle" aria-hidden="true" />
         <header>
@@ -139,15 +157,17 @@ export function ConnectionSheet({
           />
           <span>
             <strong>在此设备记住令牌</strong>
-            <small>关闭时仅保存到当前标签会话；开启后写入浏览器本机存储。</small>
+            <small>
+              关闭时 Web 仅保存到当前标签会话；Android 活动通知会用系统密钥加密保存后台连接。
+            </small>
           </span>
         </label>
 
         <div className="security-note">
           <LockIcon />
           <p>
-            连接后，此设备可以读取实时状态、提交开始/暂停/继续/结束命令并拉取完成账本。移动端只同步结束账本；滴答清单与番茄
-            To-do 需在桌面端操作并确认。
+            连接后，此设备可以读取电脑任务快照、提交开始/暂停/继续/结束命令并拉取完成账本。滴答清单与番茄
+            To-do 的写入仍只在桌面端操作。
           </p>
         </div>
 
@@ -164,8 +184,8 @@ export function ConnectionSheet({
             清除本机缓存
           </button>
         </div>
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   );
 }
 

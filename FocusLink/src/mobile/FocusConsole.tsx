@@ -11,6 +11,7 @@ import {
   type LiveFocusSnapshotLike,
 } from './runtimeModel';
 import { NativeSystemControls } from './NativeSystemControls';
+import type { SyncedTask } from '@shared/sync/taskSnapshotProtocol';
 
 export type MobileFocusCommand = 'start' | 'pause' | 'resume' | 'finish';
 
@@ -21,6 +22,9 @@ export interface FocusConsoleProps {
   pendingCommand: MobileFocusCommand | null;
   commandNotice: string | null;
   localDeviceId: string;
+  tasks: readonly SyncedTask[];
+  selectedTaskId: string;
+  onTaskChange: (taskId: string) => void;
   onTitleChange: (value: string) => void;
   onCommand: (command: MobileFocusCommand) => void;
   onOpenConnection: () => void;
@@ -33,6 +37,9 @@ export function FocusConsole({
   pendingCommand,
   commandNotice,
   localDeviceId,
+  tasks,
+  selectedTaskId,
+  onTaskChange,
   onTitleChange,
   onCommand,
   onOpenConnection,
@@ -84,7 +91,7 @@ export function FocusConsole({
           <p className="eyebrow">LIVE FOCUS</p>
           <h2 id="focus-console-title">当前专注</h2>
         </div>
-        <span className="focus-state-chip">
+        <span className="focus-state-chip" key={current.state}>
           <i aria-hidden="true" />
           {liveStateLabel(current.state)}
         </span>
@@ -98,24 +105,53 @@ export function FocusConsole({
               <strong>{current.title?.trim() || '未命名专注'}</strong>
             </div>
           ) : (
-            <label className="focus-title-field" htmlFor="focus-title">
-              <span>这次要专注什么？</span>
-              <input
-                id="focus-title"
-                value={titleDraft}
-                onChange={(event) => onTitleChange(event.target.value)}
-                maxLength={1_000}
-                placeholder="例如：整理化学错题"
-                autoComplete="off"
-                enterKeyHint="done"
-                disabled={pendingCommand !== null}
-                aria-describedby="focus-title-help"
-              />
-              <small id="focus-title-help">填写标题后可从此设备开始，多端将看到同一状态。</small>
-            </label>
+            <div className="focus-start-fields">
+              <label className="focus-title-field" htmlFor="focus-task">
+                <span>从电脑任务清单选择</span>
+                <select
+                  id="focus-task"
+                  value={selectedTaskId}
+                  onChange={(event) => onTaskChange(event.target.value)}
+                  disabled={pendingCommand !== null}
+                >
+                  <option value="">不关联任务 · 自由专注</option>
+                  {tasks
+                    .filter((task) => !task.isCompleted)
+                    .map((task) => (
+                      <option key={`${task.source}:${task.id}`} value={task.id}>
+                        {task.title}
+                      </option>
+                    ))}
+                </select>
+                <small>
+                  {tasks.length > 0
+                    ? `已缓存电脑端 ${tasks.length} 个任务`
+                    : '电脑刷新任务后会自动同步到这里'}
+                </small>
+              </label>
+              <label className="focus-title-field" htmlFor="focus-title">
+                <span>这次要专注什么？</span>
+                <input
+                  id="focus-title"
+                  value={titleDraft}
+                  onChange={(event) => onTitleChange(event.target.value)}
+                  maxLength={1_000}
+                  placeholder="例如：整理化学错题"
+                  autoComplete="off"
+                  enterKeyHint="done"
+                  disabled={pendingCommand !== null}
+                  aria-describedby="focus-title-help"
+                />
+                <small id="focus-title-help">可选任务，也可直接填写标题自由开始。</small>
+              </label>
+            </div>
           )}
 
-          <div className="primary-readout" aria-label={`${liveStateLabel(current.state)}计时`}>
+          <div
+            className="primary-readout"
+            key={current.state}
+            aria-label={`${liveStateLabel(current.state)}计时`}
+          >
             <span>
               {current.state === 'paused'
                 ? '本次暂停'
@@ -207,6 +243,10 @@ export function FocusConsole({
           </div>
 
           <dl className="runtime-facts">
+            <div>
+              <dt>关联任务</dt>
+              <dd>{current.taskTitle || '未关联'}</dd>
+            </div>
             <div>
               <dt>状态版本</dt>
               <dd>rev {current.revision}</dd>

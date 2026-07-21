@@ -8,7 +8,7 @@
   --subtle: #8b918d;
   --border: #d8d7cf;
   --border-strong: #b9bbb4;
-  --focus: #0e8b65;
+  --focus: #0E9F6E;
   --focus-soft: #dceee7;
   --pause: #c64a40;
   --pause-soft: #f2dfdc;
@@ -471,7 +471,7 @@ code {
   fill: none;
   stroke: var(--muted);
   stroke-width: 1.8;
-  transition: transform 180ms ease;
+  transition: transform 160ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .chevron.expanded {
@@ -799,9 +799,9 @@ code {
   min-height: 32px;
   margin-top: 6px;
   padding: 0 10px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--border-strong);
   background: transparent;
-  color: var(--ink-secondary);
+  color: var(--muted);
   font: inherit;
   font-size: 12px;
 }
@@ -1211,6 +1211,11 @@ code {
   gap: 8px;
 }
 
+.focus-start-fields {
+  display: grid;
+  gap: 14px;
+}
+
 .focus-title-field > span,
 .active-title-block > span {
   color: var(--muted);
@@ -1219,7 +1224,8 @@ code {
   letter-spacing: 0.04em;
 }
 
-.focus-title-field input {
+.focus-title-field input,
+.focus-title-field select {
   width: 100%;
   min-height: 48px;
   padding: 0 13px;
@@ -1229,7 +1235,8 @@ code {
   font-size: 16px;
 }
 
-.focus-title-field input:disabled {
+.focus-title-field input:disabled,
+.focus-title-field select:disabled {
   opacity: 0.62;
 }
 
@@ -1477,6 +1484,30 @@ code {
   gap: 3px;
 }
 
+.native-system-health {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.native-system-health span {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.native-system-health .is-ok {
+  border-color: color-mix(in srgb, var(--focus) 48%, var(--border));
+  color: var(--focus);
+}
+
+.native-system-health .is-warning {
+  border-color: color-mix(in srgb, var(--pause) 48%, var(--border));
+  color: var(--pause);
+}
+
 .native-system-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1645,5 +1676,140 @@ code {
   .ledger-footer {
     padding-right: max(8px, env(safe-area-inset-right));
     padding-left: max(8px, env(safe-area-inset-left));
+  }
+}
+
+/* Unified motion language --------------------------------------------------- */
+/* Easing tokens mirror the desktop spec: enter cubic-bezier(.16,1,.3,1),
+   move/swap cubic-bezier(.4,0,.2,1). Sheet spring lives in framer-motion. */
+
+@keyframes readout-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes chip-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@keyframes detail-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* FocusConsole: 240ms state/digit transitions */
+.primary-readout {
+  animation: readout-enter 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.primary-readout > strong {
+  transition: color 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.focus-state-chip {
+  animation: chip-enter 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    color 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Low-opacity accent glow behind the running readout (theme token only) */
+.primary-readout {
+  position: relative;
+}
+
+.phase-running .primary-readout::before {
+  position: absolute;
+  inset: 14% 6%;
+  background: radial-gradient(
+    50% 50% at 50% 50%,
+    color-mix(in srgb, var(--focus) 14%, transparent),
+    transparent 72%
+  );
+  content: '';
+  pointer-events: none;
+}
+
+.phase-paused .primary-readout::before {
+  position: absolute;
+  inset: 14% 6%;
+  background: radial-gradient(
+    50% 50% at 50% 50%,
+    color-mix(in srgb, var(--pause) 12%, transparent),
+    transparent 72%
+  );
+  content: '';
+  pointer-events: none;
+}
+
+/* SessionLedger: staggered list entrance + detail reveal */
+.session-row {
+  animation: row-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.session-detail {
+  animation: detail-enter 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.timeline-row {
+  animation: row-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Button press feedback: 140ms */
+.focus-action,
+.inline-connection-action,
+.primary-button,
+.sync-button,
+.icon-button,
+.sheet-close,
+.field-quick-action,
+.sheet-secondary-actions button,
+.native-system-actions button,
+.session-summary {
+  transition:
+    transform 140ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 160ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 160ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 160ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.focus-action:active:not(:disabled),
+.inline-connection-action:active:not(:disabled),
+.primary-button:active:not(:disabled),
+.sync-button:active:not(:disabled),
+.icon-button:active:not(:disabled),
+.sheet-close:active:not(:disabled),
+.field-quick-action:active:not(:disabled),
+.sheet-secondary-actions button:active:not(:disabled),
+.native-system-actions button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary-readout,
+  .focus-state-chip,
+  .session-row,
+  .session-detail,
+  .timeline-row {
+    animation: none;
+  }
+
+  .phase-running .primary-readout::before,
+  .phase-paused .primary-readout::before {
+    background: none;
   }
 }

@@ -1,6 +1,7 @@
 // 统计工作台 v3：结论 → 指标 → 时间节律 → 任务去向/暂停损耗。
 // 会话明细只保留下方唯一账本，不在 Dashboard 内重复一份表格。
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useInView, useReducedMotion } from 'framer-motion';
 import type { FocusSession } from '@shared/types';
 import type { SessionAnalyticsResult, SessionAnalyticsTimelineItem } from '@shared/ipc/api';
 import { Icon } from '../../ui/Icon';
@@ -38,6 +39,37 @@ function axisDuration(ms: number): string {
 
 function percentage(part: number, total: number): number {
   return total > 0 ? Math.round((part / total) * 100) : 0;
+}
+
+/** KPI 数字 count-up：首次进入视口时从 0 平滑递增到目标值（≤600ms，expo-out）。
+    只播放一次；此后目标值变化直接显示终值，避免反复跳动。
+    prefers-reduced-motion 时始终直接显示终值。 */
+function CountUp({ value, format }: { value: number; format: (current: number) => string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true });
+  const reduceMotion = useReducedMotion();
+  const hasPlayedRef = useRef(false);
+  const [display, setDisplay] = useState(value);
+  useEffect(() => {
+    if (!inView || reduceMotion || hasPlayedRef.current) {
+      setDisplay(value);
+      return;
+    }
+    hasPlayedRef.current = true;
+    const target = value;
+    const durationMs = 560;
+    const startedAt = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - startedAt) / durationMs);
+      const eased = t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+      setDisplay(target * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [inView, reduceMotion, value]);
+  return <span ref={ref}>{format(display)}</span>;
 }
 
 function roundedPercentages(values: number[]): number[] {
@@ -107,7 +139,9 @@ export function HistoryInsights({
       <header className="stats-brief">
         <div className="stats-primary-readout">
           <span>{singleDay ? '今日有效专注' : '范围内有效专注'}</span>
-          <strong>{duration(summary.active)}</strong>
+          <strong>
+            <CountUp value={summary.active} format={duration} />
+          </strong>
         </div>
         <div className="stats-brief-copy">
           <h2>{singleDay ? '今天的时间，花在了哪里' : '这段时间，投入是否稳定'}</h2>
@@ -121,19 +155,20 @@ export function HistoryInsights({
       </header>
 
       <div className="stats-metric-strip" aria-label="核心指标">
-        <Metric label="有效专注" value={duration(summary.active)} note="排除暂停" tone="accent" />
+        <Metric label="有效专注" value={summary.active} note="排除暂停" tone="accent" />
         <Metric
           label="暂停损耗"
-          value={duration(summary.pause)}
+          value={summary.pause}
           note={`${100 - focusRate}% 已记录时间`}
           tone="pause"
         />
         <Metric
           label={singleDay ? '完成轮次' : '活跃天数'}
-          value={`${singleDay ? summary.count : activeDays}`}
+          value={singleDay ? summary.count : activeDays}
+          format={(current) => `${Math.round(current)}`}
           note={`平均 ${duration(average)}`}
         />
-        <Metric label="最长一轮" value={duration(longest)} note="单次有效专注" />
+        <Metric label="最长一轮" value={longest} note="单次有效专注" />
       </div>
 
       <div className="stats-main-grid">
@@ -157,13 +192,15 @@ export function HistoryInsights({
 function FocusGauge({ rate }: { rate: number }) {
   return (
     <div
-      className="stats-focus-gauge"
+      className="stats-focus-gauge hm-fade-in"
       style={{ '--gauge-rate': `${rate * 3.6}deg` } as CSSProperties}
       role="img"
       aria-label={`专注率 ${rate}%`}
     >
       <div>
-        <strong>{rate}%</strong>
+        <strong>
+          <CountUp value={rate} format={(current) => `${Math.round(current)}%`} />
+        </strong>
         <span>专注率</span>
       </div>
     </div>
@@ -173,18 +210,22 @@ function FocusGauge({ rate }: { rate: number }) {
 function Metric({
   label,
   value,
+  format = duration,
   note,
   tone = 'neutral',
 }: {
   label: string;
-  value: string;
+  value: number;
+  format?: (current: number) => string;
   note: string;
   tone?: 'neutral' | 'accent' | 'pause';
 }) {
   return (
     <div className={`stats-metric tone-${tone}`}>
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong>
+        <CountUp value={value} format={format} />
+      </strong>
       <small>{note}</small>
     </div>
   );
@@ -247,7 +288,11 @@ function DayActivityTimeline({
         </div>
       </div>
 
-      <div className="stats-day-overview" aria-label="全天活动概览">
+      <div
+        className="stats-day-overview hm-fade-in"
+        style={{ '--hm-delay': '80ms' } as CSSProperties}
+        aria-label="全天活动概览"
+      >
         {timeline.map((item) => (
           <TimelineBlock
             key={`overview-${item.id}`}
@@ -273,7 +318,12 @@ function DayActivityTimeline({
         })}
       </div>
       {timeline.length > 0 ? (
-        <div className="stats-timeline-detail" role="group" aria-label="专注与暂停时间轴">
+        <div
+          className="stats-timeline-detail hm-fade-in"
+          style={{ '--hm-delay': '160ms' } as CSSProperties}
+          role="group"
+          aria-label="专注与暂停时间轴"
+        >
           <div className="stats-lane focus">
             <span>专注</span>
             {timeline
@@ -370,7 +420,8 @@ function DailyActivityChart({ daily }: { daily: SessionAnalyticsResult['daily'] 
         </div>
       </div>
       <svg
-        className="stats-trend-chart"
+        className="stats-trend-chart hm-fade-in"
+        style={{ '--hm-delay': '80ms' } as CSSProperties}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label="每日专注与暂停堆叠图"
@@ -528,7 +579,12 @@ function TaskAllocation({
         </div>
         <p>前四项直接比较；未关联任务与旧记录单独标记，不混入已关联任务。</p>
       </div>
-      <div className="stats-allocation-band" role="img" aria-label="任务专注时间构成">
+      <div
+        className="stats-allocation-band hm-fade-in"
+        style={{ '--hm-delay': '80ms' } as CSSProperties}
+        role="img"
+        aria-label="任务专注时间构成"
+      >
         {allocation.items.map((item) => (
           <i
             key={item.key}
@@ -543,7 +599,10 @@ function TaskAllocation({
           />
         ))}
       </div>
-      <div className="stats-task-list">
+      <div
+        className="stats-task-list hm-fade-in"
+        style={{ '--hm-delay': '160ms' } as CSSProperties}
+      >
         {allocation.items.map((item) => (
           <div className={`stats-task-row tone-${item.tone}`} key={item.key}>
             <i style={{ '--allocation-alpha': item.alpha } as CSSProperties} />
@@ -573,17 +632,27 @@ function PauseCost({
     <article className="stats-pause-cost">
       <div>
         <span>暂停损耗</span>
-        <strong>{duration(summary.pause)}</strong>
+        <strong>
+          <CountUp value={summary.pause} format={duration} />
+        </strong>
       </div>
       <div>
         <span>每轮平均专注</span>
-        <strong>{duration(average)}</strong>
+        <strong>
+          <CountUp value={average} format={duration} />
+        </strong>
       </div>
       <div>
         <span>时间利用</span>
-        <strong>{focusRate}%</strong>
+        <strong>
+          <CountUp value={focusRate} format={(current) => `${Math.round(current)}%`} />
+        </strong>
       </div>
-      <div className="stats-cost-track" aria-label={`暂停占比 ${pauseRate}%`}>
+      <div
+        className="stats-cost-track hm-fade-in"
+        style={{ '--hm-delay': '120ms' } as CSSProperties}
+        aria-label={`暂停占比 ${pauseRate}%`}
+      >
         <i className="focus" style={{ width: `${focusRate}%` }} />
         <i className="pause" style={{ left: `${focusRate}%`, width: `${pauseRate}%` }} />
       </div>

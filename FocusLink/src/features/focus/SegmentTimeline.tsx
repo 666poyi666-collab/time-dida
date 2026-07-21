@@ -4,7 +4,7 @@
 // 语义契约：已关联/未关联 = 本地任务关联；已同步/未同步/同步失败 = 滴答云同步队列，
 // 同步状态只出现在滴答来源的专注片段上，提示语统一为「同步到滴答清单」。
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useStore } from '../../app/store';
 import { formatDuration, formatMinutes, formatClock } from '../../lib/time';
 import { buildMixedTimelineItems } from '@shared/focus/timeline';
@@ -48,6 +48,7 @@ function buildSegmentSyncMap(queue: SyncQueueItem[]): Record<string, SessionSync
 export function SegmentTimeline() {
   const { snapshot, syncQueue, setSyncQueue } = useStore();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion() ?? false;
 
   const segments = snapshot?.segments ?? [];
   const pauseEvents = snapshot?.pauseEvents ?? [];
@@ -173,10 +174,10 @@ export function SegmentTimeline() {
               <motion.div
                 key={item.id}
                 layout
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -3 }}
-                transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+                exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -3 }}
+                transition={{ duration: reducedMotion ? 0.12 : 0.24, ease: [0.16, 1, 0.3, 1] }}
                 className={`ledger-row ${isFocus ? 'row-focus' : 'row-pause'} ${
                   isCurrent ? 'is-current' : ''
                 }`}

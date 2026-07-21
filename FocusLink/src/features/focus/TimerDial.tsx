@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlipDigits } from '../../ui/FlipDigits';
 import { formatDurationPadded } from '../../lib/time';
+import '../../styles/dial-motion.css';
 import {
   PIXEL_FONT,
   PIXEL_FONT_COLS,
@@ -38,6 +39,31 @@ function useReducedMotionPreference(): boolean {
   return reduced;
 }
 
+/* ─── 进位脉冲与一次性扫光 ────────────────────────────────── */
+
+/**
+ * 数字进位检测：最右位（秒个位）每秒都变，不算进位；
+ * 其余任意位变化（如 09→10、59→00）才视为进位，脉冲计数 +1。
+ * active=false（暂停/待机/reduced-motion）时不产生脉冲。
+ */
+function useCarryPulse(text: string, active: boolean): number {
+  const [pulse, setPulse] = useState(0);
+  const prevRef = useRef(text);
+  useEffect(() => {
+    const prev = prevRef.current;
+    prevRef.current = text;
+    if (!active || prev === text) return;
+    if (prev.slice(0, -1) !== text.slice(0, -1)) setPulse((n) => n + 1);
+  }, [text, active]);
+  return pulse;
+}
+
+/** 一次性扫光条：key 随脉冲递进，重挂载即重播；pulse=0（初始）不渲染 */
+function DialSweep({ pulse }: { pulse: number }) {
+  if (pulse === 0) return null;
+  return <span className="dial-sweep" key={pulse} aria-hidden="true" />;
+}
+
 export function TimerDial({
   ms,
   state,
@@ -54,18 +80,16 @@ export function TimerDial({
   if (style === 'flip') return <FlipDial text={text} state={state} />;
   if (style === 'pixel') return <PixelDial text={text} state={state} coreRatio={coreRatio ?? 0} />;
   if (style === 'segment') return <SegmentDial text={text} state={state} />;
-  if (style === 'thin') {
-    return (
-      <div className={`timer-dial dial-thin state-${state}`} aria-label={text}>
-        <FlipDigits value={text} />
-      </div>
-    );
-  }
+  if (style === 'thin') return <ThinDial text={text} state={state} />;
   return (
     <div className={`timer-dial dial-standard state-${state}`} aria-label={text}>
-      <span className="instrument-chrome-label">ELAPSED</span>
-      <span className="instrument-chrome-digits">{text}</span>
-      <span className="instrument-chrome-state">
+      <span className="instrument-chrome-label" key={`label-${state}`}>
+        ELAPSED
+      </span>
+      <span className="instrument-chrome-digits">
+        <FlipDigits value={text} />
+      </span>
+      <span className="instrument-chrome-state" key={`marker-${state}`}>
         {state === 'running' ? 'LIVE / SEC' : state === 'paused' ? 'HOLD / SEC' : 'READY'}
       </span>
     </div>
@@ -98,6 +122,8 @@ const SEGMENT_PATHS: Record<string, string> = {
 };
 
 function SegmentDial({ text, state }: { text: string; state: string }) {
+  const reducedMotion = useReducedMotionPreference();
+  const carry = useCarryPulse(text, !reducedMotion && state === 'running');
   return (
     <div className={`timer-dial dial-segment state-${state}`} aria-label={text}>
       {Array.from(text).map((char, index) =>
@@ -118,6 +144,20 @@ function SegmentDial({ text, state }: { text: string; state: string }) {
           </svg>
         ),
       )}
+      <DialSweep pulse={carry} />
+    </div>
+  );
+}
+
+/* ─── 高反差编辑 ─────────────────────────────────────────────── */
+
+function ThinDial({ text, state }: { text: string; state: string }) {
+  const reducedMotion = useReducedMotionPreference();
+  const carry = useCarryPulse(text, !reducedMotion && state === 'running');
+  return (
+    <div className={`timer-dial dial-thin state-${state}`} aria-label={text}>
+      <FlipDigits value={text} />
+      <DialSweep pulse={carry} />
     </div>
   );
 }

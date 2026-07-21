@@ -1,5 +1,6 @@
 // 历史时间线 - 片段时间线列表 + 专注行 + 暂停行
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
+import { motion } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
 import { formatDuration, formatDateTime } from '../../lib/time';
 import { NOT_SYNCED_STATE, type SessionSyncState } from './syncPresentation';
@@ -108,12 +109,13 @@ export function HistoryTimelineList({
       ) : (
         <div className="relative space-y-1">
           <div className="absolute bottom-2 left-[15px] top-2 w-px bg-border/60" />
-          {items.map((item) =>
+          {items.map((item, itemIndex) =>
             item.type === 'focus' ? (
               <HistoryFocusTimelineRow
                 key={item.segment.id}
                 seg={item.segment}
                 index={item.index}
+                staggerIndex={itemIndex}
                 linking={linking}
                 defaultSubject={defaultSubject}
                 onLink={() => onLink(item.segment.id, item.index)}
@@ -131,7 +133,12 @@ export function HistoryTimelineList({
                 isTaskCompleted={!!item.segment.taskId && completedTaskIds.has(item.segment.taskId)}
               />
             ) : (
-              <HistoryPauseTimelineRow key={item.pause.id} pause={item.pause} index={item.index} />
+              <HistoryPauseTimelineRow
+                key={item.pause.id}
+                pause={item.pause}
+                index={item.index}
+                staggerIndex={itemIndex}
+              />
             ),
           )}
         </div>
@@ -143,6 +150,7 @@ export function HistoryTimelineList({
 function HistoryFocusTimelineRow({
   seg,
   index,
+  staggerIndex,
   linking,
   defaultSubject,
   onLink,
@@ -161,6 +169,7 @@ function HistoryFocusTimelineRow({
 }: {
   seg: FocusSegment;
   index: number;
+  staggerIndex: number;
   linking: boolean;
   defaultSubject: TomatodoSubject;
   onLink: () => void;
@@ -185,9 +194,10 @@ function HistoryFocusTimelineRow({
       : NOT_SYNCED_STATE);
   return (
     <div
-      className={`relative flex gap-2.5 rounded-md border px-2.5 py-2 ${
+      className={`hm-stagger-in relative flex gap-2.5 rounded-md border px-2.5 py-2 ${
         hasTask ? 'border-border/50 bg-bg-subtle/20' : 'border-warning/30 bg-warning/5'
       }`}
+      style={{ '--hm-delay': `${Math.min(staggerIndex * 40, 560)}ms` } as CSSProperties}
     >
       <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-accent/20 bg-accent/10 text-accent">
         <Icon.Activity size="sm" />
@@ -380,9 +390,20 @@ function TomatodoSubjectControl({
   );
 }
 
-function HistoryPauseTimelineRow({ pause, index }: { pause: PauseEvent; index: number }) {
+function HistoryPauseTimelineRow({
+  pause,
+  index,
+  staggerIndex,
+}: {
+  pause: PauseEvent;
+  index: number;
+  staggerIndex: number;
+}) {
   return (
-    <div className="relative flex gap-2.5 rounded-md border border-pause/15 bg-pause/5 px-2.5 py-2">
+    <div
+      className="hm-stagger-in relative flex gap-2.5 rounded-md border border-pause/15 bg-pause/5 px-2.5 py-2"
+      style={{ '--hm-delay': `${Math.min(staggerIndex * 40, 560)}ms` } as CSSProperties}
+    >
       <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-pause/20 bg-pause/10 text-pause">
         <Icon.Coffee size="sm" />
       </div>
@@ -422,9 +443,16 @@ export function SyncBadge({ state }: { state: SessionSyncState }) {
           : Icon.Clock;
 
   return (
-    <span title={state.title} className={`status-chip ${cls}`}>
+    <motion.span
+      key={`${state.tone}:${state.label}`}
+      initial={{ scale: 0.72, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+      title={state.title}
+      className={`status-chip inline-flex items-center gap-1 ${cls}`}
+    >
       <StateIcon size="xs" />
       {state.label}
-    </span>
+    </motion.span>
   );
 }

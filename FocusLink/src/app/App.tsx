@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion, useIsPresent } from 'framer-motion';
+import '../styles/shell-motion.css';
 import { useStore } from './store';
 import { TimerPanel } from '../features/focus/TimerPanel';
 import { HistoryPanel } from '../features/history/HistoryPanel';
@@ -22,9 +23,13 @@ import {
 
 type View = 'timer' | 'tasks' | 'history' | 'settings';
 
-const PAGE_TRANSITION = {
-  duration: 0.34,
+const PAGE_ENTER = {
+  duration: 0.36,
   ease: [0.16, 1, 0.3, 1] as const,
+};
+const PAGE_EXIT = {
+  duration: 0.24,
+  ease: [0.4, 0, 0.2, 1] as const,
 };
 const PAGE_VARIANTS = {
   initial: (direction: number) => ({ opacity: 0, x: direction * 14, scale: 0.996 }),
@@ -32,8 +37,14 @@ const PAGE_VARIANTS = {
     opacity: 1,
     x: 0,
     scale: 1,
+    transition: PAGE_ENTER,
   },
-  exit: (direction: number) => ({ opacity: 0, x: direction * -8, scale: 0.998 }),
+  exit: (direction: number) => ({
+    opacity: 0,
+    x: direction * -8,
+    scale: 0.998,
+    transition: PAGE_EXIT,
+  }),
 };
 
 const VIEW_ORDER: Record<View, number> = {
@@ -237,7 +248,6 @@ function ViewPage({ children, direction }: { children: React.ReactNode; directio
       initial="initial"
       animate="animate"
       exit="exit"
-      transition={PAGE_TRANSITION}
       className="absolute inset-0 will-change-transform"
       // AnimatePresence(mode="sync") retains the previous route during its fade. useIsPresent flips
       // immediately, so an exiting full-screen layer can never intercept the next route's clicks.

@@ -11,24 +11,30 @@ import {
   BAND_SCALE_NEAR,
   BAND_ZOOM_MS,
   PARTICLE_FIELD_PAUSE_DENSITY,
+  POINTER_GLOW_MAX_ALPHA,
   bandDetailMix,
   bandDisplaySeconds,
   bandEventPhaseMs,
   bandEventSecond,
   bandScaleForState,
+  burnHeadHalo,
   easeInOutQuart,
   fieldParticleSpec,
+  frontierGlowAlpha,
   interpolateZoomScale,
   macroTickAlpha,
   mixRgb,
   particleAgedColor,
   particleAshColor,
   particleCellHash,
+  particleFieldFadeIn,
   particleFieldParams,
   particleFieldStepSec,
+  particleGridCrossfade,
   particleToneColor,
   particleTraceFade,
   pauseDissolveParticles,
+  pointerBreathPulse,
   secondTickAlpha,
   traceResidueDot,
 } from '@shared/focus/bandMath';
@@ -46,6 +52,14 @@ type BandEngine = {
   scale: number;
   zoom: { from: number; to: number; start: number; duration: number } | null;
   lastSecond: number;
+  /** 上一帧状态：用于识别 idle → running 的粒子场淡入时机 */
+  prevState: TimerState | null;
+  /** 粒子场淡入起始时间（performance.now 时间轴），null 表示无淡入 */
+  fieldFadeStart: number | null;
+  /** 当前粒子网格单元时长（秒）：跨越取样梯子阈值时触发交叉淡化 */
+  gridStepSec: number | null;
+  /** 网格重排交叉淡化：旧网格单元时长 + 起始时间，null 表示无淡化 */
+  gridFade: { from: number; start: number } | null;
 };
 
 type BandColors = {
@@ -109,6 +123,10 @@ export function TemporalRibbon({
     scale: bandScaleForState(state),
     zoom: null,
     lastSecond: -1,
+    prevState: null,
+    fieldFadeStart: null,
+    gridStepSec: null,
+    gridFade: null,
   });
   const reducedMotion = useReducedMotion();
   const [viewMode, setViewMode] = useState<'auto' | 'near' | 'far'>('auto');
@@ -251,6 +269,8 @@ export function TemporalRibbon({
       const pulseAge = bandEventPhaseMs(currentState, Date.now(), pauseStartedRef.current);
       if (
         engineRef.current.zoom ||
+        engineRef.current.gridFade ||
+        engineRef.current.fieldFadeStart !== null ||
         (live && !reducedMotion && pulseAge >= 0 && pulseAge < motionWindow)
       ) {
         schedule();
@@ -439,6 +459,38 @@ function renderBand(
   );
   const toX = (ms: number) => (ms / 1000 - displaySeconds) * scale + pointerX;
 
+  // 网格重排交叉淡化：变焦跨越粒子取样梯子阈值时，旧/新网格 400ms 内交叉淡化。
+  // 只影响透明度权重，粒子位置始终由 displaySeconds 冻结时钟决定。
+  const frameNowMs = performance.now();
+  const gridStep = particleFieldStepSec(scale);
+  if (engine.gridStepSec === null) {
+    engine.gridStepSec = gridStep;
+  } else if (engine.gridStepSec !== gridStep) {
+    if (input.reducedMotion) {
+      engine.gridStepSec = gridStep;
+      engine.gridFade = null;
+    } else {
+      engine.gridFade = { from: engine.gridStepSec, start: frameNowMs };
+      engine.gridStepSec = gridStep;
+    }
+  }
+  const activeGridFade = engine.gridFade;
+  const gridMix = particleGridCrossfade(
+    activeGridFade ? activeGridFade.start : null,
+    frameNowMs,
+  );
+  if (gridMix >= 1) engine.gridFade = null;
+
+  // 从 idle 开始专注：粒子场 300ms 带尾淡入；reduced-motion 直接完整显示。
+  if (engine.prevState !== input.state) {
+    if (engine.prevState === 'idle' && input.state === 'running' && !input.reducedMotion) {
+      engine.fieldFadeStart = frameNowMs;
+    }
+    engine.prevState = input.state;
+  }
+  const fieldFade = particleFieldFadeIn(engine.fieldFadeStart, frameNowMs, input.reducedMotion);
+  if (fieldFade >= 1) engine.fieldFadeStart = null;
+
   ctx.clearRect(0, 0, width, height);
   const nearAlpha = secondTickAlpha(scale);
   const farAlpha = macroTickAlpha(scale);
@@ -513,7 +565,29 @@ function renderBand(
       densityScale: kind === 'pause' ? PARTICLE_FIELD_PAUSE_DENSITY : 1,
       timeSec: displaySeconds,
       reducedMotion: input.reducedMotion,
+      alphaScale: fieldFade * gridMix,
     });
+    // 交叉淡化期间叠画旧网格，权重与新网格互补，400ms 内完全交接。
+    if (activeGridFade && gridMix < 1) {
+      drawMomentParticleField(ctx, {
+        startSec: moment.startedAt / 1000,
+        endSec: endMs / 1000,
+        displaySeconds,
+        visibleStart,
+        visibleEnd,
+        pointerX,
+        viewportWidth: width,
+        scale,
+        fieldTop,
+        fieldBottom,
+        palette: particlePalettes[kind],
+        densityScale: kind === 'pause' ? PARTICLE_FIELD_PAUSE_DENSITY : 1,
+        timeSec: displaySeconds,
+        reducedMotion: input.reducedMotion,
+        stepSecOverride: activeGridFade.from,
+        alphaScale: fieldFade * (1 - gridMix),
+      });
+    }
     if (kind === 'pause') {
       const elapsedMs = currentPause
         ? Math.max(0, input.nowMs - (input.pauseStartedAt ?? moment.startedAt))
@@ -794,9 +868,15 @@ function drawMomentParticleField(
     densityScale: number;
     timeSec: number;
     reducedMotion: boolean;
+    /** 网格重排交叉淡化时显式指定旧网格的单元时长（秒） */
+    stepSecOverride?: number;
+    /** 场整体透明度系数（淡入 / 交叉淡化用），默认 1；不改变任何位置与相位 */
+    alphaScale?: number;
   },
 ): void {
-  const stepSec = particleFieldStepSec(input.scale);
+  const stepSec = input.stepSecOverride ?? particleFieldStepSec(input.scale);
+  const alphaScale = input.alphaScale ?? 1;
+  if (alphaScale <= 0.01) return;
   const cellPx = stepSec * input.scale;
   if (cellPx <= 0.5) return;
   // 粒子在指针前约 1 格停住，保持“现在”标线 crisp。
@@ -835,7 +915,7 @@ function drawMomentParticleField(
       const wobble = still ? 0 : Math.sin(t * 0.9 + spec.phase * 1.7) * 1.4;
       const y = baseY + spread + wobble - params.rise * spec.riseK;
       const flicker = still ? 1 : 0.78 + 0.22 * Math.sin(t * 2 + spec.phase * 3);
-      const alpha = params.alpha * flicker;
+      const alpha = params.alpha * flicker * alphaScale;
       if (alpha <= 0.02) continue;
 
       const size = Math.max(1.2, cellPx * spec.sizeK) * (1 - params.s * 0.35);
@@ -1012,6 +1092,16 @@ function drawRunningFrontier(
   const fieldHeight = input.fieldBottom - input.fieldTop;
   const cellWidth = Math.max(2, Math.min(18, input.scale));
 
+  // 窄条辉光：前沿两侧的细光带，强度随每秒呼吸脉冲轻微起伏（峰值 ≤0.18）。
+  // 位于静态区，reduced-motion 下为固定低透明度光带。
+  const stripAlpha = frontierGlowAlpha(input.pulseAge, input.reducedMotion);
+  const strip = ctx.createLinearGradient(input.pointerX - 20, 0, input.pointerX + 4, 0);
+  strip.addColorStop(0, `rgba(${input.colors.focus},0)`);
+  strip.addColorStop(0.72, `rgba(${input.colors.focus},${stripAlpha})`);
+  strip.addColorStop(1, `rgba(${input.colors.focus},0)`);
+  ctx.fillStyle = strip;
+  ctx.fillRect(input.pointerX - 20, input.fieldTop - 2, 24, fieldHeight + 4);
+
   // 静态前沿是实体边缘；每秒只在 420ms 窗口内释放一次扫掠，此后完全静止。
   const edge = ctx.createLinearGradient(input.pointerX - 13, 0, input.pointerX + 2, 0);
   edge.addColorStop(0, `rgba(${input.colors.focus},0)`);
@@ -1157,11 +1247,29 @@ function drawPauseDissolve(
   ctx.lineTo(input.end, fuseY);
   ctx.stroke();
 
+  // 燃烧头外层红晕：白芯之外的柔和径向光晕，随秒相位轻微呼吸（峰值 ≤0.18）；
+  // reduced-motion 下参数固定，光晕静态。
+  const halo = burnHeadHalo(input.pulseAge, input.reducedMotion);
+  const outerGlow = ctx.createRadialGradient(
+    input.end,
+    fuseY,
+    1.5,
+    input.end,
+    fuseY,
+    halo.radius,
+  );
+  outerGlow.addColorStop(0, `rgba(${input.colors.pause},${halo.alpha})`);
+  outerGlow.addColorStop(0.5, `rgba(${input.colors.pause},${halo.alpha * 0.45})`);
+  outerGlow.addColorStop(1, `rgba(${input.colors.pause},0)`);
+  ctx.fillStyle = outerGlow;
+  ctx.fillRect(input.end - halo.radius, fuseY - halo.radius, halo.radius * 2, halo.radius * 2);
+
   // 固定燃烧头：紧贴引线的小核心 + 集中热边，不形成扩散圆环或竖直色墙。
   const headGlow = ctx.createRadialGradient(input.end, fuseY, 0, input.end, fuseY, 7);
   headGlow.addColorStop(0, 'rgba(255,255,255,0.9)');
-  headGlow.addColorStop(0.22, `rgba(${input.colors.pause},0.52)`);
-  headGlow.addColorStop(0.55, `rgba(${input.colors.pause},0.14)`);
+  headGlow.addColorStop(0.18, `rgba(${input.colors.pause},0.52)`);
+  headGlow.addColorStop(0.42, `rgba(${input.colors.pause},0.3)`);
+  headGlow.addColorStop(0.68, `rgba(${input.colors.pause},0.1)`);
   headGlow.addColorStop(1, `rgba(${input.colors.pause},0)`);
   ctx.fillStyle = headGlow;
   ctx.fillRect(input.end - 7, fuseY - 7, 14, 14);
@@ -1216,6 +1324,33 @@ function drawNowPointer(
   const active = input.state === 'running' || input.state === 'paused';
   const motionWindow = input.state === 'paused' ? BAND_PAUSE_MOTION_MS : BAND_RUNNING_MOTION_MS;
   const phase = active ? Math.min(1, input.pulseAge / motionWindow) : 1;
+
+  // 状态色呼吸辉光：每秒随擒纵步进点亮一次后缓缓回落（峰值 ≤0.18）。
+  // 画在指针本体之下，保持标线 crisp；reduced-motion 为固定低透明度静态辉光。
+  if (active) {
+    const breathPulse = pointerBreathPulse(input.pulseAge, input.reducedMotion);
+    const glowAlpha = POINTER_GLOW_MAX_ALPHA * (0.35 + 0.65 * breathPulse);
+    const centerY = (input.fieldTop + input.fieldBottom) / 2;
+    const radius = 20 + breathPulse * 8;
+    const breath = ctx.createRadialGradient(
+      input.pointerX,
+      centerY,
+      0,
+      input.pointerX,
+      centerY,
+      radius,
+    );
+    breath.addColorStop(0, `rgba(${stateColor},${glowAlpha})`);
+    breath.addColorStop(0.55, `rgba(${stateColor},${glowAlpha * 0.4})`);
+    breath.addColorStop(1, `rgba(${stateColor},0)`);
+    ctx.fillStyle = breath;
+    ctx.fillRect(
+      input.pointerX - radius,
+      input.fieldTop - 16,
+      radius * 2,
+      input.fieldBottom - input.fieldTop + 32,
+    );
+  }
 
   ctx.fillStyle = `rgba(${input.colors.ink},0.14)`;
   ctx.fillRect(input.pointerX - 3.5, input.fieldTop, 7, input.fieldBottom - input.fieldTop);

@@ -1,8 +1,9 @@
 // 专注工作台：任务、计时仪表、时间之带、账本属于同一连续平面。
 // 计时逻辑、任务关联逻辑、状态机全部保持原样。
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import '../../styles/focus-motion.css';
 import { Icon } from '../../ui/Icon';
 import { useStore } from '../../app/store';
 import { formatDuration } from '../../lib/time';
@@ -58,6 +59,15 @@ const STATE_WORD: Record<string, string> = {
   finished: '已结束',
 };
 
+/** 统计数字：值变化时以 key 重挂载，触发 focus-motion.css 的 260ms settle 过渡 */
+function StatValue({ value, className }: { value: string; className: string }) {
+  return (
+    <span key={value} className={`${className} focus-value-tick`}>
+      {value}
+    </span>
+  );
+}
+
 /** 像素仪表的专注核心充能目标：45 分钟有效专注点亮一整颗核心 */
 const CORE_GOAL_MS = 45 * 60_000;
 
@@ -74,7 +84,10 @@ export function TimerPanel() {
   const { now, mainMs, cumulativeActiveMs, cumulativePauseMs, wallMs } = useDisplayValues(snapshot);
   const [pickerMode, setPickerMode] = useState<'segment' | 'session' | 'preselect' | null>(null);
   const [immersive, setImmersive] = useState(false);
+  const [immersiveLeaving, setImmersiveLeaving] = useState(false);
+  const immersiveExitTimer = useRef<number | null>(null);
   const [ledgerOpen, setLedgerOpen] = useState(true);
+  const reducedMotion = useReducedMotion() ?? false;
 
   const state = snapshot?.state ?? 'idle';
   const isRunning = state === 'running' || state === 'paused';
@@ -276,33 +289,52 @@ export function TimerPanel() {
         : null;
   const showLedger = (snapshot?.segments.length ?? 0) > 0;
 
+  // 关闭沉浸：先挂 .is-leaving 播放 360ms 淡出+缩放，再卸载覆盖层。
+  // reduced-motion 下 CSS 动画降级为静态，延迟同步缩短到 40ms。
+  const exitImmersive = useCallback(async () => {
+    if (!immersive || immersiveLeaving) return;
+    setImmersiveLeaving(true);
+    try {
+      await window.focuslink.window.setFullScreen(false);
+    } catch {
+      // The operating system may already have left fullscreen.
+    }
+    immersiveExitTimer.current = window.setTimeout(
+      () => {
+        setImmersive(false);
+        setImmersiveLeaving(false);
+      },
+      reducedMotion ? 40 : 360,
+    );
+  }, [immersive, immersiveLeaving, reducedMotion]);
+
   useEffect(() => {
     if (!immersive) return;
     const exit = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setImmersive(false);
-        void window.focuslink.window.setFullScreen(false);
-      }
+      if (event.key === 'Escape') void exitImmersive();
     };
     window.addEventListener('keydown', exit);
     return () => window.removeEventListener('keydown', exit);
-  }, [immersive]);
+  }, [immersive, exitImmersive]);
+
+  useEffect(
+    () => () => {
+      if (immersiveExitTimer.current !== null) window.clearTimeout(immersiveExitTimer.current);
+    },
+    [],
+  );
 
   const enterImmersive = async () => {
+    if (immersiveExitTimer.current !== null) {
+      window.clearTimeout(immersiveExitTimer.current);
+      immersiveExitTimer.current = null;
+    }
+    setImmersiveLeaving(false);
     setImmersive(true);
     try {
       await window.focuslink.window.setFullScreen(true);
     } catch {
       // The body-level overlay remains a usable windowed fallback.
-    }
-  };
-
-  const exitImmersive = async () => {
-    setImmersive(false);
-    try {
-      await window.focuslink.window.setFullScreen(false);
-    } catch {
-      // The operating system may already have left fullscreen.
     }
   };
 
@@ -350,22 +382,24 @@ export function TimerPanel() {
   );
 
   const totals = (
-    <div className="timer-totals">
+    <div className="timer-totals" key={state}>
       <div className="timer-total">
         <span className="timer-total-label">累计专注</span>
-        <span className="timer-total-value timer-digit tone-focus">
-          {formatDuration(cumulativeActiveMs)}
-        </span>
+        <StatValue
+          value={formatDuration(cumulativeActiveMs)}
+          className="timer-total-value timer-digit tone-focus"
+        />
       </div>
       <div className="timer-total">
         <span className="timer-total-label">累计暂停</span>
-        <span className="timer-total-value timer-digit tone-pause">
-          {formatDuration(cumulativePauseMs)}
-        </span>
+        <StatValue
+          value={formatDuration(cumulativePauseMs)}
+          className="timer-total-value timer-digit tone-pause"
+        />
       </div>
       <div className="timer-total">
         <span className="timer-total-label">总历时</span>
-        <span className="timer-total-value timer-digit">{formatDuration(wallMs)}</span>
+        <StatValue value={formatDuration(wallMs)} className="timer-total-value timer-digit" />
       </div>
     </div>
   );
@@ -377,7 +411,7 @@ export function TimerPanel() {
     >
       <section className="focus-instrument">
         <header className="focus-header">
-          <span className={`focus-state-word state-${state}`}>
+          <span className={`focus-state-word state-${state}`} key={state}>
             <i className="focus-state-dot" />
             {STATE_WORD[state] ?? STATE_WORD.idle}
           </span>
@@ -407,7 +441,7 @@ export function TimerPanel() {
           </div>
         </header>
 
-        <div className="timer-context-strip">
+        <div className="timer-context-strip" key={state}>
           <div className="timer-context-copy">
             <div className="timer-context-label">
               {contextSourceLabel}
@@ -474,10 +508,10 @@ export function TimerPanel() {
         {showLedger && ledgerOpen && (
           <motion.aside
             className="session-ledger-pane"
-            initial={{ opacity: 0, x: 14 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 10 }}
-            transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reducedMotion ? 0.12 : 0.32, ease: [0.16, 1, 0.3, 1] }}
           >
             <SegmentTimeline />
           </motion.aside>
@@ -491,7 +525,7 @@ export function TimerPanel() {
       {immersive &&
         createPortal(
           <div
-            className={`focus-immersive instrument-${timerStyle}`}
+            className={`focus-immersive instrument-${timerStyle}${immersiveLeaving ? ' is-leaving' : ''}`}
             data-state={state}
             data-testid="focus-immersive"
           >

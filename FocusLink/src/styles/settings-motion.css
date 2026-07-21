@@ -1,0 +1,214 @@
+/**
+ * settings-motion.css — 设置页分工动效（仅由 SettingsPanel.tsx 引入）
+ *
+ * 统一动效语言（token 取自 motion.css / temporal-foundation.css，不新增色值）：
+ *  - 入场/显现 cubic-bezier(.16,1,.3,1) = var(--ease-out-expo)
+ *  - 移动/交换 cubic-bezier(.4,0,.2,1) = var(--ease-standard)
+ *  - 微交互 120–160ms；常规 240ms；面板入场 320ms
+ *  - 光效仅用 --app-accent 低透明度（≤0.18）径向辉光
+ *  - 全部动效提供 prefers-reduced-motion 降级（静态或仅透明度过渡）
+ *
+ * 锁定契约（smoke 断言，勿破坏）：
+ *  - .toggle-track 保持 42×24、有边框、role=switch；本文件只加过渡，不改尺寸；
+ *  - .font-profile-choice / .instrument-choice 的结构与数量断言不受影响
+ *    （辉光与选中勾均绘制在伪元素上，不新增真实 DOM 节点）。
+ */
+
+/* ─── 1) 开关：滑块与轨道 160ms 滑动（移动/交换缓动） ─────────────
+ * legacy-support.css 中 .toggle-thumb 原为 200ms spring；
+ * 此处用更高特异性选择器收敛到统一语言下的 160ms standard。 */
+.toggle-track {
+  transition:
+    background-color 160ms var(--ease-standard),
+    border-color 160ms var(--ease-standard);
+}
+
+.toggle-track .toggle-thumb {
+  transition: transform 160ms var(--ease-standard);
+}
+
+/* ─── 2) 设置分区：交错入场（面板 320ms，逐区延迟 ≤50ms） ───────── */
+@keyframes settings-section-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.settings-stack > .settings-section {
+  animation: settings-section-in 320ms var(--ease-out-expo) both;
+}
+
+.settings-stack > .settings-section:nth-of-type(2) {
+  animation-delay: 40ms;
+}
+
+.settings-stack > .settings-section:nth-of-type(3) {
+  animation-delay: 80ms;
+}
+
+.settings-stack > .settings-section:nth-of-type(4) {
+  animation-delay: 120ms;
+}
+
+.settings-stack > .settings-section:nth-of-type(5) {
+  animation-delay: 160ms;
+}
+
+.settings-stack > .settings-section:nth-of-type(n + 6) {
+  animation-delay: 200ms;
+}
+
+/* ─── 3) 分组导航 tab：激活指示条（TSX 中 framer-motion layoutId
+ *        负责 240ms 滑动，此处只定义静态造型） ─────────────────── */
+.settings-tab {
+  position: relative;
+}
+
+.settings-tab-indicator {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: rgb(var(--app-accent));
+  pointer-events: none;
+}
+
+/* ─── 4) 预览卡（字体样张 / 仪表预览）：hover 低透明浮光 ──────────
+ * 辉光 α = 0.14 ≤ 0.18，颜色取自 --app-accent；仅透明度过渡。 */
+.font-profile-choice,
+.instrument-choice {
+  position: relative;
+  transition:
+    background-color var(--dur-base) var(--ease-standard),
+    border-color var(--dur-base) var(--ease-standard),
+    box-shadow var(--dur-base) var(--ease-standard);
+}
+
+.font-profile-choice::before,
+.instrument-choice::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    140% 110% at 50% -20%,
+    rgb(var(--app-accent) / 0.14),
+    transparent 65%
+  );
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-out-expo);
+  pointer-events: none;
+}
+
+.font-profile-choice:hover::before,
+.instrument-choice:hover::before {
+  opacity: 1;
+}
+
+/* 主题色色板：hover 时低透明 accent 光晕（不遮盖色板本色） */
+.focus-color-swatch {
+  transition: box-shadow 160ms var(--ease-standard);
+}
+
+.focus-color-swatch:hover {
+  box-shadow: 0 0 0 3px rgb(var(--app-accent) / 0.16);
+}
+
+/* ─── 5) 选中勾：spring 式弹出（240ms，带回跳） ───────────────────
+ * 勾选图形用边框旋转绘制，颜色取自 --app-accent；
+ * 主题色色板沿用既有 ::after 描边环，仅补一次弹出动画。 */
+@keyframes settings-check-pop {
+  0% {
+    opacity: 0;
+    transform: rotate(-45deg) scale(0.4);
+  }
+  60% {
+    opacity: 1;
+    transform: rotate(-45deg) scale(1.12);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-45deg) scale(1);
+  }
+}
+
+.font-profile-choice::after,
+.instrument-choice::after {
+  content: '';
+  position: absolute;
+  top: 11px;
+  right: 13px;
+  width: 11px;
+  height: 6px;
+  border-bottom: 1.5px solid rgb(var(--app-accent));
+  border-left: 1.5px solid rgb(var(--app-accent));
+  opacity: 0;
+  transform: rotate(-45deg);
+  pointer-events: none;
+}
+
+.font-profile-choice.active::after,
+.instrument-choice.active::after {
+  animation: settings-check-pop var(--dur-base) var(--ease-spring) both;
+}
+
+@keyframes settings-ring-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.focus-color-swatch.active::after {
+  animation: settings-ring-pop var(--dur-base) var(--ease-spring) both;
+}
+
+/* ─── reduced-motion 降级：静态呈现或仅透明度过渡 ──────────────── */
+@media (prefers-reduced-motion: reduce) {
+  /* 开关：直接静态切换 */
+  .toggle-track,
+  .toggle-track .toggle-thumb {
+    transition: none;
+  }
+
+  /* 分区入场：仅保留微时长透明度过渡（复用 motion.css 的纯淡入），
+     nth-of-type(n) 与上文延迟规则同特异性且位置靠后，可覆盖交错延迟 */
+  .settings-stack > .settings-section:nth-of-type(n) {
+    animation-name: motion-fade-in;
+    animation-duration: var(--dur-micro);
+    animation-timing-function: var(--ease-standard);
+    animation-delay: 0ms;
+  }
+
+  /* 浮光本身就是仅透明度过渡，保留；色板光晕去掉过渡、静态呈现 */
+  .focus-color-swatch {
+    transition: none;
+  }
+
+  /* 选中勾 / 描边环：取消弹出动画，静态显示 */
+  .font-profile-choice.active::after,
+  .instrument-choice.active::after {
+    animation: none;
+    opacity: 1;
+  }
+
+  .focus-color-swatch.active::after {
+    animation: none;
+  }
+  /* tab 指示条：framer-motion layout 动画由全局
+     MotionConfig reducedMotion="user" 自动降级为瞬时到位 */
+}

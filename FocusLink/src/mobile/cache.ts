@@ -1,6 +1,11 @@
 import type { DeviceSyncChange, DeviceSyncSessionBundle } from '@shared/sync/deviceProtocol';
 import { validateDeviceSyncBundle } from '@shared/sync/deviceProtocol';
 import type { LiveFocusSnapshotLike } from './runtimeModel';
+import {
+  TASK_SNAPSHOT_PROTOCOL_VERSION,
+  validateTaskSnapshotPayload,
+  type TaskSnapshotResponse,
+} from '@shared/sync/taskSnapshotProtocol';
 
 const DATABASE_NAME = 'focuslink-mobile-preview';
 const DATABASE_VERSION = 1;
@@ -11,6 +16,7 @@ const CURSOR_KEY = 'cursor';
 const LAST_SYNC_KEY = 'lastSyncAt';
 const SERVER_TIME_KEY = 'serverTime';
 const LIVE_FOCUS_KEY = 'liveFocusSnapshot';
+const TASK_SNAPSHOT_KEY = 'taskSnapshot';
 
 export interface CachedBundle {
   entityId: string;
@@ -149,6 +155,28 @@ export async function clearCachedLiveFocusSnapshot(): Promise<void> {
   database.close();
 }
 
+export async function readCachedTaskSnapshot(): Promise<TaskSnapshotResponse | null> {
+  const database = await openDatabase();
+  const transaction = database.transaction(META_STORE, 'readonly');
+  const record = await requestValue<MetaRecord | undefined>(
+    transaction.objectStore(META_STORE).get(TASK_SNAPSHOT_KEY),
+  );
+  await transactionDone(transaction);
+  database.close();
+  return isCachedTaskSnapshot(record?.value) ? record.value : null;
+}
+
+export async function writeCachedTaskSnapshot(snapshot: TaskSnapshotResponse): Promise<void> {
+  const database = await openDatabase();
+  const transaction = database.transaction(META_STORE, 'readwrite');
+  transaction.objectStore(META_STORE).put({
+    key: TASK_SNAPSHOT_KEY,
+    value: snapshot,
+  } satisfies MetaRecord);
+  await transactionDone(transaction);
+  database.close();
+}
+
 function validateChanges(changes: readonly DeviceSyncChange[]): void {
   let previousSequence = -1;
   for (const change of changes) {
@@ -229,6 +257,19 @@ function isCachedLiveFocusRecord(value: unknown): value is CachedLiveFocusRecord
       snapshot.currentStateStartedAt === null) &&
     (typeof snapshot.title === 'string' || snapshot.title === null) &&
     (typeof snapshot.ownerDeviceId === 'string' || snapshot.ownerDeviceId === null)
+  );
+}
+
+function isCachedTaskSnapshot(value: unknown): value is TaskSnapshotResponse {
+  return (
+    isRecord(value) &&
+    value.protocolVersion === TASK_SNAPSHOT_PROTOCOL_VERSION &&
+    Number.isSafeInteger(value.revision) &&
+    Number(value.revision) >= 0 &&
+    (value.sourceDeviceId === null || typeof value.sourceDeviceId === 'string') &&
+    typeof value.serverTime === 'number' &&
+    Number.isFinite(value.serverTime) &&
+    (value.snapshot === null || validateTaskSnapshotPayload(value.snapshot))
   );
 }
 

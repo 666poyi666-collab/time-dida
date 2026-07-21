@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { Project, Task, TimerState } from '@shared/types';
 import { useStore } from '../../app/store';
 import { Icon, Spinner } from '../../ui/Icon';
 import { TaskTree, type TaskTreeRowContext } from './TaskTree';
 import { countTaskTree, filterTaskTree, type TaskSortMode } from './taskTreeModel';
 import { useTaskTreeCollapse } from './useTaskTreeCollapse';
+import '../../styles/tasks-motion.css';
 
 type TaskFilter = 'open' | 'completed';
 
@@ -153,6 +154,8 @@ export function TaskWorkspace() {
   const pendingSyncCount = syncQueue.filter(
     (item) => item.status === 'pending' || item.status === 'failed',
   ).length;
+  // 已完成/未完成分组切换淡入：reduced-motion 时仅保留 140ms 透明度过渡。
+  const reduceMotion = useReducedMotion();
 
   const applyUpdatedTask = useCallback(
     (updated: Task) => {
@@ -434,6 +437,16 @@ export function TaskWorkspace() {
           </div>
 
           <div className="task-workbench-list" aria-busy={loading || refreshing}>
+            <motion.div
+              key={filter}
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={
+                reduceMotion
+                  ? { duration: 0.14, ease: [0.4, 0, 0.2, 1] }
+                  : { duration: 0.24, ease: [0.16, 1, 0.3, 1] }
+              }
+            >
             {loading ? (
               <TaskSkeletonList />
             ) : loadError ? (
@@ -498,6 +511,7 @@ export function TaskWorkspace() {
                 再显示 {Math.min(TASK_PAGE_SIZE, displayedCount - visibleLimit)} 项
               </button>
             )}
+            </motion.div>
           </div>
         </section>
 

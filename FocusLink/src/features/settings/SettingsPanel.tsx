@@ -11,8 +11,10 @@ import type { DeviceSyncStatus, TomatodoBridgeStatus } from '@shared/ipc/api';
 import { APP_VERSION } from '@shared/version';
 import { TOMATODO_SUBJECT_OPTIONS } from '@shared/tomatodoPolicy';
 import { resolveFontProfile, resolveTimerStyle } from '@shared/theme';
+import { motion } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
 import { TimerDial } from '../focus/TimerDial';
+import '../../styles/settings-motion.css';
 
 const HOTKEY_LABELS: Record<keyof AppSettings['hotkeys'], string> = {
   toggleTimer: '开始 / 暂停 / 继续',
@@ -743,6 +745,14 @@ export function SettingsPanel() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`settings-tab ${isActive ? 'active' : ''}`}
               >
+                {isActive ? (
+                  <motion.span
+                    layoutId="settings-tab-indicator"
+                    className="settings-tab-indicator"
+                    aria-hidden="true"
+                    transition={{ duration: 0.24, ease: [0.4, 0, 0.2, 1] }}
+                  />
+                ) : null}
                 <TabIcon size="sm" />
                 {tab.label}
               </button>

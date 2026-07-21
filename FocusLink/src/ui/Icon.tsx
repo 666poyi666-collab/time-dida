@@ -4,11 +4,13 @@
 // 1. 根据尺寸自动调整 strokeWidth（小图标更粗、大图标更细）
 // 2. 统一光学尺寸对齐
 // 3. 提供语义色调快捷映射
-// 4. hover 微动效：scale(1.12) + spring 曲线
+// 4. hover 微动效：140ms scale(1.12) + 低透明 accent 光晕（α=0.18，见 styles/ui-motion.css）
 // 5. spin 旋转动画：加载/刷新场景
 // 6. 强制 GPU 加速渲染
 
 import React from 'react';
+// .icon-hover 的样式定义在 ui-motion.css；在此引入保证任何入口（含 mini）都带上样式
+import '../styles/ui-motion.css';
 
 type IconSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 type IconTone =
@@ -39,7 +41,7 @@ export interface IconProps extends Omit<React.SVGProps<SVGSVGElement>, 'ref'> {
   size?: IconSize;
   tone?: IconTone;
   className?: string;
-  /** hover 时 scale(1.12) 微动效 */
+  /** hover 时 140ms scale(1.12) + 低透明 accent 光晕微动效 */
   hover?: boolean;
   /** 持续旋转动画（加载/刷新场景） */
   spin?: boolean;

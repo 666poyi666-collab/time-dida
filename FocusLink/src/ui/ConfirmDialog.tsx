@@ -1,12 +1,15 @@
 // 通用确认弹窗 —— v0.12 弹层系统统一实现，替换原生 confirm()。
 // 契约（见 frontend-design/FRONTEND_SPEC.md 4/9 节与 styles/features/overlays.css 头部）：
 // - 材质：.overlay-surface（不透明 elevated + shadow-modal + 边缘高光），遮罩 .overlay-backdrop；
-// - 动画：.motion-popover 从几何中心偏上生长（--popover-origin: 50% 42%），退出
-//   .motion-popover-exit，reduced-motion 由 motion.css 全局降级为即时显隐（JS 侧同步跳过退出延时）；
+// - 动画：framer-motion 驱动 —— 背板淡入 200ms（out-expo），面板从几何中心偏上
+//   （transform-origin 50% 42%）以 spring(380/30) 轻微上浮弹出；退出 150ms 标准缓动收束，
+//   reduced-motion 由 App 根 MotionConfig(reducedMotion="user") 压成仅透明度过渡，
+//   JS 侧 requestClose 同步跳过退出延时直接落定；
 // - 焦点：打开时默认按钮首焦（danger 时落在「取消」上，防误确认），Tab 在弹层内循环，
 //   关闭后焦点返回触发元素；
 // - 键盘：Esc 取消；危险操作加 .tone-danger，主按钮走 .btn-pause 语义。
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { motion, type Transition } from 'framer-motion';
 import { Icon } from './Icon';
 
 interface ConfirmDialogProps {
@@ -22,8 +25,15 @@ interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
-/** 与 .motion-popover-exit（--motion-fast 档 130ms）匹配的退出等待时长 */
+/** 与面板/背板退出过渡（150ms 标准缓动）匹配的退出等待时长 */
 const EXIT_MS = 150;
+
+// 全组统一弹层语言：背板纯淡入 200ms；面板 spring(380/30) 轻微上浮弹出；
+// 退出统一 150ms 移动缓动收束，与 EXIT_MS 对齐。
+const BACKDROP_ENTER: Transition = { duration: 0.2, ease: [0.16, 1, 0.3, 1] };
+const BACKDROP_EXIT: Transition = { duration: 0.15, ease: [0.4, 0, 0.2, 1] };
+const PANEL_SPRING: Transition = { type: 'spring', stiffness: 380, damping: 30 };
+const PANEL_EXIT: Transition = { duration: 0.15, ease: [0.4, 0, 0.2, 1] };
 
 export function ConfirmDialog({
   open,
@@ -139,20 +149,27 @@ export function ConfirmDialog({
       className="fixed inset-0 z-50 flex items-center justify-center"
       onClick={() => requestClose('cancel')}
     >
-      <div
-        className={`overlay-backdrop absolute inset-0 ${closing ? 'overlay-backdrop-exit' : 'motion-fade-in'}`}
+      <motion.div
+        className="overlay-backdrop absolute inset-0"
         aria-hidden="true"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: closing ? 0 : 1 }}
+        transition={closing ? BACKDROP_EXIT : BACKDROP_ENTER}
       />
-      <div
+      <motion.div
         ref={shellRef}
-        className={`confirm-shell overlay-surface ${danger ? 'tone-danger' : ''} z-10 ${
-          closing ? 'motion-popover-exit is-closing' : 'motion-popover'
-        }`}
-        style={{ '--popover-origin': '50% 42%' } as React.CSSProperties}
+        className={`confirm-shell overlay-surface ${danger ? 'tone-danger' : ''} z-10`}
+        style={{ transformOrigin: '50% 42%' }}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby={description ? 'confirm-dialog-desc' : undefined}
+        initial={{ opacity: 0, y: 8, scale: 0.97 }}
+        animate={
+          closing
+            ? { opacity: 0, y: 6, scale: 0.99, transition: PANEL_EXIT }
+            : { opacity: 1, y: 0, scale: 1, transition: PANEL_SPRING }
+        }
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handleShellKeyDown}
       >
@@ -185,7 +202,7 @@ export function ConfirmDialog({
             {confirmLabel}
           </button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

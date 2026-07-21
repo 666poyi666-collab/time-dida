@@ -21,6 +21,12 @@ import {
   type LiveFocusSnapshotResponse,
   type LiveFocusWaitResponse,
 } from '@shared/sync/liveFocusProtocol';
+import {
+  TASK_SNAPSHOT_PATH,
+  TASK_SNAPSHOT_PROTOCOL_VERSION,
+  validateTaskSnapshotPayload,
+  type TaskSnapshotResponse,
+} from '@shared/sync/taskSnapshotProtocol';
 
 export interface PullPageInput {
   endpoint: string;
@@ -46,6 +52,9 @@ export interface SendLiveFocusCommandInput extends LiveFocusConnectionInput {
   command: LiveFocusCommand;
 }
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+const LEDGER_REQUEST_TIMEOUT_MS = 20_000;
+
 export async function pullDeviceSyncPage(input: PullPageInput): Promise<DeviceSyncResponse> {
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
   const token = input.token.trim();
@@ -61,22 +70,27 @@ export async function pullDeviceSyncPage(input: PullPageInput): Promise<DeviceSy
 
   let response: Response;
   try {
-    response = await fetch(`${endpoint}/v1/sync`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+    response = await fetchWithTimeout(
+      `${endpoint}/v1/sync`,
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+        cache: 'no-store',
+        credentials: 'omit',
+        redirect: 'error',
+        referrerPolicy: 'no-referrer',
       },
-      body: JSON.stringify(request),
-      cache: 'no-store',
-      credentials: 'omit',
-      redirect: 'error',
-      referrerPolicy: 'no-referrer',
-      signal: input.signal,
-    });
+      input.signal,
+      LEDGER_REQUEST_TIMEOUT_MS,
+    );
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    if (error instanceof RequestTimeoutError) throw new Error('同步请求超时，正在重连');
     throw new Error(navigator.onLine ? '无法连接同步服务，请检查地址、CORS 或网络' : '当前离线');
   }
 
@@ -99,6 +113,25 @@ export async function fetchLiveFocusSnapshot(
   return parseLiveSnapshotResponse(await readDeviceSyncJsonResponse(response));
 }
 
+export async function fetchTaskSnapshot(
+  input: LiveFocusConnectionInput,
+): Promise<TaskSnapshotResponse> {
+  const response = await liveFocusFetch(input, TASK_SNAPSHOT_PATH);
+  const value = await readDeviceSyncJsonResponse(response);
+  if (
+    !isRecord(value) ||
+    value.protocolVersion !== TASK_SNAPSHOT_PROTOCOL_VERSION ||
+    !Number.isSafeInteger(value.revision) ||
+    Number(value.revision) < 0 ||
+    !(value.sourceDeviceId === null || isNonEmptyText(value.sourceDeviceId, 200)) ||
+    !(value.snapshot === null || validateTaskSnapshotPayload(value.snapshot)) ||
+    !isFiniteTimestamp(value.serverTime)
+  ) {
+    throw new Error('任务快照响应无效');
+  }
+  return value as unknown as TaskSnapshotResponse;
+}
+
 export async function waitForLiveFocusSnapshot(
   input: WaitForLiveFocusInput,
 ): Promise<LiveFocusWaitResponse> {
@@ -113,7 +146,7 @@ export async function waitForLiveFocusSnapshot(
     afterRevision: String(input.afterRevision),
     waitMs: String(waitMs),
   });
-  const response = await liveFocusFetch(input, `/v1/live/wait?${query}`);
+  const response = await liveFocusFetch(input, `/v1/live/wait?${query}`, {}, waitMs + 10_000);
   const value = await readDeviceSyncJsonResponse(response);
   if (!isRecord(value) || typeof value.changed !== 'boolean') {
     throw new Error('实时等待响应缺少 changed');
@@ -142,6 +175,7 @@ async function liveFocusFetch(
   input: LiveFocusConnectionInput,
   path: string,
   init: Pick<RequestInit, 'method' | 'body'> = {},
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
   const token = input.token.trim();
@@ -149,22 +183,27 @@ async function liveFocusFetch(
 
   let response: Response;
   try {
-    response = await fetch(`${endpoint}${path}`, {
-      method: init.method ?? 'GET',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-        ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    response = await fetchWithTimeout(
+      `${endpoint}${path}`,
+      {
+        method: init.method ?? 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+          ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        },
+        body: init.body,
+        cache: 'no-store',
+        credentials: 'omit',
+        redirect: 'error',
+        referrerPolicy: 'no-referrer',
       },
-      body: init.body,
-      cache: 'no-store',
-      credentials: 'omit',
-      redirect: 'error',
-      referrerPolicy: 'no-referrer',
-      signal: input.signal,
-    });
+      input.signal,
+      timeoutMs,
+    );
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    if (error instanceof RequestTimeoutError) throw new Error('实时同步请求超时，正在重连');
     throw new Error(
       navigator.onLine ? '无法连接实时同步服务，请检查地址、CORS 或网络' : '当前离线',
     );
@@ -178,6 +217,35 @@ async function liveFocusFetch(
     throw new Error(detail || `实时同步服务返回 HTTP ${response.status}`);
   }
   return response;
+}
+
+class RequestTimeoutError extends Error {}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  parentSignal: AbortSignal | undefined,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortFromParent = () => controller.abort(parentSignal?.reason);
+  if (parentSignal?.aborted) abortFromParent();
+  else parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+  const timeout = globalThis.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (parentSignal?.aborted) throw error;
+    if (timedOut) throw new RequestTimeoutError('request timed out');
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeout);
+    parentSignal?.removeEventListener('abort', abortFromParent);
+  }
 }
 
 function parseLiveSnapshotResponse(value: unknown): LiveFocusSnapshotResponse {

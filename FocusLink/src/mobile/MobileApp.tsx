@@ -1,21 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
 
 import { normalizeDeviceSyncEndpoint } from '@shared/sync/deviceProtocol';
 import type { LiveFocusCommand, LiveFocusSnapshotResponse } from '@shared/sync/liveFocusProtocol';
+import type { SyncedTask, TaskSnapshotResponse } from '@shared/sync/taskSnapshotProtocol';
 import { APP_COMMIT, APP_VERSION } from '@shared/version';
 import {
   applyDeviceSyncChanges,
   clearCachedLiveFocusSnapshot,
   clearMobileCache,
   readCachedLiveFocusSnapshot,
+  readCachedTaskSnapshot,
   readMobileCache,
   writeCachedLiveFocusSnapshot,
+  writeCachedTaskSnapshot,
   type MobileCacheSnapshot,
 } from './cache';
 import { ConnectionSheet } from './ConnectionSheet';
 import { FocusConsole, type MobileFocusCommand } from './FocusConsole';
 import {
   completeNativeFocusCommands,
+  configureNativeFocusConnection,
+  clearNativeFocusConnection,
   drainNativeFocusCommands,
   nativeFocusCommandSuccessCopy,
   subscribeToNativeFocusCommands,
@@ -37,6 +43,7 @@ import {
 import { SessionLedger } from './SessionLedger';
 import {
   fetchLiveFocusSnapshot,
+  fetchTaskSnapshot,
   pullDeviceSyncPage,
   sendLiveFocusCommand,
   waitForLiveFocusSnapshot,
@@ -66,6 +73,8 @@ export function MobileApp() {
     initialPreferences.endpoint && initialPreferences.token ? 'connecting' : 'unconfigured',
   );
   const [titleDraft, setTitleDraft] = useState('');
+  const [taskSnapshot, setTaskSnapshot] = useState<TaskSnapshotResponse | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState('');
   const [pendingCommand, setPendingCommand] = useState<MobileFocusCommand | null>(null);
   const [commandNotice, setCommandNotice] = useState<string | null>(null);
   const [connectionEpoch, setConnectionEpoch] = useState(0);
@@ -80,8 +89,11 @@ export function MobileApp() {
   const ledgerGeneration = useRef(0);
   const liveRequest = useRef<AbortController | null>(null);
   const liveGeneration = useRef(0);
+  const taskRequest = useRef<AbortController | null>(null);
+  const taskGeneration = useRef(0);
   const cacheMutationQueue = useRef<Promise<void>>(Promise.resolve());
   const nativeQueueRunning = useRef(false);
+  const lastResumeRefreshAt = useRef(0);
 
   const setConnectionState = useCallback((state: LiveConnectionState) => {
     liveConnectionRef.current = state;
@@ -102,6 +114,37 @@ export function MobileApp() {
     },
     [],
   );
+
+  const refreshTasks = useCallback(async (connection: MobileConnectionPreferences) => {
+    taskRequest.current?.abort();
+    const controller = new AbortController();
+    const generation = taskGeneration.current + 1;
+    taskGeneration.current = generation;
+    taskRequest.current = controller;
+    const isCurrent = () =>
+      taskGeneration.current === generation &&
+      taskRequest.current === controller &&
+      !controller.signal.aborted;
+    try {
+      const response = await fetchTaskSnapshot({
+        endpoint: connection.endpoint,
+        token: connection.token,
+        signal: controller.signal,
+      });
+      if (!isCurrent()) return;
+      setTaskSnapshot(response);
+      await enqueueMutation(cacheMutationQueue, async () => {
+        if (isCurrent()) await writeCachedTaskSnapshot(response);
+      });
+    } catch (error) {
+      if (!isCurrent() || isAbortError(error)) return;
+      setCommandNotice(
+        (current) => current ?? `任务清单刷新失败：${errorMessage(error)}；继续使用本机缓存`,
+      );
+    } finally {
+      if (taskRequest.current === controller) taskRequest.current = null;
+    }
+  }, []);
 
   const pullLedger = useCallback(
     async (connection: MobileConnectionPreferences, startCursor: string | null) => {
@@ -182,7 +225,12 @@ export function MobileApp() {
 
   useEffect(() => {
     preferencesRef.current = preferences;
-  }, [preferences]);
+    if (preferences.endpoint && preferences.token) {
+      void configureNativeFocusConnection(preferences.endpoint, preferences.token, deviceId).catch(
+        () => setCommandNotice('Android 后台连接配置失败；前台同步仍可继续'),
+      );
+    }
+  }, [deviceId, preferences]);
 
   useEffect(() => {
     cacheRef.current = cache;
@@ -191,8 +239,8 @@ export function MobileApp() {
   useEffect(() => {
     let active = true;
     const generation = ledgerGeneration.current;
-    void Promise.all([readMobileCache(), readCachedLiveFocusSnapshot()])
-      .then(([ledger, cachedLive]) => {
+    void Promise.all([readMobileCache(), readCachedLiveFocusSnapshot(), readCachedTaskSnapshot()])
+      .then(([ledger, cachedLive, cachedTasks]) => {
         if (!active || ledgerGeneration.current !== generation) return;
         cacheRef.current = ledger;
         setCache(ledger);
@@ -200,6 +248,7 @@ export function MobileApp() {
           liveSnapshotRef.current = cachedLive;
           setLiveSnapshot(cachedLive);
         }
+        if (cachedTasks) setTaskSnapshot(cachedTasks);
         setLedgerNotice(
           ledger.bundles.length > 0
             ? `已从本机缓存载入 ${ledger.bundles.length} 场会话`
@@ -218,8 +267,10 @@ export function MobileApp() {
       active = false;
       ledgerGeneration.current += 1;
       liveGeneration.current += 1;
+      taskGeneration.current += 1;
       ledgerRequest.current?.abort();
       liveRequest.current?.abort();
+      taskRequest.current?.abort();
     };
   }, []);
 
@@ -235,9 +286,28 @@ export function MobileApp() {
   }, []);
 
   useEffect(() => {
+    const reconnectAfterResume = () => {
+      if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+      if (!preferencesRef.current.endpoint || !preferencesRef.current.token) return;
+      const now = Date.now();
+      if (now - lastResumeRefreshAt.current < 1_000) return;
+      lastResumeRefreshAt.current = now;
+      setOnline(true);
+      setConnectionEpoch((value) => value + 1);
+    };
+    document.addEventListener('visibilitychange', reconnectAfterResume);
+    window.addEventListener('pageshow', reconnectAfterResume);
+    return () => {
+      document.removeEventListener('visibilitychange', reconnectAfterResume);
+      window.removeEventListener('pageshow', reconnectAfterResume);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!cacheReady || !online || !preferences.endpoint || !preferences.token) return;
     void pullLedger(preferences, cacheRef.current.cursor);
-  }, [cacheReady, connectionEpoch, online, preferences, pullLedger]);
+    void refreshTasks(preferences);
+  }, [cacheReady, connectionEpoch, online, preferences, pullLedger, refreshTasks]);
 
   useEffect(() => {
     liveRequest.current?.abort();
@@ -413,7 +483,8 @@ export function MobileApp() {
         return;
       }
 
-      const command = makeUiCommand(action, snapshot, title);
+      const selectedTask = taskSnapshot?.snapshot?.tasks.find((task) => task.id === selectedTaskId);
+      const command = makeUiCommand(action, snapshot, title, selectedTask);
       pendingCommandRef.current = action;
       setPendingCommand(action);
       setCommandNotice(null);
@@ -428,6 +499,7 @@ export function MobileApp() {
         if (response.ack.status === 'applied' || response.ack.status === 'duplicate') {
           setCommandNotice(commandSuccessCopy(action));
           if (action === 'start') setTitleDraft('');
+          if (action === 'start') setSelectedTaskId('');
           if (action === 'finish') void pullLedger(connection, cacheRef.current.cursor);
         } else if (response.ack.status === 'conflict') {
           setCommandNotice('状态已由另一设备更新，本机已刷新到最新版本');
@@ -441,7 +513,7 @@ export function MobileApp() {
         setPendingCommand(null);
       }
     },
-    [commitLiveSnapshot, deviceId, pullLedger, titleDraft],
+    [commitLiveSnapshot, deviceId, pullLedger, selectedTaskId, taskSnapshot, titleDraft],
   );
 
   const handleSaveAndConnect = async () => {
@@ -459,13 +531,17 @@ export function MobileApp() {
       if (connectionChanged) {
         ledgerGeneration.current += 1;
         liveGeneration.current += 1;
+        taskGeneration.current += 1;
         ledgerRequest.current?.abort();
         liveRequest.current?.abort();
+        taskRequest.current?.abort();
         await enqueueMutation(cacheMutationQueue, clearMobileCache);
         cacheRef.current = EMPTY_CACHE;
         liveSnapshotRef.current = null;
         setCache(EMPTY_CACHE);
         setLiveSnapshot(null);
+        setTaskSnapshot(null);
+        setSelectedTaskId('');
       }
       saveConnectionPreferences(next);
       preferencesRef.current = next;
@@ -492,8 +568,10 @@ export function MobileApp() {
   const handleForgetToken = () => {
     ledgerGeneration.current += 1;
     liveGeneration.current += 1;
+    taskGeneration.current += 1;
     ledgerRequest.current?.abort();
     liveRequest.current?.abort();
+    taskRequest.current?.abort();
     clearSavedToken();
     const next = { ...preferencesRef.current, token: '', rememberToken: false };
     preferencesRef.current = next;
@@ -505,7 +583,7 @@ export function MobileApp() {
     setConfigOpen(true);
     setCommandNotice('访问令牌已移除；已结束账本缓存仍保留');
     void enqueueMutation(cacheMutationQueue, clearCachedLiveFocusSnapshot);
-    void updateNativeFocusSnapshot(makeIdleSnapshot(), false);
+    void clearNativeFocusConnection();
   };
 
   const handleClearCache = async () => {
@@ -514,14 +592,18 @@ export function MobileApp() {
     }
     ledgerGeneration.current += 1;
     liveGeneration.current += 1;
+    taskGeneration.current += 1;
     ledgerRequest.current?.abort();
     liveRequest.current?.abort();
+    taskRequest.current?.abort();
     try {
       await enqueueMutation(cacheMutationQueue, clearMobileCache);
       cacheRef.current = EMPTY_CACHE;
       liveSnapshotRef.current = null;
       setCache(EMPTY_CACHE);
       setLiveSnapshot(null);
+      setTaskSnapshot(null);
+      setSelectedTaskId('');
       setPullState('idle');
       setLedgerNotice('本机缓存已清除；云端与桌面端数据未受影响');
       setCommandNotice('本机缓存已清除，正在重新确认云端状态');
@@ -586,6 +668,13 @@ export function MobileApp() {
             pendingCommand={pendingCommand}
             commandNotice={commandNotice}
             localDeviceId={deviceId}
+            tasks={taskSnapshot?.snapshot?.tasks ?? []}
+            selectedTaskId={selectedTaskId}
+            onTaskChange={(taskId) => {
+              setSelectedTaskId(taskId);
+              const task = taskSnapshot?.snapshot?.tasks.find((item) => item.id === taskId);
+              if (task) setTitleDraft(task.title);
+            }}
             onTitleChange={setTitleDraft}
             onCommand={(command) => void handleCommand(command)}
             onOpenConnection={() => setConfigOpen(true)}
@@ -600,18 +689,20 @@ export function MobileApp() {
         </div>
       </main>
 
-      {configOpen && (
-        <ConnectionSheet
-          value={draft}
-          syncing={pullState === 'pulling' || liveConnection === 'connecting'}
-          hasSavedToken={Boolean(preferences.token)}
-          onChange={setDraft}
-          onClose={() => setConfigOpen(false)}
-          onSave={() => void handleSaveAndConnect()}
-          onForgetToken={handleForgetToken}
-          onClearCache={() => void handleClearCache()}
-        />
-      )}
+      <AnimatePresence>
+        {configOpen && (
+          <ConnectionSheet
+            value={draft}
+            syncing={pullState === 'pulling' || liveConnection === 'connecting'}
+            hasSavedToken={Boolean(preferences.token)}
+            onChange={setDraft}
+            onClose={() => setConfigOpen(false)}
+            onSave={() => void handleSaveAndConnect()}
+            onForgetToken={handleForgetToken}
+            onClearCache={() => void handleClearCache()}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -639,6 +730,9 @@ function mapLiveSnapshot(
       session.state === 'paused' ? session.currentPauseStartedAt : session.updatedAt,
     title: session.title,
     ownerDeviceId: session.lastCommandDeviceId,
+    taskId: session.task?.taskId ?? null,
+    taskSource: session.task?.taskSource ?? null,
+    taskTitle: session.task?.taskTitle ?? null,
   };
 }
 
@@ -646,6 +740,7 @@ function makeUiCommand(
   action: MobileFocusCommand,
   snapshot: LiveFocusSnapshotLike,
   title: string,
+  task?: SyncedTask,
 ): LiveFocusCommand {
   const commandId = `command_${crypto.randomUUID()}`;
   if (action === 'start') {
@@ -655,6 +750,7 @@ function makeUiCommand(
       expectedRevision: snapshot.revision,
       sessionId: `live_${crypto.randomUUID()}`,
       title,
+      task: task ? { taskId: task.id, taskSource: task.source, taskTitle: task.title } : null,
     };
   }
   return {

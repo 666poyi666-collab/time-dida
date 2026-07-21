@@ -1,9 +1,11 @@
 // 全局轻量通知：不阻断计时操作，自动消退并支持点击关闭。
-// 动画语言与 motion.css 弹层规范一致：从触发方向（右下角屏幕边缘）滑入、
-// 反向收束滑出；spring 手感落在 --motion-slow 档；三类语义色全部来自 token
+// 动画语言与全组统一动效规范一致：从触发方向（右下角屏幕边缘）滑入 + 淡入 240ms
+// （--ease-out-expo），退出反向收束 160ms（--ease-standard）；多条堆叠时靠
+// framer-motion layout 以 240ms 标准缓动做位置重排。三类语义色全部来自 token
 // （.toast-tone-success / .toast-tone-error / .toast-tone-info，见 main-window.css）。
+import '../styles/ui-motion.css';
 import { useEffect } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, type Variants } from 'framer-motion';
 import { Icon } from './Icon';
 import { useStore } from '../app/store';
 
@@ -35,15 +37,30 @@ const TOAST_CONFIG: Record<
   info: { IconComp: Icon.Info, toneClass: 'toast-tone-info', iconTone: 'info', label: '信息' },
 };
 
-// 触发方向 = 右下屏幕边缘：进入从右侧滑入并轻微放大落位，退出反向收束。
-// MotionConfig(reducedMotion="user") 会把位移/缩放压成即时呈现，无需额外分支。
-const TOAST_VARIANTS = {
+// 触发方向 = 右下屏幕边缘：进入从右侧滑入并轻微放大落位（240ms 入场缓动），
+// 退出反向收束（160ms 移动缓动）；各档 transition 写在 variant 内，互不干扰。
+// reduced-motion：App 根的 MotionConfig(reducedMotion="user") 会把位移/缩放/layout
+// 压成即时呈现、仅保留透明度过渡，无需额外分支。
+const TOAST_VARIANTS: Variants = {
   initial: { opacity: 0, x: 28, scale: 0.96 },
-  animate: { opacity: 1, x: 0, scale: 1 },
-  exit: { opacity: 0, x: 24, scale: 0.97 },
+  animate: {
+    opacity: 1,
+    x: 0,
+    scale: 1,
+    transition: { duration: 0.24, ease: [0.16, 1, 0.3, 1] },
+  },
+  exit: {
+    opacity: 0,
+    x: 24,
+    scale: 0.97,
+    transition: { duration: 0.16, ease: [0.4, 0, 0.2, 1] },
+  },
 };
 
-const TOAST_TRANSITION = { type: 'spring', stiffness: 380, damping: 32, mass: 0.8 } as const;
+// 多条堆叠时的位置重排：240ms 移动/交换缓动（落在常规档上限内）。
+// 作为 motion.div 的基础 transition：variant 内的过渡只覆盖各自动画的值，
+// layout 重排不属于任何 variant，回落到这里。
+const TOAST_LAYOUT_TRANSITION = { duration: 0.24, ease: [0.4, 0, 0.2, 1] } as const;
 
 export function Toast() {
   const { toasts, removeToast } = useStore();
@@ -92,7 +109,7 @@ function ToastItem({
       initial="initial"
       animate="animate"
       exit="exit"
-      transition={TOAST_TRANSITION}
+      transition={TOAST_LAYOUT_TRANSITION}
       className={`toast-item ${cfg.toneClass} pointer-events-auto cursor-pointer select-none`}
       onClick={() => onRemove(id)}
       role="status"

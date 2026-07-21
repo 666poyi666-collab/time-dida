@@ -1,5 +1,6 @@
 // 历史记录 - Session 列表 + 详情 + 导出 + 删除 + Segment 任务关联/后补/批量
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import '../../styles/history-motion.css';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
 import { useStore } from '../../app/store';
@@ -179,6 +180,19 @@ export function HistoryPanel() {
     }
     return groups;
   }, [filteredSessions]);
+
+  // 会话条目交错入场序号：按时间线展示顺序展开，逐项延迟 40ms（封顶 560ms，总时长 ~800ms）。
+  const sessionStaggerIndex = useMemo(() => {
+    const map = new Map<string, number>();
+    let index = 0;
+    for (const group of sessionGroups) {
+      for (const session of group.sessions) {
+        map.set(session.id, index);
+        index += 1;
+      }
+    }
+    return map;
+  }, [sessionGroups]);
 
   const getDisplayedSyncState = (sessionId: string) =>
     sessionSyncMeta[sessionId] ?? persistedSyncStates[sessionId] ?? NOT_SYNCED_STATE;
@@ -966,7 +980,15 @@ export function HistoryPanel() {
                       (session.pauseElapsedMs / measuredMs) * 100,
                     );
                     return (
-                      <div key={session.id} className="history-session">
+                      <div
+                        key={session.id}
+                        className="history-session hm-stagger-in"
+                        style={
+                          {
+                            '--hm-delay': `${Math.min((sessionStaggerIndex.get(session.id) ?? 0) * 40, 560)}ms`,
+                          } as CSSProperties
+                        }
+                      >
                         <button
                           type="button"
                           className="history-session-row"

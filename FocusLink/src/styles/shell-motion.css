@@ -1,0 +1,118 @@
+/**
+ * shell-motion.css — 外壳与导航动效层（redesign/particle-timefield · 外壳与导航分工）
+ *
+ * 职责：
+ *  - 主题/暗色切换时，外壳容器 paint 属性（background-color / color / border-color）240ms 过渡；
+ *  - EdgeDock 导航项 hover/active 微交互（图标 140ms、选中底部刻度条滑入 240ms）；
+ *  - 窗口控制按钮 hover 微光（低透明径向辉光，α ≤ 0.18）；
+ *  - <900px 底部导航复用同一套类名，自动获得相同处理。
+ *
+ * 约束：
+ *  - 只叠加 transition / animation 与纯绘制属性，不改布局几何，不改既有结构类名；
+ *  - 颜色一律取自 temporal-foundation.css 的主题变量，缓动/时长复用 motion.css 的统一 token；
+ *  - 不触碰 canvas（时间之带 .ribbon-canvas 不在任何选择器内）；
+ *  - 全部动效提供 prefers-reduced-motion 降级（静态或仅透明度过渡）。
+ */
+
+/* ─── 1. 主题/暗色切换：根容器色彩 240ms 平滑过渡 ───────────────
+ * 仅过渡 paint 属性，不涉及宽高/位置，不引发布局抖动；
+ * 变量切换发生在 :root 上，这里让外壳各层颜色变化有 240ms 的呼吸感。 */
+.app-shell,
+.app-stage,
+.edge-dock,
+.edge-dock-brand,
+.window-controls {
+  transition:
+    background-color var(--dur-base) ease,
+    color var(--dur-base) ease,
+    border-color var(--dur-base) ease;
+}
+
+/* ─── 2. EdgeDock 导航项微交互 ─────────────────────────────────
+ * 图标：hover/active 轻微上浮 1px，140ms standard 缓动（微交互区间）。 */
+.edge-dock-button .edge-dock-icon {
+  transition: transform var(--dur-micro) var(--ease-standard);
+}
+.edge-dock-button:hover .edge-dock-icon,
+.edge-dock-button.active .edge-dock-icon {
+  transform: translateY(-1px);
+}
+.edge-dock-button:active .edge-dock-icon {
+  transform: none;
+}
+
+/* 选中刻度条：active 挂上的瞬间滑入展开，240ms out-expo。
+ * 刻度条本体（尺寸/颜色/位置）仍由 linear-workbench.css 定义，这里只加入场动画。 */
+@keyframes shell-tick-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scaleX(0.25);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scaleX(1);
+  }
+}
+.app-shell .edge-dock-button.active::after {
+  animation: shell-tick-in var(--dur-base) var(--ease-out-expo);
+}
+
+/* ─── 3. 窗口控制按钮 hover 微光 ───────────────────────────────
+ * 径向辉光取自 --app-accent，α = 0.14（≤ 0.18），140ms 淡入淡出。
+ * 关闭按钮本身有强色反馈，不叠加辉光，避免双重强调。 */
+.window-controls button {
+  position: relative;
+}
+.window-controls button:not(.window-close)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    closest-side,
+    rgb(var(--app-accent) / 0.14),
+    transparent 75%
+  );
+  opacity: 0;
+  transition: opacity var(--dur-micro) var(--ease-standard);
+  pointer-events: none;
+}
+.window-controls button:not(.window-close):hover::after {
+  opacity: 1;
+}
+/* 窗口控制按钮 hover 底色/图标色：140ms 微交互节奏 */
+.window-controls button {
+  transition:
+    background-color var(--dur-micro) var(--ease-standard),
+    color var(--dur-micro) var(--ease-standard),
+    border-color var(--dur-base) ease;
+}
+
+/* ─── 4. <900px 底部导航 ───────────────────────────────────────
+ * 底部导航复用 .edge-dock / .edge-dock-button / .active::after 同一套类名，
+ * 上述图标微交互与刻度条滑入动画自动生效，无需额外规则。 */
+
+/* ─── 5. prefers-reduced-motion 降级 ───────────────────────────
+ * 位移/展开类动效全部静态化；纯透明度变化的辉光保留其透明度过渡。 */
+@media (prefers-reduced-motion: reduce) {
+  .app-shell,
+  .app-stage,
+  .edge-dock,
+  .edge-dock-brand,
+  .window-controls,
+  .window-controls button {
+    transition: none;
+  }
+  .edge-dock-button .edge-dock-icon,
+  .edge-dock-button:hover .edge-dock-icon,
+  .edge-dock-button.active .edge-dock-icon {
+    transition: none;
+    transform: none;
+  }
+  .app-shell .edge-dock-button.active::after {
+    animation: none;
+  }
+  .window-controls button:not(.window-close)::after {
+    /* 仅透明度过渡：保留 140ms 淡入，不产生任何位移 */
+    transition: opacity var(--dur-micro) ease;
+  }
+}

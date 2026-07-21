@@ -58,6 +58,7 @@ export function SessionLedger({
               key={record.entityId}
               record={record}
               ordinal={records.length - index}
+              staggerIndex={index}
               expanded={expanded.has(record.entityId)}
               onToggle={() => toggleExpanded(record.entityId)}
             />
@@ -82,11 +83,13 @@ export function SessionLedger({
 function SessionLedgerRow({
   record,
   ordinal,
+  staggerIndex,
   expanded,
   onToggle,
 }: {
   record: CachedBundle;
   ordinal: number;
+  staggerIndex: number;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -115,7 +118,10 @@ function SessionLedgerRow({
   }, [pauses, segments]);
 
   return (
-    <article className={`session-row ${expanded ? 'expanded' : ''}`}>
+    <article
+      className={`session-row ${expanded ? 'expanded' : ''}`}
+      style={{ animationDelay: `${Math.min(staggerIndex, 8) * 36}ms` }}
+    >
       <button className="session-summary" type="button" onClick={onToggle} aria-expanded={expanded}>
         <span className="session-index">{String(ordinal).padStart(2, '0')}</span>
         <span className="session-date">
@@ -159,7 +165,11 @@ function SessionLedgerRow({
               <p className="timeline-empty">这场会话没有片段明细。</p>
             ) : (
               timeline.map((item, index) => (
-                <div className={`timeline-row type-${item.type}`} key={item.id}>
+                <div
+                  className={`timeline-row type-${item.type}`}
+                  key={item.id}
+                  style={{ animationDelay: `${Math.min(index, 8) * 28}ms` }}
+                >
                   <span className="timeline-spine">
                     <i />
                   </span>

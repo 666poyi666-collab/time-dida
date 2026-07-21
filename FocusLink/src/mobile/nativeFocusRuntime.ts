@@ -31,17 +31,46 @@ interface NativeFocusDisplaySnapshot {
   validUntilEpochMs: number;
 }
 
+export interface NativeCloudPollStatus {
+  attemptCount: number;
+  lastAttemptAtEpochMs: number;
+  lastSuccessAtEpochMs: number;
+  lastRevision: number;
+  lastError: string;
+}
+
+export interface NativeFocusStatus {
+  notificationPermission?: string;
+  canPostNotification?: boolean;
+  manufacturer?: string;
+  batteryOptimizationExempt?: boolean;
+  backgroundRestricted?: boolean;
+  nativeConnectionConfigured?: boolean;
+  controlsAvailable?: boolean;
+  pendingCommandCount?: number;
+  cloudPoll?: NativeCloudPollStatus;
+  snapshot?: NativeFocusDisplaySnapshot;
+}
+
 interface FocusRuntimePlugin {
   updateSnapshot(options: { snapshot: NativeFocusDisplaySnapshot }): Promise<void>;
   drainPendingCommands(): Promise<{ commands: NativeFocusCommand[] }>;
   completeCommands(options: { ids: string[] }): Promise<void>;
-  getNativeStatus(): Promise<{ notificationPermission?: string; canPostNotification?: boolean }>;
+  getNativeStatus(): Promise<NativeFocusStatus>;
   requestNotificationPermission(): Promise<{
     notificationPermission?: string;
     canPostNotification?: boolean;
     settingsOpened?: boolean;
   }>;
   requestQuickSettingsTile(): Promise<{ status?: string; manualRequired?: boolean }>;
+  configureConnection(options: {
+    endpoint: string;
+    accessToken: string;
+    deviceId: string;
+  }): Promise<void>;
+  clearConnection(): Promise<void>;
+  openBackgroundSettings(): Promise<{ opened?: boolean }>;
+  openAutoStartSettings(): Promise<{ opened?: boolean }>;
   addListener(
     eventName: 'nativeCommand',
     listener: (command: NativeFocusCommand) => void,
@@ -82,8 +111,32 @@ export function makeNativeDisplaySnapshot(
     primaryElapsedMs: Math.floor(durations.primaryElapsedMs),
     primaryAdvances: snapshot.state !== 'idle',
     controlsEnabled,
-    validUntilEpochMs: now + 90_000,
+    validUntilEpochMs: now + 30 * 60_000,
   };
+}
+
+export async function configureNativeFocusConnection(
+  endpoint: string,
+  accessToken: string,
+  deviceId: string,
+): Promise<void> {
+  if (!isNativeFocusRuntimeAvailable()) return;
+  await FocusRuntime.configureConnection({ endpoint, accessToken, deviceId });
+}
+
+export async function clearNativeFocusConnection(): Promise<void> {
+  if (!isNativeFocusRuntimeAvailable()) return;
+  await FocusRuntime.clearConnection();
+}
+
+export async function openNativeBackgroundSettings(): Promise<boolean> {
+  if (!isNativeFocusRuntimeAvailable()) return false;
+  return (await FocusRuntime.openBackgroundSettings()).opened === true;
+}
+
+export async function openNativeAutoStartSettings(): Promise<boolean> {
+  if (!isNativeFocusRuntimeAvailable()) return false;
+  return (await FocusRuntime.openAutoStartSettings()).opened === true;
 }
 
 export async function updateNativeFocusSnapshot(
@@ -139,10 +192,7 @@ export async function requestNativeQuickSettingsTile(): Promise<{
   };
 }
 
-export async function readNativeFocusStatus(): Promise<{
-  notificationPermission?: string;
-  canPostNotification?: boolean;
-} | null> {
+export async function readNativeFocusStatus(): Promise<NativeFocusStatus | null> {
   if (!isNativeFocusRuntimeAvailable()) return null;
   return FocusRuntime.getNativeStatus();
 }

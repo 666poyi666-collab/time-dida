@@ -2,22 +2,30 @@ import { describe, expect, it } from 'vitest';
 import {
   BAND_SCALE_FAR,
   BAND_SCALE_NEAR,
+  PARTICLE_FIELD_FADE_IN_MS,
   PARTICLE_FIELD_PAUSE_DENSITY,
+  PARTICLE_GRID_CROSSFADE_MS,
+  POINTER_GLOW_MAX_ALPHA,
   bandDetailMix,
   bandDisplaySeconds,
   bandScaleForState,
+  burnHeadHalo,
   fieldParticleSpec,
+  frontierGlowAlpha,
   interpolateZoomScale,
   macroTickAlpha,
   mixRgb,
   particleAgedColor,
   particleAshColor,
   particleCellHash,
+  particleFieldFadeIn,
   particleFieldParams,
   particleFieldStepSec,
+  particleGridCrossfade,
   particleToneColor,
   particleTraceFade,
   pauseDissolveParticles,
+  pointerBreathPulse,
   secondTickAlpha,
   steppedDisplaySeconds,
   traceResidueDot,
@@ -330,6 +338,75 @@ describe('bandMath', () => {
       const ratio = present / total;
       expect(ratio).toBeGreaterThan(0.08);
       expect(ratio).toBeLessThan(0.22);
+    });
+  });
+
+  describe('glow & fade curves', () => {
+    it('pointerBreathPulse decays within each second and is static under reduced motion', () => {
+      expect(pointerBreathPulse(0, false)).toBeCloseTo(1, 5);
+      expect(pointerBreathPulse(1000, false)).toBeCloseTo(0, 5);
+      const mid = pointerBreathPulse(500, false);
+      expect(mid).toBeGreaterThan(0);
+      expect(mid).toBeLessThan(1);
+      // 随秒内相位单调回落：每秒擒纵步进后点亮一次。
+      expect(pointerBreathPulse(200, false)).toBeGreaterThan(pointerBreathPulse(800, false));
+      // reduced-motion：固定中值，不随相位变化。
+      expect(pointerBreathPulse(123, true)).toBe(pointerBreathPulse(987, true));
+      expect(pointerBreathPulse(123, true)).toBeGreaterThan(0);
+    });
+
+    it('pointer glow alpha budget stays within the 0.18 ceiling', () => {
+      expect(POINTER_GLOW_MAX_ALPHA).toBeLessThanOrEqual(0.18);
+      expect(POINTER_GLOW_MAX_ALPHA).toBeGreaterThan(0);
+    });
+
+    it('frontierGlowAlpha stays within the low-alpha budget', () => {
+      expect(frontierGlowAlpha(0, true)).toBeCloseTo(0.08, 5);
+      for (const age of [0, 120, 420, 700, 999]) {
+        const alpha = frontierGlowAlpha(age, false);
+        expect(alpha).toBeGreaterThanOrEqual(0.08);
+        expect(alpha).toBeLessThanOrEqual(0.18);
+      }
+    });
+
+    it('burnHeadHalo breathes within budget and freezes under reduced motion', () => {
+      const still = burnHeadHalo(250, true);
+      expect(still).toEqual(burnHeadHalo(900, true));
+      for (const age of [0, 200, 500, 800, 999]) {
+        const halo = burnHeadHalo(age, false);
+        expect(halo.alpha).toBeGreaterThan(0);
+        expect(halo.alpha).toBeLessThanOrEqual(0.18);
+        expect(halo.radius).toBeGreaterThanOrEqual(11);
+        expect(halo.radius).toBeLessThanOrEqual(14.5 + 1e-9);
+      }
+      // 秒初比秒末更亮、更大：随每次秒步进轻微 pulse。
+      const early = burnHeadHalo(0, false);
+      const late = burnHeadHalo(999, false);
+      expect(early.alpha).toBeGreaterThan(late.alpha);
+      expect(early.radius).toBeGreaterThan(late.radius);
+    });
+
+    it('particleGridCrossfade completes within 400ms', () => {
+      expect(PARTICLE_GRID_CROSSFADE_MS).toBeLessThanOrEqual(400);
+      expect(particleGridCrossfade(null, 5000)).toBe(1);
+      expect(particleGridCrossfade(1000, 1000)).toBe(0);
+      expect(particleGridCrossfade(1000, 1200)).toBeCloseTo(0.5, 5);
+      expect(particleGridCrossfade(1000, 1400)).toBe(1);
+      expect(particleGridCrossfade(1000, 2000)).toBe(1);
+    });
+
+    it('particleFieldFadeIn eases in with a tail and snaps under reduced motion', () => {
+      expect(PARTICLE_FIELD_FADE_IN_MS).toBe(300);
+      expect(particleFieldFadeIn(null, 5000, false)).toBe(1);
+      expect(particleFieldFadeIn(1000, 1000, false)).toBe(0);
+      expect(particleFieldFadeIn(1000, 1300, false)).toBe(1);
+      const half = particleFieldFadeIn(1000, 1150, false);
+      // ease-out 带尾：前半程上升更快。
+      expect(half).toBeGreaterThan(0.5);
+      expect(half).toBeLessThan(1);
+      // reduced-motion：立即完整显示。
+      expect(particleFieldFadeIn(1000, 1000, true)).toBe(1);
+      expect(particleFieldFadeIn(1000, 1050, true)).toBe(1);
     });
   });
 });

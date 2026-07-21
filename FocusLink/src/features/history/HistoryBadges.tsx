@@ -1,4 +1,5 @@
 // 历史记录 - 状态徽章 + 统计小组件
+import { motion } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
 import { formatDuration, formatDateTime } from '../../lib/time';
 import type { FocusSession, FocusSegment } from '@shared/types';
@@ -203,13 +204,17 @@ export function TinyStatusChip({
         ? 'border-warning/25 bg-warning/10 text-warning'
         : 'border-border/60 bg-bg-card/50 text-fg-subtle';
   return (
-    <span
+    <motion.span
+      key={`${tone}:${text}`}
+      initial={{ scale: 0.72, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
       title={title}
       className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium ${cls}`}
     >
       {icon}
       {text}
-    </span>
+    </motion.span>
   );
 }
 

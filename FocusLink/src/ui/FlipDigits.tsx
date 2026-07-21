@@ -1,7 +1,8 @@
 // FlipDigits - 丝滑数字翻转组件
 // v0.3.11: 每位数字独立追踪变化，仅变化的位触发微翻转动画
-// 设计原则：极克制——不是 3D 翻转，而是 scale + opacity + blur 的物理过渡
-// 帧率优先：只用 transform/opacity/filter（合成器属性），不触发 layout
+// 设计原则：极克制——不是 3D 翻转，而是垂直滑动 + 淡入的物理过渡
+// 帧率优先：只用 transform/opacity（合成器属性），不触发 layout
+// 表盘语境下的动画规格见 styles/dial-motion.css（240ms 滑动淡入，expo-out）
 
 import { useEffect, useRef, useState, memo } from 'react';
 
@@ -14,8 +15,8 @@ const FlipDigit = memo(function FlipDigit({ char }: { char: string }) {
     if (prevRef.current !== char) {
       setChanged(true);
       prevRef.current = char;
-      // 动画时长 180ms（--motion-normal），180ms 后清除
-      const timer = setTimeout(() => setChanged(false), 180);
+      // 表盘动画 240ms（dial-motion.css），250ms 后清除标记
+      const timer = setTimeout(() => setChanged(false), 250);
       return () => clearTimeout(timer);
     }
   }, [char]);

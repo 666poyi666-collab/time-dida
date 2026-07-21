@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { ReactNode } from 'react';
 import type { Task } from '@shared/types';
 
@@ -61,6 +61,8 @@ function TaskTreeNode({
 }) {
   const hasChildren = Boolean(task.children?.length);
   const isCollapsed = collapsed[task.id] === true;
+  // reduced-motion：子树展开/收起降级为 140ms 纯透明度淡入淡出，不做高度运动。
+  const reduceMotion = useReducedMotion();
 
   return (
     <>
@@ -77,10 +79,14 @@ function TaskTreeNode({
         <AnimatePresence initial={false}>
           {!isCollapsed && (
             <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              initial={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+              animate={reduceMotion ? { opacity: 1 } : { height: 'auto', opacity: 1 }}
+              exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+              transition={
+                reduceMotion
+                  ? { duration: 0.14, ease: [0.4, 0, 0.2, 1] }
+                  : { duration: 0.24, ease: [0.16, 1, 0.3, 1] }
+              }
               className="task-children-wrap overflow-hidden"
             >
               {task.children!.map((child) => (

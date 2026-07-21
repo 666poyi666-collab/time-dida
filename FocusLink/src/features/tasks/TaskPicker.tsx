@@ -1,13 +1,15 @@
 // 滴答任务选择器 —— v0.12 弹层系统统一实现。
 // 契约（见 frontend-design/FRONTEND_SPEC.md 4/9 节与 styles/features/overlays.css 头部）：
 // - 材质：.overlay-surface（不透明 elevated + shadow-modal + 边缘高光），遮罩 .overlay-backdrop；
-// - 动画：.motion-popover + --popover-origin 从触发位置附近展开，退出 .motion-popover-exit，
-//   reduced-motion 由 motion.css 全局降级为即时显隐（JS 侧同步跳过退出延时）；
+// - 动画：framer-motion spring（stiffness 380 / damping 30）从 --popover-origin 触发位置附近
+//   生长展开，退出 140ms 下沉收束（closing 态驱动 exit 变体，EXIT_MS 后回调父级），
+//   reduced-motion 静态呈现（initial={false}），JS 侧同步跳过退出延时；
 // - 焦点：打开时搜索框首焦，Tab 在弹层内循环，关闭后焦点返回触发元素；
 // - 键盘：↑↓ 导航（combobox + listbox，aria-activedescendant）、Enter 选择、Esc 关闭、
 //   ←/→ 折叠/展开有子任务的行、Home/End 跳转首尾。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
+import type { Variants } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
 import { useStore } from '../../app/store';
 import type { Task } from '@shared/types';
@@ -36,8 +38,32 @@ interface PickerAnchor {
 
 const VIEWPORT_MARGIN = 12;
 const ANCHOR_GAP = 8;
-/** 与 .motion-popover-exit（--motion-fast 档 130ms）匹配的退出等待时长 */
+/** 与弹层退出变体（140ms）匹配的退出等待时长，留 10ms 余量 */
 const EXIT_MS = 150;
+
+/**
+ * 弹层显隐变体（全组统一弹层语言）：
+ * 入场 spring（stiffness 380 / damping 30），缩放从 --popover-origin 生长，透明度 160ms 淡入；
+ * 退出 140ms standard 缓动下沉收束。reduced-motion 时由 initial={false} 静态呈现。
+ */
+const PICKER_SHELL_VARIANTS: Variants = {
+  enter: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: {
+      scale: { type: 'spring', stiffness: 380, damping: 30 },
+      y: { type: 'spring', stiffness: 380, damping: 30 },
+      opacity: { duration: 0.16, ease: [0.16, 1, 0.3, 1] },
+    },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.99,
+    y: 4,
+    transition: { duration: 0.14, ease: [0.4, 0, 0.2, 1] },
+  },
+};
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max));
@@ -132,6 +158,8 @@ export function TaskPicker({
   const [closing, setClosing] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const { collapsed, toggleCollapse } = useTaskTreeCollapse(ticktickTasks, query);
+  // reduced-motion：弹层静态呈现（initial={false}），关闭仍走 requestClose 的即时落定分支。
+  const reduceMotion = useReducedMotion();
 
   // 打开瞬间捕获触发元素：定位锚点与关闭后的焦点返回都依赖它。
   // useState 惰性初始化保证读到的是「打开弹层那一次点击」落焦的按钮。
@@ -367,6 +395,7 @@ export function TaskPicker({
     }
   };
 
+  const transformOrigin = anchor?.origin ?? '50% 42%';
   const shellStyle = {
     ...(anchor
       ? {
@@ -382,7 +411,12 @@ export function TaskPicker({
           // 无触发元素时居中，动画从几何中心偏上生长
           '--popover-origin': '50% 42%',
         }),
+    // spring 缩放围绕触发点生长（与 --popover-origin 同源）
+    transformOrigin,
   } as React.CSSProperties;
+
+  // 入场微位移方向与锚点上下方位一致：向下展开从上方来，向上展开从下方来
+  const initialLift = anchor ? (anchor.lift === '-2px' ? -4 : 4) : 6;
 
   return (
     <div
@@ -393,12 +427,15 @@ export function TaskPicker({
         className={`overlay-backdrop absolute inset-0 ${closing ? 'overlay-backdrop-exit' : 'motion-fade-in'}`}
         aria-hidden="true"
       />
-      <div
+      <motion.div
         ref={shellRef}
-        className={`picker-shell overlay-surface z-10 flex flex-col ${
-          closing ? 'motion-popover-exit is-closing' : 'motion-popover'
+        className={`picker-shell overlay-surface z-10 flex flex-col${
+          closing ? ' is-closing' : ''
         }${anchor ? '' : ' relative h-[min(540px,76vh)] w-[min(560px,92vw)]'}`}
         style={shellStyle}
+        variants={PICKER_SHELL_VARIANTS}
+        initial={reduceMotion ? false : { opacity: 0, scale: 0.98, y: initialLift }}
+        animate={closing ? 'exit' : 'enter'}
         role="dialog"
         aria-modal="true"
         aria-labelledby="task-picker-title"
@@ -574,7 +611,7 @@ export function TaskPicker({
           <span>↑↓ 选择 · Enter 关联 · Esc 关闭</span>
           <span>点击任务即可关联</span>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

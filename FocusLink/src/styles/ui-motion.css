@@ -1,0 +1,43 @@
+/**
+ * ui-motion.css — 共享 UI 原件（Toast / ConfirmDialog / Icon）动效样式
+ *
+ * 职责：
+ *  - 图标类原件 hover 微交互（140ms 低透明光晕 + scale 微放大）；
+ *  - Toast / ConfirmDialog 的位移与弹性动画由 framer-motion 在 TSX 内驱动，
+ *    本文件只承载纯 CSS 即可表达的微交互，避免与 JS 动画叠加冲突。
+ *
+ * 约束（与全组统一动效语言一致）：
+ *  - 缓动 / 时长 token 优先引用 motion.css 的 --ease-out-expo / --ease-standard /
+ *    --dur-micro，并带静态兜底值，保证单独打包时不丢节奏；
+ *  - 颜色一律取自 temporal-foundation.css 主题变量（rgb 三元组），不硬编码色值；
+ *  - 光效透明度 ≤ 0.18；
+ *  - 每个动效提供 prefers-reduced-motion 降级（静态呈现）。
+ */
+
+/* ---------- 图标 hover：140ms 低透明光晕 + scale(1.12) ----------
+ * Icon.tsx 的 hover prop 会挂上 .icon-hover；光晕用 drop-shadow 沿图标轮廓发光，
+ * 颜色取 --app-accent（α = 0.18，触顶约束上限），属于微交互档 140ms。 */
+.icon-hover {
+  transition:
+    transform var(--dur-micro, 140ms) var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)),
+    filter var(--dur-micro, 140ms) var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+  will-change: transform;
+}
+
+.icon-hover:hover {
+  transform: scale(1.12);
+  filter: drop-shadow(0 0 5px rgb(var(--app-accent) / 0.18));
+}
+
+/* ---------- reduced-motion 降级：完全静态，无位移无光晕 ----------
+ * （temporal-foundation.css 的全局降级只压时长，这里进一步去掉 transform/filter，
+ * 保证「静态呈现」而非瞬间跳变。） */
+@media (prefers-reduced-motion: reduce) {
+  .icon-hover,
+  .icon-hover:hover {
+    transition: none;
+    transform: none;
+    filter: none;
+    will-change: auto;
+  }
+}

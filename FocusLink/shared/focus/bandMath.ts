@@ -281,6 +281,79 @@ export function traceResidueDot(cellX: number, cellY: number): TraceResidueDot {
   };
 }
 
+/* ─── 质感层：呼吸辉光 / 燃烧头光晕 / 网格交叉淡化 / 粒子场淡入 ───
+ * 全部为纯函数：只依赖秒相位与时间戳，不引入新状态，不改变粒子场
+ * 锚定 displaySeconds 的确定性冻结语义（idle/finished  settle 后像素不变）。
+ */
+
+/** “现在”指针呼吸辉光的最大不透明度（低透明度光效约束 ≤0.18） */
+export const POINTER_GLOW_MAX_ALPHA = 0.18;
+/** 变焦跨越粒子取样梯子阈值时，旧/新网格交叉淡化时长（ms） */
+export const PARTICLE_GRID_CROSSFADE_MS = 400;
+/** 从 idle 开始专注时粒子场的带尾淡入时长（ms） */
+export const PARTICLE_FIELD_FADE_IN_MS = 300;
+
+/**
+ * 每秒一次的呼吸脉冲：擒纵步进后点亮，随秒内相位指数回落。
+ * reduced-motion 返回固定中值（静态辉光，不随时间变化）。
+ */
+export function pointerBreathPulse(pulseAgeMs: number, reducedMotion: boolean): number {
+  if (reducedMotion) return 0.4;
+  const p = clamp01(Math.max(0, pulseAgeMs) / 1000);
+  return Math.pow(1 - p, 1.6);
+}
+
+/**
+ * 运行前沿窄条辉光的不透明度：静态基底 + 随呼吸脉冲轻微增强，峰值 ≤0.18。
+ * reduced-motion 返回固定基底（静态）。
+ */
+export function frontierGlowAlpha(pulseAgeMs: number, reducedMotion: boolean): number {
+  if (reducedMotion) return 0.08;
+  return 0.08 + 0.08 * pointerBreathPulse(pulseAgeMs, false);
+}
+
+export type BurnHeadHalo = {
+  /** 光晕半径（px） */
+  radius: number;
+  /** 光晕峰值不透明度（≤0.18） */
+  alpha: number;
+};
+
+/**
+ * 暂停引线燃烧头的外层红晕参数：白芯之外的柔和光晕随秒相位轻微呼吸。
+ * reduced-motion 返回固定参数，画面静态。
+ */
+export function burnHeadHalo(pulseAgeMs: number, reducedMotion: boolean): BurnHeadHalo {
+  if (reducedMotion) return { radius: 12, alpha: 0.12 };
+  const p = clamp01(Math.max(0, pulseAgeMs) / 1000);
+  const breath = Math.pow(1 - p, 1.4);
+  return { radius: 11 + breath * 3.5, alpha: 0.1 + breath * 0.08 };
+}
+
+/**
+ * 粒子网格交叉淡化进度：fadeStartMs 为 null（无重排）或淡化已结束时返回 1，
+ * 否则在 PARTICLE_GRID_CROSSFADE_MS 内从 0 线性推进到 1。
+ * 返回值是新网格权重；旧网格权重为 1 - 返回值。
+ */
+export function particleGridCrossfade(fadeStartMs: number | null, nowMs: number): number {
+  if (fadeStartMs === null) return 1;
+  return clamp01((nowMs - fadeStartMs) / PARTICLE_GRID_CROSSFADE_MS);
+}
+
+/**
+ * 粒子场淡入系数（idle → 专注）：300ms 内以 ease-out 带尾曲线升到 1。
+ * reduced-motion 直接返回 1（立即完整显示，无动画）。
+ */
+export function particleFieldFadeIn(
+  fadeStartMs: number | null,
+  nowMs: number,
+  reducedMotion: boolean,
+): number {
+  if (reducedMotion || fadeStartMs === null) return 1;
+  const t = clamp01((nowMs - fadeStartMs) / PARTICLE_FIELD_FADE_IN_MS);
+  return 1 - Math.pow(1 - t, 3);
+}
+
 export function mixRgb(a: RgbTuple, b: RgbTuple, k: number): RgbTuple {
   const t = clamp01(k);
   return [

@@ -1,0 +1,165 @@
+/**
+ * motion.css — 全组统一动效基础设施
+ *
+ * 用途：
+ *  - 统一动效 token（缓动 / 时长），供各分工模块以 var() 引用，保证节奏一致；
+ *  - 提供通用工具类（入场淡入上浮、按压下沉、低透明径向辉光、一次性扫光）；
+ *  - 全局 prefers-reduced-motion 降级（仅透明度过渡或静态）。
+ *
+ * 约束：
+ *  - 颜色一律取自 temporal-foundation.css 的主题变量（--app-accent / --app-success /
+ *    --app-pause），以 rgb(var(--x) / α) 形式引用，不硬编码色值；
+ *  - 光效透明度 ≤ 0.18；
+ *  - 本文件只新增变量，不覆盖 temporal-foundation.css 的任何 token。
+ */
+
+/* ---------- 动效 token ---------- */
+:root {
+  /* 缓动：入场/显现用 out-expo，移动/交换用 standard */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 时长：微交互 140ms / 常规 240ms / 页面·面板 360ms */
+  --dur-micro: 140ms;
+  --dur-base: 240ms;
+  --dur-page: 360ms;
+}
+
+/* ---------- 入场：上浮淡入（一次播放，mount 时触发） ---------- */
+@keyframes motion-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.motion-fade-up {
+  animation: motion-fade-up var(--dur-page) var(--ease-out-expo) both;
+}
+
+/* ---------- 入场：纯淡入 ---------- */
+@keyframes motion-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.motion-fade-in {
+  animation: motion-fade-in var(--dur-base) var(--ease-out-expo) both;
+}
+
+/* ---------- 按压下沉（:active 微交互，120–160ms 内） ---------- */
+.motion-press {
+  transition: transform var(--dur-micro) var(--ease-standard);
+}
+
+.motion-press:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+/* ---------- 低透明径向辉光（α ≤ 0.18，颜色取自主题变量） ----------
+ * 用法：在容器上叠加 .motion-glow-accent / -success / -pause 之一。
+ * 辉光绘制在 ::before 上，位于容器内容之下（z-index: 0，内容相对定位即可覆盖），
+ * 不拦截指针事件。 */
+.motion-glow-accent {
+  --motion-glow-color: var(--app-accent);
+}
+
+.motion-glow-success {
+  --motion-glow-color: var(--app-success);
+}
+
+.motion-glow-pause {
+  --motion-glow-color: var(--app-pause);
+}
+
+.motion-glow-accent,
+.motion-glow-success,
+.motion-glow-pause {
+  position: relative;
+}
+
+.motion-glow-accent::before,
+.motion-glow-success::before,
+.motion-glow-pause::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    closest-side,
+    rgb(var(--motion-glow-color) / 0.16),
+    transparent 72%
+  );
+  opacity: 1;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ---------- 一次性扫光（重挂类名可重新触发） ---------- */
+@keyframes motion-sweep {
+  from {
+    background-position: -120% 0;
+  }
+  to {
+    background-position: 220% 0;
+  }
+}
+
+.motion-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.motion-sweep::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgb(var(--app-accent) / 0.12) 50%,
+    transparent 60%
+  );
+  background-repeat: no-repeat;
+  background-size: 220% 100%;
+  animation: motion-sweep var(--dur-page) var(--ease-out-expo) both;
+  pointer-events: none;
+}
+
+/* ---------- reduced-motion 全局降级 ----------
+ * 原则：动效降级为静态呈现，入场类仅保留一次性的微时长透明度过渡。 */
+@media (prefers-reduced-motion: reduce) {
+  .motion-fade-up,
+  .motion-fade-in {
+    /* 仅透明度过渡：复用纯淡入 keyframes，时长压入微交互区间 */
+    animation-name: motion-fade-in;
+    animation-duration: var(--dur-micro);
+    animation-timing-function: var(--ease-standard);
+  }
+
+  .motion-press,
+  .motion-press:active {
+    transition: none;
+    transform: none;
+  }
+
+  .motion-sweep::after {
+    animation: none;
+    opacity: 0;
+  }
+
+  .motion-glow-accent::before,
+  .motion-glow-success::before,
+  .motion-glow-pause::before {
+    /* 辉光本身不含运动，保留静态呈现 */
+    opacity: 1;
+  }
+}

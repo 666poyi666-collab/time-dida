@@ -19,6 +19,9 @@ export interface LiveFocusSnapshotLike {
   currentStateStartedAt: number | null;
   title: string | null;
   ownerDeviceId: string | null;
+  taskId: string | null;
+  taskSource: 'local' | 'ticktick' | null;
+  taskTitle: string | null;
 }
 
 export interface LiveFocusDurations {
@@ -55,6 +58,9 @@ export function idleLiveFocusSnapshot(
     currentStateStartedAt: null,
     title: null,
     ownerDeviceId: null,
+    taskId: null,
+    taskSource: null,
+    taskTitle: null,
   };
 }
 

@@ -1,0 +1,177 @@
+/* ==========================================================================
+ * FocusLink · 专注页动效层（focus-motion）
+ * 只承载 TimerPanel / SegmentTimeline 的过渡与光效，不改动任何布局数值。
+ * 统一动效语言：
+ * - 入场/显现 cubic-bezier(.16,1,.3,1)（--ease-fluid）
+ * - 移动/交换 cubic-bezier(.4,0,.2,1)
+ * - 微交互 120–160ms / 常规 240ms / 面板 320–360ms
+ * - 光效只用主题 CSS 变量，透明度 ≤0.18
+ * 所有动效在 prefers-reduced-motion 下降级为静态或仅透明度过渡。
+ * ========================================================================== */
+
+:root {
+  /* 移动/交换缓动：与设计地基变量分开定义，避免触碰 temporal-foundation.css */
+  --focus-ease-move: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── 1. 状态切换：状态词行 / 任务 strip / 统计区 交错淡入上移 ─────────────
+ * TimerPanel 在 state 变化时对这三处挂 key={state} 触发重挂载，
+ * 动画随挂载重新开始；各项交错延迟 ≤60ms，expo-out 240ms。
+ * ------------------------------------------------------------------------- */
+@keyframes focus-stagger-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.focus-console .focus-state-word {
+  animation: focus-stagger-rise 240ms var(--ease-fluid) both;
+}
+.focus-console .timer-context-strip {
+  animation: focus-stagger-rise 240ms var(--ease-fluid) 30ms both;
+}
+.focus-console .timer-totals {
+  animation: focus-stagger-rise 240ms var(--ease-fluid) 60ms both;
+}
+
+/* ─── 2. 统计数字：值变化时的 settle 过渡（≤300ms，tabular-nums 不抖动） ───
+ * StatValue 以 key={value} 重挂载，每次变化播放一次 260ms 轻微上浮显现。
+ * ------------------------------------------------------------------------- */
+@keyframes focus-value-settle {
+  from {
+    opacity: 0.45;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.focus-value-tick {
+  display: inline-block;
+  animation: focus-value-settle 260ms var(--ease-fluid) both;
+}
+
+/* ─── 3. 主按钮 / 结束按钮：hover 低透明径向辉光 + active 按压下沉 140ms ─── */
+.timer-controls .btn-main-action,
+.timer-controls .btn-stop-action {
+  position: relative;
+  isolation: isolate;
+  transition:
+    transform 140ms var(--focus-ease-move),
+    filter 140ms ease-out,
+    background 140ms ease-out,
+    opacity 140ms ease-out;
+}
+
+.timer-controls .btn-main-action::before,
+.timer-controls .btn-stop-action::before {
+  position: absolute;
+  z-index: -1;
+  inset: -7px;
+  border-radius: 8px;
+  background: radial-gradient(closest-side, rgb(var(--app-accent) / 0.16), transparent);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease-out;
+}
+
+.timer-controls .btn-stop-action::before {
+  background: radial-gradient(closest-side, rgb(var(--app-pause) / 0.14), transparent);
+}
+
+.timer-controls .btn-main-action:hover:not(:disabled)::before,
+.timer-controls .btn-stop-action:hover:not(:disabled)::before {
+  opacity: 1;
+}
+
+.timer-controls .btn-main-action:active:not(:disabled),
+.timer-controls .btn-stop-action:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
+/* ─── 4. 账本面板收起/展开：320ms 宽度（grid 轨道插值）+ 淡入 ─────────────
+ * 宽度由 .focus-console 的 grid-template-columns 过渡承担（两轨道列表可插值），
+ * 透明度由 TimerPanel 中 AnimatePresence 的 aside 承担（320ms）。
+ * ------------------------------------------------------------------------- */
+.focus-console {
+  transition: grid-template-columns 320ms var(--ease-fluid);
+}
+
+/* 保持双轨道形态以便插值：收起=第二轨 0px（原 .solo 的 1fr 单轨道无法过渡） */
+.focus-console.solo.ledger-collapsed {
+  grid-template-columns: minmax(0, 1fr) 0px;
+}
+
+/* ─── 5. 全屏沉浸覆盖层：打开/关闭 360ms 淡入 + 轻微缩放 ───────────────────
+ * 覆盖 linear-workbench.css 的 520ms clip-path 入场（双类选择器提权，
+ * 不改动原文件）；关闭经 .is-leaving 类播放 360ms 后再卸载。
+ * ------------------------------------------------------------------------- */
+@keyframes focus-immersive-enter {
+  from {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes focus-immersive-leave {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+
+.focus-immersive.focus-immersive {
+  animation: focus-immersive-enter 360ms var(--ease-fluid) both;
+}
+
+.focus-immersive.focus-immersive.is-leaving {
+  animation: focus-immersive-leave 360ms var(--focus-ease-move) both;
+}
+
+/* ─── prefers-reduced-motion 降级 ──────────────────────────────────────────
+ * 入场/数字/辉光/按压全部降级为静态；账本宽度瞬时切换，仅保留透明度变化
+ * （透明度渐变由 JS 侧 useReducedMotion 缩短至 120ms）。
+ * ------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .focus-console .focus-state-word,
+  .focus-console .timer-context-strip,
+  .focus-console .timer-totals,
+  .focus-value-tick {
+    animation: none;
+  }
+
+  .timer-controls .btn-main-action,
+  .timer-controls .btn-stop-action {
+    transition: opacity 120ms ease-out;
+  }
+
+  .timer-controls .btn-main-action:active:not(:disabled),
+  .timer-controls .btn-stop-action:active:not(:disabled) {
+    transform: none;
+  }
+
+  .focus-console {
+    transition: none;
+  }
+
+  .focus-immersive.focus-immersive,
+  .focus-immersive.focus-immersive.is-leaving {
+    animation: none;
+  }
+}

@@ -1,0 +1,81 @@
+/**
+ * tasks-motion.css — 任务页动效增强（redesign/particle-timefield 分工：任务页）
+ *
+ * 范围：
+ *  - 行 hover / 键盘高亮 / 当前任务 的左侧 2px 强调色指示条（140ms 滑入）；
+ *  - 任务完成勾选后的划线 + 变淡（240ms，划线以 background-size 生长实现，可平滑回退）；
+ *  - 每处动效附 prefers-reduced-motion 降级（指示条仅透明度过渡，划线静态落定）。
+ *
+ * 约束：
+ *  - 缓动/时长一律引用 motion.css 的统一 token（--ease-standard / --dur-micro / --dur-base）；
+ *  - 颜色一律取自 temporal-foundation.css 主题变量，rgb(var(--x) / α) 形式，不硬编码色值；
+ *  - 不覆盖 temporal-foundation.css / legacy-support.css / linear-workbench.css 的任何规则，
+ *    仅对任务页行类追加伪元素与状态样式。
+ */
+
+/* ---------- 行左缘 2px 强调色指示条 ----------
+ * 触发：hover / focus-visible（工作台与已完成行）、is-active（选择器键盘高亮）、
+ * current（当前专注任务，常显）。140ms 从左缘滑入并淡入。 */
+.task-workbench-row::before,
+.task-completed-row::before,
+.task-row-linear::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgb(var(--app-accent));
+  opacity: 0;
+  transform: translateX(-100%);
+  transition:
+    transform var(--dur-micro) var(--ease-standard),
+    opacity var(--dur-micro) var(--ease-standard);
+  pointer-events: none;
+}
+
+.task-workbench-row:hover::before,
+.task-workbench-row:focus-visible::before,
+.task-completed-row:hover::before,
+.task-completed-row:focus-visible::before,
+.task-row-linear:hover::before,
+.task-row-linear:focus-within::before,
+.task-row-linear.is-active::before,
+.task-workbench-row.current::before {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ---------- 完成勾选：标题划线 + 变淡 ----------
+ * 触发：.task-workbench-row.completed 挂上时（勾选接口返回后）。
+ * 划线用 background-image 的 background-size 从 0% → 100% 生长，
+ * 取消完成时类名移除、动画自然反向回放；文字颜色同步变淡。240ms。 */
+.task-workbench-row .task-row-title-line > strong {
+  background-image: linear-gradient(rgb(var(--app-subtle)), rgb(var(--app-subtle)));
+  background-repeat: no-repeat;
+  background-position: left 58%;
+  background-size: 0% 1px;
+  transition:
+    background-size var(--dur-base) var(--ease-standard),
+    color var(--dur-base) var(--ease-standard);
+}
+
+.task-workbench-row.completed .task-row-title-line > strong {
+  color: rgb(var(--app-subtle));
+  background-size: 100% 1px;
+}
+
+/* ---------- reduced-motion 降级 ----------
+ * 指示条：去掉位移，仅保留 140ms 透明度过渡；划线：静态落定（无生长动画）。 */
+@media (prefers-reduced-motion: reduce) {
+  .task-workbench-row::before,
+  .task-completed-row::before,
+  .task-row-linear::before {
+    transform: none;
+    transition: opacity var(--dur-micro) var(--ease-standard);
+  }
+
+  .task-workbench-row .task-row-title-line > strong {
+    transition: none;
+  }
+}

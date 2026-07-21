@@ -68,10 +68,14 @@ const STATE_META: Record<
   },
 };
 
+// 统一动效语言：入场/显现 cubic-bezier(.16,1,.3,1)，常规 240ms。
 const panelMotion = {
-  duration: 0.22,
+  duration: 0.24,
   ease: [0.16, 1, 0.3, 1] as const,
 };
+
+// reduced-motion 降级：仅透明度过渡，无位移。
+const reducedFadeMotion = { duration: 0.16 };
 
 const MINI_SHELL_STYLE = {
   '--mini-dock-transition-duration': `${MINI_WINDOW_DOCK_TRANSITION_MS}ms`,
@@ -404,10 +408,10 @@ export function MiniWindow() {
             key="collapsed"
             className="mini-collapsed-content"
             data-testid="mini-collapsed-content"
-            initial={reduceMotion ? false : { opacity: 0, y: 1 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={reduceMotion ? { duration: 0 } : panelMotion}
+            transition={reduceMotion ? reducedFadeMotion : panelMotion}
           >
             <MiniSecondRail
               progress={minuteProgress}
@@ -438,10 +442,10 @@ export function MiniWindow() {
             key="expanded"
             className="mini-expanded-content"
             data-testid="mini-expanded-content"
-            initial={reduceMotion ? false : { opacity: 0, y: 2 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: reduceMotion ? 0 : 1 }}
-            transition={reduceMotion ? { duration: 0 } : panelMotion}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={reduceMotion ? reducedFadeMotion : panelMotion}
           >
             <header className="mini-expanded-header">
               <MiniStateBadge state={state} />
@@ -522,8 +526,8 @@ export function MiniWindow() {
                       onClick={handleToggle}
                       disabled={primaryAction.disabled}
                       aria-busy={state === 'stopping'}
-                      whileTap={{ scale: 0.98 }}
-                      transition={{ duration: 0.12 }}
+                      whileTap={{ scale: 0.97 }}
+                      transition={{ duration: 0.14 }}
                     >
                       <FocusGlyph glyph={primaryAction.glyph} size={12} />
                       {primaryAction.label}
@@ -579,68 +583,168 @@ function MiniSecondRail({
       <span className="mini-second-rail-fill mini-edge-progress-fill" />
       <span className="mini-second-front" aria-hidden="true" />
       {paused && (
-        <MiniDecayParticles
-          elapsedMs={elapsedMs}
-          fromEdge={progress < 12}
-          reducedMotion={reducedMotion}
-        />
+        <MiniFuseCanvas elapsedMs={elapsedMs} reducedMotion={reducedMotion} compact={compact} />
       )}
     </span>
   );
 }
 
-function MiniDecayParticles({
+function MiniFuseCanvas({
   elapsedMs,
-  fromEdge,
   reducedMotion,
+  compact,
 }: {
   elapsedMs: number;
-  fromEdge: boolean;
   reducedMotion: boolean;
+  compact: boolean;
 }) {
-  const particles = pauseDissolveParticles(elapsedMs, 42, reducedMotion);
-  const pulse = (elapsedMs % 1000) / 1000;
-  const echoPulse = pulse < 0.46 ? 0 : (pulse - 0.46) / 0.54;
-  return (
-    <span
-      className={`mini-decay-particles ${fromEdge ? 'from-edge' : ''}`}
-      aria-hidden="true"
-      data-dissolve-layers="shard dust spark"
-      style={
-        {
-          '--dissolve-halo-alpha': 0.52 + (1 - pulse) * 0.34,
-          '--dissolve-halo-scale': 0.86 + pulse * 0.28,
-          '--dissolve-wave-alpha': (1 - pulse) * 0.5,
-          '--dissolve-wave-scale': 0.75 + pulse * 1.65,
-          '--dissolve-echo-alpha': echoPulse * (1 - echoPulse) * 1.15,
-          '--dissolve-echo-scale': 0.72 + echoPulse * 1.2,
-        } as CSSProperties
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef(0);
+  const lastDrawRef = useRef(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const draw = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const width = Math.max(1, Math.round(rect.width));
+      const height = Math.max(1, Math.round(rect.height));
+      if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
       }
-    >
-      <span className="mini-dissolve-halo" />
-      <span className="mini-dissolve-wave wave-primary" />
-      <span className="mini-dissolve-wave wave-echo" />
-      {particles.map((particle, index) => (
-        <i
-          key={particle.id}
-          className={`particle-${particle.kind}`}
-          style={
-            {
-              '--particle-index': index,
-              '--particle-size': `${particle.size}px`,
-              '--particle-length': `${Math.max(2, particle.size * 4.4)}px`,
-              '--particle-origin-x': `${fromEdge ? 0 : -particle.originOffsetX}px`,
-              '--particle-origin-y': `${particle.originRatioY * 100}%`,
-              '--particle-x': `${fromEdge ? Math.abs(particle.travelX) : particle.travelX}px`,
-              '--particle-y': `${particle.travelY}px`,
-              '--particle-rotation': `${particle.rotation}rad`,
-              '--particle-alpha': particle.alpha,
-            } as CSSProperties
-          }
-        />
-      ))}
-    </span>
-  );
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+
+      const css = getComputedStyle(document.documentElement);
+      const raw = (name: string) => css.getPropertyValue(name).trim();
+      const rgb = (name: string) => raw(name).split(/\s+/).slice(0, 3).join(',');
+      const pauseColor = rgb('--app-pause');
+      const inkColor = rgb('--app-ink');
+      const fuseY = height * 0.68;
+      const sourceWidth = Math.min(width * 0.55, Math.max(18, height * 3));
+      const headX = (width * (elapsedMs % 60000)) / 60000;
+      const densityScale = compact ? 0.35 : 0.5;
+
+      // 暗芯引线。
+      ctx.strokeStyle = `rgba(${inkColor},0.28)`;
+      ctx.lineWidth = compact ? 1.6 : 2.2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(Math.max(0, headX - sourceWidth), fuseY);
+      ctx.lineTo(headX, fuseY);
+      ctx.stroke();
+
+      const char = ctx.createLinearGradient(Math.max(0, headX - sourceWidth), 0, headX, 0);
+      char.addColorStop(0, `rgba(${pauseColor},0.18)`);
+      char.addColorStop(0.6, `rgba(${pauseColor},0.42)`);
+      char.addColorStop(1, `rgba(${pauseColor},0.95)`);
+      ctx.strokeStyle = char;
+      ctx.lineWidth = compact ? 0.9 : 1.2;
+      ctx.beginPath();
+      ctx.moveTo(Math.max(0, headX - sourceWidth), fuseY);
+      ctx.lineTo(headX, fuseY);
+      ctx.stroke();
+
+      // 燃烧头。
+      const glowRadius = compact ? 5 : 7;
+      const headGlow = ctx.createRadialGradient(headX, fuseY, 0, headX, fuseY, glowRadius);
+      headGlow.addColorStop(0, 'rgba(255,255,255,0.9)');
+      headGlow.addColorStop(0.25, `rgba(${pauseColor},0.55)`);
+      headGlow.addColorStop(1, `rgba(${pauseColor},0)`);
+      ctx.fillStyle = headGlow;
+      ctx.fillRect(headX - glowRadius, fuseY - glowRadius, glowRadius * 2, glowRadius * 2);
+
+      ctx.fillStyle = `rgba(255,255,255,0.96)`;
+      ctx.beginPath();
+      ctx.arc(headX, fuseY, compact ? 1 : 1.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (reducedMotion) return;
+
+      const particles = pauseDissolveParticles(elapsedMs, sourceWidth, false, densityScale);
+      for (const particle of particles) {
+        if (particle.alpha <= 0.01) continue;
+        const originX = headX - particle.originOffsetX;
+        const originY = fuseY + (particle.originRatioY - 0.68) * height;
+        const x = originX + particle.travelX * 0.55;
+        const y = originY + particle.travelY * 0.55;
+        const size = particle.size * (compact ? 0.55 : 0.75);
+        const hot = particle.temperature;
+        const alpha = particle.alpha;
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(particle.rotation);
+        ctx.globalCompositeOperation = particle.kind === 'spark' ? 'lighter' : 'source-over';
+
+        const r = Math.min(255, 210 + hot * 45);
+        const g = Math.min(255, 60 + hot * 120);
+        const b = Math.min(255, 40 + hot * 60);
+        const fill = `rgba(${r},${g},${b},${alpha})`;
+        ctx.fillStyle = fill;
+        ctx.shadowColor = fill;
+        ctx.shadowBlur = particle.kind === 'spark' ? 4 : particle.kind === 'dust' ? 1.2 : 0.6;
+
+        if (particle.kind === 'shard') {
+          ctx.beginPath();
+          ctx.moveTo(-size * 0.65, -size * 0.3);
+          ctx.lineTo(size * 0.55, -size * 0.5);
+          ctx.lineTo(size * 0.4, size * 0.6);
+          ctx.lineTo(-size * 0.35, size * 0.4);
+          ctx.closePath();
+          ctx.fill();
+        } else if (particle.kind === 'spark') {
+          const sparkLen = size * (1.1 + hot * 0.7);
+          ctx.lineWidth = Math.max(0.5, size * 0.4);
+          ctx.strokeStyle = `rgba(255,${180 + hot * 55},${120 + hot * 80},${alpha})`;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(-sparkLen * 0.5, 0);
+          ctx.lineTo(sparkLen * 0.5, 0);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(0, 0, size * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    };
+
+    const schedule = () => {
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame((timestamp) => {
+        rafRef.current = 0;
+        if (timestamp - lastDrawRef.current < 32) {
+          schedule();
+          return;
+        }
+        lastDrawRef.current = timestamp;
+        draw();
+      });
+    };
+
+    draw();
+    if (!reducedMotion) schedule();
+
+    const resizeObserver = new ResizeObserver(() => {
+      draw();
+      if (!reducedMotion) schedule();
+    });
+    resizeObserver.observe(canvas);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      resizeObserver.disconnect();
+    };
+  }, [elapsedMs, reducedMotion, compact]);
+
+  return <canvas ref={canvasRef} className="mini-fuse-canvas" aria-hidden="true" />;
 }
 
 function MiniMetric({
