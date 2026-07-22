@@ -2,11 +2,11 @@
 
 > 发布日期：2026-07-22
 >
-> 对应源码：`<SOURCE_COMMIT>`
+> 对应源码：`9b0c764`
 >
-> 发布类型：正式版
+> 发布类型：本地迭代包
 >
-> 验证状态：待完成
+> 验证状态：设备与本地包已通过；正式发布未执行
 
 ## 前端体验
 
@@ -17,9 +17,11 @@
 
 ## 验证
 
-- format、TypeScript、ESLint、全量测试与 Electron 打包待完成。
-- Android 双设备覆盖安装与版本核验待完成。
-- 安装版和便携版 SHA256 待生成。
+- format、TypeScript、ESLint、60 个测试文件 426 项测试、Electron 回归及打包已通过。
+- Web/PWA、Cloud、Android 单元/Lint/构建及隔离容器集成已通过。
+- 华为平板与小米手机均通过网络 ADB 覆盖安装，读回 `0.12.25 / versionCode 1225`；真机通用 instrumentation 通过，需临时云参数的三项用例按设计跳过。
+- Windows 便携版主窗、小窗和本机离线回落 smoke 已通过；遵照用户要求未代装桌面安装版。
+- 安装版和便携版 SHA256 与 `SHA256SUMS.txt` 一致。
 
 ## 升级提示
 
@@ -35,7 +37,7 @@
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.12.25-x64.exe` | `<SHA256>` |
-| `FocusLink-0.12.25-x64-portable.exe` | `<SHA256>` |
+| `FocusLink-0.12.25-x64.exe` | `2e8a2857e49279e2dc7c277e6a54dc8cd8d2e4ec8c7c05c5ac8139f811c54d37` |
+| `FocusLink-0.12.25-x64-portable.exe` | `dff08c5425d1e9a2c8f4a836e25c102c66e2b3824b00f77d1a52ac43d4891e1e` |
 
 同时提供 `SHA256SUMS.txt`。
