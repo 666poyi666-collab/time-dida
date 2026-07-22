@@ -13,6 +13,8 @@ const outputDir = path.resolve(
   process.argv[2] || path.join(os.tmpdir(), 'focuslink-visual-review'),
 );
 const packagedExecutable = process.argv[3] ? path.resolve(process.argv[3]) : null;
+const ribbonOnly = process.argv.includes('--ribbon-only');
+const ribbonTheme = process.argv.includes('--dark') ? 'dark' : 'light';
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'focuslink-review-'));
 // Electron does not consistently publish a usable DevToolsActivePort file when
 // launched with port 0 on Windows. Use an isolated high loopback port, matching
@@ -246,6 +248,242 @@ async function captureMiniStates(main, mini, theme, label) {
   await delay(400);
 }
 
+async function inspectRibbonFrame(session) {
+  return session.evaluate(`new Promise((resolve) => {
+    const canvas = document.querySelector('.ribbon-canvas');
+    const ribbon = document.querySelector('.temporal-ribbon');
+    if (!canvas) {
+      resolve({ present: false, changed: false });
+      return;
+    }
+    const before = canvas.toDataURL();
+    window.setTimeout(() => {
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      const pixelRatio = Math.max(
+        1,
+        Number.parseFloat(canvas.dataset.pixelRatio || '') || canvas.width / canvas.clientWidth || 1,
+      );
+      const pointerX = Math.round(canvas.width * 0.62);
+      const pointerExclusion = Math.max(2, Math.round(pixelRatio * 3));
+      let greenMaterialPixels = 0;
+      let redParticlePixels = 0;
+      let redPixels = 0;
+      let maxGreenHorizontalRun = 0;
+      let maxRedHorizontalRun = 0;
+      let greenMinX = canvas.width;
+      let greenMaxX = -1;
+      let redMinX = canvas.width;
+      let redMaxX = -1;
+      const redParticleMask = new Uint8Array(canvas.width * canvas.height);
+      for (let y = 0; y < canvas.height; y += 1) {
+        let redRun = 0;
+        let greenRun = 0;
+        for (let x = 0; x < canvas.width; x += 1) {
+          const offset = (y * canvas.width + x) * 4;
+          const red = pixels[offset];
+          const green = pixels[offset + 1];
+          const blue = pixels[offset + 2];
+          const alpha = pixels[offset + 3];
+          // Use channel separation instead of a light-theme-only absolute colour. This
+          // keeps the audit valid for both review themes and still ignores neutral rails.
+          const isRed = alpha > 40 && red > 55 && red - green > 22 && red - blue > 18;
+          const isGreen =
+            alpha > 40 && green > 45 && green - red > 18 && green - blue > 10;
+          if (isRed) {
+            redPixels += 1;
+            // The paused state pointer itself is red. Exclude its narrow vertical
+            // stroke so this metric measures the particles shed by the frontier.
+            if (Math.abs(x - pointerX) > pointerExclusion) {
+              redParticlePixels += 1;
+              redParticleMask[y * canvas.width + x] = 1;
+              redRun += 1;
+              redMinX = Math.min(redMinX, x);
+              redMaxX = Math.max(redMaxX, x);
+              maxRedHorizontalRun = Math.max(maxRedHorizontalRun, redRun);
+            } else {
+              redRun = 0;
+            }
+          } else {
+            redRun = 0;
+          }
+          if (isGreen && x < pointerX - pointerExclusion) {
+            greenMaterialPixels += 1;
+            greenMinX = Math.min(greenMinX, x);
+            greenMaxX = Math.max(greenMaxX, x);
+            greenRun += 1;
+            maxGreenHorizontalRun = Math.max(maxGreenHorizontalRun, greenRun);
+          } else {
+            greenRun = 0;
+          }
+        }
+      }
+
+      // Count visible red islands as a black-box approximation of live particles.
+      // A minimum area rejects isolated antialiasing pixels around the pointer.
+      const visited = new Uint8Array(redParticleMask.length);
+      const minimumComponentArea = Math.max(2, Math.round(pixelRatio * pixelRatio * 0.45));
+      let redParticleComponents = 0;
+      for (let start = 0; start < redParticleMask.length; start += 1) {
+        if (!redParticleMask[start] || visited[start]) continue;
+        const stack = [start];
+        visited[start] = 1;
+        let area = 0;
+        while (stack.length > 0) {
+          const current = stack.pop();
+          area += 1;
+          const x = current % canvas.width;
+          const y = Math.floor(current / canvas.width);
+          for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+            const nextY = y + offsetY;
+            if (nextY < 0 || nextY >= canvas.height) continue;
+            for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+              if (offsetX === 0 && offsetY === 0) continue;
+              const nextX = x + offsetX;
+              if (nextX < 0 || nextX >= canvas.width) continue;
+              const next = nextY * canvas.width + nextX;
+              if (redParticleMask[next] && !visited[next]) {
+                visited[next] = 1;
+                stack.push(next);
+              }
+            }
+          }
+        }
+        if (area >= minimumComponentArea) redParticleComponents += 1;
+      }
+
+      const greenMaterialSpan =
+        greenMaxX >= greenMinX ? (greenMaxX - greenMinX + 1) / pixelRatio : 0;
+      const redParticleSpan =
+        redMaxX >= redMinX ? (redMaxX - redMinX + 1) / pixelRatio : 0;
+      const redParticleDistanceFromPointer =
+        redMaxX >= redMinX
+          ? Math.max(Math.abs(pointerX - redMinX), Math.abs(redMaxX - pointerX)) / pixelRatio
+          : 0;
+      resolve({
+        present: true,
+        changed: before !== canvas.toDataURL(),
+        motion: ribbon?.dataset.motion || null,
+        scale: ribbon?.dataset.scale || null,
+        dissolve: ribbon?.dataset.dissolve || null,
+        width: canvas.width,
+        height: canvas.height,
+        pixelRatio,
+        pointerX: pointerX / pixelRatio,
+        greenMaterialPixels,
+        greenMaterialSpan,
+        maxGreenHorizontalRun: maxGreenHorizontalRun / pixelRatio,
+        redParticlePixels,
+        redParticleComponents,
+        redParticleSpan,
+        redParticleDistanceFromPointer,
+        redPixels,
+        maxRedHorizontalRun: maxRedHorizontalRun / pixelRatio,
+      });
+    }, 240);
+  })`);
+}
+
+async function captureRibbonStates(session) {
+  await goView(session, '专注');
+  await session.evaluate(`(async () => {
+    const snap = await window.focuslink.timer.getSnapshot();
+    if (snap.state !== 'idle') await window.focuslink.timer.reset();
+  })()`);
+  await waitForTimerState(session, 'idle');
+  await session.evaluate(`document.querySelector('.timer-controls .btn-main-action')?.click()`);
+  await waitForTimerState(session, 'running');
+  await delay(12_000);
+  const running = await inspectRibbonFrame(session);
+  await session.shot('ribbon-running-near');
+
+  await session.evaluate(`document.querySelector('.timer-controls .btn-main-action')?.click()`);
+  await waitForTimerState(session, 'paused');
+  const pauseStartedAt = Date.now();
+  // Pause is a real wall-clock interval. Compare an early and late frame to prove
+  // that the particle trace grows across that interval instead of looping locally.
+  await delay(3_000);
+  const pausedEarly = await inspectRibbonFrame(session);
+  await session.shot('ribbon-paused-early-near');
+  await delay(Math.max(0, 25_000 - (Date.now() - pauseStartedAt)));
+  const pausedLate = await inspectRibbonFrame(session);
+  await session.shot('ribbon-paused-late-near');
+
+  const resumeClickedAt = Date.now();
+  await session.evaluate(`document.querySelector('.timer-controls .btn-main-action')?.click()`);
+  await waitForTimerState(session, 'running');
+  await delay(Math.max(0, 2_200 - (Date.now() - resumeClickedAt)));
+  const resumed = await inspectRibbonFrame(session);
+  await session.shot('ribbon-resumed-settled');
+
+  // A high-density particle body can form short accidental pixel joins. Keep the
+  // ceiling well below one second (8px) times five while still rejecting a drawn line.
+  const maximumRedHorizontalRun = 36;
+  const minimumEarlyTraceSpan = 14;
+  const minimumTraceGrowth = 120;
+  const checks = [
+    [running.present && running.changed, 'running material remains alive between frames'],
+    [running.motion === 'continuous-material', 'running ribbon declares continuous material'],
+    [running.greenMaterialPixels > 600, 'running near view contains a dense green particle body'],
+    [running.greenMaterialSpan > 70, 'green particles visibly record the full focused interval'],
+    [pausedEarly.present && pausedEarly.changed, 'early pause loss particles move between frames'],
+    [pausedLate.present && pausedLate.changed, 'late pause loss particles move between frames'],
+    [pausedEarly.scale === 'seconds' && pausedLate.scale === 'seconds', 'pause stays in near view'],
+    [
+      pausedEarly.motion === 'pause-dissolve' && pausedLate.motion === 'pause-dissolve',
+      'paused ribbon declares pause dissolve motion',
+    ],
+    [
+      pausedEarly.dissolve === 'interval-trace' && pausedLate.dissolve === 'interval-trace',
+      'paused ribbon declares a wall-clock particle interval trace',
+    ],
+    [
+      pausedEarly.redParticleSpan > minimumEarlyTraceSpan &&
+        pausedEarly.redParticlePixels > 100 &&
+        pausedEarly.redParticleComponents > 8,
+      'early pause already forms a dense readable particle time body',
+    ],
+    [
+      pausedLate.redParticleSpan > pausedEarly.redParticleSpan + minimumTraceGrowth,
+      'red particle trace grows with the real paused interval',
+    ],
+    [
+      pausedLate.redParticlePixels > pausedEarly.redParticlePixels * 2,
+      'longer pause contains proportionally more visible trace particles',
+    ],
+    [
+      pausedEarly.maxRedHorizontalRun < maximumRedHorizontalRun &&
+        pausedLate.maxRedHorizontalRun < maximumRedHorizontalRun,
+      'pause loss contains no persistent horizontal red segment',
+    ],
+    [
+      resumed.greenMaterialPixels > pausedLate.greenMaterialPixels,
+      'resuming creates a new green focus interval after the pause trace',
+    ],
+    [resumed.motion === 'continuous-material', 'resumed ribbon returns to continuous material'],
+    [resumed.dissolve === 'none', 'resumed ribbon leaves active pause-trace semantics'],
+    [
+      resumed.redParticlePixels > 100 &&
+        Math.abs(resumed.redParticleSpan - pausedLate.redParticleSpan) < 12,
+      'completed pause remains readable as a historical particle interval',
+    ],
+  ];
+  const failures = checks.filter(([ok]) => !ok).map(([, label]) => label);
+  process.stderr.write(
+    `[review] ribbon audit: ${JSON.stringify({
+      running,
+      pausedEarly,
+      pausedLate,
+      resumed,
+      maximumRedHorizontalRun,
+      minimumEarlyTraceSpan,
+      minimumTraceGrowth,
+    })}\n`,
+  );
+  if (failures.length > 0) throw new Error(`Ribbon review failed: ${failures.join('; ')}`);
+  await session.evaluate(`window.focuslink.timer.stop()`);
+}
+
 async function main() {
   process.stderr.write('[review] waiting for main renderer\n');
   const mainTarget = await waitForTarget(
@@ -284,6 +522,13 @@ async function main() {
   process.stderr.write(`[review] reduced-motion audit: ${JSON.stringify(reducedAudit)}\n`);
   await session.send('Emulation.setEmulatedMedia', { features: [] });
   await delay(300);
+
+  if (ribbonOnly) {
+    await setTheme(session, ribbonTheme);
+    await captureRibbonStates(session);
+    process.stderr.write(`[review] ribbon-only done -> ${outputDir}\n`);
+    return;
+  }
 
   await setTheme(session, 'light');
   await captureMainStates(session, 'light');

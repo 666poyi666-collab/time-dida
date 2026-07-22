@@ -2,15 +2,18 @@ import { describe, expect, it } from 'vitest';
 import {
   BAND_SCALE_FAR,
   BAND_SCALE_NEAR,
+  PAUSE_LOSS_MAX_LIFE_MS,
   PARTICLE_FIELD_FADE_IN_MS,
   PARTICLE_FIELD_PAUSE_DENSITY,
   PARTICLE_GRID_CROSSFADE_MS,
   POINTER_GLOW_MAX_ALPHA,
   bandDetailMix,
   bandDisplaySeconds,
+  bandParticleMotionSeconds,
   bandScaleForState,
   burnHeadHalo,
   fieldParticleSpec,
+  focusMaterialPose,
   frontierGlowAlpha,
   interpolateZoomScale,
   macroTickAlpha,
@@ -25,6 +28,7 @@ import {
   particleGridCrossfade,
   particleToneColor,
   particleTraceFade,
+  pauseFrontierDissolveParticles,
   pauseDissolveParticles,
   pointerBreathPulse,
   secondTickAlpha,
@@ -36,7 +40,7 @@ describe('bandMath', () => {
   describe('scale & zoom', () => {
     it('uses near scale for running and far scale otherwise', () => {
       expect(bandScaleForState('running')).toBe(BAND_SCALE_NEAR);
-      expect(bandScaleForState('paused')).toBe(BAND_SCALE_FAR);
+      expect(bandScaleForState('paused')).toBe(BAND_SCALE_NEAR);
       expect(bandScaleForState('idle')).toBe(BAND_SCALE_FAR);
       expect(bandScaleForState('finished')).toBe(BAND_SCALE_FAR);
     });
@@ -80,6 +84,13 @@ describe('bandMath', () => {
     it('displaySeconds freezes when not live', () => {
       expect(bandDisplaySeconds('finished', 12_000, 10_500, false)).toBe(10);
       expect(bandDisplaySeconds('idle', 12_000, 0, false)).toBe(0);
+    });
+
+    it('keeps particle micro-motion continuous only while live', () => {
+      expect(bandParticleMotionSeconds('running', 12_500, 8_400, false)).toBe(12.5);
+      expect(bandParticleMotionSeconds('paused', 12_750, 8_400, false)).toBe(12.75);
+      expect(bandParticleMotionSeconds('running', 12_500, 8_400, true)).toBe(12);
+      expect(bandParticleMotionSeconds('finished', 12_500, 8_400, false)).toBe(8);
     });
   });
 
@@ -199,6 +210,152 @@ describe('bandMath', () => {
       for (const count of samples) {
         expect(count).toBeGreaterThan(20);
       }
+    });
+  });
+
+  describe('main ribbon focus material and pause loss', () => {
+    it('keeps focus material continuous at birth and settles to full thickness', () => {
+      const newborn = focusMaterialPose(0, 0.5, 10, false);
+      const settled = focusMaterialPose(1, 0.5, 11, false);
+
+      expect(newborn.settle).toBe(0);
+      expect(newborn.thicknessScale).toBeGreaterThanOrEqual(0.74);
+      expect(settled.settle).toBe(1);
+      expect(settled.thicknessScale).toBe(1);
+      expect(Math.abs(settled.waveOffset)).toBeLessThanOrEqual(1);
+    });
+
+    it('freezes the focus material contour under reduced motion', () => {
+      const a = focusMaterialPose(0.4, 0.25, 10, true);
+      const b = focusMaterialPose(0.4, 0.25, 20, true);
+      expect(a.waveOffset).toBe(0);
+      expect(b.waveOffset).toBe(0);
+      expect(a).toEqual(b);
+    });
+
+    it('emits short-lived loss particles from the narrow current frontier', () => {
+      const particles = pauseFrontierDissolveParticles(5_000, 0, null, 8, false);
+      expect(particles.length).toBeGreaterThan(20);
+      expect(particles.every((particle) => particle.originOffsetX >= 0)).toBe(true);
+      expect(particles.every((particle) => particle.originOffsetX <= 8)).toBe(true);
+      expect(particles.every((particle) => particle.originRatioY >= 0.27)).toBe(true);
+      expect(particles.every((particle) => particle.originRatioY <= 0.73)).toBe(true);
+      expect(
+        particles.filter((particle) => particle.travelX < 0).length / particles.length,
+      ).toBeGreaterThan(0.85);
+    });
+
+    it('forms a dense mixed erosion stream instead of a sparse field of dots', () => {
+      const particles = pauseFrontierDissolveParticles(5_000, 0, null, 8, false);
+      const visible = particles.filter(
+        (particle) => particle.alpha >= 0.2 && particle.size >= 0.75,
+      );
+      const flakes = particles.filter((particle) => particle.kind === 'flake').length;
+      const grains = particles.filter((particle) => particle.kind === 'grain').length;
+      const sparks = particles.filter((particle) => particle.kind === 'spark').length;
+
+      expect(visible.length).toBeGreaterThan(70);
+      expect(flakes / particles.length).toBeGreaterThan(0.25);
+      expect(flakes / particles.length).toBeLessThan(0.45);
+      expect(grains / particles.length).toBeLessThan(0.68);
+      expect(sparks / particles.length).toBeGreaterThan(0.03);
+      expect(sparks / particles.length).toBeLessThan(0.16);
+    });
+
+    it('keeps pause loss bounded across short and very long pauses', () => {
+      const short = pauseFrontierDissolveParticles(5_000, 0, null, 8, false);
+      const long = pauseFrontierDissolveParticles(3_000_000, 0, null, 8, false);
+      expect(long.length).toBeGreaterThan(short.length * 0.55);
+      expect(long.length).toBeLessThan(short.length * 1.8);
+    });
+
+    it('preserves cohorts across a second boundary and removes them after emission stops', () => {
+      const before = pauseFrontierDissolveParticles(999, 0, null, 8, false);
+      const after = pauseFrontierDissolveParticles(1_001, 0, null, 8, false);
+      const beforeIds = new Set(before.map((particle) => particle.id));
+      expect(after.filter((particle) => beforeIds.has(particle.id)).length).toBeGreaterThan(
+        before.length * 0.45,
+      );
+      expect(
+        pauseFrontierDissolveParticles(1_000 + PAUSE_LOSS_MAX_LIFE_MS + 1, 0, 1_000, 8, false),
+      ).toEqual([]);
+    });
+
+    it('ages the same particles across frames until they shrink, fade, and die', () => {
+      const firstFrame = pauseFrontierDissolveParticles(500, 0, null, 8, false);
+      const nextFrame = pauseFrontierDissolveParticles(620, 0, null, 8, false);
+      const nextById = new Map(nextFrame.map((particle) => [particle.id, particle]));
+      const survivors = firstFrame
+        .map((particle) => ({ before: particle, after: nextById.get(particle.id) }))
+        .filter(
+          (
+            pair,
+          ): pair is {
+            before: (typeof firstFrame)[number];
+            after: (typeof nextFrame)[number];
+          } => pair.after !== undefined,
+        );
+
+      expect(survivors.length).toBeGreaterThan(firstFrame.length * 0.55);
+      for (const { before, after } of survivors) {
+        expect(after.progress).toBeGreaterThan(before.progress);
+        expect(after.size).toBeLessThan(before.size);
+        expect(after.alpha).toBeLessThan(before.alpha);
+      }
+
+      const afterMaximumLifetime = pauseFrontierDissolveParticles(
+        500 + PAUSE_LOSS_MAX_LIFE_MS + 1,
+        0,
+        null,
+        8,
+        false,
+      );
+      const lateIds = new Set(afterMaximumLifetime.map((particle) => particle.id));
+      expect(firstFrame.every((particle) => !lateIds.has(particle.id))).toBe(true);
+    });
+
+    it('keeps a shrinking tail after emission ends without creating a new cohort', () => {
+      const endedAtMs = 1_350;
+      const atStop = pauseFrontierDissolveParticles(endedAtMs, 0, endedAtMs, 8, false);
+      const tail = pauseFrontierDissolveParticles(endedAtMs + 120, 0, endedAtMs, 8, false);
+      const stoppedIds = new Set(atStop.map((particle) => particle.id));
+
+      expect(atStop.length).toBeGreaterThan(20);
+      expect(tail.length).toBeGreaterThan(0);
+      expect(tail.length).toBeLessThanOrEqual(atStop.length);
+      expect(tail.every((particle) => stoppedIds.has(particle.id))).toBe(true);
+      expect(
+        pauseFrontierDissolveParticles(
+          endedAtMs + PAUSE_LOSS_MAX_LIFE_MS + 1,
+          0,
+          endedAtMs,
+          8,
+          false,
+        ),
+      ).toEqual([]);
+    });
+
+    it('never lets a quick-pause tail brighten again after resume', () => {
+      const endedAtMs = 50;
+      const atStop = pauseFrontierDissolveParticles(endedAtMs, 0, endedAtMs, 8, false);
+      const afterResume = pauseFrontierDissolveParticles(endedAtMs + 100, 0, endedAtMs, 8, false);
+      const afterById = new Map(afterResume.map((particle) => [particle.id, particle]));
+      const survivors = atStop.filter((particle) => afterById.has(particle.id));
+
+      expect(survivors.length).toBeGreaterThan(20);
+      for (const before of survivors) {
+        const after = afterById.get(before.id)!;
+        expect(after.alpha).toBeLessThan(before.alpha);
+        expect(after.size).toBeLessThan(before.size);
+      }
+    });
+
+    it('uses a deterministic static erosion edge under reduced motion', () => {
+      const early = pauseFrontierDissolveParticles(5_000, 0, null, 8, true);
+      const late = pauseFrontierDissolveParticles(50_000, 0, null, 8, true);
+      expect(early.length).toBeGreaterThan(5);
+      expect(late).toEqual(early);
+      expect(pauseFrontierDissolveParticles(50_000, 0, 50_000, 8, true)).toEqual([]);
     });
   });
 

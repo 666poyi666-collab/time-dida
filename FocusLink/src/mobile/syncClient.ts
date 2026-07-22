@@ -105,7 +105,9 @@ export async function pullDeviceSyncPage(input: PullPageInput): Promise<DeviceSy
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     if (error instanceof RequestTimeoutError) throw new Error('同步请求超时，正在重连');
-    throw new Error(navigator.onLine ? '无法连接同步服务，请检查地址、CORS 或网络' : '当前离线');
+    throw new Error(
+      navigator.onLine ? unreachableMobileServiceMessage(endpoint, '同步服务') : '当前离线',
+    );
   }
 
   if (!response.ok) {
@@ -222,7 +224,7 @@ async function liveFocusFetch(
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     if (error instanceof RequestTimeoutError) throw new Error('实时同步请求超时，正在重连');
     throw new Error(
-      navigator.onLine ? '无法连接实时同步服务，请检查地址、CORS 或网络' : '当前离线',
+      navigator.onLine ? unreachableMobileServiceMessage(endpoint, '实时同步服务') : '当前离线',
     );
   }
 
@@ -237,6 +239,14 @@ async function liveFocusFetch(
 }
 
 class RequestTimeoutError extends Error {}
+
+function unreachableMobileServiceMessage(endpoint: string, service: string): string {
+  const hostname = new URL(endpoint).hostname;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return `无法连接${service}：手机上的 ${hostname} 指手机自身。请保持电脑 FocusLink 运行，并先执行 ADB reverse tcp:18787 tcp:18787；Wi-Fi 或异地连接请使用 HTTPS 同步服务`;
+  }
+  return `无法连接${service}，请检查 HTTPS 地址、CORS 或网络`;
+}
 
 async function fetchWithTimeout(
   input: RequestInfo | URL,

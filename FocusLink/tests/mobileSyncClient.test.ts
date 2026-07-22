@@ -79,4 +79,16 @@ describe('mobile sync client request recovery', () => {
     });
     await expect(request).rejects.toSatisfy(isInvalidDeviceSyncCursorError);
   });
+
+  it('explains that Android loopback needs adb reverse when the embedded service is unreachable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')));
+    vi.stubGlobal('navigator', { onLine: true });
+
+    await expect(
+      fetchLiveFocusSnapshot({
+        endpoint: 'http://127.0.0.1:18787',
+        token: 'test-token',
+      }),
+    ).rejects.toThrow('ADB reverse tcp:18787 tcp:18787');
+  });
 });

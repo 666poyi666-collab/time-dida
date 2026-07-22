@@ -137,6 +137,7 @@ async function inspectState(expectedState) {
         statusText: status?.textContent?.trim() || null,
         stateMomentText: stateMoment?.textContent?.trim() || null,
         ribbonState: ribbon?.dataset.state || null,
+        ribbonMotion: ribbon?.dataset.motion || null,
         ribbonDissolve: ribbon?.dataset.dissolve || null,
         hasRibbonCanvas: Boolean(ribbonCanvas),
         ribbonCanvasSize: ribbonCanvas ? [ribbonCanvas.width, ribbonCanvas.height] : null,
@@ -784,6 +785,10 @@ async function main() {
       'running temporal band canvas is live',
     ],
     [
+      results.running.ribbonMotion === 'continuous-material',
+      'running temporal band exposes continuous focus material',
+    ],
+    [
       results.running.ribbonCanvasSize?.[0] > 0 && results.running.ribbonCanvasSize?.[1] > 0,
       'temporal band canvas matches a real viewport',
     ],
@@ -837,8 +842,12 @@ async function main() {
     [results.focusActionStates.active?.transform !== 'none', 'primary action has active feedback'],
     [results.paused.workspaceClass.includes('state-paused'), 'paused workspace state class'],
     [
-      results.paused.ribbonDissolve === 'particle-field',
-      'paused band exposes the particle dissolve field',
+      results.paused.ribbonMotion === 'pause-dissolve',
+      'paused temporal band exposes frontier particle loss',
+    ],
+    [
+      results.paused.ribbonDissolve === 'interval-trace',
+      'paused band declares a wall-clock particle interval trace',
     ],
     [results.paused.primaryText === '继续', 'paused primary action'],
     [Boolean(results.paused.stateMomentText?.startsWith('暂停于')), 'pause time is visible'],

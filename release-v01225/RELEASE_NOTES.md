@@ -6,7 +6,7 @@
 >
 > 发布类型：正式版
 >
-> 验证状态：已通过
+> 验证状态：待完成
 
 ## 前端体验
 
@@ -17,12 +17,13 @@
 
 ## 验证
 
-- format、TypeScript、ESLint、全量测试与 Electron 打包已通过。
-- 安装版和便携版 SHA256 与 `SHA256SUMS.txt` 一致。
+- format、TypeScript、ESLint、全量测试与 Electron 打包待完成。
+- Android 双设备覆盖安装与版本核验待完成。
+- 安装版和便携版 SHA256 待生成。
 
 ## 升级提示
 
-- Windows 端关闭正在运行的 FocusLink 后运行安装版。
+- Windows 端关闭正在运行的 FocusLink 后运行安装版；本轮不会代替用户安装电脑端。
 - Android 端可直接覆盖旧版并保留应用数据；使用电脑本机同步服务时，每台网络 ADB 设备都需要独立建立 `tcp:18787` reverse。
 
 ## 已知限制

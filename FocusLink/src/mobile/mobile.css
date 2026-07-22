@@ -2342,7 +2342,17 @@ code {
 
 @media (max-width: 480px) {
   .sync-strip {
-    grid-template-columns: 10px minmax(0, 1fr) 44px;
+    grid-template-columns: minmax(0, 1fr) 44px;
+  }
+
+  .sync-status-live,
+  .sync-status-ledger {
+    grid-column: 1;
+  }
+
+  .sync-button {
+    grid-column: 2;
+    grid-row: 1 / span 2;
   }
 
   .sync-button {
@@ -2556,6 +2566,94 @@ code {
   color: var(--subtle);
   font-size: 10.5px;
   line-height: 1.5;
+}
+
+.mobile-temporal-ribbon {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 18px;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border);
+}
+
+.sync-strip {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.sync-status {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 8px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.sync-status .sync-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sync-status .sync-copy strong {
+  font-size: 10px;
+}
+
+.sync-status .sync-copy span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-status-live.state-live .network-dot,
+.sync-status-ledger.state-confirmed .network-dot {
+  background: var(--focus);
+}
+
+.sync-status-live.state-error .network-dot,
+.sync-status-live.state-offline .network-dot,
+.sync-status-ledger.state-error .network-dot {
+  background: var(--pause);
+}
+
+.sync-status-ledger.state-pulling .network-dot,
+.sync-status-live.state-connecting .network-dot {
+  animation: status-pulse 1.2s ease-in-out infinite;
+}
+
+.mobile-ribbon-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mobile-ribbon-heading small {
+  color: var(--subtle);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.mobile-temporal-ribbon canvas {
+  display: block;
+  width: 100%;
+  height: clamp(96px, 16vw, 132px);
+  min-height: 96px;
+  border: 1px solid var(--border);
+  touch-action: pan-y;
+}
+
+.state-paused .mobile-ribbon-heading {
+  color: var(--pause);
 }
 
 .runtime-metrics {
@@ -2903,6 +3001,21 @@ code {
 
   .native-system-actions {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 760px) {
+  .mobile-temporal-ribbon canvas {
+    height: clamp(132px, 16vw, 210px);
+  }
+
+  .focus-console-body {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.34fr);
+  }
+
+  .live-context {
+    border-top: 0;
+    border-left: 1px solid var(--border);
   }
 }
 

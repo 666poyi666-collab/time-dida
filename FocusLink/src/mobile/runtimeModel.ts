@@ -1,3 +1,8 @@
+import type {
+  LiveFocusTimelinePause,
+  LiveFocusTimelineSegment,
+} from '@shared/sync/liveFocusProtocol';
+
 export type LiveFocusPhase = 'idle' | 'running' | 'paused';
 
 /**
@@ -8,6 +13,7 @@ export interface LiveFocusSnapshotLike {
   state: LiveFocusPhase;
   revision: number;
   sessionId: string | null;
+  startedAt: number | null;
   updatedAt: number;
   /** Server epoch used to materialize the elapsed values. */
   serverTime: number;
@@ -17,6 +23,8 @@ export interface LiveFocusSnapshotLike {
   pauseElapsedMs: number;
   wallElapsedMs: number;
   currentStateStartedAt: number | null;
+  segments: LiveFocusTimelineSegment[];
+  pauses: LiveFocusTimelinePause[];
   title: string | null;
   ownerDeviceId: string | null;
   taskId: string | null;
@@ -49,6 +57,7 @@ export function idleLiveFocusSnapshot(
     state: 'idle',
     revision,
     sessionId: null,
+    startedAt: null,
     updatedAt: serverTime,
     serverTime,
     observedAt,
@@ -56,6 +65,8 @@ export function idleLiveFocusSnapshot(
     pauseElapsedMs: 0,
     wallElapsedMs: 0,
     currentStateStartedAt: null,
+    segments: [],
+    pauses: [],
     title: null,
     ownerDeviceId: null,
     taskId: null,

@@ -1,8 +1,6 @@
-// 时间之带：时间材料、刻度与进度是同一个物体。
-// 运行时世界只在秒边界做一次擒纵步进；暂停时间不形成实体色块，只在真实前沿碎裂并消散。
-// 近景是秒级精密尺，远景是 30 分钟总览；两种镜头共用同一条刻度与同一片粒子场。
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { buildMixedTimelineItems } from '@shared/focus/timeline';
+// 时间之带：专注与暂停都按真实墙钟留下完整时段；材质本身由粒子构成。
+// 绿色表达已经凝结的专注，红色以“残留底 + 短寿命活动层”持续表现时间消逝。
+import { useEffect, useRef, useState } from 'react';
 import {
   BAND_PAUSE_MOTION_MS,
   BAND_POINTER_RATIO,
@@ -10,17 +8,10 @@ import {
   BAND_SCALE_FAR,
   BAND_SCALE_NEAR,
   BAND_ZOOM_MS,
-  PARTICLE_FIELD_PAUSE_DENSITY,
   POINTER_GLOW_MAX_ALPHA,
   bandDetailMix,
-  bandDisplaySeconds,
-  bandEventPhaseMs,
-  bandEventSecond,
   bandScaleForState,
-  burnHeadHalo,
   easeInOutQuart,
-  fieldParticleSpec,
-  frontierGlowAlpha,
   interpolateZoomScale,
   macroTickAlpha,
   mixRgb,
@@ -29,38 +20,28 @@ import {
   particleCellHash,
   particleDepthProfile,
   particleFieldFadeIn,
-  particleFieldParams,
-  particleFieldStepSec,
-  particleGridCrossfade,
   particleToneColor,
-  particleTraceFade,
-  pauseDissolveParticles,
   pointerBreathPulse,
   secondTickAlpha,
-  traceResidueDot,
+  steppedDisplaySeconds,
 } from '@shared/focus/bandMath';
 import type { RgbTuple } from '@shared/focus/bandMath';
+import { getCumulativeActiveMs, getCurrentPauseDisplayMs } from '@shared/focus/selectors';
+import { buildMixedTimelineItems } from '@shared/focus/timeline';
 import type { TimerSnapshot, TimerState } from '@shared/types';
 
-type Moment = {
-  id: string;
-  type: 'focus' | 'pause';
-  startedAt: number;
-  endedAt: number | null;
-};
-
 type BandEngine = {
+  /** 当前业务会话；跨 session 时必须清空上一轮的暂停尾粒子。 */
+  sessionId: string | null;
   scale: number;
   zoom: { from: number; to: number; start: number; duration: number } | null;
   lastSecond: number;
-  /** 上一帧状态：用于识别 idle → running 的粒子场淡入时机 */
+  /** 上一帧状态：用于识别材料淡入与暂停发射器的启停。 */
   prevState: TimerState | null;
-  /** 粒子场淡入起始时间（performance.now 时间轴），null 表示无淡入 */
-  fieldFadeStart: number | null;
-  /** 当前粒子网格单元时长（秒）：跨越取样梯子阈值时触发交叉淡化 */
-  gridStepSec: number | null;
-  /** 网格重排交叉淡化：旧网格单元时长 + 起始时间，null 表示无淡化 */
-  gridFade: { from: number; start: number } | null;
+  /** 专注实体淡入起始时间（performance.now 时间轴）。 */
+  materialFadeStart: number | null;
+  /** 连续材料/时间粒子按 30fps 绘制。 */
+  lastMotionFrameAt: number;
 };
 
 type BandColors = {
@@ -79,20 +60,7 @@ type BandColors = {
   borderStrong: string;
 };
 
-type ActivePause = {
-  materialStart: number;
-  end: number;
-  elapsedMs: number;
-};
-
-type MomentKind = 'focus' | 'pause';
-
-type ParticlePalette = {
-  base: RgbTuple;
-  deep: RgbTuple;
-  soft: RgbTuple;
-  ash: RgbTuple;
-};
+const PARTICLE_FRAME_INTERVAL_MS = 1000 / 30;
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(
@@ -121,68 +89,56 @@ export function TemporalRibbon({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<BandEngine>({
+    sessionId: snapshot?.sessionId ?? null,
     scale: bandScaleForState(state),
     zoom: null,
     lastSecond: -1,
     prevState: null,
-    fieldFadeStart: null,
-    gridStepSec: null,
-    gridFade: null,
+    materialFadeStart: null,
+    lastMotionFrameAt: 0,
   });
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
   const reducedMotion = useReducedMotion();
   const [viewMode, setViewMode] = useState<'auto' | 'near' | 'far'>('auto');
 
-  const moments: Moment[] = useMemo(
-    () =>
-      buildMixedTimelineItems({
-        segments: snapshot?.segments ?? [],
-        pauseEvents: snapshot?.pauseEvents ?? [],
-        currentSegmentId: snapshot?.currentSegmentId ?? null,
-        state,
-        now,
-      }).map((moment) => ({
-        id: moment.id,
-        type: moment.type,
-        startedAt: moment.startedAt,
-        endedAt: moment.endedAt,
-      })),
-    [now, snapshot?.currentSegmentId, snapshot?.pauseEvents, snapshot?.segments, state],
-  );
-  const dataRef = useRef(moments);
-  dataRef.current = moments;
-  const renderRevision = moments
-    .map((moment) => `${moment.id}:${moment.type}:${moment.startedAt}:${moment.endedAt ?? 'open'}`)
-    .join('|');
-  const lastRecordedAt = moments.reduce(
-    (latest, moment) => Math.max(latest, moment.endedAt ?? moment.startedAt),
-    0,
-  );
-  const live = state === 'running' || state === 'paused';
-
-  const stateRef = useRef(state);
-  stateRef.current = state;
-  const pauseStartedRef = useRef(snapshot?.currentPauseStartedAt ?? null);
-  pauseStartedRef.current = snapshot?.currentPauseStartedAt ?? null;
-  const anchorRef = useRef(now);
-  useEffect(() => {
-    if (live) {
-      anchorRef.current = now;
-      return;
-    }
-    if (lastRecordedAt > 0) anchorRef.current = lastRecordedAt;
-  }, [lastRecordedAt, live, now]);
-
+  // 暂停保持近景，确保完整粒子时段与正在消逝的活动层都清晰可读。
+  const effectiveViewMode = state === 'paused' ? 'near' : viewMode;
   const targetScale =
-    viewMode === 'near'
+    effectiveViewMode === 'near'
       ? BAND_SCALE_NEAR
-      : viewMode === 'far'
+      : effectiveViewMode === 'far'
         ? BAND_SCALE_FAR
         : bandScaleForState(state);
   const isNear = targetScale === BAND_SCALE_NEAR;
-  const pauseElapsedMs =
-    state === 'paused' && snapshot?.currentPauseStartedAt
-      ? Math.max(0, now - snapshot.currentPauseStartedAt)
-      : 0;
+  const activeElapsedMs = getCumulativeActiveMs(snapshot, now);
+  const pauseElapsedMs = getCurrentPauseDisplayMs(snapshot, now);
+  const live = state === 'running' || state === 'paused';
+  const hasRecordedTime =
+    activeElapsedMs > 0 ||
+    pauseElapsedMs > 0 ||
+    (snapshot?.segments.length ?? 0) > 0 ||
+    (snapshot?.pauseEvents.length ?? 0) > 0;
+
+  // 只用真正影响场景投影的业务字段唤醒 Canvas。活动态的连续推进由 rAF 完成。
+  const renderRevision = [
+    snapshot?.sessionId ?? 'none',
+    state,
+    snapshot?.activeElapsedMs ?? 0,
+    snapshot?.pauseElapsedMs ?? 0,
+    snapshot?.currentPauseStartedAt ?? 'none',
+    snapshot?.lastTick ?? 0,
+    ...(snapshot?.segments.map(
+      (segment) =>
+        `${segment.id}:${segment.startedAt}:${segment.endedAt ?? 'open'}:${segment.activeElapsedMs}`,
+    ) ?? []),
+    ...(snapshot?.pauseEvents.map(
+      (pause) => `${pause.id}:${pause.pauseStartedAt}:${pause.pauseEndedAt ?? 'open'}`,
+    ) ?? []),
+  ].join(':');
 
   useEffect(() => {
     const engine = engineRef.current;
@@ -203,8 +159,10 @@ export function TemporalRibbon({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const canvasElement = canvas;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    const context = ctx;
 
     let raf = 0;
     let wakeTimer: number | null = null;
@@ -225,7 +183,7 @@ export function TemporalRibbon({
         canvas.height = pixelHeight;
       }
       canvas.dataset.pixelRatio = String(dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
     const schedule = () => {
@@ -237,48 +195,58 @@ export function TemporalRibbon({
       raf = requestAnimationFrame(draw);
     };
 
-    const wakeAtNextSecond = () => {
-      if (disposed || wakeTimer !== null) return;
-      const phase = bandEventPhaseMs(stateRef.current, Date.now(), pauseStartedRef.current);
-      const delay = Math.max(12, 1002 - phase);
+    const wakeAtNextActiveSecond = () => {
+      if (disposed || wakeTimer !== null || stateRef.current !== 'running') return;
+      const delay = Math.max(16, 1002 - (Date.now() % 1000));
       wakeTimer = window.setTimeout(() => {
         wakeTimer = null;
         schedule();
       }, delay);
     };
 
-    const draw = () => {
+    function draw() {
       raf = 0;
       if (disposed) return;
+
+      const currentState = stateRef.current;
+      const wallNowMs = Date.now();
+      const frameAt = performance.now();
+      const continuousMotion =
+        !reducedMotion &&
+        (currentState === 'running' ||
+          currentState === 'paused' ||
+          engineRef.current.zoom !== null ||
+          engineRef.current.materialFadeStart !== null);
+
+      if (
+        continuousMotion &&
+        frameAt - engineRef.current.lastMotionFrameAt < PARTICLE_FRAME_INTERVAL_MS
+      ) {
+        schedule();
+        return;
+      }
+      engineRef.current.lastMotionFrameAt = continuousMotion ? frameAt : 0;
+
       resize();
-      renderBand(ctx, canvas, engineRef.current, {
-        moments: dataRef.current,
-        state: stateRef.current,
-        pauseStartedAt: pauseStartedRef.current,
-        nowMs:
-          stateRef.current === 'running' || stateRef.current === 'paused'
-            ? Date.now()
-            : anchorRef.current,
-        anchorMs: anchorRef.current,
+      renderBand(context, canvasElement, engineRef.current, {
+        snapshot: snapshotRef.current,
+        state: currentState,
+        nowMs: wallNowMs,
         reducedMotion,
       });
 
-      const currentState = stateRef.current;
-      const live = currentState === 'running' || currentState === 'paused';
-      const motionWindow =
-        currentState === 'paused' ? BAND_PAUSE_MOTION_MS : BAND_RUNNING_MOTION_MS;
-      const pulseAge = bandEventPhaseMs(currentState, Date.now(), pauseStartedRef.current);
       if (
-        engineRef.current.zoom ||
-        engineRef.current.gridFade ||
-        engineRef.current.fieldFadeStart !== null ||
-        (live && !reducedMotion && pulseAge >= 0 && pulseAge < motionWindow)
+        !reducedMotion &&
+        (currentState === 'running' ||
+          currentState === 'paused' ||
+          engineRef.current.zoom !== null ||
+          engineRef.current.materialFadeStart !== null)
       ) {
         schedule();
-      } else if (live) {
-        wakeAtNextSecond();
+      } else if (currentState === 'running') {
+        wakeAtNextActiveSecond();
       }
-    };
+    }
 
     const observer = new ResizeObserver(() => {
       resize();
@@ -300,35 +268,53 @@ export function TemporalRibbon({
       observer.disconnect();
       themeObserver.disconnect();
     };
-  }, [reducedMotion, renderRevision, state, targetScale]);
+  }, [reducedMotion, renderRevision, targetScale]);
 
   const viewDescription = isNear
-    ? '秒级近景 · 每格 1 秒 · 分钟主刻'
-    : state === 'paused'
-      ? '30 分钟总览 · 前沿按秒粒子消散'
-      : '30 分钟总览 · 每格 5 分钟';
+    ? state === 'paused'
+      ? reducedMotion
+        ? '秒级近景 · 暂停粒子痕迹静态呈现'
+        : '秒级近景 · 暂停粒子持续留痕'
+      : '秒级近景 · 每格 1 秒 · 分钟主刻'
+    : '30 分钟总览 · 专注与暂停时间轨迹';
+  const lastRecordedAt = Math.max(
+    0,
+    ...(snapshot?.segments.map((segment) => segment.endedAt ?? segment.startedAt) ?? []),
+    ...(snapshot?.pauseEvents.map((pause) => pause.pauseEndedAt ?? pause.pauseStartedAt) ?? []),
+  );
   const clockAt = live ? now : lastRecordedAt || now;
-  const clockLabel = live ? '当前精确时间' : lastRecordedAt > 0 ? '最后记录时间' : '待机时间锚点';
+  const clockLabel = live ? '当前精确时间' : hasRecordedTime ? '最后记录时间' : '待机时间锚点';
+  const clockValue = new Date(clockAt).toLocaleTimeString('zh-CN', { hour12: false });
+  const clockAccessibleLabel =
+    state === 'paused'
+      ? `暂停损耗 ${formatElapsedSeconds(pauseElapsedMs)}，${clockLabel} ${clockValue}`
+      : `${clockLabel} ${clockValue}`;
 
   return (
     <figure
       className="temporal-ribbon"
       data-state={state}
       data-scale={isNear ? 'seconds' : 'minutes'}
-      data-view-mode={viewMode}
-      data-motion={state === 'running' || state === 'paused' ? 'second-locked' : 'frozen'}
-      data-dissolve={state === 'paused' ? 'particle-field' : 'none'}
+      data-view-mode={effectiveViewMode}
+      data-motion={
+        state === 'running'
+          ? 'continuous-material'
+          : state === 'paused'
+            ? 'pause-dissolve'
+            : 'frozen'
+      }
+      data-dissolve={state === 'paused' ? 'interval-trace' : 'none'}
     >
       <div className="ribbon-caption">
         <span className="ribbon-title">时间之带</span>
         <span className="ribbon-legend">{viewDescription}</span>
-        <span className="ribbon-live-clock" aria-label={clockLabel}>
+        <span className="ribbon-live-clock" aria-label={clockAccessibleLabel}>
           {state === 'paused' ? `损耗 ${formatElapsedSeconds(pauseElapsedMs)}` : null}
           {state === 'paused' ? ' · ' : null}
-          {!live ? (lastRecordedAt > 0 ? '最后记录 · ' : '待机 · ') : null}
-          {new Date(clockAt).toLocaleTimeString('zh-CN', { hour12: false })}
+          {!live ? (hasRecordedTime ? '最后记录 · ' : '待机 · ') : null}
+          {clockValue}
         </span>
-        <span className="ribbon-view-switch" aria-label="时间之带视野">
+        <span className="ribbon-view-switch" role="group" aria-label="时间之带视野">
           <button
             type="button"
             className={isNear ? 'active' : ''}
@@ -343,42 +329,42 @@ export function TemporalRibbon({
             className={!isNear ? 'active' : ''}
             onClick={() => setViewMode('far')}
             aria-pressed={!isNear}
-            title="拉远查看 30 分钟节律"
+            disabled={state === 'paused'}
+            aria-label={
+              state === 'paused' ? '远景暂不可用：暂停时保持近景以看清时间损耗' : '切换到远景'
+            }
+            title={state === 'paused' ? '暂停时保持近景以看清时间损耗' : '拉远查看累计专注'}
           >
             远景
           </button>
-          {viewMode !== 'auto' && (
+          {viewMode !== 'auto' && state !== 'paused' && (
             <button type="button" className="ribbon-auto" onClick={() => setViewMode('auto')}>
               跟随状态
             </button>
           )}
         </span>
-        <span className="ribbon-scale-tag">
-          {isNear ? '1 格 = 1 秒' : state === 'paused' ? '粒子随秒消散' : '1 大格 = 30 分钟'}
-        </span>
+        <span className="ribbon-scale-tag">{isNear ? '1 格 = 1 秒' : '1 大格 = 30 分钟'}</span>
       </div>
       <canvas
         ref={canvasRef}
         className="ribbon-canvas"
         role="img"
-        aria-label={`本次专注的时间之带，当前${state === 'paused' ? `暂停损耗 ${formatElapsedSeconds(pauseElapsedMs)}` : state === 'running' ? '专注进行中' : '静止待机'}，${viewDescription}`}
+        aria-label={`本次累计有效专注 ${formatElapsedSeconds(activeElapsedMs)}，当前${state === 'paused' ? `暂停损耗 ${formatElapsedSeconds(pauseElapsedMs)}，红色粒子持续记录完整暂停时段` : state === 'running' ? '专注进行中' : '画面已冻结'}，${viewDescription}`}
       />
     </figure>
   );
 }
 
-/* ─── Canvas 渲染内核：每一层都有状态语义，不做无意义常驻漂移 ─── */
+/* ─── Canvas 渲染内核：真实墙钟轴上的绿色专注体与红色消逝体 ─── */
 
 function renderBand(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
   engine: BandEngine,
   input: {
-    moments: Moment[];
+    snapshot: TimerSnapshot | null;
     state: TimerState;
-    pauseStartedAt: number | null;
     nowMs: number;
-    anchorMs: number;
     reducedMotion: boolean;
   },
 ): void {
@@ -408,34 +394,10 @@ function renderBand(
   const fontSmallNumber = `9px ${raw('--font-number') || 'monospace'}`;
   const fontUi = `600 10px ${raw('--font-ui') || 'sans-serif'}`;
 
-  // 粒子场调色板：专注/暂停各三档色 + 褪向主题灰的灰烬色，全部从 CSS 变量派生。
-  const tuple = (value: string): RgbTuple => {
-    const [r = 0, g = 0, b = 0] = value.split(',').map((part) => Number(part.trim()));
-    return [r, g, b];
-  };
-  const mutedTuple = tuple(colors.muted);
-  const focusBase = tuple(colors.focus);
-  const pauseBase = tuple(colors.pause);
-  const particlePalettes: Record<MomentKind, ParticlePalette> = {
-    focus: {
-      base: focusBase,
-      deep: tuple(colors.focusDeep),
-      soft: tuple(colors.focusSoft),
-      ash: particleAshColor(focusBase, mutedTuple),
-    },
-    pause: {
-      base: pauseBase,
-      deep: mixRgb(pauseBase, tuple(colors.ink), 0.3),
-      soft: tuple(colors.pauseSoft),
-      ash: particleAshColor(pauseBase, mutedTuple),
-    },
-  };
-
   let zoomEnergy = 0;
   if (engine.zoom) {
     const progress = Math.min(1, (performance.now() - engine.zoom.start) / engine.zoom.duration);
-    const eased = easeInOutQuart(progress);
-    engine.scale = interpolateZoomScale(engine.zoom.from, engine.zoom.to, eased);
+    engine.scale = interpolateZoomScale(engine.zoom.from, engine.zoom.to, easeInOutQuart(progress));
     zoomEnergy = Math.sin(progress * Math.PI);
     if (progress >= 1) {
       engine.scale = engine.zoom.to;
@@ -443,64 +405,64 @@ function renderBand(
     }
   }
 
+  const moments = buildMixedTimelineItems({
+    segments: input.snapshot?.segments ?? [],
+    pauseEvents: input.snapshot?.pauseEvents ?? [],
+    currentSegmentId: input.snapshot?.currentSegmentId ?? null,
+    state: input.state,
+    now: input.nowMs,
+  });
+  const lastRecordedAt = moments.reduce(
+    (latest, moment) => Math.max(latest, moment.endedAt ?? moment.startedAt),
+    0,
+  );
+  const live = input.state === 'running' || input.state === 'paused';
+  const cameraMs = live ? input.nowMs : lastRecordedAt || input.nowMs;
+  updateEngineState(
+    engine,
+    input.state,
+    input.snapshot?.sessionId ?? null,
+    performance.now(),
+    input.reducedMotion,
+  );
+
   const scale = engine.scale;
   const detail = bandDetailMix(scale);
   const pointerX = width * BAND_POINTER_RATIO;
-  const live = input.state === 'running' || input.state === 'paused';
-  const wholeSecond = bandEventSecond(input.state, input.nowMs, input.pauseStartedAt);
-  if (live && wholeSecond !== engine.lastSecond) {
-    engine.lastSecond = wholeSecond;
-  }
-  const pulseAge = bandEventPhaseMs(input.state, input.nowMs, input.pauseStartedAt);
-  const displaySeconds = bandDisplaySeconds(
-    input.state,
-    input.nowMs,
-    input.anchorMs,
+  const pulseClockMs =
+    input.state === 'paused' && input.snapshot?.currentPauseStartedAt
+      ? Math.max(0, input.nowMs - input.snapshot.currentPauseStartedAt)
+      : input.state === 'running'
+        ? input.nowMs
+        : 1000;
+  const pulseAge = pulseClockMs % 1000;
+  const wholeSecond = Math.floor(pulseClockMs / 1000);
+  engine.lastSecond = wholeSecond;
+
+  // 主带使用绝对墙钟坐标：专注和暂停都是持续发生的时间段。
+  const displaySeconds = steppedDisplaySeconds(cameraMs, input.reducedMotion);
+  const toTickX = (ms: number) => (ms / 1000 - displaySeconds) * scale + pointerX;
+  const visibleStart = displaySeconds - pointerX / scale;
+  const visibleEnd = displaySeconds + (width - pointerX) / scale;
+  const motionSeconds = live && !input.reducedMotion ? input.nowMs / 1000 : cameraMs / 1000;
+
+  const frameNowMs = performance.now();
+  const materialFade = particleFieldFadeIn(
+    engine.materialFadeStart,
+    frameNowMs,
     input.reducedMotion,
   );
-  const toX = (ms: number) => (ms / 1000 - displaySeconds) * scale + pointerX;
-
-  // 网格重排交叉淡化：变焦跨越粒子取样梯子阈值时，旧/新网格 400ms 内交叉淡化。
-  // 只影响透明度权重，粒子位置始终由 displaySeconds 冻结时钟决定。
-  const frameNowMs = performance.now();
-  const gridStep = particleFieldStepSec(scale);
-  if (engine.gridStepSec === null) {
-    engine.gridStepSec = gridStep;
-  } else if (engine.gridStepSec !== gridStep) {
-    if (input.reducedMotion) {
-      engine.gridStepSec = gridStep;
-      engine.gridFade = null;
-    } else {
-      engine.gridFade = { from: engine.gridStepSec, start: frameNowMs };
-      engine.gridStepSec = gridStep;
-    }
-  }
-  const activeGridFade = engine.gridFade;
-  const gridMix = particleGridCrossfade(activeGridFade ? activeGridFade.start : null, frameNowMs);
-  if (gridMix >= 1) engine.gridFade = null;
-
-  // 从 idle 开始专注：粒子场 300ms 带尾淡入；reduced-motion 直接完整显示。
-  if (engine.prevState !== input.state) {
-    if (engine.prevState === 'idle' && input.state === 'running' && !input.reducedMotion) {
-      engine.fieldFadeStart = frameNowMs;
-    }
-    engine.prevState = input.state;
-  }
-  const fieldFade = particleFieldFadeIn(engine.fieldFadeStart, frameNowMs, input.reducedMotion);
-  if (fieldFade >= 1) engine.fieldFadeStart = null;
+  if (materialFade >= 1) engine.materialFadeStart = null;
 
   ctx.clearRect(0, 0, width, height);
-  const nearAlpha = secondTickAlpha(scale);
-  const farAlpha = macroTickAlpha(scale);
   const farFieldHeight = clamp(height * 0.54, 62, 160);
   const nearFieldHeight = clamp(height * 0.72, 82, 224);
   const fieldHeight = lerp(farFieldHeight, nearFieldHeight, detail);
   const fieldTop = Math.max(24, (height - fieldHeight) / 2 - 1);
   const fieldBottom = Math.min(height - 25, fieldTop + fieldHeight);
-  const actualFieldHeight = fieldBottom - fieldTop;
-  const visibleStart = displaySeconds - pointerX / scale;
-  const visibleEnd = displaySeconds + (width - pointerX) / scale;
 
+  // 1. 中性材料床。
+  drawMaterialBed(ctx, { width, fieldTop, fieldBottom, detail, zoomEnergy, colors });
   drawLocalIllumination(ctx, {
     pointerX,
     fieldTop,
@@ -510,147 +472,78 @@ function renderBand(
     zoomEnergy,
     colors,
   });
-  drawMaterialBed(ctx, {
-    width,
-    fieldTop,
-    fieldBottom,
-    detail,
-    zoomEnergy,
-    colors,
-  });
 
-  let activePause: ActivePause | null = null;
-  for (const moment of input.moments) {
+  // 2–3. 每个真实时间段都在墙钟轴上留下自己的材料；暂停粒子本身就是痕迹。
+  for (const moment of moments) {
     let endMs = moment.endedAt;
-    if (!endMs) {
-      endMs =
-        moment.type === 'focus' && input.state === 'paused' && input.pauseStartedAt
-          ? input.pauseStartedAt
-          : input.nowMs;
+    if (endMs === null) {
+      if (!moment.isOngoing) continue;
+      endMs = input.nowMs;
     }
-    const startX = toX(moment.startedAt);
-    const endX = Math.min(toX(endMs), pointerX);
-    const currentPause = moment.type === 'pause' && !moment.endedAt && input.state === 'paused';
-    if (endX < -2 || startX > width + 2 || (endX - startX < 0.25 && !currentPause)) {
-      continue;
-    }
+    const startSec = moment.startedAt / 1000;
+    const endSec = endMs / 1000;
+    if (endSec <= startSec || endSec < visibleStart || startSec > visibleEnd) continue;
 
-    const kind: MomentKind = moment.type;
-    const tint = kind === 'pause' ? colors.pause : colors.focus;
-    drawMomentTrace(ctx, {
-      startX,
-      endX,
-      fieldTop,
-      fieldBottom,
-      pointerX,
-      scrollPx: displaySeconds * scale,
-      viewportWidth: width,
-      scale,
-      tint,
-    });
-    drawMomentParticleField(ctx, {
-      startSec: moment.startedAt / 1000,
-      endSec: endMs / 1000,
-      displaySeconds,
-      visibleStart,
-      visibleEnd,
-      pointerX,
-      viewportWidth: width,
-      scale,
-      fieldTop,
-      fieldBottom,
-      palette: particlePalettes[kind],
-      densityScale: kind === 'pause' ? PARTICLE_FIELD_PAUSE_DENSITY : 1,
-      timeSec: displaySeconds,
-      reducedMotion: input.reducedMotion,
-      alphaScale: fieldFade * gridMix,
-    });
-    // 交叉淡化期间叠画旧网格，权重与新网格互补，400ms 内完全交接。
-    if (activeGridFade && gridMix < 1) {
-      drawMomentParticleField(ctx, {
-        startSec: moment.startedAt / 1000,
-        endSec: endMs / 1000,
-        displaySeconds,
-        visibleStart,
-        visibleEnd,
+    if (moment.type === 'focus') {
+      drawFocusMaterial(ctx, {
+        startSec,
+        endSec,
+        cameraSeconds: displaySeconds,
+        motionSeconds: moment.isOngoing ? motionSeconds : endSec,
         pointerX,
         viewportWidth: width,
         scale,
         fieldTop,
         fieldBottom,
-        palette: particlePalettes[kind],
-        densityScale: kind === 'pause' ? PARTICLE_FIELD_PAUSE_DENSITY : 1,
-        timeSec: displaySeconds,
-        reducedMotion: input.reducedMotion,
-        stepSecOverride: activeGridFade.from,
-        alphaScale: fieldFade * (1 - gridMix),
+        colors,
+        reducedMotion: input.reducedMotion || !moment.isOngoing,
+        alphaScale: moment.isOngoing ? materialFade : 1,
+      });
+    } else {
+      drawPauseIntervalTrace(ctx, {
+        startSec,
+        endSec,
+        cameraSeconds: displaySeconds,
+        motionSeconds: moment.isOngoing ? motionSeconds : endSec,
+        pointerX,
+        viewportWidth: width,
+        scale,
+        fieldTop,
+        fieldBottom,
+        colors,
+        reducedMotion: input.reducedMotion || !moment.isOngoing,
+        isOngoing: moment.isOngoing,
       });
     }
-    if (kind === 'pause') {
-      const elapsedMs = currentPause
-        ? Math.max(0, input.nowMs - (input.pauseStartedAt ?? moment.startedAt))
-        : 0;
-      if (currentPause) {
-        activePause = {
-          materialStart: Math.max(0, startX),
-          end: endX,
-          elapsedMs,
-        };
-      }
-    }
   }
 
-  // “未来”压暗但不盖掉刻度床；指针右侧因此与已经发生的材料清晰分离。
+  // 指针右侧是尚未发生的墙钟时间。
   const futureShade = ctx.createLinearGradient(pointerX, 0, width, 0);
-  futureShade.addColorStop(0, `rgba(${colors.ink},0.045)`);
-  futureShade.addColorStop(1, `rgba(${colors.ink},0.085)`);
+  futureShade.addColorStop(0, `rgba(${colors.ink},0.035)`);
+  futureShade.addColorStop(1, `rgba(${colors.ink},0.082)`);
   ctx.fillStyle = futureShade;
-  ctx.fillRect(pointerX, fieldTop, width - pointerX, actualFieldHeight);
+  ctx.fillRect(pointerX, fieldTop, width - pointerX, fieldBottom - fieldTop);
 
-  // 暂停粒子绘制在材料层之上、刻度层之下，避免遮挡可读的时间数字。
-  if (input.state === 'paused' && activePause) {
-    drawPauseDissolve(ctx, {
-      ...activePause,
-      fieldTop,
-      fieldBottom,
-      pulseAge,
-      reducedMotion: input.reducedMotion,
-      colors,
-    });
-  }
-
+  // 4. 绝对墙钟刻度；时间段边界与账本 HH:mm 完全一致。
   drawIntegratedTicks(ctx, {
     width,
     fieldTop,
     fieldBottom,
     displaySeconds,
+    activeSeconds: cameraMs / 1000,
     visibleStart,
     visibleEnd,
-    toX,
-    nearAlpha,
-    farAlpha,
+    toX: toTickX,
+    nearAlpha: secondTickAlpha(scale),
+    farAlpha: macroTickAlpha(scale),
     colors,
     fontNumber,
     fontSmallNumber,
   });
 
-  if (farAlpha > 0.45) {
-    drawMomentAnchors(ctx, {
-      moments: input.moments,
-      toX,
-      pointerX,
-      width,
-      fieldBottom,
-      alpha: farAlpha,
-      colors,
-      fontNumber,
-    });
-  }
-
   if (input.state === 'running') {
     drawRunningFrontier(ctx, {
       pointerX,
-      scale,
       fieldTop,
       fieldBottom,
       eventSecond: wholeSecond,
@@ -660,6 +553,7 @@ function renderBand(
     });
   }
 
+  // 5. 状态指针只标记当前墙钟位置；历史由绿色材料和红色粒子时间体表达。
   drawNowPointer(ctx, {
     pointerX,
     height,
@@ -670,8 +564,37 @@ function renderBand(
     reducedMotion: input.reducedMotion,
     colors,
     fontUi,
-    label: live ? '现在' : input.moments.length > 0 ? '最后记录' : '待机',
+    label:
+      input.state === 'running' || input.state === 'paused'
+        ? '现在'
+        : moments.length > 0
+          ? '最后记录'
+          : '待机',
   });
+}
+
+function updateEngineState(
+  engine: BandEngine,
+  state: TimerState,
+  sessionId: string | null,
+  frameNowMs: number,
+  reducedMotion: boolean,
+): void {
+  // sessionId 是材料淡入和绘制状态的业务边界。
+  if (engine.sessionId !== sessionId) {
+    engine.sessionId = sessionId;
+    engine.materialFadeStart = state === 'running' && !reducedMotion ? frameNowMs : null;
+    engine.prevState = state;
+    engine.lastSecond = -1;
+  }
+
+  if (engine.prevState !== state) {
+    if (engine.prevState === 'idle' && state === 'running' && !reducedMotion) {
+      engine.materialFadeStart = frameNowMs;
+    }
+    if (state === 'idle') engine.materialFadeStart = null;
+    engine.prevState = state;
+  }
 }
 
 function drawLocalIllumination(
@@ -687,10 +610,10 @@ function drawLocalIllumination(
   },
 ): void {
   if (input.state !== 'running' && input.state !== 'paused' && input.zoomEnergy <= 0) return;
-  const color = input.state === 'paused' ? input.colors.pause : input.colors.focus;
+  const color = input.state === 'paused' ? input.colors.pauseSoft : input.colors.focusSoft;
   const tickWindow = input.state === 'paused' ? BAND_PAUSE_MOTION_MS : BAND_RUNNING_MOTION_MS;
   const tick = Math.max(0, 1 - input.pulseAge / tickWindow);
-  const radius = 66 + tick * 24 + input.zoomEnergy * 34;
+  const radius = 52 + tick * 14 + input.zoomEnergy * 28;
   const centerY = (input.fieldTop + input.fieldBottom) / 2;
   const glow = ctx.createRadialGradient(
     input.pointerX,
@@ -700,8 +623,8 @@ function drawLocalIllumination(
     centerY,
     radius,
   );
-  glow.addColorStop(0, `rgba(${color},${0.055 + tick * 0.055})`);
-  glow.addColorStop(0.45, `rgba(${color},${0.025 + input.zoomEnergy * 0.025})`);
+  glow.addColorStop(0, `rgba(${color},${0.042 + tick * 0.035})`);
+  glow.addColorStop(0.48, `rgba(${color},${0.018 + input.zoomEnergy * 0.02})`);
   glow.addColorStop(1, `rgba(${color},0)`);
   ctx.fillStyle = glow;
   ctx.fillRect(
@@ -738,7 +661,6 @@ function drawMaterialBed(
   ctx.fillRect(0, input.fieldTop, input.width, fieldHeight);
   ctx.restore();
 
-  // 实体边缘与透视导轨让所有状态共享同一块材料；远端压缩、近端展开。
   ctx.fillStyle = `rgba(${input.colors.borderStrong},0.9)`;
   ctx.fillRect(0, input.fieldTop, input.width, 1);
   ctx.fillRect(0, input.fieldBottom - 1, input.width, 1);
@@ -748,7 +670,6 @@ function drawMaterialBed(
     ctx.fillRect(0, input.fieldTop + fieldHeight * depth.projectedRatio, input.width, 0.7);
   }
 
-  // 前缘切面位于材料床内部，不侵占刻度标签空间；高光+暗边提供明确厚度。
   const lipHeight = clamp(fieldHeight * 0.075, 5, 10);
   const lip = ctx.createLinearGradient(0, input.fieldBottom - lipHeight, 0, input.fieldBottom);
   lip.addColorStop(0, `rgba(${input.colors.surface2},0.24)`);
@@ -759,7 +680,6 @@ function drawMaterialBed(
   ctx.fillStyle = `rgba(255,255,255,${0.08 + input.detail * 0.04})`;
   ctx.fillRect(0, input.fieldBottom - lipHeight, input.width, 0.7);
 
-  // 静态微纹理：种子不依赖时间，所以 idle / finished 的位图可以严格冻结。
   ctx.fillStyle = `rgba(${input.colors.ink},0.026)`;
   for (let index = 0; index < 26; index += 1) {
     const x = hash01(index * 17.37) * input.width;
@@ -769,184 +689,262 @@ function drawMaterialBed(
   }
 }
 
-/**
- * 痕迹层：粒子消散后留下的渍痕。画在材料床之上、粒子场之下，
- * 全部锚定世界坐标并随时间轴平移/缩放，强度随距“现在”渐淡。
- */
-function drawMomentTrace(
-  ctx: CanvasRenderingContext2D,
-  input: {
-    startX: number;
-    endX: number;
-    fieldTop: number;
-    fieldBottom: number;
-    pointerX: number;
-    scrollPx: number;
-    viewportWidth: number;
-    scale: number;
-    tint: string;
-  },
-): void {
-  const width = input.endX - input.startX;
-  if (width <= 0) return;
-  const fieldHeight = input.fieldBottom - input.fieldTop;
-  const fadeAt = (x: number) =>
-    particleTraceFade(input.pointerX - x, input.viewportWidth, input.scale);
-
-  // 渐变底色：旧端（左）最淡，越接近“现在”越明显。
-  const wash = ctx.createLinearGradient(input.startX, 0, input.endX, 0);
-  wash.addColorStop(0, `rgba(${input.tint},${0.035 * fadeAt(input.startX)})`);
-  wash.addColorStop(0.7, `rgba(${input.tint},${0.06 * fadeAt(input.startX + width * 0.7)})`);
-  wash.addColorStop(1, `rgba(${input.tint},${0.1 * fadeAt(input.endX)})`);
-  ctx.fillStyle = wash;
-  ctx.fillRect(input.startX, input.fieldTop, width, fieldHeight);
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(input.startX, input.fieldTop, width, fieldHeight);
-  ctx.clip();
-
-  // 幽灵斜纹：45°，锚定世界坐标（scrollPx 变化时斜纹随时间轴平移）。
-  const hatchPhase = positiveMod(input.pointerX - input.scrollPx, 14);
-  ctx.lineWidth = 2;
-  const hatchStart =
-    Math.floor((input.startX - input.fieldBottom - hatchPhase) / 14) * 14 + hatchPhase;
-  for (let k = hatchStart; k < input.endX + input.fieldBottom; k += 14) {
-    const midX = k - (input.fieldTop + input.fieldBottom) / 2;
-    const alpha = 0.05 * fadeAt(midX);
-    if (alpha <= 0.004) continue;
-    ctx.strokeStyle = `rgba(${input.tint},${alpha})`;
-    ctx.beginPath();
-    ctx.moveTo(k - input.fieldBottom, input.fieldBottom);
-    ctx.lineTo(k - input.fieldTop, input.fieldTop);
-    ctx.stroke();
-  }
-
-  // 确定性残点：7px 世界网格，hash 决定 14% 出现率与透明度。
-  const dotPhase = positiveMod(input.pointerX - input.scrollPx, 7);
-  const dotStart = input.startX - positiveMod(input.startX - dotPhase, 7);
-  for (let x = dotStart; x < input.endX; x += 7) {
-    const cellX = Math.round((x - dotPhase) / 7);
-    const fade = fadeAt(x);
-    if (fade <= 0.05) continue;
-    for (let y = input.fieldTop; y < input.fieldBottom; y += 7) {
-      const cellY = Math.round((y - input.fieldTop) / 7);
-      const dot = traceResidueDot(cellX, cellY);
-      if (!dot.present) continue;
-      ctx.fillStyle = `rgba(${input.tint},${dot.alpha * fade})`;
-      ctx.fillRect(x + dot.offsetX, y + dot.offsetY, 1.3, 1.3);
-    }
-  }
-
-  // 幽灵轮廓线：时间带上下边留下的印，透明度沿世界方向渐淡。
-  const outline = ctx.createLinearGradient(input.startX, 0, input.endX, 0);
-  outline.addColorStop(0, `rgba(${input.tint},${0.09 * fadeAt(input.startX)})`);
-  outline.addColorStop(1, `rgba(${input.tint},${0.09 * fadeAt(input.endX)})`);
-  ctx.strokeStyle = outline;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(input.startX, input.fieldTop + 0.5);
-  ctx.lineTo(input.endX, input.fieldTop + 0.5);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(input.startX, input.fieldBottom - 0.5);
-  ctx.lineTo(input.endX, input.fieldBottom - 0.5);
-  ctx.stroke();
-  ctx.restore();
-}
-
-/**
- * 粒子场：整条过去的时间带都是锚定世界坐标的确定性粒子。
- * 紧贴“现在”几乎实心，随距离拉远密度/透明度衰减、垂直散开并轻微上浮，
- * 逐粒子按 deathK 稀疏死亡，颜色随年龄褪向灰烬色。
- * 运动相位来自 displaySeconds（与时间带相同的冻结时钟），非活动态像素级静止。
- */
-function drawMomentParticleField(
+function drawFocusMaterial(
   ctx: CanvasRenderingContext2D,
   input: {
     startSec: number;
     endSec: number;
-    displaySeconds: number;
-    visibleStart: number;
-    visibleEnd: number;
+    cameraSeconds: number;
+    motionSeconds: number;
     pointerX: number;
     viewportWidth: number;
     scale: number;
     fieldTop: number;
     fieldBottom: number;
-    palette: ParticlePalette;
-    densityScale: number;
-    timeSec: number;
+    colors: BandColors;
     reducedMotion: boolean;
-    /** 网格重排交叉淡化时显式指定旧网格的单元时长（秒） */
-    stepSecOverride?: number;
-    /** 场整体透明度系数（淡入 / 交叉淡化用），默认 1；不改变任何位置与相位 */
-    alphaScale?: number;
+    alphaScale: number;
   },
 ): void {
-  const stepSec = input.stepSecOverride ?? particleFieldStepSec(input.scale);
-  const alphaScale = input.alphaScale ?? 1;
-  if (alphaScale <= 0.01) return;
-  const cellPx = stepSec * input.scale;
-  if (cellPx <= 0.5) return;
-  // 粒子在指针前约 1 格停住，保持“现在”标线 crisp。
-  const worldMin = Math.max(input.startSec, input.visibleStart);
-  const worldMax = Math.min(input.endSec, input.visibleEnd, input.displaySeconds - stepSec);
+  if (input.endSec <= input.startSec || input.alphaScale <= 0.01) return;
+  const worldMin = Math.max(
+    input.startSec,
+    input.cameraSeconds - (input.pointerX + 40) / input.scale,
+  );
+  const worldMax = Math.min(
+    input.endSec,
+    input.cameraSeconds + (input.viewportWidth - input.pointerX + 40) / input.scale,
+  );
   if (worldMax <= worldMin) return;
 
+  const focus = toTuple(input.colors.focus);
+  const focusDeep = toTuple(input.colors.focusDeep);
+  const focusSoft = toTuple(input.colors.focusSoft);
+  const muted = toTuple(input.colors.muted);
   const fieldHeight = input.fieldBottom - input.fieldTop;
-  const rows = Math.max(1, Math.floor(fieldHeight / cellPx));
-  const depthDetail = bandDetailMix(input.scale);
-  const t = input.timeSec;
-  const still = input.reducedMotion;
+  const cellPx = 2.7;
+  const stepSec = cellPx / Math.max(0.001, input.scale);
+  const rowStep = 3.15;
+  const rows = Math.max(18, Math.ceil(fieldHeight / rowStep));
+  const overspillRows = 5;
+  const endX = (input.endSec - input.cameraSeconds) * input.scale + input.pointerX;
 
-  for (let ix = Math.floor(worldMin / stepSec); ix * stepSec < worldMax; ix += 1) {
-    const columnX = (ix * stepSec - input.displaySeconds) * input.scale + input.pointerX;
-    if (columnX < -40 || columnX > input.viewportWidth + 40) continue;
-    const params = particleFieldParams(input.pointerX - columnX, input.viewportWidth, input.scale);
-    const spawnProb = params.spawnProb * input.densityScale;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, input.fieldTop - 12, input.viewportWidth, fieldHeight + 24);
+  ctx.clip();
 
-    for (let iy = 0; iy < rows; iy += 1) {
-      if (particleCellHash(ix, iy) > spawnProb) continue;
-      const spec = fieldParticleSpec(ix, iy);
-      if (params.s > spec.deathK) continue;
+  for (
+    let column = Math.floor(worldMin / stepSec) - 1;
+    column * stepSec <= worldMax + stepSec;
+    column += 1
+  ) {
+    const columnOffset = particleCellHash(column, 311);
+    const worldSec = (column + columnOffset) * stepSec;
+    if (worldSec < worldMin || worldSec > worldMax) continue;
+    const edgeDistancePx = Math.min(
+      (worldSec - input.startSec) * input.scale,
+      (input.endSec - worldSec) * input.scale,
+    );
+    const edgeSettle = smoothstep01(edgeDistancePx / 14);
+    const columnNoise = Math.sin(column * 0.31 + particleCellHash(column, 1709) * 2.4) * 0.5 + 0.5;
+    const densityPulse = 0.79 + columnNoise * 0.12;
+    const baseX = (worldSec - input.cameraSeconds) * input.scale + input.pointerX;
 
-      const worldSec = (ix + spec.offsetX) * stepSec;
-      if (worldSec < worldMin || worldSec >= worldMax) continue;
-      const screenX = (worldSec - input.displaySeconds) * input.scale + input.pointerX;
-      if (screenX < -40 || screenX > input.viewportWidth + 40) continue;
-
-      const rowRatio = (iy + spec.offsetY) / Math.max(1, rows);
-      const depth = particleDepthProfile(rowRatio, depthDetail);
-      const baseY = input.fieldTop + depth.projectedRatio * fieldHeight;
-      const spread =
-        spec.dir * params.scatter * (still ? 0.55 : 0.55 + 0.45 * Math.sin(t * 0.35 + spec.phase));
-      const wobble = still ? 0 : Math.sin(t * 0.9 + spec.phase * 1.7) * 1.4;
-      const y = baseY + spread + wobble - params.rise * spec.riseK;
-      const flicker = still ? 1 : 0.78 + 0.22 * Math.sin(t * 2 + spec.phase * 3);
-      const alpha = params.alpha * flicker * alphaScale * depth.alphaScale;
-      if (alpha <= 0.02) continue;
-
-      const size = Math.max(1.2, cellPx * spec.sizeK) * (1 - params.s * 0.35) * depth.sizeScale;
-      const rotation = spec.phase + (still ? 0 : Math.sin(t * 0.5 + spec.phase) * 0.3);
-      const color = particleAgedColor(
-        particleToneColor(spec.tone, input.palette.base, input.palette.deep, input.palette.soft),
-        input.palette.ash,
-        params.s,
+    for (let row = -overspillRows; row < rows + overspillRows; row += 1) {
+      const presence = particleCellHash(column, row);
+      const offsetY = particleCellHash(row + 137, column - 617);
+      const direction = particleCellHash(column + 239, row + 73) * 2 - 1;
+      const tone = particleCellHash(column - 83, row + 887);
+      const shape = particleCellHash(column + 1297, row - 41);
+      const phase = particleCellHash(column - 419, row + 773) * Math.PI * 2;
+      const rawRatio = (row + offsetY) / rows;
+      const rowRatio = clamp(rawRatio, 0, 1);
+      const edgeDistance = Math.min(rawRatio, 1 - rawRatio) * fieldHeight;
+      const feather = smoothstep01((edgeDistance + 10 + columnNoise * 5) / 18);
+      const outside = rawRatio < 0 || rawRatio > 1;
+      const envelope = outside ? feather * 0.42 : 0.56 + feather * 0.44;
+      if (presence > densityPulse * envelope * (0.64 + edgeSettle * 0.36)) continue;
+      const depth = particleDepthProfile(rowRatio, bandDetailMix(input.scale));
+      const motion = input.reducedMotion
+        ? Math.sin(phase) * 0.28
+        : Math.sin(input.motionSeconds * 0.82 + phase) * 0.62;
+      const horizontalJitter = (particleCellHash(column + 211, row - 353) - 0.5) * cellPx;
+      const x = Math.min(
+        endX - 0.35,
+        baseX +
+          horizontalJitter +
+          (input.reducedMotion ? 0 : Math.sin(input.motionSeconds * 0.46 + phase) * 1.15),
       );
+      const y =
+        input.fieldTop +
+        depth.projectedRatio * fieldHeight +
+        (rawRatio < 0 ? rawRatio * 7 : rawRatio > 1 ? (rawRatio - 1) * 7 : 0) +
+        direction * (2.2 + (1 - edgeSettle) * 5.5) * (0.7 + motion * 0.3);
+      const size =
+        (1.05 + particleCellHash(column + 59, row + 271) * 1.75) *
+        (0.86 + edgeSettle * 0.16) *
+        depth.sizeScale;
+      const alpha =
+        (0.3 + feather * 0.58) * (0.78 + presence * 0.22) * depth.alphaScale * input.alphaScale;
+      const baseColor = particleToneColor(tone, focus, focusDeep, focusSoft);
+      const color = mixRgb(baseColor, muted, (1 - edgeSettle) * 0.18);
 
-      ctx.save();
-      ctx.translate(screenX, y);
-      ctx.rotate(rotation);
-      if (depth.projectedRatio > 0.42 && size > 1.25) {
-        ctx.fillStyle = `rgba(${input.palette.ash[0]},${input.palette.ash[1]},${input.palette.ash[2]},${alpha * 0.12})`;
-        ctx.fillRect(-size * 0.42 + 0.7, size * 0.28, size * 0.84, Math.max(0.5, size * 0.22));
-      }
       ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
-      ctx.fillRect(-size / 2, -size / 2, size, size);
-      ctx.restore();
+      if (shape < 0.82) {
+        ctx.fillRect(x - size / 2, y - size / 2, size, size);
+      } else if (shape < 0.95) {
+        const length = Math.min(4.4, size * 1.75);
+        ctx.fillRect(x - length / 2, y - size * 0.24, length, size * 0.48);
+      } else {
+        ctx.beginPath();
+        ctx.arc(x, y, size * 0.44, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
+  ctx.restore();
+}
+
+function drawPauseIntervalTrace(
+  ctx: CanvasRenderingContext2D,
+  input: {
+    startSec: number;
+    endSec: number;
+    cameraSeconds: number;
+    motionSeconds: number;
+    pointerX: number;
+    scale: number;
+    fieldTop: number;
+    fieldBottom: number;
+    viewportWidth: number;
+    colors: BandColors;
+    reducedMotion: boolean;
+    isOngoing: boolean;
+  },
+): void {
+  if (input.endSec <= input.startSec) return;
+  const worldMin = Math.max(
+    input.startSec,
+    input.cameraSeconds - (input.pointerX + 40) / input.scale,
+  );
+  const worldMax = Math.min(
+    input.endSec,
+    input.cameraSeconds + (input.viewportWidth - input.pointerX + 40) / input.scale,
+  );
+  if (worldMax <= worldMin) return;
+
+  const pause = toTuple(input.colors.pause);
+  const pauseDeep = mixRgb(pause, toTuple(input.colors.ink), 0.26);
+  const pauseSoft = toTuple(input.colors.pauseSoft);
+  const ash = particleAshColor(pause, toTuple(input.colors.muted));
+  const fieldHeight = input.fieldBottom - input.fieldTop;
+  const cellPx = 2.65;
+  const stepSec = cellPx / Math.max(0.001, input.scale);
+  const rows = Math.max(18, Math.ceil(fieldHeight / 3.2));
+  const overspillRows = 7;
+  const endX = (input.endSec - input.cameraSeconds) * input.scale + input.pointerX;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, input.fieldTop - 34, input.viewportWidth, fieldHeight + 68);
+  ctx.clip();
+
+  for (
+    let column = Math.floor(worldMin / stepSec) - 1;
+    column * stepSec <= worldMax + stepSec;
+    column += 1
+  ) {
+    const columnOffset = particleCellHash(column, 701);
+    const worldSec = (column + columnOffset) * stepSec;
+    if (worldSec < worldMin || worldSec > worldMax) continue;
+    const behindEndPx = Math.max(0, (input.endSec - worldSec) * input.scale);
+    const recentEnergy = Math.exp(-behindEndPx / 118);
+    const startFeather = smoothstep01(((worldSec - input.startSec) * input.scale) / 16);
+    const residueDensity = (0.46 + recentEnergy * 0.28) * (0.48 + startFeather * 0.52);
+    const baseX = (worldSec - input.cameraSeconds) * input.scale + input.pointerX;
+
+    for (let row = -overspillRows; row < rows + overspillRows; row += 1) {
+      const presence = particleCellHash(column, row);
+      const offsetY = particleCellHash(row + 193, column - 811);
+      const direction = particleCellHash(column + 409, row + 37) * 2 - 1;
+      const tone = particleCellHash(column - 97, row + 1201);
+      const shape = particleCellHash(column + 1877, row - 53);
+      const phase = particleCellHash(column - 503, row + 991) * Math.PI * 2;
+      const rawRatio = (row + offsetY) / rows;
+      const rowRatio = clamp(rawRatio, 0, 1);
+      const edgeDistance = Math.min(rawRatio, 1 - rawRatio) * fieldHeight;
+      const feather = smoothstep01((edgeDistance + 14) / 24);
+      const outside = rawRatio < 0 || rawRatio > 1;
+      const residueEnvelope = outside ? feather * 0.5 : 0.54 + feather * 0.46;
+      if (presence > residueDensity * residueEnvelope) continue;
+      const depth = particleDepthProfile(rowRatio, bandDetailMix(input.scale));
+      const residueJitterX = (particleCellHash(column + 257, row - 421) - 0.5) * cellPx;
+      const residueX = Math.min(endX - 0.35, baseX + residueJitterX);
+      const residueY =
+        input.fieldTop +
+        depth.projectedRatio * fieldHeight +
+        direction * (5 + (1 - recentEnergy) * 8) +
+        (rawRatio < 0 ? rawRatio * 8 : rawRatio > 1 ? (rawRatio - 1) * 8 : 0);
+      const baseSize = (1 + particleCellHash(column + 67, row + 313) * 1.75) * depth.sizeScale;
+      const residueAlpha =
+        (0.14 + recentEnergy * 0.2) * feather * (0.76 + presence * 0.24) * depth.alphaScale;
+      const baseColor = particleToneColor(tone, pause, pauseDeep, pauseSoft);
+      const residueColor = particleAgedColor(baseColor, ash, 0.48 + (1 - recentEnergy) * 0.34);
+
+      // 低透明度残留层保存暂停的完整横向长度，但自身不形成实线或色块。
+      ctx.fillStyle = `rgba(${residueColor[0]},${residueColor[1]},${residueColor[2]},${residueAlpha})`;
+      if (shape < 0.76) {
+        ctx.fillRect(residueX - baseSize / 2, residueY - baseSize / 2, baseSize, baseSize);
+      } else if (shape < 0.93) {
+        const length = Math.min(4.6, baseSize * 1.8);
+        const thickness = Math.max(0.6, baseSize * 0.44);
+        ctx.fillRect(residueX - length / 2, residueY - thickness / 2, length, thickness);
+      } else {
+        ctx.beginPath();
+        ctx.arc(residueX, residueY, baseSize * 0.45, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 活动层才负责“消逝”：每个 cohort 依次剥离、漂移、缩小、熄灭。
+      if (!input.isOngoing || input.reducedMotion) continue;
+      const lifespan = 0.72 + particleCellHash(column - 809, row + 619) * 1.18;
+      const cycleOffset = particleCellHash(column + 1291, row - 977) * lifespan;
+      const life = ((input.motionSeconds + cycleOffset) % lifespan) / lifespan;
+      const activeGate = particleCellHash(
+        column - 337,
+        row + Math.floor(input.motionSeconds / lifespan),
+      );
+      if (activeGate > 0.54 + recentEnergy * 0.28) continue;
+      const remaining = 1 - life;
+      const eased = 1 - remaining * remaining;
+      const driftX = -(3 + tone * 10) * eased + Math.sin(phase + life * 8) * life * 3.5;
+      const lift = direction * (9 + tone * 24) * eased - (3 + tone * 8) * eased;
+      const activeX = Math.min(endX - 0.35, residueX + driftX);
+      const activeY = residueY + lift;
+      const activeSize = baseSize * (0.98 - life * 0.78);
+      const activeAlpha =
+        (0.84 * remaining * remaining + 0.06 * remaining) *
+        (0.72 + recentEnergy * 0.28) *
+        depth.alphaScale;
+      const activeColor = particleAgedColor(baseColor, ash, life * 0.86);
+      ctx.fillStyle = `rgba(${activeColor[0]},${activeColor[1]},${activeColor[2]},${activeAlpha})`;
+      if (shape < 0.58) {
+        ctx.fillRect(activeX - activeSize / 2, activeY - activeSize / 2, activeSize, activeSize);
+      } else if (shape < 0.9) {
+        ctx.save();
+        ctx.translate(activeX, activeY);
+        ctx.rotate(phase + life * direction * 0.9);
+        ctx.fillRect(-activeSize, -activeSize * 0.24, activeSize * 2, activeSize * 0.48);
+        ctx.restore();
+      } else {
+        ctx.beginPath();
+        ctx.arc(activeX, activeY, activeSize * 0.48, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
 }
 
 function drawIntegratedTicks(
@@ -956,6 +954,7 @@ function drawIntegratedTicks(
     fieldTop: number;
     fieldBottom: number;
     displaySeconds: number;
+    activeSeconds: number;
     visibleStart: number;
     visibleEnd: number;
     toX: (ms: number) => number;
@@ -971,13 +970,13 @@ function drawIntegratedTicks(
 
   if (input.nearAlpha > 0.02) {
     for (
-      let second = Math.floor(input.visibleStart) - 1;
+      let second = Math.max(0, Math.floor(input.visibleStart) - 1);
       second <= input.visibleEnd + 1;
       second += 1
     ) {
       const x = input.toX(second * 1000);
       if (x < -1 || x > input.width + 1) continue;
-      const future = second > input.displaySeconds;
+      const future = second > input.activeSeconds;
       const minute = positiveMod(second, 60) === 0;
       const fiveSecond = positiveMod(second, 5) === 0;
       const topLength = minute
@@ -1000,17 +999,17 @@ function drawIntegratedTicks(
       if (minute) {
         ctx.fillStyle = `rgba(${input.colors.text},${(future ? 0.52 : 0.9) * input.nearAlpha})`;
         ctx.font = input.fontNumber;
-        ctx.fillText(clockLabel(second * 1000), x, input.fieldTop - 10);
+        ctx.fillText(wallClockTickLabel(second), x, input.fieldTop - 10);
       }
     }
   }
 
   if (input.farAlpha > 0.02) {
-    const firstTick = Math.floor(input.visibleStart / 300) * 300;
+    const firstTick = Math.max(0, Math.floor(input.visibleStart / 300) * 300);
     for (let second = firstTick; second <= input.visibleEnd + 300; second += 300) {
       const x = input.toX(second * 1000);
       if (x < -1 || x > input.width + 1) continue;
-      const future = second > input.displaySeconds;
+      const future = second > input.activeSeconds;
       const major = positiveMod(second, 1800) === 0;
       const tenMinute = positiveMod(second, 600) === 0;
       const length = major
@@ -1024,11 +1023,11 @@ function drawIntegratedTicks(
       if (major) {
         ctx.fillStyle = `rgba(${input.colors.text},${(future ? 0.5 : 0.9) * input.farAlpha})`;
         ctx.font = input.fontNumber;
-        ctx.fillText(clockLabel(second * 1000), x, input.fieldTop - 10);
+        ctx.fillText(wallClockTickLabel(second), x, input.fieldTop - 10);
       } else if (tenMinute && input.farAlpha > 0.62) {
         ctx.fillStyle = `rgba(${input.colors.muted},${0.7 * input.farAlpha})`;
         ctx.font = input.fontSmallNumber;
-        ctx.fillText(clockLabel(second * 1000), x, input.fieldBottom + 13);
+        ctx.fillText(wallClockTickLabel(second), x, input.fieldBottom + 13);
       }
     }
   }
@@ -1056,44 +1055,10 @@ function drawEtchedTick(
   ctx.stroke();
 }
 
-function drawMomentAnchors(
-  ctx: CanvasRenderingContext2D,
-  input: {
-    moments: Moment[];
-    toX: (ms: number) => number;
-    pointerX: number;
-    width: number;
-    fieldBottom: number;
-    alpha: number;
-    colors: BandColors;
-    fontNumber: string;
-  },
-): void {
-  let lastLabelX = -1e9;
-  for (const moment of input.moments) {
-    const x = input.toX(moment.startedAt);
-    if (
-      x < 24 ||
-      x > input.width - 36 ||
-      x - lastLabelX < 62 ||
-      Math.abs(x - input.pointerX) < 48
-    ) {
-      continue;
-    }
-    ctx.fillStyle = `rgba(${input.colors.muted},${0.78 * input.alpha})`;
-    ctx.font = input.fontNumber;
-    ctx.textAlign = 'left';
-    ctx.fillText(clockLabel(moment.startedAt), x + 5, input.fieldBottom + 15);
-    ctx.textAlign = 'center';
-    lastLabelX = x;
-  }
-}
-
 function drawRunningFrontier(
   ctx: CanvasRenderingContext2D,
   input: {
     pointerX: number;
-    scale: number;
     fieldTop: number;
     fieldBottom: number;
     eventSecond: number;
@@ -1102,213 +1067,29 @@ function drawRunningFrontier(
     colors: BandColors;
   },
 ): void {
-  const fieldHeight = input.fieldBottom - input.fieldTop;
-  const cellWidth = Math.max(2, Math.min(18, input.scale));
+  const rawPhase = input.reducedMotion ? 0.5 : clamp(input.pulseAge / BAND_RUNNING_MOTION_MS, 0, 1);
+  const travel = easeInOutQuart(rawPhase);
+  const direction = input.eventSecond % 2 === 0 ? travel : 1 - travel;
+  const shuttleY = lerp(input.fieldTop + 7, input.fieldBottom - 7, direction);
 
-  // 窄条辉光：前沿两侧的细光带，强度随每秒呼吸脉冲轻微起伏（峰值 ≤0.18）。
-  // 位于静态区，reduced-motion 下为固定低透明度光带。
-  const stripAlpha = frontierGlowAlpha(input.pulseAge, input.reducedMotion);
-  const strip = ctx.createLinearGradient(input.pointerX - 20, 0, input.pointerX + 4, 0);
-  strip.addColorStop(0, `rgba(${input.colors.focus},0)`);
-  strip.addColorStop(0.72, `rgba(${input.colors.focus},${stripAlpha})`);
-  strip.addColorStop(1, `rgba(${input.colors.focus},0)`);
-  ctx.fillStyle = strip;
-  ctx.fillRect(input.pointerX - 20, input.fieldTop - 2, 24, fieldHeight + 4);
-
-  // 静态前沿是实体边缘；每秒只在 420ms 窗口内释放一次扫掠，此后完全静止。
-  const edge = ctx.createLinearGradient(input.pointerX - 13, 0, input.pointerX + 2, 0);
-  edge.addColorStop(0, `rgba(${input.colors.focus},0)`);
-  edge.addColorStop(0.7, `rgba(${input.colors.focus},0.12)`);
-  edge.addColorStop(1, `rgba(${input.colors.focusDeep},0.82)`);
-  ctx.fillStyle = edge;
-  ctx.fillRect(input.pointerX - 13, input.fieldTop, 15, fieldHeight);
-
-  if (input.reducedMotion || input.pulseAge >= BAND_RUNNING_MOTION_MS) return;
-  const phase = clamp(input.pulseAge / BAND_RUNNING_MOTION_MS, 0, 1);
-  const sweep = easeInOutQuart(Math.min(1, phase * 1.22));
-  const sweepX = input.pointerX - cellWidth + cellWidth * sweep;
-  const beam = ctx.createLinearGradient(sweepX - 8, 0, sweepX + 5, 0);
-  beam.addColorStop(0, `rgba(${input.colors.focus},0)`);
-  beam.addColorStop(0.62, `rgba(255,255,255,${0.2 * (1 - phase)})`);
-  beam.addColorStop(1, `rgba(${input.colors.focus},0)`);
-  ctx.fillStyle = beam;
-  ctx.fillRect(sweepX - 8, input.fieldTop + 1, 13, fieldHeight - 2);
-
-  ctx.fillStyle = `rgba(${input.colors.focus},${0.46 * (1 - phase)})`;
-  for (let index = 0; index < 5; index += 1) {
-    const seed = input.eventSecond * 0.713 + index * 19.71 + 7.3;
-    const x = input.pointerX - cellWidth * (0.15 + hash01(seed) * 0.8) - phase * (2 + index * 0.5);
-    const y = input.fieldTop + 5 + hash01(seed + 9.7) * Math.max(1, fieldHeight - 10);
-    const size = Math.max(0.35, (1 - phase) * (0.7 + hash01(seed + 15.1) * 0.8));
-    ctx.fillRect(x, y, size, size);
-  }
-}
-
-function drawDissolveParticleField(
-  ctx: CanvasRenderingContext2D,
-  input: {
-    particles: ReturnType<typeof pauseDissolveParticles>;
-    edgeX: number;
-    fieldTop: number;
-    fieldBottom: number;
-    colors: BandColors;
-    motionScale?: number;
-    sizeScale?: number;
-  },
-): void {
-  const fieldHeight = input.fieldBottom - input.fieldTop;
-  const motionScale = input.motionScale ?? 1;
-  const sizeScale = input.sizeScale ?? 1;
-
-  for (const particle of input.particles) {
-    if (particle.alpha <= 0.01) continue;
-    const originX = input.edgeX - particle.originOffsetX;
-    const originY = input.fieldTop + particle.originRatioY * fieldHeight;
-    const x = originX + particle.travelX * motionScale;
-    const y = originY + particle.travelY * motionScale;
-
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(particle.rotation);
-
-    const alpha = particle.alpha;
-    const size = particle.size * sizeScale;
-    const hot = particle.temperature;
-
-    // 颜色随温度从白热余烬过渡到暗红灰烬。
-    const r = Math.min(255, 210 + hot * 45);
-    const g = Math.min(255, 60 + hot * 120);
-    const b = Math.min(255, 40 + hot * 60);
-    const fill = `rgba(${r},${g},${b},${alpha})`;
-    const glow = `rgba(${r},${g},${b},${Math.min(0.85, alpha * 0.8)})`;
-
-    ctx.shadowColor = glow;
-    ctx.shadowBlur = particle.kind === 'spark' ? 6 : particle.kind === 'dust' ? 2 : 0.8;
-
-    if (particle.kind === 'shard') {
-      ctx.fillStyle = fill;
-      ctx.strokeStyle = `rgba(${input.colors.ink},${alpha * 0.35})`;
-      ctx.lineWidth = Math.max(0.5, size * 0.16);
-      ctx.beginPath();
-      ctx.moveTo(-size * 0.7, -size * 0.28);
-      ctx.lineTo(size * 0.6, -size * 0.55);
-      ctx.lineTo(size * 0.45, size * 0.7);
-      ctx.lineTo(-size * 0.4, size * 0.42);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    } else if (particle.kind === 'spark') {
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = `rgba(255,${180 + hot * 55},${120 + hot * 80},${alpha})`;
-      ctx.lineWidth = Math.max(0.5, size * 0.42);
-      ctx.lineCap = 'round';
-      // 火花短促，不拉成长线。
-      const sparkLen = size * (1.2 + hot * 0.8);
-      ctx.beginPath();
-      ctx.moveTo(-sparkLen * 0.5, 0);
-      ctx.lineTo(sparkLen * 0.5, 0);
-      ctx.stroke();
-    } else {
-      ctx.fillStyle = fill;
-      ctx.beginPath();
-      ctx.arc(0, 0, size * 0.55, 0, Math.PI * 2);
-      ctx.fill();
-      if (size > 1.1 && hot > 0.35) {
-        ctx.fillStyle = `rgba(255,255,255,${alpha * hot * 0.4})`;
-        ctx.beginPath();
-        ctx.arc(-size * 0.1, -size * 0.1, size * 0.16, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-  }
-}
-
-function drawPauseDissolve(
-  ctx: CanvasRenderingContext2D,
-  input: ActivePause & {
-    fieldTop: number;
-    fieldBottom: number;
-    pulseAge: number;
-    reducedMotion: boolean;
-    colors: BandColors;
-  },
-): void {
-  const fieldHeight = input.fieldBottom - input.fieldTop;
-  const sourceWidth = Math.min(42, Math.max(24, fieldHeight * 0.42));
-  const fuseY = input.fieldTop + fieldHeight * 0.68;
-  const visibleTrailStart = Math.min(input.materialStart, input.end - sourceWidth * 2.4);
-
-  // 暗芯引线：已经过的路径是暗红灰烬，越接近“现在”越热。
-  ctx.strokeStyle = `rgba(${input.colors.ink},0.22)`;
-  ctx.lineWidth = 3.2;
+  ctx.save();
   ctx.lineCap = 'round';
+  ctx.shadowColor = `rgba(${input.colors.focus},0.28)`;
+  ctx.shadowBlur = 5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.88)';
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
-  ctx.moveTo(visibleTrailStart, fuseY);
-  ctx.lineTo(input.end, fuseY);
+  ctx.moveTo(input.pointerX - 5.5, shuttleY);
+  ctx.lineTo(input.pointerX + 1.5, shuttleY);
   ctx.stroke();
-
-  const char = ctx.createLinearGradient(visibleTrailStart, 0, input.end, 0);
-  char.addColorStop(0, `rgba(${input.colors.pause},0.12)`);
-  char.addColorStop(0.55, `rgba(${input.colors.pause},0.28)`);
-  char.addColorStop(0.85, `rgba(${input.colors.pause},0.58)`);
-  char.addColorStop(1, `rgba(${input.colors.pause},0.98)`);
-  ctx.strokeStyle = char;
-  ctx.lineWidth = 1.6;
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = `rgba(${input.colors.focusDeep},0.86)`;
+  ctx.lineWidth = 0.8;
   ctx.beginPath();
-  ctx.moveTo(visibleTrailStart, fuseY);
-  ctx.lineTo(input.end, fuseY);
+  ctx.moveTo(input.pointerX - 6.5, shuttleY + 1.5);
+  ctx.lineTo(input.pointerX + 0.5, shuttleY + 1.5);
   ctx.stroke();
-
-  // 燃烧头外层红晕：白芯之外的柔和径向光晕，随秒相位轻微呼吸（峰值 ≤0.18）；
-  // reduced-motion 下参数固定，光晕静态。
-  const halo = burnHeadHalo(input.pulseAge, input.reducedMotion);
-  const outerGlow = ctx.createRadialGradient(input.end, fuseY, 1.5, input.end, fuseY, halo.radius);
-  outerGlow.addColorStop(0, `rgba(${input.colors.pause},${halo.alpha})`);
-  outerGlow.addColorStop(0.5, `rgba(${input.colors.pause},${halo.alpha * 0.45})`);
-  outerGlow.addColorStop(1, `rgba(${input.colors.pause},0)`);
-  ctx.fillStyle = outerGlow;
-  ctx.fillRect(input.end - halo.radius, fuseY - halo.radius, halo.radius * 2, halo.radius * 2);
-
-  // 固定燃烧头：紧贴引线的小核心 + 集中热边，不形成扩散圆环或竖直色墙。
-  const headGlow = ctx.createRadialGradient(input.end, fuseY, 0, input.end, fuseY, 7);
-  headGlow.addColorStop(0, 'rgba(255,255,255,0.9)');
-  headGlow.addColorStop(0.18, `rgba(${input.colors.pause},0.52)`);
-  headGlow.addColorStop(0.42, `rgba(${input.colors.pause},0.3)`);
-  headGlow.addColorStop(0.68, `rgba(${input.colors.pause},0.1)`);
-  headGlow.addColorStop(1, `rgba(${input.colors.pause},0)`);
-  ctx.fillStyle = headGlow;
-  ctx.fillRect(input.end - 7, fuseY - 7, 14, 14);
-
-  ctx.fillStyle = `rgba(255,255,255,0.95)`;
-  ctx.beginPath();
-  ctx.arc(input.end, fuseY, 1.6, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = `rgba(${input.colors.pause},0.98)`;
-  ctx.beginPath();
-  ctx.arc(input.end, fuseY, 2.6, 0, Math.PI * 2);
-  ctx.fill();
-
-  if (input.reducedMotion) {
-    // reduced-motion：保留静态灰烬语义，不播放持续粒子。
-    ctx.fillStyle = `rgba(${input.colors.pause},0.18)`;
-    for (let index = 0; index < 12; index += 1) {
-      const seed = input.elapsedMs * 0.001 + index * 17.7;
-      const x = input.end - hash01(seed) * sourceWidth;
-      const y = fuseY - 4 + hash01(seed + 8.4) * 8;
-      ctx.fillRect(x, y, 1 + hash01(seed + 3.1), 1 + hash01(seed + 12.5));
-    }
-    return;
-  }
-
-  const particles = pauseDissolveParticles(input.elapsedMs, sourceWidth, false, 1);
-  drawDissolveParticleField(ctx, {
-    particles,
-    edgeX: input.end,
-    fieldTop: input.fieldTop,
-    fieldBottom: input.fieldBottom,
-    colors: input.colors,
-  });
+  ctx.restore();
 }
 
 function drawNowPointer(
@@ -1331,8 +1112,6 @@ function drawNowPointer(
   const motionWindow = input.state === 'paused' ? BAND_PAUSE_MOTION_MS : BAND_RUNNING_MOTION_MS;
   const phase = active ? Math.min(1, input.pulseAge / motionWindow) : 1;
 
-  // 状态色呼吸辉光：每秒随擒纵步进点亮一次后缓缓回落（峰值 ≤0.18）。
-  // 画在指针本体之下，保持标线 crisp；reduced-motion 为固定低透明度静态辉光。
   if (active) {
     const breathPulse = pointerBreathPulse(input.pulseAge, input.reducedMotion);
     const glowAlpha = POINTER_GLOW_MAX_ALPHA * (0.35 + 0.65 * breathPulse);
@@ -1379,6 +1158,8 @@ function drawNowPointer(
     }
   }
 
+  ctx.fillStyle = `rgba(${input.colors.border},0.44)`;
+  ctx.fillRect(input.pointerX - 0.5, input.fieldTop, 1, input.fieldBottom - input.fieldTop);
   ctx.fillStyle = active ? `rgba(${stateColor},0.96)` : `rgba(${input.colors.ink},0.82)`;
   ctx.beginPath();
   ctx.moveTo(input.pointerX - 5.5, input.fieldBottom + 2);
@@ -1392,9 +1173,19 @@ function drawNowPointer(
   ctx.fillText(input.label, input.pointerX, Math.min(input.height - 7, input.fieldBottom + 22));
 }
 
+function toTuple(value: string): RgbTuple {
+  const [r = 0, g = 0, b = 0] = value.split(',').map((part) => Number(part.trim()));
+  return [r, g, b];
+}
+
 function hash01(seed: number): number {
   const value = Math.sin(seed * 12.9898) * 43758.5453;
   return value - Math.floor(value);
+}
+
+function smoothstep01(value: number): number {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
 }
 
 function positiveMod(value: number, divisor: number): number {
@@ -1416,8 +1207,8 @@ function formatElapsedSeconds(ms: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-function clockLabel(ms: number): string {
-  const date = new Date(ms);
+function wallClockTickLabel(totalSeconds: number): string {
+  const date = new Date(totalSeconds * 1000);
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 

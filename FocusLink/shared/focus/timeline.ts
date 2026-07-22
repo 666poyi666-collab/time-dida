@@ -42,12 +42,30 @@ export function buildMixedTimelineItems(params: {
   const { segments, pauseEvents, currentSegmentId, state, now } = params;
   const items: TimelineItem[] = [];
 
+  // 本地计时器在 resume 时才关闭旧 segment，因此 endedAt 可能包含整段暂停。
+  // 时间线必须以 pause 的真实起点裁断专注区间，才能保持两类材料互斥。
+  const firstPauseStartBySegment = new Map<string, number>();
+  for (const pause of pauseEvents) {
+    if (!pause.segmentId) continue;
+    const existing = firstPauseStartBySegment.get(pause.segmentId);
+    if (existing === undefined || pause.pauseStartedAt < existing) {
+      firstPauseStartBySegment.set(pause.segmentId, pause.pauseStartedAt);
+    }
+  }
+
   // 专注片段
   let focusIdx = 0;
   for (const seg of segments) {
     focusIdx += 1;
+    const firstPauseStartedAt = firstPauseStartBySegment.get(seg.id);
+    const endedAt =
+      firstPauseStartedAt !== undefined &&
+      firstPauseStartedAt >= seg.startedAt &&
+      (seg.endedAt === null || firstPauseStartedAt < seg.endedAt)
+        ? firstPauseStartedAt
+        : seg.endedAt;
     const isActive = seg.id === currentSegmentId;
-    const isOngoing = isActive && state === 'running';
+    const isOngoing = isActive && state === 'running' && endedAt === null;
     const durationMs = isOngoing ? seg.activeElapsedMs : seg.activeElapsedMs; // 已结算或当前 segment 的已结算值（渲染层会再加 now-lastTick）
     items.push({
       type: 'focus',
@@ -55,7 +73,7 @@ export function buildMixedTimelineItems(params: {
       index: focusIdx,
       title: seg.taskTitle ?? seg.title ?? `专注片段 ${focusIdx}`,
       startedAt: seg.startedAt,
-      endedAt: seg.endedAt,
+      endedAt,
       durationMs,
       taskId: seg.taskId,
       taskTitle: seg.taskTitle,

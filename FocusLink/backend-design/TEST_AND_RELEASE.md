@@ -210,13 +210,13 @@ git check-attr filter diff -- release-vXYZ/FocusLink-x.y.z-x64.exe release-vXYZ/
    `FOCUSLINK_INSTALLER_SKIP_CLOSE=1`，并用 `/D=<系统临时目录>` 安装后验收；不得把该变量写入系统环境。
    隔离安装前还必须备份并临时隐藏当前用户的 FocusLink 卸载注册项，避免 Electron Builder 把本次验证识别成升级并卸载正在运行的正式安装；
    桌面/开始菜单快捷方式也要先保存，并在 `finally` 中连同卸载注册项原样恢复。验证结束后必须确认原进程仍在、注册版本与两个快捷方式目标均未改变。
-   `build/installer.nsh` 只能在 `customInit` 中使用 `USERNAME eq %USERNAME%` 限定的退出命令处理当前账户，
+   `build/installer.nsh` 只能在 `customInit` 中使用当前用户 profile 路径及完整的 `%USERDOMAIN%\\%USERNAME%` 限定退出命令处理当前账户，
    并以 `/IM` 覆盖 Electron 子进程；禁止使用会卡住 Chromium 进程树的 `/T`。关闭后只允许在当前安装器
    进程树内设置 `FOCUSLINK_INSTALLER_SKIP_CLOSE=1`，供 0.12.17 旧卸载器绕过全局扫描，禁止持久化该变量。
    禁止重新引入 `nsProcess` / `tasklist` 全局扫描、无用户名过滤的终止命令或预安装强杀钩子，否则安装器会
    把其他账户的 smoke 进程误判为安装阻塞，并在不可见提示框或“无法关闭”弹窗上永久等待。
    GitHub Actions 的干净 runner 必须不设置该变量，覆盖安装器默认路径。若 NSIS 在 runner 上以 Windows 访问冲突
-   `0xC0000005` 退出，可清理隔离安装目录后重试一次；只允许该退出码，第二次或其他退出码必须立即失败。
+   `0xC0000005` 退出，可清理隔离安装目录并按发布工作流进行有界重试，最多共 4 次；只允许该退出码，第四次或其他退出码必须立即失败。
 4. 填完对应根发布目录内唯一的 `RELEASE_NOTES.md`，记录上一步的源码提交和真实 SHA256；不可变元数据固定为
    “发布类型：正式版 / 验证状态：已通过”，不在正式 Release 正文里保留“候选”或“待发布”。
 5. 清理 release 目录，只留下下列四个文件；把发布资产、notes 和本次生成的版本元数据组成单独的 release-record commit。该提交不得再改产品源码。

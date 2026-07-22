@@ -24,9 +24,9 @@ export const BAND_PAUSE_MOTION_MS = 1000;
  */
 export const FINISHED_PRESENTATION_HOLD_MS = 3_000;
 
-/** 时间之带的目标尺度：专注=秒级近景；暂停/空闲/结束=远景 */
+/** 活跃态保持秒级近景，确保暂停损耗粒子不会在最需要提醒时被拉远。 */
 export function bandScaleForState(state: TimerState | string): number {
-  return state === 'running' ? BAND_SCALE_NEAR : BAND_SCALE_FAR;
+  return state === 'running' || state === 'paused' ? BAND_SCALE_NEAR : BAND_SCALE_FAR;
 }
 
 /** 专注使用墙钟秒；暂停从暂停起点重新对齐秒循环。 */
@@ -100,6 +100,20 @@ export function bandDisplaySeconds(
   return state === 'running' || state === 'paused'
     ? steppedDisplaySeconds(nowMs, reducedMotion)
     : Math.floor(anchorMs / 1000);
+}
+
+/**
+ * 粒子微运动使用连续时钟，与擒纵式水平位移解耦。非活动态与
+ * reduced-motion 仍使用冻结/整秒时钟，避免后台持续重绘或闪烁。
+ */
+export function bandParticleMotionSeconds(
+  state: TimerState | string,
+  nowMs: number,
+  anchorMs: number,
+  reducedMotion: boolean,
+): number {
+  if (reducedMotion) return bandDisplaySeconds(state, nowMs, anchorMs, true);
+  return state === 'running' || state === 'paused' ? nowMs / 1000 : Math.floor(anchorMs / 1000);
 }
 
 /** 刻度层透明度：秒刻度在近景清晰、变焦中随密度淡出；远景层互补 */
@@ -214,6 +228,43 @@ export function particleDepthProfile(rowRatio: number, detail: number): Particle
     projectedRatio,
     sizeScale: 0.66 + projectedRatio * 0.54,
     alphaScale: 0.72 + projectedRatio * 0.28,
+  };
+}
+
+export type FocusMaterialPose = {
+  /** 新积累的专注材料从轻微收束到完整厚度的进度。 */
+  settle: number;
+  /** 连续主体的厚度倍率；出生时也保持为实体而不是一个点。 */
+  thicknessScale: number;
+  /** 材料轮廓/内部纤维的低幅纵向流动（px）。 */
+  waveOffset: number;
+  /** 供连续高光使用的 0..1 相位值。 */
+  sheen: number;
+};
+
+/**
+ * 专注材料姿态：主体始终连续无孔，仅在指针附近轻微收束，并保留
+ * 很低幅度的整体流动。暂停时 timeSec/ageSec 都冻结，因此绿色实体不漂移。
+ */
+export function focusMaterialPose(
+  ageSec: number,
+  laneRatio: number,
+  timeSec: number,
+  reducedMotion: boolean,
+): FocusMaterialPose {
+  const age = Math.max(0, ageSec);
+  const rawSettle = clamp01(age / 0.68);
+  const settle = rawSettle * rawSettle * (3 - 2 * rawSettle);
+  const lane = clamp01(laneRatio);
+  const phase = Math.PI * 2 * (0.085 * timeSec + age / 7.8) + lane * 1.35;
+  if (reducedMotion) {
+    return { settle, thicknessScale: 0.74 + settle * 0.26, waveOffset: 0, sheen: 0.5 };
+  }
+  return {
+    settle,
+    thicknessScale: 0.74 + settle * 0.26,
+    waveOffset: Math.sin(phase) * 0.72 + Math.sin(phase * 0.47 + lane * 2.3) * 0.28,
+    sheen: 0.5 + Math.sin(phase * 0.62 + lane) * 0.5,
   };
 }
 
@@ -491,6 +542,142 @@ export function pauseDissolveParticles(
         alpha,
         progress: life,
         temperature,
+      });
+    }
+  }
+
+  return particles;
+}
+
+/** 主时间带暂停损耗粒子的最长可见寿命；数量不会随暂停总时长增长。 */
+export const PAUSE_LOSS_MAX_LIFE_MS = 1_900;
+
+export type PauseLossParticle = {
+  id: string;
+  kind: 'grain' | 'flake' | 'spark';
+  originOffsetX: number;
+  originRatioY: number;
+  travelX: number;
+  travelY: number;
+  size: number;
+  rotation: number;
+  alpha: number;
+  progress: number;
+};
+
+/**
+ * 主时间带专用的暂停损耗发射器。
+ *
+ * 粒子只从“现在”指针前沿的窄切面出生，并在固定寿命内向左/上下剥离、
+ * 缩小、褪色。endedAtMs 非空后不再产生新粒子，只让最后一批自然消失；
+ * 因此暂停 5 秒与 5 小时的活跃粒子规模同阶，也不会形成历史红色带。
+ */
+export function pauseFrontierDissolveParticles(
+  nowMs: number,
+  startedAtMs: number,
+  endedAtMs: number | null,
+  sourceWidth: number,
+  reducedMotion: boolean,
+  densityScale = 1,
+): PauseLossParticle[] {
+  if (sourceWidth <= 0 || densityScale <= 0 || nowMs < startedAtMs) return [];
+
+  // reduced-motion 的静态崩边只属于 paused 当下；一旦发射器结束就立即移除，
+  // 不能因为没有动画时钟而把“损耗”固化成恢复后的历史痕迹。
+  if (reducedMotion && endedAtMs !== null && nowMs >= endedAtMs) return [];
+
+  const particles: PauseLossParticle[] = [];
+  // 主带需要呈现连续剥落面，而不是零散闪点。约 96 个释放槽/秒在 140px
+  // 标准画布上形成密集但仍可辨认的薄片流；同屏数量仍由固定寿命严格封顶。
+  const sampleCount = Math.max(28, Math.floor(96 * densityScale));
+
+  if (reducedMotion) {
+    const staticCount = Math.max(12, Math.floor(26 * densityScale));
+    for (let index = 0; index < staticCount; index += 1) {
+      const seed = index * 37.17 + 11.3;
+      const progress = 0.24 + hash01(seed + 3.7) * 0.58;
+      const remaining = 1 - progress;
+      particles.push({
+        id: `static-${index}`,
+        kind: index % 9 === 0 ? 'spark' : index % 5 === 0 ? 'flake' : 'grain',
+        originOffsetX: hash01(seed + 1.2) * sourceWidth,
+        originRatioY: 0.27 + hash01(seed + 5.4) * 0.46,
+        travelX: -(4 + hash01(seed + 7.8) * 17) * progress,
+        travelY: (hash01(seed + 9.6) - 0.62) * 23 * progress,
+        size: (0.75 + hash01(seed + 12.1) * 1.8) * Math.max(0.2, remaining),
+        rotation: (hash01(seed + 15.2) - 0.5) * 1.8,
+        alpha: (0.38 + hash01(seed + 19.4) * 0.3) * remaining,
+        progress,
+      });
+    }
+    return particles;
+  }
+
+  const relativeNowSec = Math.max(0, (nowMs - startedAtMs) / 1000);
+  const relativeEndSec =
+    endedAtMs === null
+      ? relativeNowSec
+      : Math.max(0, Math.min(relativeNowSec, (endedAtMs - startedAtMs) / 1000));
+  const currentCohort = Math.floor(relativeEndSec);
+  // 快速暂停后立刻恢复时，入场包络必须冻结在停止发射的时刻；否则尾粒子
+  // 会在恢复后继续“淡入”并短暂回亮，违背只缩小、褪色、死亡的方向性。
+  const entryProgress = clamp01(relativeEndSec / 0.18);
+  const entryEnvelope = entryProgress * entryProgress * (3 - 2 * entryProgress);
+
+  for (let cohort = currentCohort - 2; cohort <= currentCohort; cohort += 1) {
+    for (let index = 0; index < sampleCount; index += 1) {
+      const seed = cohort * 71.29 + index * 31.77;
+      const releaseDelay = (index / sampleCount) * 0.97 + hash01(seed + 1.1) * 0.03;
+      const releaseSec = cohort + releaseDelay;
+      if (releaseSec > relativeEndSec) continue;
+      const ageSec = relativeNowSec - releaseSec;
+      // cohort 参与分类种子，避免每秒在同一 index 上出现节拍式闪点。
+      // 形态比例约为 grain 57% / flake 34% / spark 9%，让观感以剥落薄片
+      // 为主、尘粒填缝、少量火花点题，而不是一串等距圆点。
+      const kindRoll = hash01(seed + 3.2);
+      const kind: PauseLossParticle['kind'] =
+        kindRoll < 0.09 ? 'spark' : kindRoll < 0.43 ? 'flake' : 'grain';
+      const lifespan =
+        kind === 'spark'
+          ? 0.62 + hash01(seed + 4.3) * 0.34
+          : kind === 'flake'
+            ? 1.24 + hash01(seed + 4.3) * 0.58
+            : 0.96 + hash01(seed + 4.3) * 0.56;
+      if (ageSec < 0 || ageSec >= lifespan) continue;
+
+      const progress = clamp01(ageSec / lifespan);
+      // smoothstep 把位移均匀铺满生命周期，避免粒子前半程猛跳、后半程
+      // 只剩几颗几乎静止的淡点。
+      const eased = progress * progress * (3 - 2 * progress);
+      const verticalBias = hash01(seed + 8.7) - 0.56;
+      const turbulenceX = Math.sin(seed + progress * 11) * 2.6 * progress;
+      const turbulenceY = Math.cos(seed * 0.63 + progress * 9) * 2.2 * progress;
+      const baseSize =
+        (kind === 'spark' ? 1 : kind === 'flake' ? 2 : 1.2) +
+        hash01(seed + 13.4) * (kind === 'flake' ? 2.2 : kind === 'spark' ? 1.4 : 1.1);
+      const terminalSize = clamp01((progress - 0.55) / 0.45);
+      const terminalSizeEase = terminalSize * terminalSize * (3 - 2 * terminalSize);
+      const sizeScale = Math.max(0.12, 1 - progress * 0.22 - terminalSizeEase * 0.66);
+      const terminalFade = clamp01((progress - 0.48) / 0.52);
+      const terminalFadeEase = terminalFade * terminalFade * (3 - 2 * terminalFade);
+      // 前半生保持清晰，末段快速褪成灰烬并熄灭；保留极小的全程下降量，
+      // 使同一粒子的 alpha 在任意相邻帧都严格递减。
+      const visibility = Math.max(0, 1 - progress * 0.16 - terminalFadeEase * 0.84);
+
+      particles.push({
+        id: `${cohort}-${index}`,
+        kind,
+        originOffsetX: Math.pow(hash01(seed + 2.7), 1.8) * sourceWidth,
+        originRatioY: 0.27 + hash01(seed + 6.3) * 0.46,
+        travelX: -eased * (8 + hash01(seed + 10.2) * 24) + turbulenceX,
+        travelY: eased * verticalBias * (18 + hash01(seed + 16.8) * 18) - eased * 5 + turbulenceY,
+        size: baseSize * sizeScale,
+        rotation:
+          kind === 'spark'
+            ? -Math.PI / 2 + verticalBias * 0.45
+            : (hash01(seed + 21.5) - 0.5) * 0.8 + eased * (kind === 'flake' ? 2.2 : 0.8),
+        alpha: (0.8 + hash01(seed + 25.9) * 0.2) * visibility * entryEnvelope,
+        progress,
       });
     }
   }

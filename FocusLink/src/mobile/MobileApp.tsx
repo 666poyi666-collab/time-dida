@@ -726,11 +726,20 @@ export function MobileApp() {
       <div className="app-frame">
         <AppNavigation activeView={activeView} onChange={setActiveView} />
         <main className="mobile-main">
-          <section className={`sync-strip state-${syncTone(liveConnection)}`} aria-live="polite">
-            <span className={`network-dot ${online ? 'online' : 'offline'}`} aria-hidden="true" />
-            <div className="sync-copy">
-              <strong>{connectionTitle(liveConnection)}</strong>
-              <span>{ledgerNotice}</span>
+          <section className="sync-strip" aria-live="polite" aria-label="实时连接与账本同步状态">
+            <div className={`sync-status sync-status-live state-${liveConnection}`}>
+              <span className={`network-dot ${online ? 'online' : 'offline'}`} aria-hidden="true" />
+              <div className="sync-copy">
+                <strong>实时控制</strong>
+                <span>{connectionTitle(liveConnection)}</span>
+              </div>
+            </div>
+            <div className={`sync-status sync-status-ledger state-${pullState}`}>
+              <span className="network-dot" aria-hidden="true" />
+              <div className="sync-copy">
+                <strong>已结束账本</strong>
+                <span>{ledgerNotice}</span>
+              </div>
             </div>
             <button
               className="sync-button"
@@ -739,7 +748,9 @@ export function MobileApp() {
               disabled={pullState === 'pulling' || liveConnection === 'connecting' || !online}
             >
               <RefreshIcon spinning={pullState === 'pulling' || liveConnection === 'connecting'} />
-              {liveConnection === 'connecting' ? '连接中' : '刷新'}
+              {liveConnection === 'connecting' || pullState === 'pulling'
+                ? '连接中'
+                : '刷新状态与账本'}
             </button>
           </section>
 
@@ -860,6 +871,7 @@ function mapLiveSnapshot(
     state: session.state,
     revision: snapshot.revision,
     sessionId: session.id,
+    startedAt: session.startedAt,
     updatedAt: session.updatedAt,
     serverTime,
     observedAt,
@@ -868,6 +880,8 @@ function mapLiveSnapshot(
     wallElapsedMs: session.wallElapsedMs,
     currentStateStartedAt:
       session.state === 'paused' ? session.currentPauseStartedAt : session.updatedAt,
+    segments: session.segments.map((segment) => ({ ...segment })),
+    pauses: session.pauses.map((pause) => ({ ...pause })),
     title: session.title,
     ownerDeviceId: session.lastCommandDeviceId,
     taskId: session.task?.taskId ?? null,
@@ -955,13 +969,6 @@ function connectionTitle(state: LiveConnectionState): string {
   if (state === 'offline') return '当前离线 · 控制已锁定';
   if (state === 'error') return '实时连接中断 · 自动重试中';
   return '尚未配置多端连接';
-}
-
-function syncTone(connection: LiveConnectionState): PullState {
-  if (connection === 'error' || connection === 'offline') return 'error';
-  if (connection === 'connecting') return 'pulling';
-  if (connection === 'live') return 'confirmed';
-  return 'idle';
 }
 
 function connectionKey(

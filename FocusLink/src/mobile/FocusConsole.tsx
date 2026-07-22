@@ -13,6 +13,7 @@ import {
 import type { SyncedTask } from '@shared/sync/taskSnapshotProtocol';
 import type { LiveSnapshotSource } from './liveSnapshotPolicy';
 import { MobileConfirmDialog } from './MobileConfirmDialog';
+import { MobileTemporalRibbon } from './MobileTemporalRibbon';
 
 export type MobileFocusCommand = 'start' | 'pause' | 'resume' | 'finish';
 
@@ -183,6 +184,16 @@ export function FocusConsole({
                     : 'IDLE · 连接云端后由任一设备控制'}
             </small>
           </div>
+
+          <MobileTemporalRibbon
+            state={current.state}
+            startedAt={current.startedAt}
+            segments={current.segments}
+            pauses={current.pauses}
+            now={now}
+            activeElapsedMs={durations.activeElapsedMs}
+            wallElapsedMs={durations.wallElapsedMs}
+          />
 
           <div className="runtime-metrics" aria-label="本轮三时间">
             <RuntimeMetric

@@ -133,7 +133,13 @@ export async function readCachedLiveFocusSnapshot(): Promise<LiveFocusSnapshotLi
   await transactionDone(transaction);
   database.close();
   if (!isCachedLiveFocusRecord(record?.value)) return null;
-  return record.value.snapshot;
+  const snapshot = record.value.snapshot;
+  return {
+    ...snapshot,
+    startedAt: typeof snapshot.startedAt === 'number' ? snapshot.startedAt : null,
+    segments: Array.isArray(snapshot.segments) ? snapshot.segments : [],
+    pauses: Array.isArray(snapshot.pauses) ? snapshot.pauses : [],
+  };
 }
 
 export async function writeCachedLiveFocusSnapshot(snapshot: LiveFocusSnapshotLike): Promise<void> {
@@ -255,6 +261,11 @@ function isCachedLiveFocusRecord(value: unknown): value is CachedLiveFocusRecord
     typeof snapshot.wallElapsedMs === 'number' &&
     (typeof snapshot.currentStateStartedAt === 'number' ||
       snapshot.currentStateStartedAt === null) &&
+    (snapshot.startedAt === undefined ||
+      typeof snapshot.startedAt === 'number' ||
+      snapshot.startedAt === null) &&
+    (snapshot.segments === undefined || Array.isArray(snapshot.segments)) &&
+    (snapshot.pauses === undefined || Array.isArray(snapshot.pauses)) &&
     (typeof snapshot.title === 'string' || snapshot.title === null) &&
     (typeof snapshot.ownerDeviceId === 'string' || snapshot.ownerDeviceId === null)
   );
