@@ -44,7 +44,7 @@
     "smoke:tomatodo:real": "npm run build:selftest && node dist-selftest/tomatodo-cloud-real-smoke.cjs",
     "smoke:tomatodo:bridge": "npm run build:selftest && node dist-selftest/tomatodo-cloud-real-smoke.cjs --probe-only",
     "typecheck": "tsc --noEmit",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "electron-builder install-app-deps && node scripts/build/patch-electron-builder-nsis.cjs",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"cloud/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{ts,js,mjs,cjs}\" \"mobile/**/*.{html,js,json,webmanifest,ts,tsx}\" \"*.config.ts\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"cloud/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{ts,js,mjs,cjs}\" \"mobile/**/*.{html,js,json,webmanifest,ts,tsx}\" \"*.config.ts\"",

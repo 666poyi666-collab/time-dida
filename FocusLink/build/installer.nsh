@@ -11,11 +11,11 @@
   ; USERNAME filter. Resolve the current user's profile and stop only FocusLink
   ; processes whose executable path is inside that profile (including temp smoke
   ; installs). Other Windows accounts and unrelated paths are untouched.
-  nsExec::Exec `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$$profile=[Environment]::GetFolderPath('UserProfile'); Get-Process -Name 'FocusLink' -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$profile, [System.StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { $$_.CloseMainWindow() | Out-Null }"`
+  nsExec::Exec `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$$profileRoot=[Environment]::GetFolderPath('UserProfile').TrimEnd('\')+'\'; Get-Process -Name 'FocusLink' -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$profileRoot, [System.StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { $$_.CloseMainWindow() | Out-Null }"`
   Pop $R1
   Sleep 1200
 
-  nsExec::Exec `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$$profile=[Environment]::GetFolderPath('UserProfile'); Get-Process -Name 'FocusLink' -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$profile, [System.StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
+  nsExec::Exec `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$$profileRoot=[Environment]::GetFolderPath('UserProfile').TrimEnd('\')+'\'; Get-Process -Name 'FocusLink' -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$profileRoot, [System.StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
   Pop $R1
   Sleep 1200
 
@@ -44,7 +44,7 @@
   ; Keep draining only executables under the current profile until the process
   ; set is stable, before the bundled old uninstaller gets a chance to run its
   ; own less reliable process check.
-  nsExec::Exec `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$$profile=[Environment]::GetFolderPath('UserProfile'); for($$attempt=0; $$attempt -lt 8; $$attempt++){ $$remaining=@(Get-Process -Name 'FocusLink' -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$profile, [System.StringComparison]::OrdinalIgnoreCase) }); if($$remaining.Count -eq 0){ break }; $$remaining | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 400 }"`
+  nsExec::Exec `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$$profileRoot=[Environment]::GetFolderPath('UserProfile').TrimEnd('\')+'\'; for($$attempt=0; $$attempt -lt 8; $$attempt++){ $$remaining=@(Get-Process -Name 'FocusLink' -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$profileRoot, [System.StringComparison]::OrdinalIgnoreCase) }); if($$remaining.Count -eq 0){ break }; $$remaining | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 400 }"`
   Pop $R1
   Sleep 800
 !macroend
@@ -76,36 +76,55 @@
   focuslink_check_done:
 !macroend
 
-; Electron Builder's old-uninstaller handoff can return code 2 after it has
-; already restored every file. On affected Windows builds the exact same files
-; are immediately movable, so asking the user to click Retry only repeats the
-; cleanup that the new installer can safely finish itself. App data lives under
-; APPDATA and is intentionally outside this product-only installation folder.
-!macro customUnInstallCheck
-  ${if} $R0 != 0
-    !insertmacro closeCurrentUserFocusLink
-    ReadRegStr $R7 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" UninstallString
-    !insertmacro GetInQuotes $R7 "$R7"
-    Push $R7
+; Electron Builder retries a failing old uninstaller five times and normally
+; shows MB_RETRYCANCEL before customUnInstallCheck runs. Our reproducible legacy
+; failure is exit code 2 after all payloads were already removed while the old
+; process still held the empty installation root as its working directory.
+; This hook is injected at retry exhaustion so that known-safe recovery happens
+; before any misleading Retry dialog is displayed.
+!macro customUninstallRetryExhausted
+  ${if} $R0 == 2
+  ${andIf} $installationDir != ""
+  ${andIf} $installationDir == $INSTDIR
+  ${andIf} $uninstallerFileName != ""
+    Push $uninstallerFileName
     Call GetFileParent
     Pop $R7
-    ${if} $R7 == ""
-      StrCpy $R7 "$INSTDIR"
-    ${endif}
-    ClearErrors
-    RMDir /r "$R7"
-    ; The copied old uninstaller leaves its working directory set to INSTDIR.
-    ; Windows can therefore keep the now-empty root directory itself alive even
-    ; after every payload file was removed. Treat an empty root as successful;
-    ; only a remaining executable or app archive is a genuine cleanup failure.
-    ${if} ${FileExists} "$R7\${APP_EXECUTABLE_FILENAME}"
-    ${orIf} ${FileExists} "$R7\resources\app.asar"
-      MessageBox MB_OK|MB_ICONEXCLAMATION "$(uninstallFailed): $R0"
-      SetErrorLevel 2
-      Quit
-    ${else}
+    ${if} $R7 == $installationDir
+      !insertmacro closeCurrentUserFocusLink
+      ClearErrors
+      RMDir /r "$installationDir"
+      ; An empty root may remain locked by the old uninstaller and is harmless:
+      ; the new package writes back into the same verified installation path.
+      IfFileExists "$installationDir\*.*" focuslink_retry_recovery_failed 0
       StrCpy $R0 0
       ClearErrors
     ${endif}
   ${endif}
+  Goto focuslink_retry_recovery_done
+
+  focuslink_retry_recovery_failed:
+  DetailPrint `Legacy uninstall recovery left files in "$installationDir".`
+
+  focuslink_retry_recovery_done:
+!macroend
+
+; The stock result handler delegates to this macro whenever it exists, so it
+; must preserve launch failures and all unknown non-zero exit codes.
+!macro customUnInstallCheck
+  IfErrors focuslink_uninstall_launch_failed 0
+  ${if} $R0 != 0
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$(uninstallFailed): $R0"
+    DetailPrint `Uninstall was not successful. Uninstaller error code: $R0.`
+    SetErrorLevel 2
+    Quit
+  ${endif}
+  Goto focuslink_uninstall_check_done
+
+  focuslink_uninstall_launch_failed:
+  DetailPrint `Uninstall was not successful. Not able to launch uninstaller.`
+  SetErrorLevel 2
+  Quit
+
+  focuslink_uninstall_check_done:
 !macroend
