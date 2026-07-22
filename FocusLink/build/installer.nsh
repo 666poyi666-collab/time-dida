@@ -75,3 +75,37 @@
 
   focuslink_check_done:
 !macroend
+
+; Electron Builder's old-uninstaller handoff can return code 2 after it has
+; already restored every file. On affected Windows builds the exact same files
+; are immediately movable, so asking the user to click Retry only repeats the
+; cleanup that the new installer can safely finish itself. App data lives under
+; APPDATA and is intentionally outside this product-only installation folder.
+!macro customUnInstallCheck
+  ${if} $R0 != 0
+    !insertmacro closeCurrentUserFocusLink
+    ReadRegStr $R7 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" UninstallString
+    !insertmacro GetInQuotes $R7 "$R7"
+    Push $R7
+    Call GetFileParent
+    Pop $R7
+    ${if} $R7 == ""
+      StrCpy $R7 "$INSTDIR"
+    ${endif}
+    ClearErrors
+    RMDir /r "$R7"
+    ; The copied old uninstaller leaves its working directory set to INSTDIR.
+    ; Windows can therefore keep the now-empty root directory itself alive even
+    ; after every payload file was removed. Treat an empty root as successful;
+    ; only a remaining executable or app archive is a genuine cleanup failure.
+    ${if} ${FileExists} "$R7\${APP_EXECUTABLE_FILENAME}"
+    ${orIf} ${FileExists} "$R7\resources\app.asar"
+      MessageBox MB_OK|MB_ICONEXCLAMATION "$(uninstallFailed): $R0"
+      SetErrorLevel 2
+      Quit
+    ${else}
+      StrCpy $R0 0
+      ClearErrors
+    ${endif}
+  ${endif}
+!macroend

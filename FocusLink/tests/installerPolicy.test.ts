@@ -24,6 +24,11 @@ describe('Windows installer process policy', () => {
     expect(installerScript).not.toContain('%SYSTEMROOT%');
     expect(installerScript).toContain('!macro customInit');
     expect(installerScript).toContain('Kernel32::SetEnvironmentVariable');
+    expect(installerScript).toContain('!macro customUnInstallCheck');
+    expect(installerScript).toContain('ReadRegStr $R7 SHELL_CONTEXT');
+    expect(installerScript).toContain('RMDir /r "$R7"');
+    expect(installerScript).toContain('${FileExists} "$R7\\${APP_EXECUTABLE_FILENAME}"');
+    expect(installerScript).toContain('${FileExists} "$R7\\resources\\app.asar"');
   });
 
   it('never scans other accounts or walks the Chromium process tree', () => {
