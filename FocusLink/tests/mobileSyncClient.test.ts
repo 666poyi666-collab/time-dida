@@ -99,7 +99,7 @@ describe('mobile sync client request recovery', () => {
   it.each([
     ['http://127.0.0.1:8787', 'http://127.0.0.1:18787'],
     ['http://127.0.0.1:8787/', 'http://127.0.0.1:18787'],
-    ['http://localhost:8787', 'http://localhost:18787'],
+    ['http://localhost:8787', 'http://localhost:8787'],
   ])('migrates the retired Android loopback endpoint from %s to %s', (legacy, current) => {
     expect(migrateLegacyMobileSyncEndpoint(legacy)).toBe(current);
   });
@@ -133,5 +133,33 @@ describe('mobile sync client request recovery', () => {
       rememberToken: true,
     });
     expect(setItem).toHaveBeenCalledWith('focuslink.mobile.endpoint', 'http://127.0.0.1:18787');
+    expect(setItem).toHaveBeenCalledWith('focuslink.mobile.migration.loopback-18787', 'true');
+  });
+
+  it('does not rewrite a loopback endpoint explicitly saved after the one-time migration', () => {
+    const values = new Map([
+      ['focuslink.mobile.endpoint', 'http://127.0.0.1:8787'],
+      ['focuslink.mobile.migration.loopback-18787', 'true'],
+    ]);
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: vi.fn(),
+    });
+    vi.stubGlobal('sessionStorage', { getItem: () => null });
+
+    expect(loadConnectionPreferences().endpoint).toBe('http://127.0.0.1:8787');
+  });
+
+  it('uses the migrated endpoint for the current launch when storage is temporarily unwritable', () => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) =>
+        key === 'focuslink.mobile.endpoint' ? 'http://127.0.0.1:8787' : null,
+      setItem: () => {
+        throw new DOMException('read only', 'QuotaExceededError');
+      },
+    });
+    vi.stubGlobal('sessionStorage', { getItem: () => null });
+
+    expect(loadConnectionPreferences().endpoint).toBe('http://127.0.0.1:18787');
   });
 });

@@ -38,7 +38,15 @@
   ; second pass prevents the old uninstaller from opening its retry dialog.
   nsExec::Exec `$SYSDIR\cmd.exe /d /c taskkill /f /im "${APP_EXECUTABLE_FILENAME}" /fi "USERNAME eq %USERDOMAIN%\%USERNAME%"`
   Pop $R1
-  Sleep 1600
+  Sleep 800
+
+  ; Tray shutdown and Chromium teardown can briefly respawn a same-user child.
+  ; Keep draining only executables under the current profile until the process
+  ; set is stable, before the bundled old uninstaller gets a chance to run its
+  ; own less reliable process check.
+  nsExec::Exec `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$$profile=[Environment]::GetFolderPath('UserProfile'); for($$attempt=0; $$attempt -lt 8; $$attempt++){ $$remaining=@(Get-Process -Name 'FocusLink' -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$profile, [System.StringComparison]::OrdinalIgnoreCase) }); if($$remaining.Count -eq 0){ break }; $$remaining | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 400 }"`
+  Pop $R1
+  Sleep 800
 !macroend
 
 ; Assisted installers can execute the install section inside a UAC inner

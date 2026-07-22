@@ -214,10 +214,21 @@ public class ExampleInstrumentedTest {
                 token,
                 "instrumentation-device"
             );
+            context
+                .getSharedPreferences("focus_runtime_connection_v1", Context.MODE_PRIVATE)
+                .edit()
+                .remove("loopback18787Migrated")
+                .commit();
             FocusRuntimeConnectionStore.Connection connection =
                 FocusRuntimeConnectionStore.get(context);
             assertNotNull(connection);
-            assertEquals("http://127.0.0.1:8787", connection.endpoint);
+            assertEquals("http://127.0.0.1:18787", connection.endpoint);
+            assertEquals(
+                "http://127.0.0.1:18787",
+                context
+                    .getSharedPreferences("focus_runtime_connection_v1", Context.MODE_PRIVATE)
+                    .getString("endpoint", "")
+            );
             assertEquals(token, connection.accessToken);
             assertEquals("instrumentation-device", connection.deviceId);
 

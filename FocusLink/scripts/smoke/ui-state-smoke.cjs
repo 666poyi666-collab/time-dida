@@ -529,7 +529,10 @@ async function main() {
   await delay(500);
   process.stderr.write('[ui-smoke] capture paused\n');
   results.paused = await capture('paused', 'paused');
-  await evaluate('window.focuslink.timer.stop()');
+  // CDP Runtime.evaluate may keep waiting on Electron's context-bridged Promise even after the
+  // main process has applied STOP and emitted the finished snapshot. Dispatch without adopting
+  // that thenable, then assert the authoritative renderer state below.
+  await evaluate('(() => { void window.focuslink.timer.stop(); return true; })()');
   await inspectState('finished');
   results.focusFinishTransition = await evaluate(`(() => {
     const consoleElement = document.querySelector('.focus-console');

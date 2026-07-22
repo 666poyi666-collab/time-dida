@@ -2,9 +2,9 @@
 
 FocusLink 是一个本地优先的 Windows 桌面专注工具：主进程精确记录专注、暂停与自然跨度，把片段关联到滴答清单任务，并通过彼此独立的队列同步滴答清单与番茄 To-do。
 
-> 当前版本：v0.12.26
+> 当前版本：v0.12.27
 >
-> 版本主题：三端统计升级 · 同步端口迁移 · 丝滑计时动画
+> 版本主题：覆盖安装修复 · 原生连接保活 · 双机联调
 
 ## 产品边界
 
@@ -179,9 +179,9 @@ RELEASE_NOTES.md
 
 | 版本 | 本地安装版 | 版本说明 |
 | --- | --- | --- |
+| 0.12.27 | `release-v01227/FocusLink-0.12.27-x64.exe`（覆盖安装与原生连接修复） | [v0.12.27](release-v01227/RELEASE_NOTES.md) |
 | 0.12.26 | `release-v01226/FocusLink-0.12.26-x64.exe`（三端统计与同步修复） | [v0.12.26](release-v01226/RELEASE_NOTES.md) |
 | 0.12.25 | `release-v01225/FocusLink-0.12.25-x64.exe`（全端粒子时间带与移动连接诊断） | [v0.12.25](release-v01225/RELEASE_NOTES.md) |
-| 0.12.24 | `release-v01224/FocusLink-0.12.24-x64.exe`（时间仪器工作台与多端同步闭环） | [v0.12.24](release-v01224/RELEASE_NOTES.md) |
 
 每次版本迭代必须同步更新 `CHANGELOG.md`、本地 `RELEASE_NOTES.md` 和 GitHub Release，并上传安装版、便携版与 SHA256。只推送代码或 tag 不算发布完成。
 

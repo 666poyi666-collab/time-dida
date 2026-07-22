@@ -18,7 +18,8 @@ describe('Windows installer process policy', () => {
     expect(
       installerScript.match(/\/f \/im "\$\{APP_EXECUTABLE_FILENAME\}"/g)?.length,
     ).toBeGreaterThanOrEqual(2);
-    expect(installerScript).toContain('Sleep 1600');
+    expect(installerScript).toContain('$$attempt -lt 8');
+    expect(installerScript).toContain('Start-Sleep -Milliseconds 400');
     expect(installerScript).toContain('$SYSDIR\\cmd.exe');
     expect(installerScript).not.toContain('%SYSTEMROOT%');
     expect(installerScript).toContain('!macro customInit');

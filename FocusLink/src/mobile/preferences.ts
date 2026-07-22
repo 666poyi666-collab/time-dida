@@ -5,6 +5,7 @@ const TOKEN_SESSION_KEY = 'focuslink.mobile.token.session';
 const TOKEN_LOCAL_KEY = 'focuslink.mobile.token.local';
 const REMEMBER_TOKEN_KEY = 'focuslink.mobile.remember-token';
 const DEVICE_ID_KEY = 'focuslink.mobile.device-id';
+const LOOPBACK_MIGRATION_KEY = 'focuslink.mobile.migration.loopback-18787';
 const CURRENT_LOOPBACK_ENDPOINT = 'http://127.0.0.1:18787';
 const LEGACY_LOOPBACK_PORT = '8787';
 
@@ -17,14 +18,25 @@ export interface MobileConnectionPreferences {
 export function loadConnectionPreferences(): MobileConnectionPreferences {
   const rememberToken = localStorage.getItem(REMEMBER_TOKEN_KEY) === 'true';
   const storedEndpoint = localStorage.getItem(ENDPOINT_KEY);
-  const endpoint = migrateLegacyMobileSyncEndpoint(
-    storedEndpoint ?? (Capacitor.isNativePlatform() ? CURRENT_LOOPBACK_ENDPOINT : ''),
-  );
-  if (storedEndpoint !== null && endpoint !== storedEndpoint) {
+  const migrationPending = localStorage.getItem(LOOPBACK_MIGRATION_KEY) !== 'true';
+  const endpointBeforeMigration =
+    storedEndpoint ?? (Capacitor.isNativePlatform() ? CURRENT_LOOPBACK_ENDPOINT : '');
+  const endpoint = migrationPending
+    ? migrateLegacyMobileSyncEndpoint(endpointBeforeMigration)
+    : endpointBeforeMigration;
+  if (migrationPending) {
     // Desktop moved its embedded service from 8787 to 18787 in v0.12.21. Android
     // localStorage survives an overwrite install, so migrate the matching old mobile
     // default too; otherwise the UI retries 8787 forever while adb reverse targets 18787.
-    localStorage.setItem(ENDPOINT_KEY, endpoint);
+    try {
+      if (storedEndpoint !== null && endpoint !== storedEndpoint) {
+        localStorage.setItem(ENDPOINT_KEY, endpoint);
+      }
+      localStorage.setItem(LOOPBACK_MIGRATION_KEY, 'true');
+    } catch {
+      // Storage can be readable but temporarily unwritable. Keep the in-memory migrated
+      // endpoint for this launch and retry persistence on the next startup.
+    }
   }
   return {
     endpoint,
@@ -41,7 +53,7 @@ export function migrateLegacyMobileSyncEndpoint(endpoint: string): string {
     const url = new URL(endpoint);
     const isLegacyLoopback =
       url.protocol === 'http:' &&
-      (url.hostname === '127.0.0.1' || url.hostname === 'localhost') &&
+      url.hostname === '127.0.0.1' &&
       url.port === LEGACY_LOOPBACK_PORT &&
       url.pathname === '/' &&
       !url.search &&

@@ -18,7 +18,10 @@ final class FocusRuntimeConnectionStore {
     private static final String KEY_ENDPOINT = "endpoint";
     private static final String KEY_TOKEN = "token";
     private static final String KEY_DEVICE_ID = "deviceId";
+    private static final String KEY_LOOPBACK_MIGRATED = "loopback18787Migrated";
     private static final String KEY_ALIAS = "focuslink_runtime_connection_v1";
+    private static final String LEGACY_LOOPBACK_ENDPOINT = "http://127.0.0.1:8787";
+    private static final String CURRENT_LOOPBACK_ENDPOINT = "http://127.0.0.1:18787";
     private static final int GCM_TAG_BITS = 128;
 
     static final class Connection {
@@ -48,12 +51,14 @@ final class FocusRuntimeConnectionStore {
         if (deviceId == null || deviceId.isEmpty() || deviceId.length() > 200) {
             throw new IllegalArgumentException("deviceId is invalid");
         }
-        preferences(context)
+        boolean committed = preferences(context)
             .edit()
             .putString(KEY_ENDPOINT, normalizedEndpoint)
             .putString(KEY_TOKEN, encrypt(accessToken))
             .putString(KEY_DEVICE_ID, deviceId)
+            .putBoolean(KEY_LOOPBACK_MIGRATED, true)
             .commit();
+        if (!committed) throw new IllegalStateException("unable to save cloud credential");
     }
 
     static synchronized Connection get(Context context) {
@@ -63,7 +68,17 @@ final class FocusRuntimeConnectionStore {
         String deviceId = preferences.getString(KEY_DEVICE_ID, null);
         if (endpoint == null || encryptedToken == null || deviceId == null) return null;
         try {
-            return new Connection(validateEndpoint(endpoint), decrypt(encryptedToken), deviceId);
+            String normalizedEndpoint = validateEndpoint(endpoint);
+            if (!preferences.getBoolean(KEY_LOOPBACK_MIGRATED, false)) {
+                normalizedEndpoint = migrateLegacyEndpoint(normalizedEndpoint);
+                boolean committed = preferences
+                    .edit()
+                    .putString(KEY_ENDPOINT, normalizedEndpoint)
+                    .putBoolean(KEY_LOOPBACK_MIGRATED, true)
+                    .commit();
+                if (!committed) throw new IllegalStateException("unable to migrate cloud endpoint");
+            }
+            return new Connection(normalizedEndpoint, decrypt(encryptedToken), deviceId);
         } catch (RuntimeException exception) {
             clear(context);
             return null;
@@ -92,10 +107,19 @@ final class FocusRuntimeConnectionStore {
                 throw new IllegalArgumentException("endpoint must be HTTPS");
             }
             String value = uri.toString();
-            return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+            String normalized = value.endsWith("/")
+                ? value.substring(0, value.length() - 1)
+                : value;
+            return normalized;
         } catch (RuntimeException exception) {
             throw new IllegalArgumentException("endpoint is invalid", exception);
         }
+    }
+
+    private static String migrateLegacyEndpoint(String endpoint) {
+        return LEGACY_LOOPBACK_ENDPOINT.equals(endpoint)
+            ? CURRENT_LOOPBACK_ENDPOINT
+            : endpoint;
     }
 
     private static String encrypt(String plaintext) {

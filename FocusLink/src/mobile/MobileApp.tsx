@@ -288,7 +288,11 @@ export function MobileApp() {
       void configureNativeFocusConnection(preferences.endpoint, preferences.token, deviceId).catch(
         () => setCommandNotice('Android 后台连接配置失败；前台同步仍可继续'),
       );
-    } else void clearNativeFocusConnection();
+    }
+    // A non-remembered WebView token lives in sessionStorage and can disappear when
+    // Android reclaims the renderer. That must not silently erase the encrypted native
+    // connection which still powers an active notification. Explicit token removal and
+    // cache reset paths clear the native connection themselves.
   }, [deviceId, preferences]);
 
   useEffect(() => {

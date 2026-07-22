@@ -1,6 +1,6 @@
 {
   "name": "focuslink",
-  "version": "0.12.26",
+  "version": "0.12.27",
   "description": "FocusLink - 全局快捷键驱动的专注时间记录器 + 滴答清单任务关联器",
   "author": "FocusLink",
   "main": "dist-electron/main.js",

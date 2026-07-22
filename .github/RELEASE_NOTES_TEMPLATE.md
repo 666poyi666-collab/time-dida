@@ -1,4 +1,4 @@
-# FocusLink v0.12.26
+# FocusLink v0.12.27
 
 > 发布日期：2026-07-22
 >
@@ -22,8 +22,9 @@
 
 ## 升级提示
 
-- Windows 端关闭正在运行的 FocusLink 后运行安装版。
+- Windows 覆盖安装会先有界关闭当前用户的 FocusLink 后台实例；不再要求手动点“重试”。
 - Android 端可直接覆盖旧版并保留应用数据；使用电脑本机同步服务时，每台网络 ADB 设备都需要独立建立 `tcp:18787` reverse。
+- 旧 Android 默认连接 `http://127.0.0.1:8787` 会在 WebView 与原生后台连接两侧迁移到 `18787`；WebView 被系统回收不会自动删除仍用于活动通知的原生密文。
 
 ## 已知限制
 
@@ -34,7 +35,7 @@
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.12.26-x64.exe` | `<SHA256>` |
-| `FocusLink-0.12.26-x64-portable.exe` | `<SHA256>` |
+| `FocusLink-0.12.27-x64.exe` | `<SHA256>` |
+| `FocusLink-0.12.27-x64-portable.exe` | `<SHA256>` |
 
 同时提供 `SHA256SUMS.txt`。
