@@ -67,7 +67,8 @@ describe('desktop history insights presentation', () => {
       }),
     );
 
-    expect(markup).toContain('今日有效专注');
+    expect(markup).toContain('当日有效专注');
+    expect(markup).toContain('这一天的时间，花在了哪里');
     expect(markup).toContain('20 分钟');
     expect(markup).toContain('完成 1 轮');
     expect(markup).toContain('stats-timeline-detail');

@@ -239,7 +239,7 @@ function DailyTrend({ daily }: { daily: readonly SessionAnalyticsDaily[] }) {
   const max = Math.max(1, ...daily.map((item) => item.activeMs + item.pauseMs));
   const labelStep = Math.max(1, Math.ceil(daily.length / 6));
   return (
-    <div className="daily-trend" aria-label="每日专注与暂停趋势">
+    <div className="daily-trend" role="img" aria-label="每日专注与暂停趋势，详细数值见各日期标签">
       <div
         className="daily-trend-columns"
         style={{ '--trend-columns': daily.length } as CSSProperties}
@@ -254,8 +254,6 @@ function DailyTrend({ daily }: { daily: readonly SessionAnalyticsDaily[] }) {
               className="daily-trend-column"
               key={item.date}
               title={`${formatFullDate(item.date)}：专注 ${formatClockDuration(item.activeMs)}，暂停 ${formatClockDuration(item.pauseMs)}`}
-              role="img"
-              tabIndex={0}
               aria-label={`${formatFullDate(item.date)}：专注 ${formatClockDuration(item.activeMs)}，暂停 ${formatClockDuration(item.pauseMs)}，${item.sessionCount} 场会话`}
             >
               <span className="daily-trend-bars" aria-hidden="true">
@@ -325,15 +323,13 @@ function SubjectDistribution({ subjects }: { subjects: readonly SessionAnalytics
 function HourlyDistribution({ hourly }: { hourly: readonly SessionAnalyticsHourly[] }) {
   const max = Math.max(1, ...hourly.map((item) => item.activeMs + item.pauseMs));
   return (
-    <div className="hourly-distribution" aria-label="24 小时专注与暂停分布">
+    <div className="hourly-distribution" role="img" aria-label="24 小时专注与暂停分布">
       <div className="hourly-columns">
         {hourly.map((item) => (
           <span
             className="hourly-column"
             key={item.hour}
             title={`${String(item.hour).padStart(2, '0')}:00：专注 ${formatClockDuration(item.activeMs)}，暂停 ${formatClockDuration(item.pauseMs)}`}
-            role="img"
-            tabIndex={0}
             aria-label={`${String(item.hour).padStart(2, '0')}:00 至 ${String((item.hour + 1) % 24).padStart(2, '0')}:00，专注 ${formatClockDuration(item.activeMs)}，暂停 ${formatClockDuration(item.pauseMs)}`}
           >
             <i
@@ -451,7 +447,7 @@ function DailyHeatmap({
 }) {
   const max = Math.max(1, ...daily.map((item) => item.activeMs));
   return (
-    <div className="daily-heatmap" aria-label="每日专注热力">
+    <div className="daily-heatmap" role="group" aria-label="每日专注热力">
       {daily.map((item) => {
         const intensity = item.activeMs / max;
         const active = selectedDate === item.date;
@@ -476,7 +472,8 @@ function DailyHeatmap({
 
 function DashboardSkeleton() {
   return (
-    <div className="dashboard-skeleton" aria-label="正在读取统计缓存">
+    <div className="dashboard-skeleton" role="status" aria-live="polite">
+      <span className="sr-only">正在读取统计缓存</span>
       <i />
       <i />
       <i />

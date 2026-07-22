@@ -1560,13 +1560,11 @@ code {
 }
 
 .dashboard-metric strong {
-  overflow: hidden;
   font-family: var(--number);
   font-size: clamp(17px, 4.8vw, 25px);
   font-weight: 550;
   font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .dashboard-band {
@@ -1905,12 +1903,10 @@ code {
 }
 
 .dashboard-pause-cost strong {
-  overflow: hidden;
   font-family: var(--number);
   font-size: clamp(14px, 3.8vw, 21px);
   font-weight: 550;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .dashboard-pause-cost strong.tone-pause {
@@ -1977,6 +1973,8 @@ code {
   z-index: 1;
   font-family: var(--number);
   font-variant-numeric: tabular-nums;
+  padding-inline: 2px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
 }
 
 .daily-heatmap button > strong {
@@ -3434,7 +3432,7 @@ code {
   }
 }
 
-@media (max-width: 370px) {
+@media (max-width: 400px) {
   .daily-heatmap {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }

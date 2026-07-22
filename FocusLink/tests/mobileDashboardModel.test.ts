@@ -48,7 +48,8 @@ describe('mobile dashboard model', () => {
     expect(markup).toContain('日期热力');
     expect(markup).toContain('暂停损耗与时间守恒');
     expect(markup).toContain('有效专注 83%，暂停 17%');
-    expect(markup).toContain('role="img" tabindex="0"');
+    expect(markup).toContain('每日专注与暂停趋势，详细数值见各日期标签');
+    expect(markup).not.toContain('tabindex="0"');
     expect(markup).toContain('09:00 至 10:00，专注 25:00，暂停 05:00');
     expect(markup).toContain('函数复习');
   });

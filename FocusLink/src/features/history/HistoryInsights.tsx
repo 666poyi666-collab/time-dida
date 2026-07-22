@@ -50,7 +50,7 @@ function CountUp({ value, format }: { value: number; format: (current: number) =
   const inView = useInView(ref, { once: true });
   const reduceMotion = useReducedMotion();
   const hasPlayedRef = useRef(false);
-  const [display, setDisplay] = useState(value);
+  const [display, setDisplay] = useState(() => (typeof window === 'undefined' ? value : 0));
   useEffect(() => {
     if (!inView || reduceMotion || hasPlayedRef.current) {
       setDisplay(value);
@@ -84,6 +84,7 @@ export function HistoryInsights({
 }: HistoryInsightsProps) {
   const isEmpty = summary.count === 0;
   const singleDay = isSameLocalDay(range.start, range.end - 1);
+  const isToday = singleDay && isSameLocalDay(range.start, Date.now());
   const tracked = Math.max(0, summary.active + summary.pause);
   const focusRate = percentage(summary.active, tracked);
   const average = summary.count > 0 ? summary.active / summary.count : 0;
@@ -124,13 +125,19 @@ export function HistoryInsights({
     >
       <header className="stats-brief">
         <div className="stats-primary-readout">
-          <span>{singleDay ? '今日有效专注' : '范围内有效专注'}</span>
+          <span>{singleDay ? (isToday ? '今日有效专注' : '当日有效专注') : '范围内有效专注'}</span>
           <strong>
             <CountUp value={summary.active} format={duration} />
           </strong>
         </div>
         <div className="stats-brief-copy">
-          <h2>{singleDay ? '今天的时间，花在了哪里' : '这段时间，投入是否稳定'}</h2>
+          <h2>
+            {singleDay
+              ? isToday
+                ? '今天的时间，花在了哪里'
+                : '这一天的时间，花在了哪里'
+              : '这段时间，投入是否稳定'}
+          </h2>
           <p>
             {singleDay
               ? `完成 ${summary.count} 轮，平均每轮 ${duration(average)}；暂停占已记录时间 ${percentage(summary.pause, tracked)}%。`
