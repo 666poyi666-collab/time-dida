@@ -22,8 +22,14 @@ function useNowTick(active: boolean) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!active) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
+    let timer = 0;
+    const tick = () => {
+      const wallNow = Date.now();
+      setNow(wallNow);
+      timer = window.setTimeout(tick, Math.max(16, 1008 - (wallNow % 1000)));
+    };
+    tick();
+    return () => window.clearTimeout(timer);
   }, [active]);
   return now;
 }

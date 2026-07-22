@@ -1710,8 +1710,10 @@ code {
 }
 
 .subject-row strong {
+  min-width: 0;
   font-size: 12px;
   font-weight: 650;
+  overflow-wrap: anywhere;
 }
 
 .subject-row span,

@@ -217,8 +217,14 @@ export function TemporalRibbon({
       raf = requestAnimationFrame(draw);
     };
 
-    const wakeAtNextActiveSecond = () => {
-      if (disposed || wakeTimer !== null || stateRef.current !== 'running') return;
+    const wakeAtNextLiveSecond = () => {
+      const currentState = stateRef.current;
+      if (
+        disposed ||
+        wakeTimer !== null ||
+        (currentState !== 'running' && currentState !== 'paused')
+      )
+        return;
       const delay = Math.max(16, 1002 - (Date.now() % 1000));
       wakeTimer = window.setTimeout(() => {
         wakeTimer = null;
@@ -250,8 +256,9 @@ export function TemporalRibbon({
           engineRef.current.materialFadeStart !== null)
       ) {
         schedule();
-      } else if (currentState === 'running') {
-        wakeAtNextActiveSecond();
+      } else if (currentState === 'running' || currentState === 'paused') {
+        // reduced-motion disables continuous material animation, not the live clock projection.
+        wakeAtNextLiveSecond();
       }
     }
 

@@ -1,6 +1,6 @@
 # FocusLink v0.12.27
 
-> 发布日期：2026-07-22
+> 发布日期：2026-07-23
 >
 > 对应源码：`<SOURCE_COMMIT>`
 >
@@ -14,11 +14,13 @@
 - 手机、平板与 Web 控制台保留真实专注段和暂停段，使用与桌面一致的时间语义和响应式粒子时间带。
 - 实时控制与已结束账本分别显示状态；Android 回环地址给出 ADB reverse 诊断，局域网或异地连接要求 HTTPS。
 - 手机和平板共用同一 Android APK，并分别通过网络 ADB 覆盖安装与版本核验。
+- Dashboard 热力日期下钻会统一切换全部分析指标；沉浸模式只保留一套计时仪表和时间之带动画实例。
 
 ## 验证
 
 - format、TypeScript、ESLint、全量测试与 Electron 打包已通过。
 - 安装版和便携版 SHA256 与 `SHA256SUMS.txt` 一致。
+- 主窗口和迷你窗口 smoke 验证五套仪表、时间之带、Dashboard、沉浸单实例与 reduced-motion 降级。
 
 ## 升级提示
 

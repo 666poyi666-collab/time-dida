@@ -35,8 +35,14 @@ function useDisplayValues(snapshot: TimerSnapshot | null) {
   useEffect(() => {
     const state = snapshot?.state;
     if (state !== 'running' && state !== 'paused') return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
+    let timer = 0;
+    const tick = () => {
+      const wallNow = Date.now();
+      setNow(wallNow);
+      timer = window.setTimeout(tick, Math.max(16, 1008 - (wallNow % 1000)));
+    };
+    tick();
+    return () => window.clearTimeout(timer);
   }, [snapshot?.state, snapshot?.lastTick, snapshot?.currentPauseStartedAt]);
 
   return useMemo(
@@ -530,27 +536,32 @@ export function TimerPanel() {
         </div>
 
         <div className="timer-zone">
-          <AnimatePresence initial={false} mode="popLayout">
-            <motion.div
-              key={timerStyle}
-              className="timer-dial-stage"
-              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 5 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
-              transition={{ duration: reducedMotion ? 0.08 : 0.24, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <TimerDial
-                ms={mainMs}
-                state={state}
-                style={timerStyle}
-                coreRatio={Math.min(1, cumulativeActiveMs / CORE_GOAL_MS)}
-              />
-            </motion.div>
-          </AnimatePresence>
+          {!immersive && (
+            <AnimatePresence initial={false} mode="popLayout">
+              <motion.div
+                key={timerStyle}
+                className="timer-dial-stage"
+                initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                transition={{
+                  duration: reducedMotion ? 0.08 : 0.24,
+                  ease: [0.16, 1, 0.3, 1],
+                }}
+              >
+                <TimerDial
+                  ms={mainMs}
+                  state={state}
+                  style={timerStyle}
+                  coreRatio={Math.min(1, cumulativeActiveMs / CORE_GOAL_MS)}
+                />
+              </motion.div>
+            </AnimatePresence>
+          )}
           {timerLabel}
         </div>
 
-        <TemporalRibbon snapshot={snapshot} state={state} now={now} />
+        {!immersive && <TemporalRibbon snapshot={snapshot} state={state} now={now} />}
 
         <div className="focus-footer">
           {controls}

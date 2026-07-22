@@ -23,6 +23,14 @@ export function buildMobileDashboard(
   now = Date.now(),
 ): SessionAnalyticsResult {
   const bounds = mobileStatsRange(range, now);
+  return buildMobileDashboardInRange(records, bounds, range === 'today');
+}
+
+export function buildMobileDashboardInRange(
+  records: readonly CachedBundle[],
+  bounds: { start: number; end: number },
+  includeTimeline = true,
+): SessionAnalyticsResult {
   const sessions = records.map((record) => record.bundle.session);
   const segments = records.flatMap((record) =>
     record.bundle.segments.map((segment) => ({ ...segment, cloudFocusId: null })),
@@ -31,8 +39,8 @@ export function buildMobileDashboard(
   return buildSessionAnalytics(
     {
       ...bounds,
-      timelineStart: range === 'today' ? bounds.start : undefined,
-      timelineEnd: range === 'today' ? bounds.end : undefined,
+      timelineStart: includeTimeline ? bounds.start : undefined,
+      timelineEnd: includeTimeline ? bounds.end : undefined,
     },
     { sessions, segments, pauses },
   );

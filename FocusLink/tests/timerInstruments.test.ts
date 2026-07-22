@@ -1,5 +1,7 @@
 // 计时仪表样式迁移与像素仪表字库测试
 import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { resolveTimerStyle, TIMER_STYLES } from '../shared/theme';
 import { formatDurationPadded } from '../src/lib/time';
 import {
@@ -14,6 +16,7 @@ import {
   pixelCells,
   updateFlipMachine,
 } from '../shared/timerInstruments';
+import { TimerDial } from '../src/features/focus/TimerDial';
 
 describe('计时仪表样式解析与旧值迁移', () => {
   it('新仪表样式全部直通', () => {
@@ -71,6 +74,24 @@ describe('像素点阵字库', () => {
     const cells = pixelCells(':');
     expect(cells.every(([x]) => x === 2 || x === 3)).toBe(true);
     expect(cells.length).toBe(8);
+  });
+
+  it('像素冒号按两列宽度重排，所有格点都留在 SVG viewBox 内', () => {
+    const markup = renderToStaticMarkup(
+      createElement(TimerDial, { ms: 61_000, state: 'running', style: 'pixel' }),
+    );
+    const svg = markup.match(
+      /<svg class="pixel-digits" viewBox="0 0 ([\d.]+) [^"]+"[^>]*>(.*?)<\/svg>/,
+    );
+    expect(svg).not.toBeNull();
+    const width = Number(svg?.[1]);
+    const rects = Array.from(
+      svg?.[2].matchAll(/<rect[^>]*x="([\d.]+)"[^>]*width="([\d.]+)"/g) ?? [],
+    );
+    expect(rects.length).toBeGreaterThan(0);
+    expect(
+      Math.max(...rects.map((match) => Number(match[1]) + Number(match[2]))),
+    ).toBeLessThanOrEqual(width);
   });
 });
 

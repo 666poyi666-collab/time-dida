@@ -179,6 +179,22 @@ function FlipChar({ char, animate }: { char: string; animate: boolean }) {
     setMachine((current) => updateFlipMachine(current, char, animate));
   }, [animate, char]);
 
+  // animationend can be cancelled by display/theme/window transitions. A bounded fallback
+  // keeps the mechanical state machine from getting stuck on a half-folded digit.
+  useEffect(() => {
+    if (machine.phase === 'steady') return;
+    const expectedPhase = machine.phase;
+    const expectedSequence = machine.sequence;
+    const timer = window.setTimeout(() => {
+      setMachine((current) =>
+        current.phase === expectedPhase && current.sequence === expectedSequence
+          ? advanceFlipMachine(current)
+          : current,
+      );
+    }, 260);
+    return () => window.clearTimeout(timer);
+  }, [machine.phase, machine.sequence]);
+
   const active = machine.phase !== 'steady';
   const top = active ? machine.to : machine.shown;
   const bottom = active ? machine.from : machine.shown;
@@ -260,15 +276,17 @@ const PixelChar = memo(function PixelChar({
   const rows = PIXEL_FONT[ch] ?? PIXEL_FONT['-'];
   const prevRows = PIXEL_FONT[prevCh] ?? PIXEL_FONT['-'];
   const rects = [];
+  const sourceColumns = ch === ':' ? [2, 3] : Array.from({ length: PIXEL_FONT_COLS }, (_, x) => x);
   for (let y = 0; y < PIXEL_FONT_ROWS; y += 1) {
-    for (let x = 0; x < PIXEL_FONT_COLS; x += 1) {
-      const bit = 1 << (PIXEL_FONT_COLS - 1 - x);
+    for (let renderX = 0; renderX < sourceColumns.length; renderX += 1) {
+      const sourceX = sourceColumns[renderX];
+      const bit = 1 << (PIXEL_FONT_COLS - 1 - sourceX);
       const on = (rows[y] & bit) !== 0;
       const was = (prevRows[y] & bit) !== 0;
       rects.push(
         <rect
-          key={`${x}-${y}`}
-          x={offsetX + x * (CELL + GAP)}
+          key={`${renderX}-${y}`}
+          x={offsetX + renderX * (CELL + GAP)}
           y={y * (CELL + GAP)}
           width={CELL}
           height={CELL}

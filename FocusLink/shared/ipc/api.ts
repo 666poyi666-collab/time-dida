@@ -152,6 +152,8 @@ export interface SessionAnalyticsResult {
   subjects: SessionAnalyticsSubject[];
   hourly: SessionAnalyticsHourly[];
   sessions: FocusSession[];
+  /** 每个会话在当前统计范围内裁剪后的有效专注，用于“最长一轮”等范围 KPI。 */
+  sessionActive: Array<{ sessionId: string; activeMs: number }>;
   timeline: SessionAnalyticsTimelineItem[];
   totals: {
     activeMs: number;

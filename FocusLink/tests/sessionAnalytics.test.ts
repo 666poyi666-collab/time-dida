@@ -76,6 +76,7 @@ describe('buildSessionAnalytics', () => {
       wallMs: 60 * 60 * 1000,
       sessionCount: 1,
     });
+    expect(result.sessionActive).toEqual([{ sessionId: 'session-1', activeMs: 45 * 60 * 1000 }]);
     expect(result.daily).toHaveLength(1);
     expect(result.tasks[0]).toMatchObject({
       taskId: 'task-1',
@@ -242,6 +243,63 @@ describe('buildSessionAnalytics edge cases', () => {
       wallMs: 30 * 60 * 1000,
       sessionCount: 1,
     });
+    expect(secondDayOnly.sessionActive).toEqual([
+      { sessionId: 'cross-midnight', activeMs: 15 * 60 * 1000 },
+    ]);
+  });
+
+  it('does not count a session that ends exactly at the selected day boundary', () => {
+    const nextDay = new Date(2026, 6, 19, 0, 0, 0, 0).getTime();
+    const result = buildSessionAnalytics(
+      { start: nextDay, end: nextDay + 24 * 60 * 60 * 1000 - 1 },
+      {
+        sessions: [
+          session({
+            id: 'ends-at-midnight',
+            startedAt: nextDay - 30 * 60 * 1000,
+            endedAt: nextDay,
+            activeElapsedMs: 30 * 60 * 1000,
+            pauseElapsedMs: 0,
+            wallElapsedMs: 30 * 60 * 1000,
+          }),
+        ],
+        segments: [],
+        pauses: [],
+      },
+    );
+
+    expect(result.sessions).toEqual([]);
+    expect(result.totals.sessionCount).toBe(0);
+    expect(result.daily[0]).toMatchObject({ activeMs: 0, pauseMs: 0, wallMs: 0 });
+  });
+
+  it('keeps identical task ids from different providers separate', () => {
+    const result = buildSessionAnalytics(
+      { start: day, end: day + 24 * 60 * 60 * 1000 - 1 },
+      {
+        sessions: [session()],
+        segments: [
+          segment({
+            id: 'local-segment',
+            taskId: 'same-id',
+            taskSource: 'local',
+            title: '本地任务',
+          }),
+          segment({
+            id: 'remote-segment',
+            taskId: 'same-id',
+            taskSource: 'ticktick',
+            title: '滴答任务',
+          }),
+        ],
+        pauses: [],
+      },
+    );
+
+    expect(result.tasks.map((item) => item.key).sort()).toEqual([
+      'local:same-id',
+      'ticktick:same-id',
+    ]);
   });
 
   it('groups unlinked segments by trimmed title and falls back to 未关联任务', () => {

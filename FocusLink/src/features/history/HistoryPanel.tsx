@@ -159,6 +159,9 @@ export function HistoryPanel() {
 
   // 时间线按自然日分组（保持原有倒序，最新的一天在最上面）。
   const sessionGroups = useMemo(() => {
+    const activeBySession = new Map(
+      (analytics?.sessionActive ?? []).map((item) => [item.sessionId, item.activeMs]),
+    );
     const groups: Array<{
       key: string;
       label: string;
@@ -167,10 +170,12 @@ export function HistoryPanel() {
       activeMs: number;
     }> = [];
     for (const session of filteredSessions) {
-      const key = formatDayLabel(session.startedAt);
+      // 跨午夜会话进入单日范围时归到当前范围日，不再显示在范围外的原始开始日。
+      const displayedAt = Math.max(session.startedAt, range.start);
+      const key = formatDayLabel(displayedAt);
       let group = groups.find((item) => item.key === key);
       if (!group) {
-        const date = new Date(session.startedAt);
+        const date = new Date(displayedAt);
         group = {
           key,
           label: date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' }),
@@ -181,10 +186,10 @@ export function HistoryPanel() {
         groups.push(group);
       }
       group.sessions.push(session);
-      group.activeMs += session.activeElapsedMs;
+      group.activeMs += activeBySession.get(session.id) ?? 0;
     }
     return groups;
-  }, [filteredSessions]);
+  }, [analytics?.sessionActive, filteredSessions, range.start]);
 
   // 会话条目交错入场序号：按时间线展示顺序展开，逐项延迟 40ms（封顶 560ms，总时长 ~800ms）。
   const sessionStaggerIndex = useMemo(() => {
@@ -932,7 +937,6 @@ export function HistoryPanel() {
         {/* 统一分析画布：零数据时同样渲染，由 HistoryInsights 提供完整零状态
             （state-block 说明 + 空图表骨架），不隐藏统计区域。 */}
         <HistoryInsights
-          sessions={filteredSessions}
           summary={rangeStats}
           range={range}
           analytics={analytics}

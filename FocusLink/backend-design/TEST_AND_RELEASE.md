@@ -118,7 +118,7 @@ ANR、ForegroundServiceStartNotAllowedException 或通知通道错误。
 ### UI smoke
 
 - 主窗覆盖深浅主题的 idle、running、paused、任务、统计、设置和 TaskPicker。
-- 契约断言覆盖六套真实界面字体、五套计时仪表、7×9 点阵、翻页 `fold/unfold/steady` DOM 闭环、canvas 时间之带实时渲染与 finished 冻结、统计日报的 KPI/双尺度单日时间轴/多日堆叠柱/100% 任务构成带/暂停损耗，以及 Electron 原生全屏沉浸覆盖层和进入过渡。
+- 契约断言覆盖六套真实界面字体、五套计时仪表、7×9 点阵（含窄冒号不越界）、翻页 `fold/unfold/steady` DOM 闭环与动画取消兜底、canvas 时间之带实时渲染与 finished 冻结、统计日报的 KPI/双尺度单日时间轴/多日堆叠柱/100% 任务构成带/暂停损耗，以及 Electron 原生全屏沉浸覆盖层、进入过渡和全页仅一个 TimerDial/TemporalRibbon 动画实例。
 - 视觉断言要确认主工作面无大面积 `backdrop-filter`/blur/光晕，文字对比与字号下限符合前端规范，reduced-motion 无持续呼吸或位移。
 - 覆盖默认尺寸、980×660 最小尺寸、1280×720、键盘焦点和无横向溢出；多日柱图的每日精确值必须可键盘聚焦。
 - 小窗覆盖 expanded/collapsed、running/paused、实时主题/字体切换、透明边界、DPR、多显示器 work area 和四边吸附；Windows 原生拖拽必须由 `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` 区分按住与释放，断言收起态仅有状态、当前时间、60 格当前分钟秒轨和展开入口，展开态在 `256×70` 外框内完整显示任务名、三项累计与全部控制，时间与按钮分区且按钮不换行；暂停粒子必须跟随消逝边界，并覆盖 320ms 收束与过渡中拖动取消。

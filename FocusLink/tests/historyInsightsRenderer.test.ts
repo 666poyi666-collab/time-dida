@@ -58,7 +58,6 @@ describe('desktop history insights presentation', () => {
 
     const markup = renderToStaticMarkup(
       createElement(HistoryInsights, {
-        sessions: analytics.sessions,
         summary,
         range: { start: selectedStart, end: selectedEnd },
         analytics,

@@ -2,7 +2,6 @@
 // 会话明细只保留下方唯一账本，不在 Dashboard 内重复一份表格。
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useInView, useReducedMotion } from 'framer-motion';
-import type { FocusSession } from '@shared/types';
 import type { SessionAnalyticsResult, SessionAnalyticsTimelineItem } from '@shared/ipc/api';
 import { buildDashboardTaskAllocation } from '@shared/dashboardPresentation';
 import { Icon } from '../../ui/Icon';
@@ -15,7 +14,6 @@ import {
 } from './historyStats';
 
 interface HistoryInsightsProps {
-  sessions: FocusSession[];
   summary: SessionSummary;
   range: TimeRange;
   analytics: SessionAnalyticsResult | null;
@@ -74,7 +72,6 @@ function CountUp({ value, format }: { value: number; format: (current: number) =
 }
 
 export function HistoryInsights({
-  sessions,
   summary,
   range,
   analytics,
@@ -88,7 +85,7 @@ export function HistoryInsights({
   const tracked = Math.max(0, summary.active + summary.pause);
   const focusRate = percentage(summary.active, tracked);
   const average = summary.count > 0 ? summary.active / summary.count : 0;
-  const longest = sessions.reduce((best, session) => Math.max(best, session.activeElapsedMs), 0);
+  const longest = Math.max(0, ...(analytics?.sessionActive.map((item) => item.activeMs) ?? []));
   const activeDays = analytics?.stability.activeDays ?? 0;
 
   if (isEmpty) {

@@ -9,7 +9,12 @@ import {
   type DashboardTaskAllocation,
 } from '@shared/dashboardPresentation';
 import type { CachedBundle } from './cache';
-import { buildMobileDashboard, mobileStatsRange, type MobileStatsRange } from './dashboardModel';
+import {
+  buildMobileDashboard,
+  buildMobileDashboardInRange,
+  mobileStatsRange,
+  type MobileStatsRange,
+} from './dashboardModel';
 import { formatClockDuration } from './runtimeModel';
 import { SessionLedger } from './SessionLedger';
 
@@ -38,19 +43,25 @@ export function DashboardView({
 }: DashboardViewProps) {
   const [range, setRange] = useState<MobileStatsRange>('today');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const analytics = useMemo(
+  const rangeAnalytics = useMemo(
     () => buildMobileDashboard(records, range, referenceNow),
     [records, range, referenceNow],
   );
   const bounds = useMemo(() => mobileStatsRange(range, referenceNow), [range, referenceNow]);
-  const visibleRecords = useMemo(() => {
-    const selectedBounds = selectedDate ? boundsForDate(selectedDate) : bounds;
-    return records.filter((record) => sessionOverlaps(record, selectedBounds));
-  }, [bounds, records, selectedDate]);
-  const longestSessionMs = analytics.sessions.reduce(
-    (longest, session) => Math.max(longest, session.activeElapsedMs),
-    0,
+  const selectedBounds = useMemo(
+    () => (selectedDate ? boundsForDate(selectedDate) : null),
+    [selectedDate],
   );
+  const analytics = useMemo(
+    () =>
+      selectedBounds ? buildMobileDashboardInRange(records, selectedBounds, true) : rangeAnalytics,
+    [rangeAnalytics, records, selectedBounds],
+  );
+  const visibleRecords = useMemo(() => {
+    const visibleBounds = selectedBounds ?? bounds;
+    return records.filter((record) => sessionOverlaps(record, visibleBounds));
+  }, [bounds, records, selectedBounds]);
+  const longestSessionMs = Math.max(0, ...analytics.sessionActive.map((item) => item.activeMs));
   const trackedMs = analytics.totals.activeMs + analytics.totals.pauseMs;
   const focusRate = trackedMs > 0 ? analytics.totals.activeMs / trackedMs : 0;
   const taskAllocation = useMemo(
@@ -182,7 +193,7 @@ export function DashboardView({
               detail={selectedDate ? '再次点击可查看全部日期' : '选择日期查看会话'}
             />
             <DailyHeatmap
-              daily={analytics.daily}
+              daily={rangeAnalytics.daily}
               selectedDate={selectedDate}
               onSelect={(date) => setSelectedDate((current) => (current === date ? null : date))}
             />
@@ -494,7 +505,7 @@ function dashboardConclusion(activeMs: number, pauseMs: number): string {
 function sessionOverlaps(record: CachedBundle, bounds: { start: number; end: number }): boolean {
   const { session } = record.bundle;
   const end = session.endedAt ?? session.startedAt + Math.max(1, session.wallElapsedMs);
-  return session.startedAt <= bounds.end && end >= bounds.start;
+  return session.startedAt <= bounds.end && end > bounds.start;
 }
 
 function boundsForDate(date: string): { start: number; end: number } {

@@ -507,6 +507,8 @@ async function main() {
       hasLedger: Boolean(overlay?.querySelector('.session-ledger-pane')),
       hasReadout: Boolean(overlay?.querySelector('.immersive-readout .timer-dial')),
       hasBand: Boolean(overlay?.querySelector('.immersive-band .ribbon-canvas')),
+      totalDialCount: document.querySelectorAll('.timer-dial').length,
+      totalRibbonCount: document.querySelectorAll('.temporal-ribbon').length,
       hasTotals: overlay?.querySelectorAll('.timer-total').length === 3,
       hasControls: Boolean(overlay?.querySelector('.timer-controls')),
       stageAnimationName: animation?.animationName || null,
@@ -831,6 +833,8 @@ async function main() {
         !results.immersive.hasLedger &&
         results.immersive.hasReadout &&
         results.immersive.hasBand &&
+        results.immersive.totalDialCount === 1 &&
+        results.immersive.totalRibbonCount === 1 &&
         results.immersive.hasTotals &&
         results.immersive.hasControls,
       'immersive mode shows only the complete focus interface',

@@ -53,7 +53,8 @@ function effectiveEnd(start: number, end: number | null, durationMs: number): nu
 }
 
 function overlaps(start: number, end: number, rangeStart: number, rangeEnd: number): boolean {
-  return start <= rangeEnd && end >= rangeStart;
+  // 已结束区间使用 [start, end)；恰好在午夜结束的会话不能泄漏成次日 0ms 幽灵轮次。
+  return start <= rangeEnd && end > rangeStart;
 }
 
 function clippedDuration(start: number, end: number, rangeStart: number, rangeEnd: number): number {
@@ -266,6 +267,42 @@ export function buildSessionAnalytics(
       );
     }
   }
+
+  const sessionActiveMap = new Map<string, number>(
+    sessions.map((session) => [session.id, 0] as const),
+  );
+  for (const segment of segments) {
+    const end = effectiveEnd(segment.startedAt, segment.endedAt, segment.activeElapsedMs);
+    sessionActiveMap.set(
+      segment.sessionId,
+      (sessionActiveMap.get(segment.sessionId) ?? 0) +
+        clippedRecordedDuration(
+          segment.startedAt,
+          end,
+          range.start,
+          range.end,
+          segment.activeElapsedMs,
+        ),
+    );
+  }
+  for (const session of sessions) {
+    if (segmentSessionIds.has(session.id) || session.activeElapsedMs <= 0) continue;
+    const end = effectiveEnd(session.startedAt, session.endedAt, session.wallElapsedMs);
+    sessionActiveMap.set(
+      session.id,
+      clippedRecordedDuration(
+        session.startedAt,
+        end,
+        range.start,
+        range.end,
+        session.activeElapsedMs,
+      ),
+    );
+  }
+  const sessionActive = sessions.map((session) => ({
+    sessionId: session.id,
+    activeMs: sessionActiveMap.get(session.id) ?? 0,
+  }));
   const daily = Array.from(dailyMap.values()).sort((left, right) =>
     left.date.localeCompare(right.date),
   );
@@ -328,7 +365,9 @@ export function buildSessionAnalytics(
   const taskMap = new Map<string, SessionAnalyticsTask>();
   for (const segment of segments) {
     const title = segment.title?.trim() || '未关联任务';
-    const key = segment.taskId ?? `unlinked:${title}`;
+    const key = segment.taskId
+      ? `${segment.taskSource ?? 'unknown'}:${segment.taskId}`
+      : `unlinked:${title}`;
     const item =
       taskMap.get(key) ??
       ({
@@ -494,6 +533,7 @@ export function buildSessionAnalytics(
     subjects,
     hourly,
     sessions,
+    sessionActive,
     timeline,
     totals,
     stability: {
