@@ -1842,7 +1842,8 @@
 .stats-dashboard {
   width: min(100%, 1440px);
   margin-inline: auto;
-  border: 0;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 0;
   background: transparent;
   animation: stats-shift-in 210ms var(--ease-out) both;
 }
