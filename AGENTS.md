@@ -95,6 +95,14 @@ For dida sync changes, also run a real temporary dida task test:
 - verify normal-task complete/uncomplete, and checklist parent-item mutation when those paths changed
 - delete the temporary task
 
+## Git LFS Disk Safety
+
+- Release executables are Git LFS objects. Do not run an unrestricted ordinary `git diff`, GUI change scan, or repeated status poll across `release-v*/FocusLink-*-x64*.exe`; a dirty 200 MB executable can repeatedly invoke `git-lfs filter-process` and fill `.git/lfs/tmp` with hundreds of gigabytes.
+- For read-only repository inspection, exclude release executables from the pathspec or explicitly disable LFS filters for that command. Keep LFS enabled for every add, commit, fetch, pull, push, and release operation.
+- If `.git/lfs/tmp` grows unexpectedly, stop the repeating Git client/command and identify the parent process before deleting anything. Delete temporary files only after no `git-lfs` process is active; never delete `.git/lfs/objects` as if it were temporary storage.
+- A local `.git/info/attributes` override may be used to stop a broken GUI watcher, but it must never be committed. Before staging a release executable, remove that override and run `git check-attr filter diff -- <installer> <portable>`; both files must report `filter: lfs` and `diff: lfs`.
+- Before and after packaging, record the size of `.git/lfs/tmp`. A non-empty or growing directory is a failed release hygiene check and must be resolved before continuing.
+
 ## Release Rules
 
 - Follow `FocusLink/backend-design/TEST_AND_RELEASE.md`; its gates are mandatory.
