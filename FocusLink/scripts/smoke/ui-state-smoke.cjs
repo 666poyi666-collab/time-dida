@@ -550,6 +550,12 @@ async function main() {
     time: document.querySelector('.timer-dial')?.getAttribute('aria-label') || null,
     canvas: document.querySelector('.ribbon-canvas')?.toDataURL() || null,
   }))()`);
+  // Starting a timer can auto-show the mini window when another app owns the
+  // foreground. Restore the isolated main window before exercising analytics
+  // so Chromium does not throttle the hidden renderer during this smoke.
+  await evaluate('window.focuslink.mini.hide()');
+  await send('Page.bringToFront');
+  await delay(250);
   await evaluate('document.querySelector(\'button[aria-label="统计"]\')?.click()');
   await waitForAnyText(['时间范围', '当前时间范围没有专注记录', '加载失败']);
   await delay(650);
