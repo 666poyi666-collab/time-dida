@@ -91,10 +91,14 @@ final class FocusRuntimeSnapshot {
     }
 
     static FocusRuntimeSnapshot idle(Context context) {
+        return idle(context, 0L);
+    }
+
+    static FocusRuntimeSnapshot idle(Context context, long revision) {
         return new FocusRuntimeSnapshot(
             FocusRuntimeContract.STATE_IDLE,
             "",
-            0L,
+            revision,
             "",
             "",
             "",
@@ -103,6 +107,68 @@ final class FocusRuntimeSnapshot {
             false,
             0L,
             System.currentTimeMillis(),
+            SystemClock.elapsedRealtime(),
+            readBootCount(context)
+        );
+    }
+
+    static FocusRuntimeSnapshot fromCloudResponse(Context context, JSONObject response) {
+        if (response == null || response.optInt("protocolVersion", -1) != 1) {
+            throw new IllegalArgumentException("cloud protocol is invalid");
+        }
+        JSONObject snapshot = response.optJSONObject("snapshot");
+        if (snapshot == null) throw new IllegalArgumentException("cloud snapshot is missing");
+        String state = snapshot.optString("state", "");
+        long revision = snapshot.optLong("revision", -1L);
+        if (revision < 0L || revision > FocusRuntimeContract.MAX_SAFE_INTEGER) {
+            throw new IllegalArgumentException("cloud revision is invalid");
+        }
+        if (FocusRuntimeContract.STATE_IDLE.equals(state)) return idle(context, revision);
+        if (
+            !FocusRuntimeContract.STATE_RUNNING.equals(state) &&
+            !FocusRuntimeContract.STATE_PAUSED.equals(state)
+        ) {
+            throw new IllegalArgumentException("cloud state is invalid");
+        }
+        JSONObject session = snapshot.optJSONObject("session");
+        if (session == null || !state.equals(session.optString("state", ""))) {
+            throw new IllegalArgumentException("cloud session is invalid");
+        }
+        String sessionId = session.optString("id", "");
+        long activeElapsedMs = session.optLong("activeElapsedMs", -1L);
+        long pauseElapsedMs = session.optLong("pauseElapsedMs", -1L);
+        long serverTime = response.optLong("serverTime", -1L);
+        if (
+            sessionId.isEmpty() ||
+            sessionId.length() > 200 ||
+            revision < 0L ||
+            activeElapsedMs < 0L ||
+            pauseElapsedMs < 0L ||
+            serverTime < 0L
+        ) {
+            throw new IllegalArgumentException("cloud timing is invalid");
+        }
+        long primaryElapsedMs = activeElapsedMs;
+        if (FocusRuntimeContract.STATE_PAUSED.equals(state)) {
+            long pauseStartedAt = session.optLong("currentPauseStartedAt", -1L);
+            if (pauseStartedAt < 0L || pauseStartedAt > serverTime) {
+                throw new IllegalArgumentException("cloud pause timing is invalid");
+            }
+            primaryElapsedMs = serverTime - pauseStartedAt;
+        }
+        long nowEpochMs = System.currentTimeMillis();
+        return new FocusRuntimeSnapshot(
+            state,
+            sessionId,
+            revision,
+            truncate(session.optString("title", ""), 120),
+            formatDuration(primaryElapsedMs),
+            "专注 " + formatDuration(activeElapsedMs) + " · 暂停 " + formatDuration(pauseElapsedMs),
+            primaryElapsedMs,
+            true,
+            true,
+            nowEpochMs + FocusRuntimeContract.MAX_NATIVE_SNAPSHOT_AGE_MS,
+            nowEpochMs,
             SystemClock.elapsedRealtime(),
             readBootCount(context)
         );
@@ -151,7 +217,7 @@ final class FocusRuntimeSnapshot {
         return new FocusRuntimeSnapshot(
             state,
             active ? sessionId : "",
-            active ? revision : 0L,
+            revision,
             title,
             timeLabel,
             detail,
@@ -231,6 +297,21 @@ final class FocusRuntimeSnapshot {
             throw new IllegalArgumentException("snapshot." + key + " is required");
         }
         return value;
+    }
+
+    private static String truncate(String value, int maxLength) {
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
+    }
+
+    private static String formatDuration(long milliseconds) {
+        long totalSeconds = Math.max(0L, milliseconds / 1000L);
+        long hours = totalSeconds / 3600L;
+        long minutes = (totalSeconds % 3600L) / 60L;
+        long seconds = totalSeconds % 60L;
+        if (hours > 0L) {
+            return String.format(java.util.Locale.ROOT, "%02d:%02d:%02d", hours, minutes, seconds);
+        }
+        return String.format(java.util.Locale.ROOT, "%02d:%02d", minutes, seconds);
     }
 
     private static String optionalString(JSONObject object, String key, int maxLength) {

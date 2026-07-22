@@ -25,7 +25,7 @@ final class FocusRuntimeContract {
     static final String SOURCE_QUICK_SETTINGS = "quick-settings";
 
     static final long MAX_SAFE_INTEGER = 9_007_199_254_740_991L;
-    static final long MAX_NATIVE_SNAPSHOT_AGE_MS = 10L * 60L * 1000L;
+    static final long MAX_NATIVE_SNAPSHOT_AGE_MS = 30L * 60L * 1000L;
     static final long MAX_COMMAND_AGE_MS = 24L * 60L * 60L * 1000L;
     static final int MAX_QUEUED_COMMANDS = 32;
 

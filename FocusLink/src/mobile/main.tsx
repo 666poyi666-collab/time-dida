@@ -1,8 +1,11 @@
 import ReactDOM from 'react-dom/client';
 import { MobileApp } from './MobileApp';
+import { applyMobileAppearance, loadMobileAppearance } from './appearance';
 import './mobile.css';
+import './mobile-confirm.css';
 
 document.documentElement.dataset.runtime = 'mobile-focus';
+applyMobileAppearance(loadMobileAppearance());
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<MobileApp />);
 

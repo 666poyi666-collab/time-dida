@@ -1,0 +1,101 @@
+.mobile-confirm-layer {
+  position: fixed;
+  z-index: 200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  background: rgb(10 16 13 / 0.52);
+}
+
+.mobile-confirm-dialog {
+  width: min(100%, 430px);
+  padding: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: var(--shadow-modal);
+  animation: mobile-confirm-enter 180ms var(--ease-fluid) both;
+}
+
+.mobile-confirm-mark {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  margin-bottom: 12px;
+  border: 1px solid var(--focus);
+  border-radius: 50%;
+  color: var(--focus);
+  font-family: var(--number);
+  font-weight: 700;
+}
+
+.mobile-confirm-dialog.is-danger .mobile-confirm-mark {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.mobile-confirm-dialog h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.mobile-confirm-dialog p {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mobile-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.mobile-confirm-actions button {
+  min-height: 38px;
+  padding: 7px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.mobile-confirm-cancel {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+}
+
+.mobile-confirm-primary {
+  border: 1px solid var(--focus);
+  background: var(--focus);
+  color: rgb(var(--app-accent-fg));
+}
+
+.mobile-confirm-dialog.is-danger .mobile-confirm-primary {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+@keyframes mobile-confirm-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-confirm-dialog {
+    animation: none;
+  }
+}

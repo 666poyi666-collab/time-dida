@@ -118,6 +118,18 @@ describe('sync queue rate limiting and batching', () => {
     vi.useRealTimers();
   });
 
+  it('drains every successful batch during an explicit user retry', async () => {
+    addPendingItems(20);
+    const { runPendingNow } = await loadSyncService();
+
+    await expect(runPendingNow()).resolves.toEqual({
+      processed: 20,
+      succeeded: 20,
+      failed: 0,
+    });
+    expect(harness.queue.every((item) => item.status === 'synced')).toBe(true);
+  });
+
   it('processes at most eight items per run and leaves the backlog pending', async () => {
     const items = addPendingItems(10);
     const { runPending } = await loadSyncService();
@@ -341,5 +353,20 @@ describe('sync queue rate limiting and batching', () => {
     expect(item.status).toBe('failed');
     expect(item.lastError).toBe('network down');
     expect(harness.createFocusRecord).toHaveBeenCalledTimes(5);
+  });
+
+  it('reactivates failed items so a manual retry can process them again', async () => {
+    const [item] = addPendingItems(1);
+    item.status = 'failed';
+    item.retryCount = 5;
+    item.lastError = 'network down';
+    const { retryItem, runPending } = await loadSyncService();
+
+    await retryItem(item.id);
+    expect(item).toMatchObject({ status: 'pending', retryCount: 0, lastError: null });
+
+    await expect(runPending()).resolves.toEqual({ processed: 1, succeeded: 1, failed: 0 });
+    expect(item.status).toBe('synced');
+    expect(harness.createFocusRecord).toHaveBeenCalledTimes(1);
   });
 });

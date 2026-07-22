@@ -439,7 +439,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   deviceSync: {
     enabled: false,
-    endpoint: 'http://127.0.0.1:8787',
+    // 8787 is commonly claimed by desktop utilities on Windows (for example Baidu Netdisk).
+    // Keep the FocusLink loopback test service on its own port so a fresh install can connect.
+    endpoint: 'http://127.0.0.1:18787',
     autoSync: true,
     liveControlEnabled: false,
   },

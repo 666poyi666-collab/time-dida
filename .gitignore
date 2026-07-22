@@ -7,9 +7,10 @@
 /FocusLink/.tmp/
 /FocusLink/.visual-dist*/
 /FocusLink/.visual-review-*/
+/FocusLink/NVIDIA Corporation/
 release/
-release-v*/*
-!release-v*/RELEASE_NOTES.md
+# Versioned release-v*/ directories are the reproducible delivery record. Their
+# two LFS executables, SHA256SUMS.txt and RELEASE_NOTES.md must remain visible.
 /visual-unpacked-v*/
 *.log
 .env
@@ -21,5 +22,3 @@ focuslink-data/
 design-pack/
 
 # design workshop assets
-visual-review/mock-v2/fonts/
-visual-review/styles-v3/frames/

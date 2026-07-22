@@ -122,6 +122,18 @@ export interface SessionAnalyticsTask {
   segmentCount: number;
 }
 
+export interface SessionAnalyticsSubject {
+  subject: TomatodoSubject;
+  activeMs: number;
+  segmentCount: number;
+}
+
+export interface SessionAnalyticsHourly {
+  hour: number;
+  activeMs: number;
+  pauseMs: number;
+}
+
 export interface SessionAnalyticsTimelineItem {
   id: string;
   sessionId: string;
@@ -137,6 +149,8 @@ export interface SessionAnalyticsResult {
   range: SessionAnalyticsRange;
   daily: SessionAnalyticsDaily[];
   tasks: SessionAnalyticsTask[];
+  subjects: SessionAnalyticsSubject[];
+  hourly: SessionAnalyticsHourly[];
   sessions: FocusSession[];
   timeline: SessionAnalyticsTimelineItem[];
   totals: {
@@ -293,8 +307,18 @@ export interface FocusLinkToast {
 }
 
 export interface MiniDockTransition {
-  phase: 'prepare' | 'cancel';
+  phase: 'prepare' | 'settled' | 'cancel';
   edge: 'left' | 'right' | 'top' | 'bottom' | null;
+  placement:
+    | 'left'
+    | 'right'
+    | 'top'
+    | 'bottom'
+    | 'top-left'
+    | 'top-right'
+    | 'bottom-left'
+    | 'bottom-right'
+    | null;
 }
 
 /** Main-process events accepted by the renderer-facing subscription API. */
@@ -417,6 +441,7 @@ export interface FocusLinkAPI {
     list(): Promise<SyncQueueItem[]>;
     retry(id: string): Promise<void>;
     runPending(): Promise<RunPendingResult>;
+    runPendingNow(): Promise<RunPendingResult>;
     resyncSegment(segmentId: string): Promise<ResyncSegmentResult>;
   };
   /** FocusLink ledger replication. This is intentionally separate from dida `sync`. */

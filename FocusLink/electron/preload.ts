@@ -117,6 +117,7 @@ const api = {
     list: () => ipcRenderer.invoke('sync:list'),
     retry: (id: string) => ipcRenderer.invoke('sync:retry', id),
     runPending: () => ipcRenderer.invoke('sync:run-pending'),
+    runPendingNow: () => ipcRenderer.invoke('sync:run-pending-now'),
     resyncSegment: (segmentId: string) => ipcRenderer.invoke('sync:resync-segment', segmentId),
   },
   deviceSync: {

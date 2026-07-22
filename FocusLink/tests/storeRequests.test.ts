@@ -1,9 +1,14 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/app/store';
 
 describe('one-shot task picker requests', () => {
   beforeEach(() => {
-    useStore.setState({ taskPickerRequest: 0 });
+    vi.useFakeTimers();
+    useStore.setState({ taskPickerRequest: 0, toasts: [] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('is consumed after the timer page handles it', () => {
@@ -12,5 +17,17 @@ describe('one-shot task picker requests', () => {
 
     useStore.getState().consumeTaskPickerRequest();
     expect(useStore.getState().taskPickerRequest).toBe(0);
+  });
+
+  it('does not stack the same visible error hundreds of times', () => {
+    const { addToast } = useStore.getState();
+
+    addToast('无法连接实时同步服务', 'error');
+    addToast('无法连接实时同步服务', 'error');
+    addToast('无法连接实时同步服务', 'error');
+
+    expect(useStore.getState().toasts).toHaveLength(1);
+    vi.advanceTimersByTime(3_200);
+    expect(useStore.getState().toasts).toHaveLength(0);
   });
 });

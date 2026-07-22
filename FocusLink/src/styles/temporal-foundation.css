@@ -80,6 +80,8 @@
   --app-pause-soft: 251 234 232;
   --app-warning: 178 111 29;
   --app-danger: 160 43 32;
+  --app-danger-solid: 160 43 32;
+  --app-danger-solid-fg: 255 255 255;
   --app-info: var(--app-accent);
   --app-ink: 24 26 29;
   --app-ink-fg: 250 249 246;
@@ -158,6 +160,8 @@
   --app-pause-soft: 58 27 24;
   --app-warning: 225 170 90;
   --app-danger: 255 138 128;
+  --app-danger-solid: 137 37 30;
+  --app-danger-solid-fg: 255 255 255;
   --app-ink: 239 239 235;
   --app-ink-fg: 18 20 23;
   --app-grid: 239 239 235;
@@ -343,7 +347,7 @@ button:disabled {
 
 .text-page-title {
   font: 600 30px/1.12 var(--font-ui);
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 .text-body {
   color: rgb(var(--app-text));

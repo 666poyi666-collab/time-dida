@@ -447,70 +447,72 @@ export function TaskWorkspace() {
                   : { duration: 0.24, ease: [0.16, 1, 0.3, 1] }
               }
             >
-            {loading ? (
-              <TaskSkeletonList />
-            ) : loadError ? (
-              <TaskEmpty
-                danger
-                icon={<Icon.CloudOff size="lg" />}
-                title="无法读取滴答清单"
-                detail={loadError}
-                action="重新连接"
-                onAction={() => refresh(filter === 'completed', false, completedDays, true)}
-              />
-            ) : filter === 'open' ? (
-              limitedOpenTree.length === 0 ? (
+              {loading ? (
+                <TaskSkeletonList />
+              ) : loadError ? (
                 <TaskEmpty
-                  icon={query ? <Icon.Search size="lg" /> : <Icon.CheckCircle size="lg" />}
-                  title={query ? '没有匹配的任务' : '这里已经清空'}
-                  detail={query ? '换个关键词或清单试试。' : '完成的任务会在“已完成”里保留。'}
+                  danger
+                  icon={<Icon.CloudOff size="lg" />}
+                  title="无法读取滴答清单"
+                  detail={loadError}
+                  action="重新连接"
+                  onAction={() => refresh(filter === 'completed', false, completedDays, true)}
+                />
+              ) : filter === 'open' ? (
+                limitedOpenTree.length === 0 ? (
+                  <TaskEmpty
+                    icon={query ? <Icon.Search size="lg" /> : <Icon.CheckCircle size="lg" />}
+                    title={query ? '没有匹配的任务' : '这里已经清空'}
+                    detail={query ? '换个关键词或清单试试。' : '完成的任务会在“已完成”里保留。'}
+                  />
+                ) : (
+                  <TaskTree
+                    tasks={limitedOpenTree}
+                    collapsed={collapsed}
+                    onToggleCollapse={toggleCollapse}
+                    className="task-workbench-tree"
+                    renderRow={(context) => (
+                      <WorkbenchTaskRow
+                        {...context}
+                        project={
+                          context.task.projectId
+                            ? projectById.get(context.task.projectId)
+                            : undefined
+                        }
+                        mutating={mutatingTaskIds.has(context.task.id)}
+                        checking={completionGraceIds.has(context.task.id)}
+                        currentTaskId={snapshot?.currentTaskId ?? null}
+                        timerState={snapshot?.state ?? 'idle'}
+                        onToggleCompleted={() => toggleCompleted(context.task)}
+                        onFocus={() => focusTask(context.task)}
+                      />
+                    )}
+                  />
+                )
+              ) : visibleCompletedEntries.length === 0 ? (
+                <TaskEmpty
+                  icon={<Icon.History size="lg" />}
+                  title={query ? '没有匹配的已完成任务' : '这个范围内没有完成记录'}
+                  detail={query ? '试试任务名称中的其他关键词。' : '可以扩大日期范围继续查找。'}
                 />
               ) : (
-                <TaskTree
-                  tasks={limitedOpenTree}
-                  collapsed={collapsed}
-                  onToggleCollapse={toggleCollapse}
-                  className="task-workbench-tree"
-                  renderRow={(context) => (
-                    <WorkbenchTaskRow
-                      {...context}
-                      project={
-                        context.task.projectId ? projectById.get(context.task.projectId) : undefined
-                      }
-                      mutating={mutatingTaskIds.has(context.task.id)}
-                      checking={completionGraceIds.has(context.task.id)}
-                      currentTaskId={snapshot?.currentTaskId ?? null}
-                      timerState={snapshot?.state ?? 'idle'}
-                      onToggleCompleted={() => toggleCompleted(context.task)}
-                      onFocus={() => focusTask(context.task)}
-                    />
-                  )}
+                <CompletedTaskList
+                  entries={visibleCompletedEntries}
+                  projects={projectById}
+                  mutatingTaskIds={mutatingTaskIds}
+                  onRestore={(task) => toggleCompleted(task, false)}
                 />
-              )
-            ) : visibleCompletedEntries.length === 0 ? (
-              <TaskEmpty
-                icon={<Icon.History size="lg" />}
-                title={query ? '没有匹配的已完成任务' : '这个范围内没有完成记录'}
-                detail={query ? '试试任务名称中的其他关键词。' : '可以扩大日期范围继续查找。'}
-              />
-            ) : (
-              <CompletedTaskList
-                entries={visibleCompletedEntries}
-                projects={projectById}
-                mutatingTaskIds={mutatingTaskIds}
-                onRestore={(task) => toggleCompleted(task, false)}
-              />
-            )}
+              )}
 
-            {hasMore && !loading && !loadError && (
-              <button
-                type="button"
-                className="btn-outline task-load-more"
-                onClick={() => setVisibleLimit((current) => current + TASK_PAGE_SIZE)}
-              >
-                再显示 {Math.min(TASK_PAGE_SIZE, displayedCount - visibleLimit)} 项
-              </button>
-            )}
+              {hasMore && !loading && !loadError && (
+                <button
+                  type="button"
+                  className="btn-outline task-load-more"
+                  onClick={() => setVisibleLimit((current) => current + TASK_PAGE_SIZE)}
+                >
+                  再显示 {Math.min(TASK_PAGE_SIZE, displayedCount - visibleLimit)} 项
+                </button>
+              )}
             </motion.div>
           </div>
         </section>

@@ -7,15 +7,38 @@
 
 !macro closeCurrentUserFocusLink
   DetailPrint `Closing current-user "${PRODUCT_NAME}" processes...`
-  nsExec::Exec `$SYSDIR\cmd.exe /c taskkill /im "${APP_EXECUTABLE_FILENAME}" /fi "USERNAME eq %USERNAME%"`
+  ; The old uninstaller can run elevated and may not match TASKKILL's textual
+  ; USERNAME filter. Resolve the current user's profile and stop only FocusLink
+  ; processes whose executable path is inside that profile (including temp smoke
+  ; installs). Other Windows accounts and unrelated paths are untouched.
+  nsExec::Exec `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$$profile=[Environment]::GetFolderPath('UserProfile'); Get-Process -Name 'FocusLink' -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$profile, [System.StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { $$_.CloseMainWindow() | Out-Null }"`
   Pop $R1
-  Sleep 900
+  Sleep 1200
+
+  nsExec::Exec `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$$profile=[Environment]::GetFolderPath('UserProfile'); Get-Process -Name 'FocusLink' -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$profile, [System.StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
+  Pop $R1
+  Sleep 1200
+
+  ; TASKKILL reports process owners as DOMAIN\user (or COMPUTER\user). A bare
+  ; %USERNAME% filter can miss every Electron process and leave the stock
+  ; installer to show its misleading "end process and retry" page.
+  nsExec::Exec `$SYSDIR\cmd.exe /d /c taskkill /im "${APP_EXECUTABLE_FILENAME}" /fi "USERNAME eq %USERDOMAIN%\%USERNAME%"`
+  Pop $R1
+  ; Electron has a main process, tray/mini windows and Chromium children.
+  ; Give the graceful close enough time to flush SQLite before forcing it.
+  Sleep 1200
 
   ; /IM targets every Electron child with the same image name. Do not add /T:
   ; walking the Chromium process tree can hang while children are exiting.
-  nsExec::Exec `$SYSDIR\cmd.exe /c taskkill /f /im "${APP_EXECUTABLE_FILENAME}" /fi "USERNAME eq %USERNAME%"`
+  nsExec::Exec `$SYSDIR\cmd.exe /d /c taskkill /f /im "${APP_EXECUTABLE_FILENAME}" /fi "USERNAME eq %USERDOMAIN%\%USERNAME%"`
   Pop $R1
-  Sleep 400
+  Sleep 1200
+
+  ; A renderer can respawn while the main process is leaving. One bounded
+  ; second pass prevents the old uninstaller from opening its retry dialog.
+  nsExec::Exec `$SYSDIR\cmd.exe /d /c taskkill /f /im "${APP_EXECUTABLE_FILENAME}" /fi "USERNAME eq %USERDOMAIN%\%USERNAME%"`
+  Pop $R1
+  Sleep 1600
 !macroend
 
 ; Assisted installers can execute the install section inside a UAC inner

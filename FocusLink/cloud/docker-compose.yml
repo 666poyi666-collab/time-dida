@@ -1,0 +1,29 @@
+services:
+  focuslink-web:
+    build:
+      context: ..
+      dockerfile: cloud/Web.Dockerfile
+    restart: unless-stopped
+    expose:
+      - "80"
+
+  focuslink-cloud:
+    build:
+      context: ..
+      dockerfile: cloud/Dockerfile
+    restart: unless-stopped
+    environment:
+      FOCUSLINK_CLOUD_MODE: production
+      FOCUSLINK_CLOUD_ACCOUNTS: ${FOCUSLINK_CLOUD_ACCOUNTS:?set account credentials in Coolify}
+      FOCUSLINK_CLOUD_ALLOWED_ORIGINS: ${FOCUSLINK_CLOUD_ALLOWED_ORIGINS:?set exact HTTPS web origins in Coolify}
+      FOCUSLINK_CLOUD_REQUIRE_HTTPS: "true"
+      FOCUSLINK_CLOUD_RATE_LIMIT: ${FOCUSLINK_CLOUD_RATE_LIMIT:-600}
+      FOCUSLINK_CLOUD_STORE: /data/focuslink-cloud.json
+      PORT: "8787"
+    expose:
+      - "8787"
+    volumes:
+      - focuslink-cloud-data:/data
+
+volumes:
+  focuslink-cloud-data:

@@ -6,10 +6,10 @@
 //   番茄 To-do 使用「已写入本地/待上传/上传已确认」。
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../app/store';
+import { ipcErrorMessage } from '../../app/ipcError';
 import type { AppSettings } from '@shared/types';
 import type { DeviceSyncStatus, TomatodoBridgeStatus } from '@shared/ipc/api';
 import { APP_VERSION } from '@shared/version';
-import { TOMATODO_SUBJECT_OPTIONS } from '@shared/tomatodoPolicy';
 import { resolveFontProfile, resolveTimerStyle } from '@shared/theme';
 import { motion } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
@@ -93,9 +93,6 @@ const TIMER_STYLE_OPTIONS = [
   label: string;
   note: string;
 }>;
-
-// 番茄 To-do 学科下拉的可选值（与 TOMATODO_SUBJECT_OPTIONS 同源）
-const TOMATODO_SUBJECT_VALUES = TOMATODO_SUBJECT_OPTIONS.map((subject) => subject.value);
 
 type HotkeyKey = keyof AppSettings['hotkeys'];
 type HotkeyRegistrationStatus = {
@@ -269,24 +266,29 @@ export function SettingsPanel() {
       setDeviceSyncToken('');
       setSettings(await window.focuslink.settings.get());
       if (status.enabled && status.configured) {
-        const result = await window.focuslink.deviceSync.syncNow();
-        await refreshDeviceSyncStatus();
-        if (result.unresolvedConflicts > 0 || result.rejected > 0) {
-          addToast(
-            `连接已保存；同步仍有 ${result.unresolvedConflicts} 个冲突、${result.rejected} 个拒绝项`,
-            'error',
-          );
-        } else {
-          addToast(
-            `连接并同步成功：上传 ${result.pushed}，导入 ${result.imported}${status.liveControlEnabled ? '，实时连接正在建立' : ''}`,
-            'success',
-          );
+        try {
+          const result = await window.focuslink.deviceSync.syncNow();
+          await refreshDeviceSyncStatus();
+          if (result.unresolvedConflicts > 0 || result.rejected > 0) {
+            addToast(
+              `连接已保存；同步仍有 ${result.unresolvedConflicts} 个冲突、${result.rejected} 个拒绝项`,
+              'error',
+            );
+          } else {
+            addToast(
+              `连接并同步成功：上传 ${result.pushed}，导入 ${result.imported}${status.liveControlEnabled ? '，实时连接正在建立' : ''}`,
+              'success',
+            );
+          }
+        } catch (error) {
+          await refreshDeviceSyncStatus();
+          addToast(`连接配置已保存；${ipcErrorMessage(error)}`, 'info');
         }
       } else {
         addToast('跨设备同步连接已保存', 'success');
       }
     } catch (error) {
-      addToast(`保存失败：${error instanceof Error ? error.message : String(error)}`, 'error');
+      addToast(`保存失败：${ipcErrorMessage(error)}`, 'error');
     } finally {
       setDeviceSyncSaving(false);
     }
@@ -306,10 +308,7 @@ export function SettingsPanel() {
         addToast(`跨设备同步完成：上传 ${result.pushed}，导入 ${result.imported}`, 'success');
       }
     } catch (error) {
-      addToast(
-        `跨设备同步失败：${error instanceof Error ? error.message : String(error)}`,
-        'error',
-      );
+      addToast(`跨设备同步失败：${ipcErrorMessage(error)}`, 'error');
       await refreshDeviceSyncStatus();
     } finally {
       setDeviceSyncRunning(false);
@@ -319,20 +318,31 @@ export function SettingsPanel() {
   const handleRunDidaSync = async () => {
     setDidaSyncRunning(true);
     try {
-      const result = await window.focuslink.sync.runPending();
+      // `runPending` 只处理 status=pending 的队列项。达到重试上限后，
+      // 项目会持久化为 failed；若只调用 runPending，点击“立即重试”
+      // 看起来就像没有任何反应（典型表现是几十条失败记录始终不变）。
+      // 每次手动重试前先读取主进程中的最新队列并逐项恢复失败项，
+      // 避免依赖可能已经过期的 React 状态快照。
+      const latestQueue = await window.focuslink.sync.list();
+      const failedItems = latestQueue.filter((item) => item.status === 'failed');
+      if (failedItems.length > 0) {
+        await Promise.all(failedItems.map((item) => window.focuslink.sync.retry(item.id)));
+      }
+      const result = await window.focuslink.sync.runPendingNow();
       await refreshSyncState();
       if (result.failed > 0) {
         addToast(`${result.failed} 条同步失败，请检查连接页诊断`, 'error');
+      } else if (result.processed === 0 && failedItems.length > 0) {
+        // 例如仅本地模式或限流冷却：队列已经成功恢复为 pending，
+        // 但本轮暂未实际发起远端请求。明确告知用户而非显示“没有未同步记录”。
+        addToast(`已恢复 ${failedItems.length} 条失败记录，等待连接恢复后自动重试`, 'info');
       } else if (result.succeeded > 0) {
         addToast(`已同步 ${result.succeeded} 条记录到滴答清单`, 'success');
       } else {
         addToast('当前没有未同步的滴答记录', 'info');
       }
     } catch (error) {
-      addToast(
-        `同步到滴答清单失败：${error instanceof Error ? error.message : String(error)}`,
-        'error',
-      );
+      addToast(`同步到滴答清单失败：${ipcErrorMessage(error)}`, 'error');
     } finally {
       setDidaSyncRunning(false);
     }
@@ -672,6 +682,9 @@ export function SettingsPanel() {
         ]
           .filter(Boolean)
           .join(' · ');
+  const deviceSyncTransportUnavailable = /无法连接跨设备同步服务|跨设备同步请求超时/i.test(
+    deviceSyncStatus?.lastError ?? '',
+  );
 
   const tomatodoBridgeLabel = (() => {
     switch (tomatodoBridge?.state) {
@@ -1280,7 +1293,7 @@ export function SettingsPanel() {
                       })
                     }
                     onBlur={() => void persistDebouncedSettings()}
-                    placeholder="http://127.0.0.1:8787"
+                    placeholder="http://127.0.0.1:18787"
                   />
                 </Row>
                 <Row
@@ -1316,7 +1329,9 @@ export function SettingsPanel() {
                 <div
                   className={`settings-status-strip ${
                     deviceSyncStatus?.lastError
-                      ? 'tone-danger'
+                      ? deviceSyncTransportUnavailable
+                        ? 'tone-warning'
+                        : 'tone-danger'
                       : deviceSyncStatus?.lastSyncAt
                         ? 'tone-success'
                         : deviceSyncStatus?.configured
@@ -1326,7 +1341,7 @@ export function SettingsPanel() {
                   aria-live="polite"
                 >
                   <span className="settings-status-strip-icon">
-                    {deviceSyncStatus?.lastError ? (
+                    {deviceSyncStatus?.lastError && !deviceSyncTransportUnavailable ? (
                       <Icon.AlertCircle size="sm" />
                     ) : (
                       <Icon.Cloud size="sm" />
@@ -1335,7 +1350,9 @@ export function SettingsPanel() {
                   <div className="settings-status-strip-copy">
                     <p className="settings-status-strip-title">
                       {deviceSyncStatus?.lastError
-                        ? '跨设备同步失败'
+                        ? deviceSyncTransportUnavailable
+                          ? '同步服务未连接，配置已保存'
+                          : '跨设备同步失败'
                         : deviceSyncStatus?.lastSyncAt
                           ? '账本已完成跨设备同步'
                           : deviceSyncStatus?.configured
@@ -1352,12 +1369,12 @@ export function SettingsPanel() {
                     <p className="settings-status-strip-desc">
                       {deviceSyncStatus?.lastError
                         ? deviceSyncStatus.lastError
-                        : deviceSyncStatus?.lastSyncAt
-                          ? `上次同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}`
-                          : deviceSyncStatus?.liveControlEnabled
-                            ? deviceSyncStatus.liveConnected
-                              ? `实时连接已确认 · rev ${deviceSyncStatus.liveRevision ?? 0} · ${deviceSyncStatus.liveState}`
-                              : 'PC 实时控制已启用，正在等待连接；第三方凭据与本地路径不会上传'
+                        : deviceSyncStatus?.liveControlEnabled
+                          ? deviceSyncStatus.liveConnected
+                            ? `实时连接已确认 · rev ${deviceSyncStatus.liveRevision ?? 0} · ${deviceSyncStatus.liveState}${deviceSyncStatus.lastSyncAt ? ` · 上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}` : ''}`
+                            : `实时连接未确认；${deviceSyncStatus.lastSyncAt ? `上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')} · ` : ''}本机计时仍可使用，第三方凭据与本地路径不会上传`
+                          : deviceSyncStatus?.lastSyncAt
+                            ? `上次同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}`
                             : '当前只同步已结束会话；第三方凭据与本地路径不会上传'}
                     </p>
                   </div>
@@ -1390,6 +1407,25 @@ export function SettingsPanel() {
                     </button>
                   </div>
                 </div>
+                <details className="settings-disclosure mt-2.5">
+                  <summary>同步报错怎么处理</summary>
+                  <div className="space-y-1.5 text-xs leading-5 text-[var(--text-secondary)]">
+                    <p>
+                      <code>FL-SYNC-001</code> / <code>fetch failed</code>：实时服务地址不可达。
+                      关闭「PC
+                      参与实时专注」可继续使用本机计时；要做跨设备实时专注，请先启动同步服务并确认
+                      <code>/health</code> 返回 200。
+                    </p>
+                    <p>
+                      <code>FL-SYNC-002</code>
+                      ：已结束账本同步不可达。网络恢复后点击「立即同步」，本地记录不会丢失。
+                    </p>
+                    <p>
+                      完整错误编号、PowerShell 检查命令和日志位置见项目中的
+                      `backend-design/SYNC_TROUBLESHOOTING.md`。
+                    </p>
+                  </div>
+                </details>
               </Section>
 
               <Section
@@ -1468,7 +1504,7 @@ export function SettingsPanel() {
                 title="番茄 To-do 同步"
                 desc="专注结束后先安全写入本地；待上传记录由你按需连接并上传。"
               >
-                <Row label="启用番茄 To-do 同步" desc="自动匹配六大学科；未识别时使用下方默认分类">
+                <Row label="启用番茄 To-do 同步" desc="自动匹配六大学科；未识别时固定归入学习">
                   <Toggle
                     label="启用番茄 To-do 同步"
                     checked={settings.tomatodo.enabled}
@@ -1477,20 +1513,11 @@ export function SettingsPanel() {
                 </Row>
                 {settings.tomatodo.enabled && (
                   <>
-                    <Row label="未识别时归类">
-                      <SelectMenu
-                        label="未识别时归类"
-                        value={settings.tomatodo.defaultSubject}
-                        options={TOMATODO_SUBJECT_VALUES}
-                        onChange={(subject) =>
-                          update({
-                            tomatodo: {
-                              ...settings.tomatodo,
-                              defaultSubject: subject as AppSettings['tomatodo']['defaultSubject'],
-                            },
-                          })
-                        }
-                      />
+                    <Row
+                      label="未识别时归类"
+                      desc="语文、数学、英语、物理、化学、生物可在片段明细中直接调整"
+                    >
+                      <span className="settings-fixed-value">学习</span>
                     </Row>
                     <details className="settings-disclosure mt-2.5">
                       <summary className="motion-press">高级：自定义数据库路径</summary>
@@ -1815,118 +1842,7 @@ function Toggle({
 }
 
 /**
- * 下拉菜单：触发按钮 + .motion-popover 弹层（动画契约见 motion.css，
- * 样式为 settings 局部专属，已在 settings.css 注明归口）。
- * 支持点击外部 / Escape 关闭、上下方向键移动焦点、Enter 选择。
- */
-function SelectMenu({
-  label,
-  value,
-  options,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  options: readonly string[];
-  onChange: (value: string) => void;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-
-  // 点击菜单外部时关闭
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
-  }, [open]);
-
-  // 打开时把焦点放到当前选中项，保证键盘可立即操作
-  useEffect(() => {
-    if (!open) return;
-    rootRef.current
-      ?.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]')
-      ?.focus();
-  }, [open]);
-
-  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const items = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'),
-    );
-    if (items.length === 0) return;
-    const index = items.indexOf(document.activeElement as HTMLButtonElement);
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      items[(index + 1) % items.length]?.focus();
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      items[(index - 1 + items.length) % items.length]?.focus();
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      setOpen(false);
-      triggerRef.current?.focus();
-    }
-  };
-
-  return (
-    <div className="settings-select" ref={rootRef}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="settings-select-trigger"
-        disabled={disabled}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={label}
-        onClick={() => setOpen((v) => !v)}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            setOpen(true);
-          }
-        }}
-      >
-        <span className="settings-select-value">{value}</span>
-        <Icon.ChevronDown size="xs" className={`settings-select-chevron ${open ? 'open' : ''}`} />
-      </button>
-      {open && (
-        <div
-          className="settings-select-menu motion-popover"
-          role="listbox"
-          aria-label={label}
-          style={{ '--popover-origin': 'top right' } as React.CSSProperties}
-          onKeyDown={handleMenuKeyDown}
-        >
-          {options.map((option) => (
-            <button
-              key={option}
-              type="button"
-              role="option"
-              aria-selected={option === value}
-              className={`settings-select-option ${option === value ? 'active' : ''}`}
-              onClick={() => {
-                onChange(option);
-                setOpen(false);
-                triggerRef.current?.focus();
-              }}
-            >
-              <span>{option}</span>
-              {option === value && <Icon.Check size="xs" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * 危险操作二次确认按钮：第一次点击进入待确认态（.btn-pause 红色实心），
+ * 危险操作二次确认按钮：第一次点击进入待确认态（.btn-danger 深红实心），
  * 3.2s 内再次点击才真正执行，失焦或超时自动还原。
  */
 function ConfirmButton({
@@ -1970,7 +1886,7 @@ function ConfirmButton({
   return (
     <button
       type="button"
-      className={`${armed ? 'btn-pause' : 'btn-outline'} text-xs`}
+      className={`${armed ? 'btn-danger' : 'btn-outline'} text-xs`}
       aria-live="polite"
       onClick={handleClick}
       onBlur={disarm}

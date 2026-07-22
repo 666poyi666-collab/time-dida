@@ -661,6 +661,25 @@ export function runPending(): Promise<RunPendingResult> {
   return runPendingInFlight;
 }
 
+/** Explicit user retry: drain successful backlog batches immediately, while still stopping on
+ * rate limits, local-only mode, or a batch that made no queue progress. */
+export async function runPendingNow(): Promise<RunPendingResult> {
+  const total: RunPendingResult = { processed: 0, succeeded: 0, failed: 0 };
+  for (let batch = 0; batch < 100; batch += 1) {
+    const before = listPendingSync().length;
+    if (before === 0) break;
+    clearScheduledRun();
+    nextBatchNotBefore = 0;
+    const result = await runPending();
+    total.processed += result.processed;
+    total.succeeded += result.succeeded;
+    total.failed += result.failed;
+    const after = listPendingSync().length;
+    if (result.processed === 0 || after >= before) break;
+  }
+  return total;
+}
+
 /** 删除本地账本前等待当前云同步批次结束，避免“刚删完又被 in-flight create 重建”。 */
 export async function waitForPendingSyncIdle(): Promise<void> {
   await didaOperationTail;

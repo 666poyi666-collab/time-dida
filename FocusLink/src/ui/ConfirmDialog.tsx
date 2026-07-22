@@ -1,14 +1,16 @@
 // 通用确认弹窗 —— v0.12 弹层系统统一实现，替换原生 confirm()。
 // 契约（见 frontend-design/FRONTEND_SPEC.md 4/9 节与 styles/features/overlays.css 头部）：
 // - 材质：.overlay-surface（不透明 elevated + shadow-modal + 边缘高光），遮罩 .overlay-backdrop；
-// - 动画：framer-motion 驱动 —— 背板淡入 200ms（out-expo），面板从几何中心偏上
-//   （transform-origin 50% 42%）以 spring(380/30) 轻微上浮弹出；退出 150ms 标准缓动收束，
+// - 动画：framer-motion 驱动 —— 背板以可见初态挂载，面板从几何中心偏上
+//   （transform-origin 50% 42%）以 spring(380/30) 轻微上浮弹出；opacity 初态始终为 1，
+//   避免运行时 motion preference 切换后动画未提交时留下透明弹窗；退出 150ms 标准缓动收束，
 //   reduced-motion 由 App 根 MotionConfig(reducedMotion="user") 压成仅透明度过渡，
 //   JS 侧 requestClose 同步跳过退出延时直接落定；
 // - 焦点：打开时默认按钮首焦（danger 时落在「取消」上，防误确认），Tab 在弹层内循环，
 //   关闭后焦点返回触发元素；
-// - 键盘：Esc 取消；危险操作加 .tone-danger，主按钮走 .btn-pause 语义。
-import { useCallback, useEffect, useRef, useState } from 'react';
+// - 键盘：Esc 取消；危险操作加 .tone-danger，主按钮走 .btn-danger 语义。
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, type Transition } from 'framer-motion';
 import { Icon } from './Icon';
 
@@ -19,7 +21,7 @@ interface ConfirmDialogProps {
   description?: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  /** 危险操作：图标与主按钮切换为 pause 红色语义 */
+  /** 危险操作：图标与主按钮切换为独立 danger 深红语义 */
   danger?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -46,6 +48,8 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const [closing, setClosing] = useState(false);
+  const titleId = useId();
+  const descriptionId = useId();
   // 打开瞬间捕获触发元素：关闭后焦点返回依赖它
   const triggerRef = useRef<HTMLElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
@@ -87,9 +91,13 @@ export function ConfirmDialog({
     [finishClose],
   );
 
-  // 打开瞬间：重置退出态、捕获触发元素、默认按钮首焦（danger 时聚焦取消，防误确认）
+  // 关闭后立即复位；打开瞬间捕获触发元素，并让危险确认默认聚焦取消。
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      closingRef.current = false;
+      setClosing(false);
+      return;
+    }
     closingRef.current = false;
     setClosing(false);
     triggerRef.current = document.activeElement as HTMLElement | null;
@@ -144,15 +152,16 @@ export function ConfirmDialog({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="confirm-layer fixed inset-0 flex items-center justify-center"
       onClick={() => requestClose('cancel')}
+      data-testid="confirm-dialog-layer"
     >
       <motion.div
         className="overlay-backdrop absolute inset-0"
         aria-hidden="true"
-        initial={{ opacity: 0 }}
+        initial={{ opacity: 1 }}
         animate={{ opacity: closing ? 0 : 1 }}
         transition={closing ? BACKDROP_EXIT : BACKDROP_ENTER}
       />
@@ -162,9 +171,9 @@ export function ConfirmDialog({
         style={{ transformOrigin: '50% 42%' }}
         role="alertdialog"
         aria-modal="true"
-        aria-labelledby="confirm-dialog-title"
-        aria-describedby={description ? 'confirm-dialog-desc' : undefined}
-        initial={{ opacity: 0, y: 8, scale: 0.97 }}
+        aria-labelledby={titleId}
+        aria-describedby={description ? descriptionId : undefined}
+        initial={{ opacity: 1, y: 8, scale: 0.97 }}
         animate={
           closing
             ? { opacity: 0, y: 6, scale: 0.99, transition: PANEL_EXIT }
@@ -173,14 +182,14 @@ export function ConfirmDialog({
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handleShellKeyDown}
       >
-        <div className="confirm-title" id="confirm-dialog-title">
+        <div className="confirm-title" id={titleId}>
           <span className="confirm-icon">
             <Icon.AlertCircle size="sm" />
           </span>
           {title}
         </div>
         {description && (
-          <p className="confirm-desc" id="confirm-dialog-desc">
+          <p className="confirm-desc" id={descriptionId}>
             {description}
           </p>
         )}
@@ -196,13 +205,14 @@ export function ConfirmDialog({
           <button
             ref={confirmRef}
             type="button"
-            className={danger ? 'btn-pause' : 'btn-accent'}
+            className={danger ? 'btn-danger' : 'btn-accent'}
             onClick={() => requestClose('confirm')}
           >
             {confirmLabel}
           </button>
         </div>
       </motion.div>
-    </div>
+    </div>,
+    document.body,
   );
 }

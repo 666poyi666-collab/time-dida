@@ -1,11 +1,14 @@
 import type { FocusSegment, FocusSession, PauseEvent } from './types';
 import type {
   SessionAnalyticsDaily,
+  SessionAnalyticsHourly,
   SessionAnalyticsRange,
   SessionAnalyticsResult,
+  SessionAnalyticsSubject,
   SessionAnalyticsTask,
   SessionAnalyticsTimelineItem,
 } from './ipc/api';
+import { ALL_SUBJECTS, resolveSegmentSubject, TOMATODO_FALLBACK_SUBJECT } from './tomatodoPolicy';
 
 export interface SessionAnalyticsSource {
   sessions: FocusSession[];
@@ -93,6 +96,27 @@ function addRecordedValueToDays(
     const sliceEnd = Math.min(clippedEnd, nextDay.getTime());
     const item = dailyMap.get(dayKey(cursor));
     if (item) item[field] += recordedMs * ((sliceEnd - cursor) / fullSpan);
+    cursor = sliceEnd;
+  }
+}
+
+function addRecordedValueToHours(
+  hourly: SessionAnalyticsHourly[],
+  start: number,
+  end: number,
+  rangeStart: number,
+  rangeEnd: number,
+  recordedMs: number,
+  field: 'activeMs' | 'pauseMs',
+): void {
+  const fullSpan = Math.max(1, end - start);
+  let cursor = Math.max(start, rangeStart);
+  const clippedEnd = Math.min(end, rangeEnd + 1);
+  while (cursor < clippedEnd) {
+    const nextHour = new Date(cursor);
+    nextHour.setMinutes(60, 0, 0);
+    const sliceEnd = Math.min(clippedEnd, nextHour.getTime());
+    hourly[new Date(cursor).getHours()][field] += recordedMs * ((sliceEnd - cursor) / fullSpan);
     cursor = sliceEnd;
   }
 }
@@ -245,6 +269,61 @@ export function buildSessionAnalytics(
   const daily = Array.from(dailyMap.values()).sort((left, right) =>
     left.date.localeCompare(right.date),
   );
+  const hourly: SessionAnalyticsHourly[] = Array.from({ length: 24 }, (_, hour) => ({
+    hour,
+    activeMs: 0,
+    pauseMs: 0,
+  }));
+
+  for (const segment of segments) {
+    const end = effectiveEnd(segment.startedAt, segment.endedAt, segment.activeElapsedMs);
+    addRecordedValueToHours(
+      hourly,
+      segment.startedAt,
+      end,
+      range.start,
+      range.end,
+      segment.activeElapsedMs,
+      'activeMs',
+    );
+  }
+  for (const pause of pauses) {
+    const end = effectiveEnd(pause.pauseStartedAt, pause.pauseEndedAt, pause.durationMs);
+    addRecordedValueToHours(
+      hourly,
+      pause.pauseStartedAt,
+      end,
+      range.start,
+      range.end,
+      pause.durationMs,
+      'pauseMs',
+    );
+  }
+  for (const session of sessions) {
+    const end = effectiveEnd(session.startedAt, session.endedAt, session.wallElapsedMs);
+    if (!segmentSessionIds.has(session.id) && session.activeElapsedMs > 0) {
+      addRecordedValueToHours(
+        hourly,
+        session.startedAt,
+        end,
+        range.start,
+        range.end,
+        session.activeElapsedMs,
+        'activeMs',
+      );
+    }
+    if (!pauseSessionIds.has(session.id) && session.pauseElapsedMs > 0) {
+      addRecordedValueToHours(
+        hourly,
+        session.startedAt,
+        end,
+        range.start,
+        range.end,
+        session.pauseElapsedMs,
+        'pauseMs',
+      );
+    }
+  }
 
   const taskMap = new Map<string, SessionAnalyticsTask>();
   for (const segment of segments) {
@@ -273,6 +352,37 @@ export function buildSessionAnalytics(
   const tasks = Array.from(taskMap.values()).sort(
     (left, right) => right.activeMs - left.activeMs || left.title.localeCompare(right.title),
   );
+
+  const subjectMap = new Map(
+    ALL_SUBJECTS.map(
+      (subject) =>
+        [
+          subject,
+          { subject, activeMs: 0, segmentCount: 0 } satisfies SessionAnalyticsSubject,
+        ] as const,
+    ),
+  );
+  for (const segment of segments) {
+    const end = effectiveEnd(segment.startedAt, segment.endedAt, segment.activeElapsedMs);
+    const activeMs = clippedRecordedDuration(
+      segment.startedAt,
+      end,
+      range.start,
+      range.end,
+      segment.activeElapsedMs,
+    );
+    if (activeMs <= 0) continue;
+    const subject = resolveSegmentSubject(segment, TOMATODO_FALLBACK_SUBJECT);
+    const item = subjectMap.get(subject);
+    if (!item) continue;
+    item.activeMs += activeMs;
+    item.segmentCount += 1;
+  }
+  const subjects: SessionAnalyticsSubject[] = Array.from(subjectMap.values())
+    .filter((item) => item.activeMs > 0)
+    .sort(
+      (left, right) => right.activeMs - left.activeMs || left.subject.localeCompare(right.subject),
+    );
 
   const timelineStart = range.timelineStart ?? range.start;
   const timelineEnd = range.timelineEnd ?? range.end;
@@ -381,6 +491,8 @@ export function buildSessionAnalytics(
     range,
     daily,
     tasks,
+    subjects,
+    hourly,
     sessions,
     timeline,
     totals,

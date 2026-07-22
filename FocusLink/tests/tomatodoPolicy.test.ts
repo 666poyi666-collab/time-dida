@@ -55,18 +55,18 @@ describe('tomatodo resolveSegmentSubject (manual selection)', () => {
     expect(resolveSegmentSubject({ tomatodoSubject: '语文' }, '数学')).toBe('语文');
   });
 
-  it('falls back to defaultSubject when tomatodoSubject is null', () => {
-    expect(resolveSegmentSubject({ tomatodoSubject: null }, '化学')).toBe('化学');
+  it('uses 学习 as the only fallback when tomatodoSubject is null', () => {
+    expect(resolveSegmentSubject({ tomatodoSubject: null }, '化学')).toBe('学习');
     expect(resolveSegmentSubject({ tomatodoSubject: null }, '学习')).toBe('学习');
   });
 
-  it('uses automatic subject matching before falling back to the configured default', () => {
+  it('uses automatic subject matching before falling back to 学习', () => {
     expect(resolveSegmentSubject({ tomatodoSubject: null, title: '函数与数列复习' }, '学习')).toBe(
       '数学',
     );
     expect(
       resolveSegmentSubject({ tomatodoSubject: null, title: '没有学科词的任务' }, '化学'),
-    ).toBe('化学');
+    ).toBe('学习');
   });
 
   it('keeps a manual subject above automatic keywords', () => {
@@ -98,7 +98,7 @@ describe('tomatodo resolveSegmentSubject (manual selection)', () => {
         { tomatodoSubject: 'invalid' as unknown as FocusSegment['tomatodoSubject'] },
         '数学',
       ),
-    ).toBe('数学');
+    ).toBe('学习');
   });
 });
 

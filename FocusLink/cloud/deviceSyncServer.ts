@@ -1,9 +1,4 @@
-/**
- * Local FocusLink device-sync HTTP test backend.
- *
- * This server deliberately has no production account system. A caller supplies an in-memory
- * Bearer-token-to-account map, and the server defaults to loopback. Do not deploy it publicly.
- */
+/** Shared HTTP transport for the loopback test service and the single-instance personal cloud. */
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 
@@ -24,6 +19,11 @@ import {
   validateLiveFocusCommandRequest,
 } from '../shared/sync/liveFocusProtocol';
 import {
+  TASK_SNAPSHOT_MAX_BODY_BYTES,
+  TASK_SNAPSHOT_PATH,
+  validateTaskSnapshotPublishRequest,
+} from '../shared/sync/taskSnapshotProtocol';
+import {
   DeviceSyncCloudStoreError,
   LiveFocusWaitAbortedError,
   createDeviceSyncCloudStore,
@@ -32,6 +32,7 @@ import {
 
 export const DEVICE_SYNC_TEST_BODY_LIMIT_BYTES = DEVICE_SYNC_MAX_BODY_BYTES;
 export const DEFAULT_DEVICE_SYNC_TEST_HOST = '127.0.0.1';
+export const DEFAULT_DEVICE_SYNC_TEST_PORT = 18787;
 export const DEFAULT_DEVICE_SYNC_TEST_ACCOUNT = 'focuslink-local-test-account';
 export const DEFAULT_DEVICE_SYNC_TEST_ORIGINS = [
   'http://127.0.0.1:5175',
@@ -42,6 +43,7 @@ export const DEFAULT_DEVICE_SYNC_TEST_ORIGINS = [
   'https://localhost',
   'capacitor://localhost',
 ] as const;
+export const DEVICE_SYNC_NATIVE_ORIGINS = ['https://localhost', 'capacitor://localhost'] as const;
 const REQUEST_KEYS = new Set(['protocolVersion', 'deviceId', 'cursor', 'mutations', 'pullLimit']);
 const MUTATION_KEYS = new Set(['opId', 'entity', 'entityId', 'kind', 'baseRevision', 'payload']);
 
@@ -53,6 +55,11 @@ export interface DeviceSyncCloudServerOptions {
   allowedOrigins?: readonly string[];
   host?: string;
   port?: number;
+  profile?: 'test' | 'personal-cloud';
+  /** Require TLS termination to identify the original request as HTTPS. */
+  requireForwardedHttps?: boolean;
+  /** Coarse per-process protection; a production reverse proxy should add its own limiter too. */
+  maxRequestsPerMinute?: number;
 }
 
 export interface DeviceSyncCloudServerAddress {
@@ -79,21 +86,41 @@ export function createDeviceSyncCloudServer(
   const allowedOrigins = new Set(options.allowedOrigins ?? DEFAULT_DEVICE_SYNC_TEST_ORIGINS);
   const host = options.host ?? DEFAULT_DEVICE_SYNC_TEST_HOST;
   const port = options.port ?? 0;
+  const profile = options.profile ?? 'test';
+  const requireForwardedHttps = options.requireForwardedHttps ?? false;
+  const limiter = createRateLimiter(options.maxRequestsPerMinute ?? 0);
 
   const httpServer = http.createServer((request, response) => {
-    void handleRequest(request, response, store, tokenAccounts, allowedOrigins).catch((error) => {
+    applySecurityHeaders(response);
+    if (limiter && !limiter.accept(request.socket.remoteAddress ?? 'unknown', Date.now())) {
+      response.setHeader('Retry-After', '60');
+      sendError(response, 429, 'rate_limited', 'too many requests');
+      return;
+    }
+    void handleRequest(
+      request,
+      response,
+      store,
+      tokenAccounts,
+      allowedOrigins,
+      profile,
+      requireForwardedHttps,
+    ).catch((error) => {
       if (!response.headersSent) {
-        sendError(response, 500, 'internal_error', 'test sync server failed');
+        sendError(response, 500, 'internal_error', 'sync server failed');
       } else if (!response.writableEnded) {
         response.end();
       }
       // Keep test-server failures observable without leaking request bodies or credentials.
       console.error(
-        '[FocusLink test sync server]',
+        `[FocusLink ${profile}]`,
         error instanceof Error ? error.message : String(error),
       );
     });
   });
+  httpServer.requestTimeout = 30_000;
+  httpServer.headersTimeout = 10_000;
+  httpServer.keepAliveTimeout = 5_000;
 
   return {
     httpServer,
@@ -138,8 +165,18 @@ async function handleRequest(
   store: DeviceSyncCloudStore,
   tokenAccounts: ReadonlyMap<string, string>,
   allowedOrigins: ReadonlySet<string>,
+  profile: 'test' | 'personal-cloud',
+  requireForwardedHttps: boolean,
 ): Promise<void> {
   const requestUrl = new URL(request.url ?? '/', 'http://focuslink.test');
+  if (
+    requireForwardedHttps &&
+    requestUrl.pathname !== '/health' &&
+    !requestArrivedOverHttps(request)
+  ) {
+    sendError(response, 400, 'https_required', 'HTTPS is required');
+    return;
+  }
   const origin = readSingleHeader(request.headers.origin);
   if (origin && !allowedOrigins.has(origin)) {
     sendError(response, 403, 'cors_origin_denied', 'origin is not allowed');
@@ -160,8 +197,11 @@ async function handleRequest(
     }
     sendJson(response, 200, {
       ok: true,
-      service: 'focuslink-device-sync-test',
-      production: false,
+      service:
+        profile === 'personal-cloud'
+          ? 'focuslink-device-sync-personal-cloud'
+          : 'focuslink-device-sync-test',
+      production: profile === 'personal-cloud',
       protocolVersion: DEVICE_SYNC_PROTOCOL_VERSION,
     });
     return;
@@ -172,8 +212,17 @@ async function handleRequest(
     sendError(response, 404, 'not_found', 'route not found');
     return;
   }
-  if (request.method !== expectedMethod) {
-    response.setHeader('Allow', `${expectedMethod}, OPTIONS`);
+  const methodAllowed =
+    requestUrl.pathname === TASK_SNAPSHOT_PATH
+      ? request.method === 'GET' || request.method === 'POST'
+      : request.method === expectedMethod;
+  if (!methodAllowed) {
+    response.setHeader(
+      'Allow',
+      requestUrl.pathname === TASK_SNAPSHOT_PATH
+        ? 'GET, POST, OPTIONS'
+        : `${expectedMethod}, OPTIONS`,
+    );
     sendError(response, 405, 'method_not_allowed', 'method not allowed');
     return;
   }
@@ -191,6 +240,15 @@ async function handleRequest(
       return;
     }
     sendJson(response, 200, store.getLiveSnapshot(accountId));
+    return;
+  }
+
+  if (requestUrl.pathname === TASK_SNAPSHOT_PATH && request.method === 'GET') {
+    if ([...requestUrl.searchParams].length > 0) {
+      sendError(response, 400, 'invalid_query', 'task snapshot route does not accept query fields');
+      return;
+    }
+    sendJson(response, 200, store.getTaskSnapshot(accountId));
     return;
   }
 
@@ -219,7 +277,9 @@ async function handleRequest(
   const bodyLimit =
     requestUrl.pathname === LIVE_FOCUS_COMMAND_PATH
       ? LIVE_FOCUS_MAX_COMMAND_BODY_BYTES
-      : DEVICE_SYNC_TEST_BODY_LIMIT_BYTES;
+      : requestUrl.pathname === TASK_SNAPSHOT_PATH
+        ? TASK_SNAPSHOT_MAX_BODY_BYTES
+        : DEVICE_SYNC_TEST_BODY_LIMIT_BYTES;
   let parsed: unknown;
   try {
     const raw = await readRequestBody(request, bodyLimit);
@@ -232,7 +292,9 @@ async function handleRequest(
         'payload_too_large',
         requestUrl.pathname === LIVE_FOCUS_COMMAND_PATH
           ? 'live command body exceeds 16 KiB'
-          : 'request body exceeds 1 MiB',
+          : requestUrl.pathname === TASK_SNAPSHOT_PATH
+            ? 'task snapshot body exceeds 512 KiB'
+            : 'request body exceeds 1 MiB',
       );
       return;
     }
@@ -253,6 +315,20 @@ async function handleRequest(
     }
     try {
       sendJson(response, 200, store.commandLive(accountId, validation.request));
+    } catch (error) {
+      if (sendStoreError(response, error)) return;
+      throw error;
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === TASK_SNAPSHOT_PATH) {
+    if (!validateTaskSnapshotPublishRequest(parsed)) {
+      sendError(response, 400, 'invalid_request', 'invalid task snapshot');
+      return;
+    }
+    try {
+      sendJson(response, 200, store.publishTaskSnapshot(accountId, parsed));
     } catch (error) {
       if (sendStoreError(response, error)) return;
       throw error;
@@ -283,6 +359,7 @@ async function handleRequest(
 
 function routeMethod(pathname: string): 'GET' | 'POST' | null {
   if (pathname === '/v1/sync' || pathname === LIVE_FOCUS_COMMAND_PATH) return 'POST';
+  if (pathname === TASK_SNAPSHOT_PATH) return 'POST';
   if (pathname === LIVE_FOCUS_SNAPSHOT_PATH || pathname === LIVE_FOCUS_WAIT_PATH) return 'GET';
   return null;
 }
@@ -437,7 +514,11 @@ function handlePreflight(
   }
   const expectedMethod = pathname === '/health' ? 'GET' : routeMethod(pathname);
   const requestedMethod = readSingleHeader(request.headers['access-control-request-method']);
-  if (!expectedMethod || requestedMethod !== expectedMethod) {
+  const methodAllowed =
+    pathname === TASK_SNAPSHOT_PATH
+      ? requestedMethod === 'GET' || requestedMethod === 'POST'
+      : requestedMethod === expectedMethod;
+  if (!expectedMethod || !methodAllowed) {
     sendError(response, 403, 'cors_method_denied', 'preflight method is not allowed');
     return;
   }
@@ -453,7 +534,10 @@ function handlePreflight(
     return;
   }
   response.statusCode = 204;
-  response.setHeader('Access-Control-Allow-Methods', `${expectedMethod}, OPTIONS`);
+  response.setHeader(
+    'Access-Control-Allow-Methods',
+    pathname === TASK_SNAPSHOT_PATH ? 'GET, POST, OPTIONS' : `${expectedMethod}, OPTIONS`,
+  );
   response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
   response.setHeader('Access-Control-Max-Age', '600');
   response.setHeader('Cache-Control', 'no-store');
@@ -526,6 +610,45 @@ function sendJson(response: http.ServerResponse, status: number, body: unknown):
   response.setHeader('Cache-Control', 'no-store');
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.end(payload);
+}
+
+function applySecurityHeaders(response: http.ServerResponse): void {
+  response.setHeader('Referrer-Policy', 'no-referrer');
+  response.setHeader('X-Frame-Options', 'DENY');
+  response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  response.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+}
+
+function requestArrivedOverHttps(request: http.IncomingMessage): boolean {
+  const encrypted = Boolean((request.socket as { encrypted?: boolean }).encrypted);
+  if (encrypted) return true;
+  const forwarded = readSingleHeader(request.headers['x-forwarded-proto']);
+  return forwarded?.split(',')[0]?.trim().toLowerCase() === 'https';
+}
+
+interface RateLimiter {
+  accept(key: string, now: number): boolean;
+}
+
+function createRateLimiter(maxRequestsPerMinute: number): RateLimiter | null {
+  if (!Number.isInteger(maxRequestsPerMinute) || maxRequestsPerMinute <= 0) return null;
+  const buckets = new Map<string, { windowStart: number; count: number }>();
+  return {
+    accept(key, now) {
+      const current = buckets.get(key);
+      if (!current || now - current.windowStart >= 60_000) {
+        buckets.set(key, { windowStart: now, count: 1 });
+        if (buckets.size > 10_000) {
+          for (const [bucketKey, bucket] of buckets) {
+            if (now - bucket.windowStart >= 60_000) buckets.delete(bucketKey);
+          }
+        }
+        return true;
+      }
+      current.count += 1;
+      return current.count <= maxRequestsPerMinute;
+    },
+  };
 }
 
 function sendError(

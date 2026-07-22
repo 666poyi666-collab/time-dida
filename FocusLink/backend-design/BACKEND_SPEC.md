@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相；当前实现 v0.12.20
+> 状态：v0.12.x 后端单一真相；当前实现 v0.12.23
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -172,17 +172,21 @@ revision、服务端单调 change sequence 与不透明 cursor。规则如下：
 - 账本平面仍只复制 `finished` / `aborted` 会话；活动快照和控制命令绝不塞进 completed bundle，也不改变现有桌面端已结束会话补传语义。
 - `cloudFocusId`、第三方投递结果、CLI/OAuth 凭据、TomaToDo 路径、窗口/快捷键/小窗设置均不进入会话包。
 - 服务端以 `(account, opId)` 去重；稳定 `opId` 同时包含实体、正文与 `baseRevision`，相同 op 重放返回 `duplicate`，`baseRevision` 过期返回 `conflict`，不使用客户端 `updatedAt` 静默覆盖。
-- Electron 以 SQLite 完成会话为耐久事实源，网络失败后下次重新扫描补传；cursor、每个会话的已确认 revision/fingerprint 与未解决冲突写入同一个原子 `app_meta` 检查点。检查点按“规范化 endpoint + token 的不可逆摘要”分区，切换服务/账号不得复用旧状态；服务明确返回 `invalid_cursor` 时清理当前分区并完整重试一次。
+- Electron 以 SQLite 完成会话为耐久事实源，网络失败后下次重新扫描补传；cursor、每个会话的已确认 revision/fingerprint 与未解决冲突写入同一个原子 `app_meta` 检查点。检查点按“规范化 endpoint + token 的不可逆摘要”分区，切换服务/账号不得复用旧状态；服务明确返回 `invalid_cursor` 时清理当前分区并完整重试一次。Web/PWA/Android 若从旧安装或旧账号缓存恢复出无效 cursor，也必须识别结构化 `invalid_cursor` 错误码，清空该设备的旧账本缓存并从空 cursor 重建一次；禁止保留旧账号会话或按错误文本无限重试。
 - 拉回的全新会话在一个 SQLite 事务中插入 session/segments/pauses；不会自动触发 dida 或 TomaToDo 副作用。同一次 cursor catch-up 的所有响应页先在内存按实体折叠到最新 revision，完整收敛后才写 SQLite 与原子检查点；中途断网不会暴露旧 revision。拉取完成后的既有记录或已改动的同 ID 正文写入耐久冲突箱。冲突未解决时界面不得清空错误或宣称完全收敛。
 - 服务端对 cursor 之后同一实体的多次历史 revision 先折叠为最新状态，再按 change sequence、条数与响应字节预算分页；全新设备不得先导入旧 revision 再把同一批历史误判为本地冲突。
 - 当前桌面端不执行远端删除，也不自动覆盖已有会话；删除/编辑冲突需要后续显式清理与合并流程。
 - Electron 访问令牌只经 `safeStorage` 加密落盘，不进入 `AppSettings`、renderer 日志或多端 payload。
+- Electron 只有在首次 `GET /v1/live` 成功并通过协议校验后才切换到实时事实源；握手失败时保持本机 idle/计时可用，并以 `2s → 4s → 8s … → 60s` 有界退避重连。已确认的 running/paused 实时会话断线时不得切回本机空闲状态或伪造云端确认。
+- 生成 completed bundle 时，旧版本遗留的暂停孤立引用只在传输副本中归一为 `segmentId: null`，原始 SQLite 行不被静默删除；诊断必须记录会话 ID 和孤立数量。
 
-`cloud/` 当前只是可运行的测试后端：默认监听 `127.0.0.1`，启动必须显式提供
+`cloud/` 的默认开发入口仍是回环测试后端：默认监听 `127.0.0.1`，启动必须显式提供
 `FOCUSLINK_CLOUD_TEST_TOKEN`，执行精确 CORS allowlist、Bearer 鉴权、512 KiB 单会话包上限与请求/响应各 1 MiB 字节预算；请求和响应都按序列化字节切页，可用
-忽略目录中的单进程 JSON 文件持久化。它没有生产账号、PKCE/OIDC、租户数据库、备份、KMS、
-限流、审计或多实例协调，绝不能作为公开互联网生产服务。生产接入前必须补齐 HTTPS 与正式身份、
-设备撤销、refresh token 轮换、服务端数据库/备份/监控和 cursor 压缩/过期恢复。
+忽略目录中的单进程 JSON 文件持久化。
+
+个人云部署使用 `cloud/Dockerfile`、`cloud/Web.Dockerfile` + `cloud/docker-compose.yml`，目标平台固定为免费开源的自托管 Coolify。Compose 同时发布 `focuslink-web` PWA 与 `focuslink-cloud` API；Coolify 分别绑定 Web HTTPS 域名和同步 HTTPS 域名，Web 域名必须加入 API 的精确 CORS allowlist；生产服务还固定附加 Capacitor 所需的 `https://localhost` 与 `capacitor://localhost`，否则原生 App 会在 Bearer 请求前被浏览器 CORS 拦截。API 模式使用 `FOCUSLINK_CLOUD_MODE=production`，监听容器 `8787`，要求反向代理确认原始 HTTPS、至少 32 字符随机 Bearer token、精确 HTTPS CORS origin、持久卷 `/data`、安全响应头、请求超时和进程级限流。Coolify 必须启用自动证书、两个健康检查和名为 `focuslink-cloud-data` 的持久卷；API 只允许单实例运行，升级前备份该卷。账号环境变量格式为 JSON 数组：`[{"accountId":"owner","accessToken":"<openssl rand -hex 32>"}]`，不得写入仓库或构建日志。
+
+该个人云配置满足单用户多设备持续在线，但不冒充通用 SaaS 身份平台：它没有 PKCE/OIDC、自助注册、设备撤销、refresh token、多实例数据库协调或托管备份。若未来开放给不受信任的多用户，必须先增加正式身份、租户数据库、KMS、审计、外部限流、备份恢复演练与 cursor 压缩/过期策略；当前不得水平扩容。
 
 实时活动会话是独立控制平面，协议真值位于 `shared/sync/liveFocusProtocol.ts`。Web/PWA、Android
 与显式开启实时控制的 Electron 同步同一账号下的唯一活动会话。Electron 由
@@ -198,11 +202,22 @@ revision、服务端单调 change sequence 与不透明 cursor。规则如下：
 - 实时快照携带 segment/pause 边界；Electron 以 `serverTime` 计算本机时钟偏移后投影 `TimerSnapshot`。由任一设备结束时，Electron 必须先运行账本拉取并确认完整 bundle 已进入 SQLite，再发出 `finished` 快照触发 dida/TomaToDo 副作用。
 - 实时快照、命令幂等记录与 completed ledger 共用账号级原子 JSON 提交并向后兼容旧测试文件；进程重启后必须保留活动时间边界和命令去重。该 JSON 仍只允许单进程本地测试。
 - dida 和番茄 To-do 始终是桌面副作用。移动命令与实时快照不携带凭据或伪造投递结果；结束会话进入 FocusLink 账本后，只有桌面端真实执行相应队列并得到可验证结果才能显示外部同步成功。
-- Android 前台 Service、通知动作与 Quick Settings Tile 是薄传输层：只保存最后一次已确认快照和至少一次 native command 队列，不自行推进业务计时，不在云端确认前乐观翻转。待处理动作必须含 session/revision 并支持冷启动 drain/ack。Android 12+ 的通知动作必须直接使用 Activity PendingIntent，不得经 Receiver/Service 再拉起 Activity；Tile 的 pending 展示保持 inactive 且可点击打开 App，避免 OEM 缓存 unavailable 后永久无法自愈。
+- Android 前台 Service、通知动作与 Quick Settings Tile 是薄传输层：只保存最后一次已确认快照和至少一次 native command 队列，不自行推进业务计时，不在云端确认前乐观翻转。待处理动作必须含 session/revision 并支持冷启动 drain/ack；Service 通过可注入的 `FocusCloudClient` 使用 Keystore 连接直接 POST 同一个幂等命令，Web 层并发重试由 command id 去重，且只有匹配 command id 的 applied/duplicate/conflict/rejected 才能完成本地队列项。Android 12+ 的通知动作必须直接使用 Activity PendingIntent，不得经 Receiver/Service 再拉起 Activity；Tile 的 pending 展示保持 inactive 且可点击打开 App，避免 OEM 缓存 unavailable 后永久无法自愈。
+- Android 后台只读刷新采用自调度链而非周期 Future：主线程触发单线程 HTTP 请求，请求的 `finally` 安排下一次 20 秒刷新，任何异常不得永久取消后续轮询。最近尝试次数、成功时间、revision 与错误写入本机诊断状态。原生快照写入按 revision 单调拒绝旧值，云端 idle 快照必须保留 revision；只有 endpoint/token/device identity 确认变化时才允许清空 revision 护栏。
+
+电脑任务清单使用独立的权威快照平面，协议真值位于 `shared/sync/taskSnapshotProtocol.ts`：
+
+- 电脑端每次成功读取滴答工作台后自动发布项目与活动任务快照；发布失败只记诊断，不得让已经成功的本地任务刷新变成失败。
+- 快照只包含选择专注所需的任务 ID、来源、标题、项目、优先级、到期日、标签、父子关系和完成状态；不包含任务正文、原始 JSON、CLI/OAuth 凭据或第三方写入能力。Checklist 子项在传输时展平并保留 `parentId`。
+- 云端按账号保留最后一份完整快照，内容相同的同设备重放不增加 revision。Web/PWA/Android 使用 `GET /v1/tasks` 读取并写入 IndexedDB；PC 关闭或任务服务暂时不可达时继续使用最后一次缓存。
+- 移动端开始实时会话时可以携带快照中的任务上下文，也可以不关联任务自由开始。任务上下文最终进入 completed bundle，PC 拉回后仍由桌面端执行 dida/TomaToDo 副作用。
+- 任务快照解决的是“PC 已读取内容的跨设备可选副本”，不是移动端直连滴答，也不把本地测试后端提升为生产云。PC 尚未成功发布过快照时，其他端只能自由标题开始。
 
 ## 9. 小窗与边缘状态
 
 - 只有 `collapsed` 和 `expanded` 两种合法尺寸，数值唯一来自 `shared/miniWindowLayout.ts`。当前为 `184×35` 与 `256×70`，不引入第三尺寸；常量变化必须同步更新前端规范。
+- `MiniWindowDockPlacement` 在四条边之外区分四个 corner placement；角落收起/展开必须同时锚定 X/Y 两轴。主进程通过 `mini:dock-transition` 明确发送 `prepare / settled / cancel` 与 edge/placement，renderer 不得从 CSS 猜测原生屏幕位置。
+- Windows 原生移动循环结束后才允许吸附与收起；纯展示进度轨必须保留 `-webkit-app-region: drag`。用户拖离 release hysteresis 后在新位置展开，任何 programmatic bounds 变化都不得被误判为新的用户拖动。
 - collapsed renderer 契约仅允许进度/状态、当前时间、底部 2px 当前分钟秒级消逝轨和展开入口；该轨不是专注率。不传达任务详情、三组累计或其他控制。expanded 契约须在 74px 内容盒内完整呈现任务名、当前时间、累计专注/暂停/总历时与全部控制，时间与按钮分属独立网格行、结构上不重叠或换行。验收字号为 collapsed 25px、expanded 至少 21px。
 - Electron 主进程持有真实 bounds、当前显示器 work area、吸附边缘和窗口状态。
 - Windows 通过 `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` 明确区分按住与释放；按住不动时不得用 move 事件静默时间猜测释放。真正结束后才计算最近合法边缘，使用进入 14px / 离开 30px 双阈值；先吸附并保持 expanded 尺寸，renderer 接收 `mini:dock-transition` 显示 320ms 收束反馈，之后才切换 collapsed；过渡中再次 native move 必须取消待折叠任务。程序化 bounds 允许 2px DPI 归一化误差。

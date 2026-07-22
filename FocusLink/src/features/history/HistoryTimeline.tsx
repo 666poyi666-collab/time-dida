@@ -1,5 +1,5 @@
 // 历史时间线 - 片段时间线列表 + 专注行 + 暂停行
-import { useState, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
 import { formatDuration, formatDateTime } from '../../lib/time';
@@ -83,32 +83,25 @@ export function HistoryTimelineList({
   const items = [...segmentItems, ...pauseItems].sort((a, b) => a.startedAt - b.startedAt);
 
   return (
-    <div className="rounded-lg border border-border/60 bg-bg-card/50 p-3">
-      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+    <section className="history-segment-ledger" aria-label="片段时间线">
+      <header className="history-segment-header">
+        <div className="history-segment-heading-group">
           <Icon.Activity size="sm" tone="accent" />
           <p className="eyebrow">片段时间线</p>
-          <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-[10.5px] font-medium text-accent">
-            专注 {segments.length}
-          </span>
+          <span className="history-segment-count tone-focus">专注 {segments.length}</span>
           {pauses.length > 0 && (
-            <span className="rounded-md bg-warning/10 px-1.5 py-0.5 text-[10.5px] font-medium text-warning">
-              暂停 {pauses.length}
-            </span>
+            <span className="history-segment-count tone-pause">暂停 {pauses.length}</span>
           )}
         </div>
         {filter !== 'all' && (
-          <span className="text-[10.5px] text-fg-subtle">暂停片段仅在"全部"视图展示</span>
+          <span className="history-segment-filter-note">暂停片段仅在“全部”中显示</span>
         )}
-      </div>
+      </header>
 
       {items.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border/60 bg-bg-subtle/20 py-4 text-center text-[11px] text-fg-subtle">
-          当前筛选条件下没有片段
-        </div>
+        <div className="history-segment-empty">当前筛选条件下没有片段</div>
       ) : (
-        <div className="relative space-y-1">
-          <div className="absolute bottom-2 left-[15px] top-2 w-px bg-border/60" />
+        <div className="history-segment-list">
           {items.map((item, itemIndex) =>
             item.type === 'focus' ? (
               <HistoryFocusTimelineRow
@@ -143,7 +136,7 @@ export function HistoryTimelineList({
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -194,43 +187,38 @@ function HistoryFocusTimelineRow({
       : NOT_SYNCED_STATE);
   return (
     <div
-      className={`hm-stagger-in relative flex gap-2.5 rounded-md border px-2.5 py-2 ${
-        hasTask ? 'border-border/50 bg-bg-subtle/20' : 'border-warning/30 bg-warning/5'
-      }`}
-      style={{ '--hm-delay': `${Math.min(staggerIndex * 40, 560)}ms` } as CSSProperties}
+      className={`history-segment-row hm-stagger-in tone-focus ${hasTask ? 'is-linked' : 'is-unlinked'}`}
+      style={{ '--hm-delay': `${Math.min(staggerIndex * 24, 120)}ms` } as CSSProperties}
     >
-      <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-accent/20 bg-accent/10 text-accent">
-        <Icon.Activity size="sm" />
+      <div className="history-segment-marker" aria-hidden="true">
+        <span>F</span>
+        <strong>{String(index + 1).padStart(2, '0')}</strong>
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[12px] font-semibold text-fg">专注片段 {index + 1}</span>
-          <span className="timer-digit text-[12px] font-semibold text-accent">
+      <div className="history-segment-content">
+        <div className="history-segment-primary">
+          <span className="history-segment-type">专注片段</span>
+          <span className="history-segment-duration timer-digit">
             {formatDuration(seg.activeElapsedMs)}
           </span>
-          <span className="truncate text-[11px] text-fg-subtle">
+          <span className="history-segment-time">
             {formatDateTime(seg.startedAt)}
-            {seg.endedAt && ` - ${formatDateTime(seg.endedAt)}`}
+            {seg.endedAt && ` → ${formatDateTime(seg.endedAt)}`}
           </span>
           {showDidaSync && seg.taskSource === 'ticktick' && (
             <SyncBadge state={displayedSyncState} />
           )}
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-1">
+        <div className="history-segment-task">
           {hasTask ? (
             <>
               <Icon.Link size="xs" tone="accent" />
-              <span className="max-w-[320px] truncate text-[12px] font-medium text-fg">
-                {seg.title}
-              </span>
+              <span className="history-segment-task-title">{seg.title}</span>
               {seg.taskSource === 'ticktick' && (
-                <span className="rounded-md bg-success/10 px-1 py-0.5 text-[10px] text-success">
-                  滴答
-                </span>
+                <span className="history-segment-source">滴答</span>
               )}
             </>
           ) : (
-            <span className="text-[12px] font-medium text-warning">任务未关联</span>
+            <span className="history-segment-unlinked">任务未关联</span>
           )}
         </div>
         {showTomatodo && (
@@ -246,7 +234,7 @@ function HistoryFocusTimelineRow({
           />
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-1 self-center">
+      <div className="history-segment-actions">
         <button
           className="motion-press rounded-md border border-border/50 bg-bg-card/50 px-1.5 py-1 text-[10.5px] text-fg-muted hover:bg-bg-subtle hover:text-fg disabled:opacity-40"
           disabled={linking}
@@ -307,7 +295,6 @@ function TomatodoSubjectControl({
   disabled: boolean;
   onSetSubject: (subject: TomatodoSubject | null) => void;
 }) {
-  const [editing, setEditing] = useState(false);
   const inferred = inferTomatodoSubject(segment.title);
   const subject =
     segment.tomatodoSubject ?? resolvedSubject ?? resolveSegmentSubject(segment, defaultSubject);
@@ -326,66 +313,57 @@ function TomatodoSubjectControl({
 
   const selectSubject = (next: TomatodoSubject) => {
     onSetSubject(next);
-    setEditing(false);
   };
 
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-      <span className="text-[10.5px] text-fg-subtle">番茄 Todo</span>
-      <span className={`rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium ${tone}`}>
-        {label}
-      </span>
-      {cloudSynced ? (
-        <span
-          className="rounded-md border border-success/20 bg-success/10 px-1.5 py-0.5 text-[10px] text-success"
-          title="番茄 Todo 客户端已确认上传；FocusLink 不做独立云端回读"
-        >
-          上传已确认
+    <div className="tomatodo-subject-control mt-2">
+      <div className="tomatodo-subject-status">
+        <span className="text-[10.5px] text-fg-subtle">番茄分类</span>
+        <span className={`rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium ${tone}`}>
+          {label}
         </span>
-      ) : writtenLocally ? (
-        <>
-          <span className="rounded-md border border-success/20 bg-success/10 px-1.5 py-0.5 text-[10px] text-success">
-            已写入本地
-          </span>
+        {cloudSynced ? (
           <span
-            className="rounded-md border border-warning/25 bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning"
-            title="记录已写入番茄 Todo 本地，等待客户端上传确认"
+            className="rounded-md border border-success/20 bg-success/10 px-1.5 py-0.5 text-[10px] text-success"
+            title="番茄 Todo 客户端已确认上传；FocusLink 不做独立云端回读"
           >
-            待上传
+            上传已确认
           </span>
-        </>
-      ) : null}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setEditing((value) => !value)}
-        className="motion-press rounded-md border border-border/50 bg-bg-card/50 px-1.5 py-0.5 text-[10.5px] text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg disabled:opacity-40"
-      >
-        {editing ? '收起' : '调整'}
-      </button>
-      {editing && (
-        <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/50 bg-bg-card/70 p-1.5">
-          <TomatodoSubjectChips
-            value={manual ? subject : null}
-            onChange={selectSubject}
-            disabled={disabled}
-            compact
-          />
-          {manual && (
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                onSetSubject(null);
-                setEditing(false);
-              }}
-              className="motion-press rounded-md border border-border/50 px-1.5 py-0.5 text-[10px] text-fg-muted hover:bg-bg-subtle hover:text-fg disabled:opacity-40"
+        ) : writtenLocally ? (
+          <>
+            <span className="rounded-md border border-success/20 bg-success/10 px-1.5 py-0.5 text-[10px] text-success">
+              已写入本地
+            </span>
+            <span
+              className="rounded-md border border-warning/25 bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning"
+              title="记录已写入番茄 Todo 本地，等待客户端上传确认"
             >
-              恢复自动
-            </button>
-          )}
-        </div>
-      )}
+              待上传
+            </span>
+          </>
+        ) : null}
+      </div>
+      <div className="tomatodo-subject-actions" aria-label="手动选择番茄 Todo 学科">
+        <button
+          type="button"
+          disabled={disabled}
+          aria-pressed={!manual}
+          onClick={() => onSetSubject(null)}
+          className={`motion-press rounded-md border px-2 py-1 text-[11px] transition-colors disabled:opacity-40 ${
+            !manual
+              ? 'border-accent/35 bg-accent/10 text-accent'
+              : 'border-border/50 bg-bg-card/50 text-fg-muted hover:bg-bg-subtle hover:text-fg'
+          }`}
+        >
+          自动
+        </button>
+        <TomatodoSubjectChips
+          value={manual ? subject : null}
+          onChange={selectSubject}
+          disabled={disabled}
+          compact
+        />
+      </div>
     </div>
   );
 }
@@ -401,24 +379,25 @@ function HistoryPauseTimelineRow({
 }) {
   return (
     <div
-      className="hm-stagger-in relative flex gap-2.5 rounded-md border border-pause/15 bg-pause/5 px-2.5 py-2"
-      style={{ '--hm-delay': `${Math.min(staggerIndex * 40, 560)}ms` } as CSSProperties}
+      className="history-segment-row hm-stagger-in tone-pause"
+      style={{ '--hm-delay': `${Math.min(staggerIndex * 24, 120)}ms` } as CSSProperties}
     >
-      <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-pause/20 bg-pause/10 text-pause">
-        <Icon.Coffee size="sm" />
+      <div className="history-segment-marker" aria-hidden="true">
+        <span>P</span>
+        <strong>{String(index + 1).padStart(2, '0')}</strong>
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[12px] font-semibold text-pause">暂停片段 {index + 1}</span>
-          <span className="timer-digit text-[12px] font-semibold text-pause">
+      <div className="history-segment-content">
+        <div className="history-segment-primary">
+          <span className="history-segment-type">暂停片段</span>
+          <span className="history-segment-duration timer-digit">
             {formatDuration(pause.durationMs)}
           </span>
-          <span className="truncate text-[11px] text-fg-subtle">
+          <span className="history-segment-time">
             {formatDateTime(pause.pauseStartedAt)}
-            {pause.pauseEndedAt ? ` - ${formatDateTime(pause.pauseEndedAt)}` : ' - 进行中'}
+            {pause.pauseEndedAt ? ` → ${formatDateTime(pause.pauseEndedAt)}` : ' → 进行中'}
           </span>
         </div>
-        <p className="mt-1 text-[11px] text-fg-subtle">暂停记录只计入休息时间，不参与任务同步。</p>
+        <p className="history-segment-note">仅计入暂停损耗，不参与任务同步</p>
       </div>
     </div>
   );

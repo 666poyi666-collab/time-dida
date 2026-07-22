@@ -29,6 +29,7 @@ import {
   listQueue,
   retryItem,
   runPending,
+  runPendingNow,
   resyncSegment,
   withPendingSyncExclusive,
 } from './sync/syncService.js';
@@ -51,6 +52,7 @@ import {
   getDeviceSyncStatus,
   runDeviceSync,
 } from './sync/deviceSyncService.js';
+import { reconcileEmbeddedDeviceSyncServer } from './sync/embeddedDeviceSyncServer.js';
 import {
   listSessions,
   listSessionsInRange,
@@ -585,6 +587,7 @@ export function registerIpc(
   ipcMain.handle('sync:list', () => listQueue());
   ipcMain.handle('sync:retry', (_e, id: string) => retryItem(id));
   ipcMain.handle('sync:run-pending', () => runPending());
+  ipcMain.handle('sync:run-pending-now', () => runPendingNow());
   /** 删除单个 segment 的云端专注记录并重新同步（保留本地数据） */
   ipcMain.handle('sync:resync-segment', async (_e, segmentId: string) => {
     const result = await resyncSegment(segmentId);
@@ -593,8 +596,15 @@ export function registerIpc(
 
   // ============ FocusLink 跨设备同步（与 dida sync_queue 独立） ============
   ipcMain.handle('device-sync:status', () => getDeviceSyncStatus());
-  ipcMain.handle('device-sync:configure', (_e, input) => {
-    const status = configureDeviceSync(input);
+  ipcMain.handle('device-sync:configure', async (_e, input) => {
+    configureDeviceSync(input);
+    try {
+      await reconcileEmbeddedDeviceSyncServer();
+    } catch (error) {
+      logger.warn('deviceSync', 'embedded service reconciliation failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     const next = getSettings();
     onSettingsChanged(['deviceSync'], next);
     for (const w of BrowserWindow.getAllWindows()) {
@@ -603,7 +613,7 @@ export function registerIpc(
         w.webContents.send('settings:domain-changed', ['deviceSync']);
       }
     }
-    return status;
+    return getDeviceSyncStatus();
   });
   ipcMain.handle('device-sync:run', () => runDeviceSync());
 

@@ -1,11 +1,14 @@
 // Capture the currently running packaged app through an explicitly enabled CDP port.
 // Usage: node scripts/review/capture-running-app.cjs <port> <outputDir>
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const WebSocket = require('ws');
 
 const port = Number(process.argv[2] || 9333);
-const outputDir = path.resolve(process.argv[3] || path.join('..', 'visual-review', 'current'));
+const outputDir = path.resolve(
+  process.argv[3] || path.join(os.tmpdir(), 'focuslink-running-app-review'),
+);
 const captureTimerStates = process.argv.includes('--states');
 const captureThemes = process.argv.includes('--themes');
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

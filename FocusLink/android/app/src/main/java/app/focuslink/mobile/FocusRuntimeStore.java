@@ -30,12 +30,27 @@ final class FocusRuntimeStore {
         }
     }
 
-    static void putSnapshot(Context context, FocusRuntimeSnapshot snapshot) {
+    static boolean putSnapshot(Context context, FocusRuntimeSnapshot snapshot) {
         synchronized (LOCK) {
+            FocusRuntimeSnapshot current = getSnapshot(context);
+            if (snapshot.stateRevision < current.stateRevision) return false;
+            if (
+                snapshot.stateRevision == current.stateRevision &&
+                (!snapshot.state.equals(current.state) || !snapshot.sessionId.equals(current.sessionId))
+            ) {
+                return false;
+            }
             preferences(context)
                 .edit()
                 .putString(KEY_SNAPSHOT, snapshot.toStoredJson().toString())
                 .commit();
+            return true;
+        }
+    }
+
+    static void clearSnapshot(Context context) {
+        synchronized (LOCK) {
+            preferences(context).edit().remove(KEY_SNAPSHOT).commit();
         }
     }
 
@@ -112,6 +127,15 @@ final class FocusRuntimeStore {
             commands.removeIf(command -> completed.contains(command.id));
             writeCommandsLocked(context, commands);
             return before - commands.size();
+        }
+    }
+
+    static boolean completeCommand(Context context, String id) {
+        synchronized (LOCK) {
+            List<FocusRuntimeCommand> commands = readCommandsLocked(context);
+            boolean removed = commands.removeIf(command -> command.id.equals(id));
+            if (removed) writeCommandsLocked(context, commands);
+            return removed;
         }
     }
 

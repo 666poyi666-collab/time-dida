@@ -25,6 +25,7 @@ import {
   getWallElapsedMs,
 } from '@shared/focus/selectors';
 import { MINI_WINDOW_DOCK_TRANSITION_MS } from '@shared/miniWindowLayout';
+import type { MiniWindowDockPlacement } from '@shared/miniWindowLayout';
 import { pauseDissolveParticles } from '@shared/focus/bandMath';
 
 const STATE_META: Record<
@@ -207,6 +208,8 @@ export function MiniWindow() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [collapsed, setCollapsed] = useState<boolean | null>(null);
   const [dockingEdge, setDockingEdge] = useState<'left' | 'right' | 'top' | 'bottom' | null>(null);
+  const [dockedPlacement, setDockedPlacement] = useState<MiniWindowDockPlacement | null>(null);
+  const [dockTransitioning, setDockTransitioning] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -243,14 +246,26 @@ export function MiniWindow() {
       if (!next) return;
       setSettings(next);
       setCollapsed(next.miniWindow.collapsed);
-      if (next.miniWindow.collapsed) setDockingEdge(null);
+      if (!next.miniWindow.collapsed) {
+        setDockingEdge(null);
+        setDockedPlacement(null);
+        setDockTransitioning(false);
+      }
     });
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     const unsubscribe = window.focuslink.on('mini:dock-transition', (transition) => {
-      setDockingEdge(transition.phase === 'prepare' ? transition.edge : null);
+      if (transition.phase === 'cancel') {
+        setDockingEdge(null);
+        setDockedPlacement(null);
+        setDockTransitioning(false);
+        return;
+      }
+      setDockingEdge(transition.edge);
+      setDockedPlacement(transition.placement);
+      setDockTransitioning(transition.phase === 'prepare');
     });
     return () => unsubscribe();
   }, []);
@@ -395,7 +410,9 @@ export function MiniWindow() {
       data-state={state}
       data-mode={collapsed ? 'collapsed' : 'expanded'}
       data-docking-edge={dockingEdge ?? undefined}
-      className={`mini-window-shell mini-window-${state} ${collapsed ? 'mini-window-collapsed' : 'mini-window-expanded'} ${dockingEdge ? `mini-window-docking mini-dock-edge-${dockingEdge}` : ''} h-full w-full text-fg`}
+      data-docking-placement={dockedPlacement ?? undefined}
+      data-dock-transitioning={dockTransitioning || undefined}
+      className={`mini-window-shell mini-window-${state} ${collapsed ? 'mini-window-collapsed' : 'mini-window-expanded'} ${dockTransitioning && dockingEdge ? `mini-window-docking mini-dock-edge-${dockingEdge}` : ''} ${collapsed && dockedPlacement ? `mini-dock-placement-${dockedPlacement}` : ''} h-full w-full text-fg`}
       style={MINI_SHELL_STYLE}
       onDoubleClick={collapsed ? handleExpand : undefined}
       title={collapsed ? '点击箭头展开；拖离屏幕边缘也会自动展开' : undefined}
@@ -571,7 +588,7 @@ function MiniSecondRail({
 }) {
   return (
     <span
-      className={`mini-second-rail ${compact ? 'mini-edge-progress' : 'mini-expanded-progress'} ${paused ? 'is-paused' : 'is-focus'} no-drag`}
+      className={`mini-second-rail ${compact ? 'mini-edge-progress' : 'mini-expanded-progress'} ${paused ? 'is-paused' : 'is-focus'}`}
       role="progressbar"
       aria-label="当前分钟时间消逝"
       aria-valuemin={0}

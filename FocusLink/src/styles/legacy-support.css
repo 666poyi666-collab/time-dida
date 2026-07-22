@@ -930,7 +930,7 @@
 .history-title-group h1,
 .history-heading h1 {
   font: 600 30px/1.1 var(--font-display);
-  letter-spacing: -0.035em;
+  letter-spacing: 0;
 }
 
 .history-title-group p,
@@ -1139,7 +1139,7 @@
 .settings-sidebar h1,
 .settings-title {
   font: 620 24px/1.1 var(--font-display);
-  letter-spacing: -0.035em;
+  letter-spacing: 0;
 }
 
 .settings-sidebar p {

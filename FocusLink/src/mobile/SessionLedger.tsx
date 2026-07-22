@@ -9,6 +9,8 @@ export interface SessionLedgerProps {
   configured: boolean;
   lastSyncAt: number | null;
   cursor: string | null;
+  showSummary?: boolean;
+  scopeLabel?: string;
 }
 
 export function SessionLedger({
@@ -17,9 +19,12 @@ export function SessionLedger({
   configured,
   lastSyncAt,
   cursor,
+  showSummary = true,
+  scopeLabel,
 }: SessionLedgerProps) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const totals = useMemo(() => summarize(records), [records]);
+  const dayGroups = useMemo(() => groupRecordsByDay(records), [records]);
 
   const toggleExpanded = (entityId: string) => {
     setExpanded((current) => {
@@ -37,31 +42,53 @@ export function SessionLedger({
           <p className="eyebrow">COMPLETED LEDGER</p>
           <h2 id="session-ledger-title">已结束账本</h2>
         </div>
-        <span>{records.length} 场本机副本</span>
+        <span>
+          {records.length} 场{scopeLabel ? ` · ${scopeLabel}` : '本机副本'}
+        </span>
       </header>
 
-      <div className="summary-band" aria-label="已结束会话汇总">
-        <SummaryMetric label="有效专注" value={formatClockDuration(totals.activeMs)} tone="focus" />
-        <SummaryMetric label="累计暂停" value={formatClockDuration(totals.pauseMs)} tone="pause" />
-        <SummaryMetric label="会话" value={`${totals.sessions} 场`} />
-        <SummaryMetric label="专注率" value={formatPercent(totals.focusRate)} />
-      </div>
+      {showSummary && (
+        <div className="summary-band" aria-label="已结束会话汇总">
+          <SummaryMetric
+            label="有效专注"
+            value={formatClockDuration(totals.activeMs)}
+            tone="focus"
+          />
+          <SummaryMetric
+            label="累计暂停"
+            value={formatClockDuration(totals.pauseMs)}
+            tone="pause"
+          />
+          <SummaryMetric label="会话" value={`${totals.sessions} 场`} />
+          <SummaryMetric label="专注率" value={formatPercent(totals.focusRate)} />
+        </div>
+      )}
 
       {!ready ? (
         <LedgerSkeleton />
       ) : records.length === 0 ? (
-        <EmptyLedger configured={configured} />
+        <EmptyLedger configured={configured} scopeLabel={scopeLabel} />
       ) : (
         <div className="ledger-list">
-          {records.map((record, index) => (
-            <SessionLedgerRow
-              key={record.entityId}
-              record={record}
-              ordinal={records.length - index}
-              staggerIndex={index}
-              expanded={expanded.has(record.entityId)}
-              onToggle={() => toggleExpanded(record.entityId)}
-            />
+          {dayGroups.map((group) => (
+            <section className="ledger-day-group" key={group.date}>
+              <header className="ledger-day-heading">
+                <h3>{formatLedgerDay(group.date)}</h3>
+                <span>
+                  {group.records.length} 场 · {formatClockDuration(group.activeMs)}
+                </span>
+              </header>
+              {group.records.map(({ record, ordinal, staggerIndex }) => (
+                <SessionLedgerRow
+                  key={record.entityId}
+                  record={record}
+                  ordinal={ordinal}
+                  staggerIndex={staggerIndex}
+                  expanded={expanded.has(record.entityId)}
+                  onToggle={() => toggleExpanded(record.entityId)}
+                />
+              ))}
+            </section>
           ))}
         </div>
       )}
@@ -230,15 +257,23 @@ function DetailMetric({
   );
 }
 
-function EmptyLedger({ configured }: { configured: boolean }) {
+function EmptyLedger({ configured, scopeLabel }: { configured: boolean; scopeLabel?: string }) {
   return (
     <div className="empty-ledger">
       <span className="empty-mark">00</span>
-      <strong>{configured ? '云端还没有已结束会话' : '连接后查看多端会话'}</strong>
+      <strong>
+        {scopeLabel
+          ? `${scopeLabel}没有已结束会话`
+          : configured
+            ? '云端还没有已结束会话'
+            : '连接后查看多端会话'}
+      </strong>
       <p>
-        {configured
-          ? '结束一场专注后，完成账本会自动收敛到这里；断网时仍可查看本机缓存。'
-          : '配置同步服务地址和访问令牌，实时控制与已结束账本使用同一账号连接。'}
+        {scopeLabel
+          ? '可切换统计范围或选择其他日期；缓存中的其他会话不会被删除。'
+          : configured
+            ? '结束一场专注后，完成账本会自动收敛到这里；断网时仍可查看本机缓存。'
+            : '配置同步服务地址和访问令牌，实时控制与已结束账本使用同一账号连接。'}
       </p>
     </div>
   );
@@ -269,6 +304,30 @@ function summarize(records: readonly CachedBundle[]) {
     sessions: records.length,
     focusRate: result.wallMs > 0 ? result.activeMs / result.wallMs : 0,
   };
+}
+
+function groupRecordsByDay(records: readonly CachedBundle[]) {
+  const sorted = [...records].sort(
+    (left, right) => right.bundle.session.startedAt - left.bundle.session.startedAt,
+  );
+  const groups = new Map<
+    string,
+    {
+      date: string;
+      activeMs: number;
+      records: Array<{ record: CachedBundle; ordinal: number; staggerIndex: number }>;
+    }
+  >();
+
+  sorted.forEach((record, index) => {
+    const date = localDayKey(record.bundle.session.startedAt);
+    const group = groups.get(date) ?? { date, activeMs: 0, records: [] };
+    group.activeMs += record.bundle.session.activeElapsedMs;
+    group.records.push({ record, ordinal: sorted.length - index, staggerIndex: index });
+    groups.set(date, group);
+  });
+
+  return Array.from(groups.values());
 }
 
 function sessionTaskContext(bundle: DeviceSyncSessionBundle): {
@@ -317,6 +376,24 @@ function formatDateTime(timestamp: number): string {
     minute: '2-digit',
     hour12: false,
   }).format(timestamp);
+}
+
+function localDayKey(timestamp: number): string {
+  const date = new Date(timestamp);
+  return [
+    String(date.getFullYear()).padStart(4, '0'),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function formatLedgerDay(date: string): string {
+  const [year, month, day] = date.split('-').map(Number);
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short',
+  }).format(new Date(year, month - 1, day));
 }
 
 function compactId(value: string): string {

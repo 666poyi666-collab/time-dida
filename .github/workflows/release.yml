@@ -64,13 +64,9 @@ jobs:
 
           $releaseDirectoryName = "release-v$($version.Replace('.', ''))"
           $releaseDirectory = "../$releaseDirectoryName"
-          $notesSource = "backend-design/releases/v$version.md"
           $notesRoot = Join-Path $releaseDirectory 'RELEASE_NOTES.md'
-          if (-not (Test-Path -LiteralPath $notesSource -PathType Leaf)) {
-            throw "Missing release notes source: $notesSource"
-          }
           if (-not (Test-Path -LiteralPath $notesRoot -PathType Leaf)) {
-            throw "Missing offline release notes: $notesRoot"
+            throw "Missing release notes: $notesRoot"
           }
 
           $sharedVersion = Get-Content -Raw -LiteralPath 'shared/version.ts'
@@ -104,11 +100,7 @@ jobs:
             }
           }
 
-          $releaseBody = Get-Content -Raw -LiteralPath $notesSource
-          $offlineBody = Get-Content -Raw -LiteralPath $notesRoot
-          if ($releaseBody.Replace("`r`n", "`n").TrimEnd() -ne $offlineBody.Replace("`r`n", "`n").TrimEnd()) {
-            throw 'Versioned and offline release notes must be identical before tagging'
-          }
+          $releaseBody = Get-Content -Raw -LiteralPath $notesRoot
           if ($releaseBody -notmatch '(?m)^>\s*发布类型：正式版\s*$' -or
               $releaseBody -notmatch '(?m)^>\s*验证状态：已通过\s*$') {
             throw 'Release notes must identify a formal release whose verification passed'
@@ -159,7 +151,6 @@ jobs:
 
           $expectedReleaseRecordPaths = @(
             'FocusLink/shared/version.generated.ts'
-            "FocusLink/backend-design/releases/v$version.md"
             "$releaseDirectoryName/FocusLink-$version-x64.exe"
             "$releaseDirectoryName/FocusLink-$version-x64-portable.exe"
             "$releaseDirectoryName/SHA256SUMS.txt"
@@ -167,7 +158,7 @@ jobs:
           )
           $releaseRecordPaths = @(git diff --name-only $buildCommit $headCommit)
           if ($LASTEXITCODE -ne 0 -or $releaseRecordPaths.Count -ne $expectedReleaseRecordPaths.Count) {
-            throw 'Release-record commit must contain exactly generated metadata, two notes, and three assets'
+            throw 'Release-record commit must contain exactly generated metadata, one notes file, and three assets'
           }
           foreach ($path in $expectedReleaseRecordPaths) {
             if ($path -notin $releaseRecordPaths) {
@@ -182,7 +173,6 @@ jobs:
           "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "RELEASE_DIRECTORY=$releaseDirectory" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "RELEASE_NOTES_SOURCE=$notesSource" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "RELEASE_NOTES_ROOT=$notesRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "RELEASE_BUILD_COMMIT=$buildCommit" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 

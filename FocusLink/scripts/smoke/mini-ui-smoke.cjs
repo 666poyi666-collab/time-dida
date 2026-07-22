@@ -357,6 +357,28 @@ async function inspectMini(mini) {
     const metricValues = [...document.querySelectorAll('.mini-metric > strong')].map((element) =>
       normalizeText(element.textContent)
     );
+    const fuseCanvas = document.querySelector('.mini-fuse-canvas');
+    const fuseCanvasRect = rectOf(fuseCanvas);
+    const fuseCanvasPixelSize = fuseCanvas ? [fuseCanvas.width, fuseCanvas.height] : [0, 0];
+    const fuseCanvasPixels = (() => {
+      if (!fuseCanvas || !fuseCanvas.width || !fuseCanvas.height) return 0;
+      try {
+        const data = fuseCanvas.getContext('2d')?.getImageData(
+          0,
+          0,
+          fuseCanvas.width,
+          fuseCanvas.height,
+        ).data;
+        if (!data) return 0;
+        let count = 0;
+        for (let index = 3; index < data.length; index += 4) {
+          if (data[index] > 0) count += 1;
+        }
+        return count;
+      } catch {
+        return 0;
+      }
+    })();
     return {
       ready: Boolean(shell),
       shellClass: shell?.className || null,
@@ -379,13 +401,18 @@ async function inspectMini(mini) {
         ? Number(edgeProgress.getAttribute('aria-valuenow'))
         : null,
       edgeProgressFillWidth: edgeProgressFill?.getBoundingClientRect().width || 0,
-      decayParticleCount: document.querySelectorAll('.mini-decay-particles i').length,
-      decayParticleKinds: [...document.querySelectorAll('.mini-decay-particles i')]
-        .map((element) => [...element.classList].find((name) => name.startsWith('particle-')))
-        .filter(Boolean),
-      decayLayers: document.querySelector('.mini-decay-particles')?.dataset.dissolveLayers || null,
-      decayAnimationNames: [...document.querySelectorAll('.mini-decay-particles i')]
-        .map((element) => getComputedStyle(element).animationName),
+      fuseCanvasCount: document.querySelectorAll('.mini-fuse-canvas').length,
+      fuseCanvasReady:
+        Boolean(fuseCanvas) &&
+        isVisible(fuseCanvas) &&
+        Boolean(fuseCanvasRect?.width && fuseCanvasRect?.height) &&
+        fuseCanvasPixelSize[0] > 0 &&
+        fuseCanvasPixelSize[1] > 0 &&
+        fuseCanvasPixels > 0,
+      fuseCanvasRect,
+      fuseCanvasPixelSize,
+      fuseCanvasPixels,
+      fuseCanvasAnimationName: fuseCanvas ? getComputedStyle(fuseCanvas).animationName : 'none',
       mode: shell?.getAttribute('data-mode') || null,
       dockingEdge: shell?.getAttribute('data-docking-edge') || null,
       hasMaterialGlow: Boolean(document.querySelector('.mini-material-glow')),
@@ -989,17 +1016,17 @@ function assertResult(name, result, expected) {
       ],
       [
         expected.state === 'paused'
-          ? result.decayParticleCount > 0
-          : result.decayParticleCount === 0,
-        'decay particles exist only during the current pause',
+          ? result.fuseCanvasCount === 1 && result.fuseCanvasReady
+          : result.fuseCanvasCount === 0,
+        'pause dissolve canvas exists only during the current pause',
       ],
       [
-        expected.state !== 'paused' || result.decayLayers === 'shard dust spark',
-        'paused mini rail uses shard, dust and spark dissolve layers',
+        expected.state !== 'paused' || result.fuseCanvasPixels > 0,
+        'paused mini rail renders the fuse canvas',
       ],
       [
-        expected.state !== 'paused' || result.decayAnimationNames.every((name) => name === 'none'),
-        'paused mini particles are driven by real elapsed time instead of infinite CSS loops',
+        expected.state !== 'paused' || result.fuseCanvasAnimationName === 'none',
+        'paused mini fuse uses real elapsed time instead of an infinite CSS loop',
       ],
       [result.primaryText === null && result.secondaryText === null, 'no timer controls collapsed'],
     );
@@ -1050,13 +1077,13 @@ function assertResult(name, result, expected) {
       [/^总历时\d+:\d{2}(?::\d{2})?$/.test(result.wallTimeText), 'expanded wall duration'],
       [
         expected.state === 'paused'
-          ? result.decayParticleCount > 0
-          : result.decayParticleCount === 0,
-        'expanded decay particles exist only during the current pause',
+          ? result.fuseCanvasCount === 1 && result.fuseCanvasReady
+          : result.fuseCanvasCount === 0,
+        'expanded pause dissolve canvas exists only during the current pause',
       ],
       [
-        expected.state !== 'paused' || result.decayAnimationNames.every((name) => name === 'none'),
-        'expanded dissolve field has no infinite CSS particle loop',
+        expected.state !== 'paused' || result.fuseCanvasAnimationName === 'none',
+        'expanded fuse canvas has no infinite CSS particle loop',
       ],
     );
   }

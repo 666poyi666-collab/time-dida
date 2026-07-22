@@ -37,6 +37,7 @@ import {
   isTomatodoSubject,
   resolveSegmentSubject,
   shouldSyncSegmentToTomatodo,
+  TOMATODO_FALLBACK_SUBJECT,
 } from '../../shared/tomatodoPolicy.js';
 import type { FocusSegment, TomatodoConfig, TomatodoSubject } from '@shared/types';
 
@@ -796,7 +797,7 @@ async function uploadPendingTomatodoRecordsUnlocked(
       segmentId: record.segmentId,
       record: buildTomatodoRecord({
         segmentId: record.segmentId,
-        subject: isTomatodoSubject(record.name) ? record.name : config.defaultSubject,
+        subject: isTomatodoSubject(record.name) ? record.name : TOMATODO_FALLBACK_SUBJECT,
         startedAt: record.startDate,
         endedAt: record.startDate + Math.round(record.time * 60000),
         activeElapsedMs: Math.round(record.time * 60000),

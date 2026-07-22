@@ -52,6 +52,20 @@ export interface SendLiveFocusCommandInput extends LiveFocusConnectionInput {
   command: LiveFocusCommand;
 }
 
+class DeviceSyncRequestError extends Error {
+  constructor(
+    message: string,
+    readonly code: string | null,
+  ) {
+    super(message);
+    this.name = 'DeviceSyncRequestError';
+  }
+}
+
+export function isInvalidDeviceSyncCursorError(error: unknown): boolean {
+  return error instanceof DeviceSyncRequestError && error.code === 'invalid_cursor';
+}
+
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const LEDGER_REQUEST_TIMEOUT_MS = 20_000;
 
@@ -95,11 +109,14 @@ export async function pullDeviceSyncPage(input: PullPageInput): Promise<DeviceSy
   }
 
   if (!response.ok) {
-    const detail = await readErrorDetail(response);
+    const detail = await readErrorResponse(response);
     if (response.status === 401 || response.status === 403) {
-      throw new Error(detail || '访问令牌无效或无权读取');
+      throw new DeviceSyncRequestError(detail.message || '访问令牌无效或无权读取', detail.code);
     }
-    throw new Error(detail || `同步服务返回 HTTP ${response.status}`);
+    throw new DeviceSyncRequestError(
+      detail.message || `同步服务返回 HTTP ${response.status}`,
+      detail.code,
+    );
   }
 
   const value = await readDeviceSyncJsonResponse(response);
@@ -437,19 +454,33 @@ function parseChange(value: unknown): DeviceSyncChange {
 }
 
 async function readErrorDetail(response: Response): Promise<string> {
+  return (await readErrorResponse(response)).message;
+}
+
+async function readErrorResponse(response: Response): Promise<{
+  code: string | null;
+  message: string;
+}> {
   const contentType = response.headers.get('content-type') ?? '';
-  if (!contentType.includes('application/json')) return '';
+  if (!contentType.includes('application/json')) return { code: null, message: '' };
   try {
     const value = await readDeviceSyncJsonResponse(response);
-    if (isRecord(value) && typeof value.error === 'string') return value.error.slice(0, 240);
-    if (isRecord(value) && isRecord(value.error) && typeof value.error.message === 'string') {
-      return value.error.message.slice(0, 240);
+    if (isRecord(value) && typeof value.error === 'string') {
+      return { code: null, message: value.error.slice(0, 240) };
     }
-    if (isRecord(value) && typeof value.message === 'string') return value.message.slice(0, 240);
+    if (isRecord(value) && isRecord(value.error) && typeof value.error.message === 'string') {
+      return {
+        code: typeof value.error.code === 'string' ? value.error.code.slice(0, 80) : null,
+        message: value.error.message.slice(0, 240),
+      };
+    }
+    if (isRecord(value) && typeof value.message === 'string') {
+      return { code: null, message: value.message.slice(0, 240) };
+    }
   } catch {
     // Keep the status-based fallback when an error body is malformed.
   }
-  return '';
+  return { code: null, message: '' };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

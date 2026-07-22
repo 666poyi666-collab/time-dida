@@ -395,7 +395,7 @@ export function HistoryPanel() {
         setDetailLoadingId(null);
         setDetailLoadError(null);
       }
-      addToast('已删除（含云端记录）', 'success');
+      addToast('已删除本地记录；已同步的滴答记录已清理，番茄 To-do 仅清理本机记录', 'success');
     } catch (e) {
       addToast('删除失败：' + (e as Error).message, 'error');
     }
@@ -568,17 +568,20 @@ export function HistoryPanel() {
     }
   };
 
-  /** ConfirmDialog 文案：与原三处原生 confirm() 语义一致 */
+  /** ConfirmDialog 文案：保留操作语义，并明确本地、滴答与番茄 To-do 的不同后果。 */
   const confirmCopy = (() => {
     if (!confirmTarget) return null;
     switch (confirmTarget.kind) {
-      case 'delete-session':
+      case 'delete-session': {
+        const session = sessions.find((item) => item.id === confirmTarget.sessionId);
         return {
           title: '删除专注记录',
-          description:
-            '确认删除这条专注记录？FocusLink 本地记录和已同步到滴答云端的专注记录都将被删除；番茄 To-do 仅清理本机记录，当前不支持远端删除。',
-          confirmLabel: '删除',
+          description: session
+            ? `${formatClock(session.startedAt)} 开始 · 有效专注 ${formatDuration(session.activeElapsedMs)}\n\n将永久删除 FocusLink 本地记录，并删除已同步到滴答清单的对应专注记录。番茄 To-do 只清理本机记录，当前无法验证远端删除。`
+            : '将永久删除 FocusLink 本地记录，并删除已同步到滴答清单的对应专注记录。番茄 To-do 只清理本机记录，当前无法验证远端删除。',
+          confirmLabel: '永久删除',
         };
+      }
       case 'batch-all':
         return {
           title: '批量改关联',
@@ -1133,7 +1136,7 @@ export function HistoryPanel() {
                                   tomatodoEnabled={settings?.tomatodo.enabled === true}
                                   completedTaskIds={completedTaskIds}
                                 />
-                                <div className="rounded-lg border border-border/50 bg-bg-card/40 px-3 py-2.5">
+                                <div className="history-batch-section">
                                   <BatchLinkPanel
                                     segments={detail.segments}
                                     linking={linking}

@@ -19,7 +19,10 @@ const outputDir = path.resolve(
   process.argv[3] || path.join(os.tmpdir(), `focuslink-ui-states-${Date.now()}`),
 );
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'focuslink-ui-smoke-'));
-let port = 0;
+// Port 0 is unreliable for Electron CDP discovery on Windows: the process can
+// start without exposing a usable DevToolsActivePort target. Keep this smoke
+// isolated on a randomized high loopback port instead.
+let port = 9200 + Math.floor(Math.random() * 600);
 
 if (!fs.existsSync(executable)) {
   throw new Error(`FocusLink executable not found: ${executable}`);
@@ -108,6 +111,10 @@ async function evaluate(expression) {
 }
 
 async function inspectState(expectedState) {
+  const expectedPrimaryText = {
+    running: '暂停',
+    paused: '继续',
+  }[expectedState];
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const result = await evaluate(`(() => {
       const consoleElement = document.querySelector('.focus-console');
@@ -145,7 +152,12 @@ async function inspectState(expectedState) {
         bodyScroll: [document.body.scrollWidth, document.body.scrollHeight],
       };
     })()`);
-    if (result.state === expectedState) return result;
+    if (
+      result.state === expectedState &&
+      (!expectedPrimaryText || result.primaryText === expectedPrimaryText)
+    ) {
+      return result;
+    }
     await delay(100);
   }
   throw new Error(`Renderer did not reach ${expectedState}`);
@@ -407,7 +419,20 @@ async function main() {
     button: 'left',
     clickCount: 1,
   });
-  await delay(900);
+  await delay(80);
+  results.focusStartTransition = await evaluate(`(() => {
+    const consoleElement = document.querySelector('.focus-console');
+    const overlay = consoleElement ? getComputedStyle(consoleElement.querySelector('.focus-instrument'), '::after') : null;
+    const dial = document.querySelector('.timer-dial');
+    const dialRect = dial?.getBoundingClientRect();
+    return {
+      cue: consoleElement?.dataset.transition || null,
+      animationName: overlay?.animationName || null,
+      dialFontSize: dial ? Number.parseFloat(getComputedStyle(dial).fontSize) : 0,
+      dialWidth: dialRect?.width ?? 0,
+    };
+  })()`);
+  await delay(820);
   process.stderr.write('[ui-smoke] capture running\n');
   results.running = await capture('running', 'running');
   await evaluate("window.focuslink.settings.set({ timerStyle: 'flip' })");
@@ -505,6 +530,14 @@ async function main() {
   results.paused = await capture('paused', 'paused');
   await evaluate('window.focuslink.timer.stop()');
   await inspectState('finished');
+  results.focusFinishTransition = await evaluate(`(() => {
+    const consoleElement = document.querySelector('.focus-console');
+    const overlay = consoleElement ? getComputedStyle(consoleElement.querySelector('.focus-instrument'), '::after') : null;
+    return {
+      cue: consoleElement?.dataset.transition || null,
+      animationName: overlay?.animationName || null,
+    };
+  })()`);
   await delay(900);
   results.finishedFreeze = {
     before: await evaluate(`(() => ({
@@ -605,6 +638,51 @@ async function main() {
     hasTimeline: Boolean(document.querySelector('.stats-timeline-detail')),
     hasTrend: Boolean(document.querySelector('.stats-trend-chart')),
   }))()`);
+  const historySessionOpened = await evaluate(`(() => {
+    const row = document.querySelector('.history-session-row');
+    if (!row) return false;
+    row.click();
+    return true;
+  })()`);
+  if (!historySessionOpened) throw new Error('History session row was not found');
+  await waitForSelector('.history-segment-ledger');
+  results.historySegmentLedger = await evaluate(`(() => ({
+    focusRows: document.querySelectorAll('.history-segment-row.tone-focus').length,
+    pauseRows: document.querySelectorAll('.history-segment-row.tone-pause').length,
+    markers: document.querySelectorAll('.history-segment-marker').length,
+    subjectChoices: document.querySelectorAll('.tomatodo-subject-actions button[title]').length,
+    nestedCard: Boolean(document.querySelector('.history-segment-ledger .rounded-lg')),
+  }))()`);
+  const deleteOpened = await evaluate(`(() => {
+    const button = document.querySelector('.history-icon-action.danger');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!deleteOpened) throw new Error('History delete action was not found');
+  await waitForSelector('[data-testid="confirm-dialog-layer"]');
+  results.historyDeleteDialog = await evaluate(`(() => {
+    const layer = document.querySelector('[data-testid="confirm-dialog-layer"]');
+    const shell = layer?.querySelector('.confirm-shell');
+    const rect = shell?.getBoundingClientRect();
+    return {
+      portalAtBody: layer?.parentElement === document.body,
+      role: shell?.getAttribute('role') || null,
+      title: shell?.querySelector('.confirm-title')?.textContent?.trim() || null,
+      description: shell?.querySelector('.confirm-desc')?.textContent?.trim() || null,
+      confirmDanger: shell?.querySelector('.confirm-actions .btn-danger')?.textContent?.trim() || null,
+      cancelFocused: document.activeElement === shell?.querySelector('.confirm-actions .btn-outline'),
+      width: rect?.width ?? 0,
+      insideViewport:
+        Boolean(rect) && rect.left >= 0 && rect.right <= window.innerWidth && rect.bottom <= window.innerHeight,
+    };
+  })()`);
+  results.historyDeleteDialog.screenshot = await captureScreen('history-delete-confirm');
+  await evaluate(`document.querySelector('.confirm-actions .btn-outline')?.click()`);
+  await delay(260);
+  results.historyDeleteDialog.closed = !(await evaluate(
+    `Boolean(document.querySelector('[data-testid="confirm-dialog-layer"]'))`,
+  ));
   await evaluate('document.querySelector(\'button[aria-label="设置"]\')?.click()');
   await waitForAnyText(['外观', '界面与体验']);
   results.settingsLight = await captureScreen('settings-light');
@@ -683,6 +761,18 @@ async function main() {
     [results.running.statusText === '专注中', 'running status is explicit'],
     [Boolean(results.running.stateMomentText?.startsWith('起于')), 'running start time is visible'],
     [results.running.primaryTime !== '00:00', 'visible timer advances after UI start'],
+    [
+      results.focusStartTransition.cue === 'start' &&
+        results.focusStartTransition.animationName === 'focus-session-start' &&
+        results.focusStartTransition.dialFontSize >= 88 &&
+        results.focusStartTransition.dialWidth > 0,
+      'focus start provides a one-shot transition around a large, measurable timer instrument',
+    ],
+    [
+      results.focusFinishTransition.cue === 'finish' &&
+        results.focusFinishTransition.animationName === 'focus-session-finish',
+      'focus finish provides a distinct one-shot settlement transition',
+    ],
     [
       results.running.ribbonState === 'running' && results.running.hasRibbonCanvas,
       'running temporal band canvas is live',
@@ -827,6 +917,24 @@ async function main() {
       'dashboard stays inside the 980px minimum viewport without horizontal overflow',
     ],
     [!results.historyInspection.hasRing, 'history removes decorative focus composition ring'],
+    [
+      results.historySegmentLedger.focusRows > 0 &&
+        results.historySegmentLedger.pauseRows > 0 &&
+        results.historySegmentLedger.markers ===
+          results.historySegmentLedger.focusRows + results.historySegmentLedger.pauseRows &&
+        !results.historySegmentLedger.nestedCard,
+      'history detail separates focus and pause in one continuous segment ledger',
+    ],
+    [
+      results.historyDeleteDialog.portalAtBody &&
+        results.historyDeleteDialog.role === 'alertdialog' &&
+        results.historyDeleteDialog.confirmDanger === '永久删除' &&
+        results.historyDeleteDialog.cancelFocused &&
+        results.historyDeleteDialog.width >= 360 &&
+        results.historyDeleteDialog.insideViewport &&
+        results.historyDeleteDialog.closed,
+      'history delete uses a focused, viewport-safe top-level danger confirmation',
+    ],
     [results.historyInspection.hasDayNavigator, 'history defaults to single-day navigation'],
     [results.historyInspection.activeRange === '单日', 'history defaults to today'],
     [results.historyInspection.nextDayDisabled, 'history cannot navigate beyond today'],

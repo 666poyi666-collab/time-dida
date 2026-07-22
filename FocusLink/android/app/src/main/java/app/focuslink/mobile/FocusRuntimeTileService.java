@@ -59,7 +59,10 @@ public final class FocusRuntimeTileService extends TileService {
         }
         FocusNotificationService.synchronize(this);
         refreshTile();
-        openApp();
+        if (
+            FocusRuntimeConnectionStore.get(this) == null ||
+            !FocusNotificationPermission.canPost(this)
+        ) openApp();
     }
 
     private void refreshTile() {

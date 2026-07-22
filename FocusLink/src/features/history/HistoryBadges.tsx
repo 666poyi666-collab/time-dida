@@ -106,7 +106,7 @@ export function SessionDetailHeader({
   const ticktickMs = ticktick.reduce((sum, seg) => sum + seg.activeElapsedMs, 0);
 
   return (
-    <div className="rounded-lg border border-border/60 bg-bg-subtle/30 p-3">
+    <div className="history-session-summary">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -228,15 +228,7 @@ export function TinyStat({
   tone?: 'default' | 'warning' | 'pause';
 }) {
   return (
-    <div
-      className={`rounded-md border px-2 py-1.5 ${
-        tone === 'warning'
-          ? 'border-warning/25 bg-warning/10'
-          : tone === 'pause'
-            ? 'border-pause/20 bg-pause/10'
-            : 'border-border/60 bg-bg-card/50'
-      }`}
-    >
+    <div className={`history-session-stat tone-${tone}`}>
       <div
         className={`timer-digit text-[12px] font-semibold ${
           tone === 'warning' ? 'text-warning' : tone === 'pause' ? 'text-pause' : 'text-fg'

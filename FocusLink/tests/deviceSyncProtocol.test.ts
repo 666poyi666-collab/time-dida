@@ -80,9 +80,16 @@ describe('device sync protocol', () => {
     );
     expect(validateDeviceSyncBundle(active)).toMatchObject({ ok: false });
 
-    const broken = toDeviceSyncBundle(session, segments, [
+    const repaired = toDeviceSyncBundle(session, segments, [
       { ...pauses[0], segmentId: 'missing-segment' },
     ]);
+    expect(repaired.pauses[0]?.segmentId).toBeNull();
+    expect(validateDeviceSyncBundle(repaired)).toEqual({ ok: true });
+
+    const broken = {
+      ...repaired,
+      pauses: [{ ...repaired.pauses[0], segmentId: 'missing-segment' }],
+    };
     expect(validateDeviceSyncBundle(broken)).toMatchObject({ ok: false });
 
     const numericSegmentReference = {

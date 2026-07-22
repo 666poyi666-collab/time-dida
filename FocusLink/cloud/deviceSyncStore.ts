@@ -35,6 +35,14 @@ import {
   isLiveFocusId,
   validateLiveFocusCommandRequest,
 } from '../shared/sync/liveFocusProtocol';
+import {
+  TASK_SNAPSHOT_PROTOCOL_VERSION,
+  validateTaskSnapshotPayload,
+  validateTaskSnapshotPublishRequest,
+  type TaskSnapshotPayload,
+  type TaskSnapshotPublishRequest,
+  type TaskSnapshotResponse,
+} from '../shared/sync/taskSnapshotProtocol';
 import type {
   LiveFocusCommand,
   LiveFocusCommandAck,
@@ -99,12 +107,20 @@ interface LiveAccountState {
   operations: Map<string, StoredLiveOperation>;
 }
 
+interface TaskAccountState {
+  revision: number;
+  sourceDeviceId: string | null;
+  fingerprint: string | null;
+  snapshot: TaskSnapshotPayload | null;
+}
+
 interface AccountState {
   changeSeq: number;
   entities: Map<string, StoredEntity>;
   operations: Map<string, StoredOperation>;
   changes: DeviceSyncChange[];
   live: LiveAccountState;
+  tasks: TaskAccountState;
 }
 
 interface PersistedAccountState {
@@ -114,6 +130,8 @@ interface PersistedAccountState {
   changes: DeviceSyncChange[];
   /** Optional so stores written before live focus was introduced remain readable. */
   live?: PersistedLiveAccountState;
+  /** Optional so stores written before desktop task snapshots remain readable. */
+  tasks?: TaskAccountState;
 }
 
 interface PersistedLiveAccountState {
@@ -142,6 +160,8 @@ export interface DeviceSyncCloudAccountInspection {
   liveState: LiveFocusState;
   liveOperationCount: number;
   liveWaiterCount: number;
+  taskRevision: number;
+  taskCount: number;
 }
 
 export class DeviceSyncCloudStoreError extends Error {
@@ -240,6 +260,50 @@ export class DeviceSyncCloudStore {
       snapshot: materializeLiveSnapshot(account.live, serverTime),
       serverTime,
     };
+  }
+
+  getTaskSnapshot(accountId: string): TaskSnapshotResponse {
+    validateAccountId(accountId);
+    const tasks = (this.accounts.get(accountId) ?? createEmptyAccount()).tasks;
+    return {
+      protocolVersion: TASK_SNAPSHOT_PROTOCOL_VERSION,
+      revision: tasks.revision,
+      sourceDeviceId: tasks.sourceDeviceId,
+      snapshot: tasks.snapshot === null ? null : structuredClone(tasks.snapshot),
+      serverTime: this.now(),
+    };
+  }
+
+  publishTaskSnapshot(
+    accountId: string,
+    request: TaskSnapshotPublishRequest,
+  ): TaskSnapshotResponse {
+    validateAccountId(accountId);
+    if (!validateTaskSnapshotPublishRequest(request)) {
+      throw new DeviceSyncCloudStoreError('invalid_request', 'task snapshot is invalid');
+    }
+    const current = this.accounts.get(accountId) ?? createEmptyAccount();
+    const fingerprint = fingerprintDeviceSyncValue(request.snapshot);
+    if (
+      current.tasks.fingerprint !== fingerprint ||
+      current.tasks.sourceDeviceId !== request.deviceId
+    ) {
+      if (current.tasks.revision >= Number.MAX_SAFE_INTEGER) {
+        throw new DeviceSyncCloudStoreError('store_corrupt', 'task revision exhausted');
+      }
+      const working = cloneAccount(current);
+      working.tasks = {
+        revision: working.tasks.revision + 1,
+        sourceDeviceId: request.deviceId,
+        fingerprint,
+        snapshot: structuredClone(request.snapshot),
+      };
+      const nextAccounts = new Map(this.accounts);
+      nextAccounts.set(accountId, working);
+      if (this.persistencePath) persistStore(this.persistencePath, nextAccounts);
+      this.accounts = nextAccounts;
+    }
+    return this.getTaskSnapshot(accountId);
   }
 
   /**
@@ -356,6 +420,8 @@ export class DeviceSyncCloudStore {
       liveState: account.live.session?.state ?? 'idle',
       liveOperationCount: account.live.operations.size,
       liveWaiterCount: this.liveWaiters.get(accountId)?.size ?? 0,
+      taskRevision: account.tasks.revision,
+      taskCount: account.tasks.snapshot?.tasks.length ?? 0,
     };
   }
 }
@@ -995,11 +1061,16 @@ function createEmptyAccount(): AccountState {
     operations: new Map(),
     changes: [],
     live: createEmptyLiveAccount(),
+    tasks: createEmptyTaskAccount(),
   };
 }
 
 function createEmptyLiveAccount(): LiveAccountState {
   return { revision: 0, session: null, operations: new Map() };
+}
+
+function createEmptyTaskAccount(): TaskAccountState {
+  return { revision: 0, sourceDeviceId: null, fingerprint: null, snapshot: null };
 }
 
 function cloneAccount(account: AccountState): AccountState {
@@ -1023,6 +1094,12 @@ function cloneAccount(account: AccountState): AccountState {
     ),
     changes: account.changes.map(cloneChange),
     live: cloneLiveAccount(account.live),
+    tasks: {
+      revision: account.tasks.revision,
+      sourceDeviceId: account.tasks.sourceDeviceId,
+      fingerprint: account.tasks.fingerprint,
+      snapshot: account.tasks.snapshot === null ? null : structuredClone(account.tasks.snapshot),
+    },
   };
 }
 
@@ -1088,6 +1165,7 @@ function loadPersistedStore(filePath: string): Map<string, AccountState> {
       operations: new Map(persisted.operations),
       changes: persisted.changes,
       live: hydratePersistedLiveAccount(persisted.live),
+      tasks: hydratePersistedTaskAccount(persisted.tasks),
     };
     // Reuse the normal clone path so caller mutations cannot retain references into parsed JSON.
     accounts.set(accountId, cloneAccount(account));
@@ -1135,6 +1213,31 @@ function serializeAccount(account: AccountState): PersistedAccountState {
         { fingerprint: operation.fingerprint, ack: { ...operation.ack } },
       ]),
     },
+    tasks: {
+      revision: account.tasks.revision,
+      sourceDeviceId: account.tasks.sourceDeviceId,
+      fingerprint: account.tasks.fingerprint,
+      snapshot: account.tasks.snapshot === null ? null : structuredClone(account.tasks.snapshot),
+    },
+  };
+}
+
+function hydratePersistedTaskAccount(persisted: TaskAccountState | undefined): TaskAccountState {
+  if (persisted === undefined) return createEmptyTaskAccount();
+  if (
+    !Number.isSafeInteger(persisted.revision) ||
+    persisted.revision < 0 ||
+    !(persisted.sourceDeviceId === null || isId(persisted.sourceDeviceId)) ||
+    !(persisted.fingerprint === null || typeof persisted.fingerprint === 'string') ||
+    !(persisted.snapshot === null || validateTaskSnapshotPayload(persisted.snapshot))
+  ) {
+    throw new DeviceSyncCloudStoreError('store_corrupt', 'invalid persisted task snapshot');
+  }
+  return {
+    revision: persisted.revision,
+    sourceDeviceId: persisted.sourceDeviceId,
+    fingerprint: persisted.fingerprint,
+    snapshot: persisted.snapshot === null ? null : structuredClone(persisted.snapshot),
   };
 }
 

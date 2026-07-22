@@ -10,8 +10,9 @@ import {
   type LiveConnectionState,
   type LiveFocusSnapshotLike,
 } from './runtimeModel';
-import { NativeSystemControls } from './NativeSystemControls';
 import type { SyncedTask } from '@shared/sync/taskSnapshotProtocol';
+import type { LiveSnapshotSource } from './liveSnapshotPolicy';
+import { MobileConfirmDialog } from './MobileConfirmDialog';
 
 export type MobileFocusCommand = 'start' | 'pause' | 'resume' | 'finish';
 
@@ -28,6 +29,8 @@ export interface FocusConsoleProps {
   onTitleChange: (value: string) => void;
   onCommand: (command: MobileFocusCommand) => void;
   onOpenConnection: () => void;
+  onOpenTasks: () => void;
+  snapshotSource: LiveSnapshotSource;
 }
 
 export function FocusConsole({
@@ -43,8 +46,11 @@ export function FocusConsole({
   onTitleChange,
   onCommand,
   onOpenConnection,
+  onOpenTasks,
+  snapshotSource,
 }: FocusConsoleProps) {
   const [now, setNow] = useState(() => Date.now());
+  const [finishDialogOpen, setFinishDialogOpen] = useState(false);
   const current = snapshot ?? idleLiveFocusSnapshot(0, now);
   const active = current.state !== 'idle';
 
@@ -73,12 +79,11 @@ export function FocusConsole({
   const connectionCopy = liveConnectionCopy(connection, snapshot !== null);
   const recentDevice =
     current.ownerDeviceId === localDeviceId ? '此设备' : compactDeviceId(current.ownerDeviceId);
+  const showingCachedSnapshot = snapshotSource === 'cache' && connection !== 'live';
 
   const requestFinish = () => {
     if (!controls.finish) return;
-    if (window.confirm('结束本轮专注？结束后会生成会话账本，此操作不能继续本轮计时。')) {
-      onCommand('finish');
-    }
+    setFinishDialogOpen(true);
   };
 
   return (
@@ -93,7 +98,9 @@ export function FocusConsole({
         </div>
         <span className="focus-state-chip" key={current.state}>
           <i aria-hidden="true" />
-          {liveStateLabel(current.state)}
+          {showingCachedSnapshot
+            ? `缓存 · ${liveStateLabel(current.state)}`
+            : liveStateLabel(current.state)}
         </span>
       </header>
 
@@ -106,29 +113,35 @@ export function FocusConsole({
             </div>
           ) : (
             <div className="focus-start-fields">
-              <label className="focus-title-field" htmlFor="focus-task">
+              <div className="focus-title-field">
                 <span>从电脑任务清单选择</span>
-                <select
-                  id="focus-task"
-                  value={selectedTaskId}
-                  onChange={(event) => onTaskChange(event.target.value)}
-                  disabled={pendingCommand !== null}
-                >
-                  <option value="">不关联任务 · 自由专注</option>
-                  {tasks
-                    .filter((task) => !task.isCompleted)
-                    .map((task) => (
-                      <option key={`${task.source}:${task.id}`} value={task.id}>
-                        {task.title}
-                      </option>
-                    ))}
-                </select>
+                <div className="focus-task-picker">
+                  <button type="button" onClick={onOpenTasks} disabled={pendingCommand !== null}>
+                    <span>
+                      {tasks.find((task) => task.id === selectedTaskId)?.title || '浏览电脑任务'}
+                    </span>
+                    <small>
+                      {selectedTaskId
+                        ? '已关联'
+                        : `${tasks.filter((task) => !task.isCompleted).length} 项待办`}
+                    </small>
+                  </button>
+                  {selectedTaskId && (
+                    <button
+                      type="button"
+                      onClick={() => onTaskChange('')}
+                      disabled={pendingCommand !== null}
+                    >
+                      自由专注
+                    </button>
+                  )}
+                </div>
                 <small>
                   {tasks.length > 0
                     ? `已缓存电脑端 ${tasks.length} 个任务`
                     : '电脑刷新任务后会自动同步到这里'}
                 </small>
-              </label>
+              </div>
               <label className="focus-title-field" htmlFor="focus-title">
                 <span>这次要专注什么？</span>
                 <input
@@ -161,11 +174,13 @@ export function FocusConsole({
             </span>
             <strong>{formatClockDuration(durations.primaryElapsedMs)}</strong>
             <small>
-              {current.state === 'paused'
-                ? `有效专注 ${formatClockDuration(durations.activeElapsedMs)} 已冻结`
-                : current.state === 'running'
-                  ? 'LIVE · 状态按服务端确认时刻逐秒外推'
-                  : 'IDLE · 连接云端后由任一设备控制'}
+              {showingCachedSnapshot
+                ? 'LAST CONFIRMED · 等待云端确认，控制已锁定'
+                : current.state === 'paused'
+                  ? `有效专注 ${formatClockDuration(durations.activeElapsedMs)} 已冻结`
+                  : current.state === 'running'
+                    ? 'LIVE · 状态按服务端确认时刻逐秒外推'
+                    : 'IDLE · 连接云端后由任一设备控制'}
             </small>
           </div>
 
@@ -270,8 +285,6 @@ export function FocusConsole({
             <p>结束记录会同步回桌面账本；滴答清单与番茄 To-do 需在桌面端操作并确认。</p>
           </div>
 
-          <NativeSystemControls />
-
           {commandNotice && (
             <p className="command-notice" role="status" aria-live="polite">
               {commandNotice}
@@ -279,6 +292,18 @@ export function FocusConsole({
           )}
         </aside>
       </div>
+      <MobileConfirmDialog
+        open={finishDialogOpen}
+        title="结束本轮专注？"
+        description="结束后会生成会话账本，此操作不能继续本轮计时。"
+        confirmLabel={pendingCommand === 'finish' ? '正在结束…' : '结束本轮'}
+        danger
+        onCancel={() => setFinishDialogOpen(false)}
+        onConfirm={() => {
+          setFinishDialogOpen(false);
+          onCommand('finish');
+        }}
+      />
     </section>
   );
 }

@@ -84,6 +84,13 @@ describe('buildSessionAnalytics', () => {
       segmentCount: 1,
     });
     expect(result.timeline.map((item) => item.kind)).toEqual(['focus', 'pause']);
+    expect(result.subjects).toEqual([
+      { subject: '化学', activeMs: 45 * 60 * 1000, segmentCount: 1 },
+    ]);
+    expect(result.hourly[9]).toMatchObject({
+      activeMs: 45 * 60 * 1000,
+      pauseMs: 15 * 60 * 1000,
+    });
     expect(result.stability).toMatchObject({ activeDays: 1, calendarDays: 1, score: 100 });
   });
 
@@ -302,6 +309,36 @@ describe('buildSessionAnalytics edge cases', () => {
     expect(result.stability.averageDailyActiveMs).toBe(60 * 60 * 1000);
     expect(result.stability.standardDeviationMs).toBeCloseTo(30 * 60 * 1000, 3);
     expect(result.stability.score).toBe(50);
+  });
+
+  it('keeps manual subjects above inference and uses 学习 only as the fallback', () => {
+    const result = buildSessionAnalytics(
+      { start: day, end: day + 24 * 60 * 60 * 1000 - 1 },
+      {
+        sessions: [session()],
+        segments: [
+          segment({
+            id: 'manual',
+            title: '数学函数',
+            tomatodoSubject: '物理',
+            activeElapsedMs: 120000,
+          }),
+          segment({
+            id: 'fallback',
+            title: '整理错题',
+            taskId: null,
+            taskSource: null,
+            activeElapsedMs: 60000,
+          }),
+        ],
+        pauses: [],
+      },
+    );
+
+    expect(result.subjects).toEqual([
+      { subject: '物理', activeMs: 120000, segmentCount: 1 },
+      { subject: '学习', activeMs: 60000, segmentCount: 1 },
+    ]);
   });
 
   it('sorts the mixed timeline by start time and preserves running segments with null endedAt', () => {

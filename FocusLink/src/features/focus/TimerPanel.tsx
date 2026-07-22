@@ -82,14 +82,18 @@ export function TimerPanel() {
     consumeTaskPickerRequest,
   } = useStore();
   const { now, mainMs, cumulativeActiveMs, cumulativePauseMs, wallMs } = useDisplayValues(snapshot);
+  const state = snapshot?.state ?? 'idle';
   const [pickerMode, setPickerMode] = useState<'segment' | 'session' | 'preselect' | null>(null);
   const [immersive, setImmersive] = useState(false);
   const [immersiveLeaving, setImmersiveLeaving] = useState(false);
+  const [transitionCue, setTransitionCue] = useState<'start' | 'finish' | null>(null);
+  const [actionPending, setActionPending] = useState(false);
   const immersiveExitTimer = useRef<number | null>(null);
+  const transitionCueTimer = useRef<number | null>(null);
+  const previousStateRef = useRef(state);
   const [ledgerOpen, setLedgerOpen] = useState(true);
   const reducedMotion = useReducedMotion() ?? false;
 
-  const state = snapshot?.state ?? 'idle';
   const isRunning = state === 'running' || state === 'paused';
   const segmentOrdinal = Math.max(1, snapshot?.segments.length ?? 1);
   const timerStyle = resolveTimerStyle(settings?.timerStyle);
@@ -113,12 +117,35 @@ export function TimerPanel() {
   }, [pendingTask, setPendingTask, state]);
 
   useEffect(() => {
+    const previous = previousStateRef.current;
+    previousStateRef.current = state;
+    const cue =
+      state === 'running' && (previous === 'idle' || previous === 'finished')
+        ? 'start'
+        : state === 'finished' && (previous === 'running' || previous === 'paused')
+          ? 'finish'
+          : null;
+    if (!cue) return;
+    if (transitionCueTimer.current !== null) window.clearTimeout(transitionCueTimer.current);
+    setTransitionCue(cue);
+    transitionCueTimer.current = window.setTimeout(
+      () => {
+        transitionCueTimer.current = null;
+        setTransitionCue(null);
+      },
+      reducedMotion ? 40 : cue === 'start' ? 560 : 720,
+    );
+  }, [reducedMotion, state]);
+
+  useEffect(() => {
     if (taskPickerRequest <= 0) return;
     setPickerMode(isRunning ? 'segment' : 'preselect');
     consumeTaskPickerRequest();
   }, [consumeTaskPickerRequest, isRunning, taskPickerRequest]);
 
   const handleToggle = async () => {
+    if (actionPending) return;
+    setActionPending(true);
     try {
       if (state === 'finished') {
         await window.focuslink.timer.reset();
@@ -162,16 +189,22 @@ export function TimerPanel() {
       }
     } catch (e) {
       addToast('操作失败：' + (e as Error).message, 'error');
+    } finally {
+      setActionPending(false);
     }
   };
 
   const handleStop = async () => {
+    if (actionPending) return;
+    setActionPending(true);
     try {
       const snap = await window.focuslink.timer.stop();
       useStore.getState().setSnapshot(snap);
       addToast('专注已结束', 'success');
     } catch (e) {
       addToast('结束失败：' + (e as Error).message, 'error');
+    } finally {
+      setActionPending(false);
     }
   };
 
@@ -320,6 +353,7 @@ export function TimerPanel() {
   useEffect(
     () => () => {
       if (immersiveExitTimer.current !== null) window.clearTimeout(immersiveExitTimer.current);
+      if (transitionCueTimer.current !== null) window.clearTimeout(transitionCueTimer.current);
     },
     [],
   );
@@ -362,18 +396,26 @@ export function TimerPanel() {
 
   const controls = (
     <div className="timer-controls">
-      <button
-        className={`btn-main-action ${state === 'running' ? 'btn-solid' : 'btn-accent'}`}
-        onClick={handleToggle}
-        disabled={state === 'stopping'}
-      >
-        {state === 'running' ? <Icon.Pause size="sm" /> : <Icon.Play size="sm" />}
-        {toggleLabel}
-      </button>
+      <AnimatePresence initial={false} mode="popLayout">
+        <motion.button
+          key={`primary-${state}-${toggleLabel}`}
+          className={`btn-main-action ${state === 'running' ? 'btn-solid' : 'btn-accent'}`}
+          onClick={handleToggle}
+          disabled={state === 'stopping' || actionPending}
+          initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 3 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -2 }}
+          whileTap={reducedMotion ? undefined : { y: 1, scale: 0.98 }}
+          transition={{ duration: reducedMotion ? 0.08 : 0.2, ease: [0.4, 0, 0.2, 1] }}
+        >
+          {state === 'running' ? <Icon.Pause size="sm" /> : <Icon.Play size="sm" />}
+          {toggleLabel}
+        </motion.button>
+      </AnimatePresence>
       <button
         className="btn-outline btn-stop-action"
         onClick={handleStop}
-        disabled={isIdle || isFinished || state === 'stopping'}
+        disabled={isIdle || isFinished || state === 'stopping' || actionPending}
       >
         <Icon.Square size="xs" />
         结束
@@ -408,6 +450,7 @@ export function TimerPanel() {
     <div
       className={`focus-console ${showLedger && ledgerOpen ? 'with-ledger' : 'solo ledger-collapsed'}`}
       data-state={state}
+      data-transition={transitionCue ?? undefined}
     >
       <section className="focus-instrument">
         <header className="focus-header">
@@ -487,12 +530,23 @@ export function TimerPanel() {
         </div>
 
         <div className="timer-zone">
-          <TimerDial
-            ms={mainMs}
-            state={state}
-            style={timerStyle}
-            coreRatio={Math.min(1, cumulativeActiveMs / CORE_GOAL_MS)}
-          />
+          <AnimatePresence initial={false} mode="popLayout">
+            <motion.div
+              key={timerStyle}
+              className="timer-dial-stage"
+              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+              transition={{ duration: reducedMotion ? 0.08 : 0.24, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <TimerDial
+                ms={mainMs}
+                state={state}
+                style={timerStyle}
+                coreRatio={Math.min(1, cumulativeActiveMs / CORE_GOAL_MS)}
+              />
+            </motion.div>
+          </AnimatePresence>
           {timerLabel}
         </div>
 
@@ -527,14 +581,28 @@ export function TimerPanel() {
           <div
             className={`focus-immersive instrument-${timerStyle}${immersiveLeaving ? ' is-leaving' : ''}`}
             data-state={state}
+            data-transition={transitionCue ?? undefined}
             data-testid="focus-immersive"
           >
-            <button className="immersive-exit" onClick={() => void exitImmersive()}>
-              Esc 退出 <Icon.X size="xs" />
+            <button
+              className="immersive-exit"
+              onClick={() => void exitImmersive()}
+              aria-label="退出沉浸模式"
+              title="退出沉浸模式"
+            >
+              <Icon.X size="xs" />
             </button>
             <main className="immersive-stage">
               <div className="immersive-task" title={contextTitle ?? '未关联任务'}>
-                <span>{state === 'paused' ? '暂停中' : '正在专注'}</span>
+                <span>
+                  {state === 'running'
+                    ? '正在专注'
+                    : state === 'paused'
+                      ? '暂停中'
+                      : state === 'finished'
+                        ? '本轮已结束'
+                        : '准备开始'}
+                </span>
                 <strong>{contextTitle ?? '未关联任务'}</strong>
               </div>
               <div className="immersive-readout">

@@ -30,6 +30,7 @@ export function ConnectionSheet({
   useEffect(() => {
     const previousFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    document.documentElement.classList.add('connection-sheet-open');
     endpointRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -37,6 +38,7 @@ export function ConnectionSheet({
     window.addEventListener('keydown', closeOnEscape);
     return () => {
       window.removeEventListener('keydown', closeOnEscape);
+      document.documentElement.classList.remove('connection-sheet-open');
       previousFocus?.focus();
     };
   }, [onClose]);
@@ -116,7 +118,7 @@ export function ConnectionSheet({
           <button
             className="field-quick-action"
             type="button"
-            onClick={() => onChange({ ...value, endpoint: 'http://127.0.0.1:8787' })}
+            onClick={() => onChange({ ...value, endpoint: 'http://127.0.0.1:18787' })}
           >
             使用本机 / ADB 地址
           </button>

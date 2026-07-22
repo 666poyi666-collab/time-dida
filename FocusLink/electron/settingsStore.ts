@@ -35,6 +35,7 @@ const MIGRATION_RESET_FAILED_SYNC_V0216_KEY = 'migration.resetFailedSyncV0216';
 const MIGRATION_RESYNC_FOCUS_RECORD_V0410_KEY = 'migration.resyncFocusRecordV0410';
 const MIGRATION_TOMATODO_CLOUD_V053_KEY = 'migration.tomatodoCloudV053';
 const MIGRATION_RECONCILE_DIDA_FOCUS_V060_KEY = 'migration.reconcileDidaFocusV060';
+const MIGRATION_DEVICE_SYNC_PORT_V01221_KEY = 'migration.deviceSyncPortV01221';
 const MIGRATION_FLAG_DONE = '1';
 let tomatodoCloudMigrationAttemptedThisRun = false;
 
@@ -78,10 +79,24 @@ export function getSettings(): AppSettings {
   applyResyncFocusRecordV0410Migration();
   applyTomatodoCloudV053Migration(settings);
   applyReconcileDidaFocusV060Migration();
+  applyDeviceSyncPortV01221Migration(settings);
   normalizeSegmentBehavior(settings);
   normalizeAppearanceSettings(settings);
+  normalizeTomatodoFallback(settings);
   normalizeMiniWindowSize(settings);
   return settings;
+}
+
+/** 未识别记录只有一个稳定兜底“学习”；六大学科只来自自动命中或手动选择。 */
+function normalizeTomatodoFallback(settings: AppSettings): void {
+  if (settings.tomatodo.defaultSubject === '学习') return;
+  logger.info('settings', 'normalize TomaToDo fallback subject', {
+    from: settings.tomatodo.defaultSubject,
+    to: '学习',
+  });
+  settings.tomatodo.defaultSubject = '学习';
+  store.store = settings;
+  setSetting(SETTINGS_KEY, JSON.stringify(settings));
 }
 
 /** 视觉设置迁移：收敛旧字体、旧专注色和旧计时字形，避免设置页出现无选中状态。 */
@@ -478,7 +493,25 @@ function applyReconcileDidaFocusV060Migration(): void {
   }
 }
 
+/**
+ * v0.12.21：把旧的 loopback 测试端口迁移到 FocusLink 专用端口。
+ * Windows 上 8787 经常被其他桌面软件占用，导致客户端只得到无上下文的
+ * `TypeError: fetch failed`。仅迁移旧版默认值，不改动用户明确填写的自定义地址。
+ */
+function applyDeviceSyncPortV01221Migration(settings: AppSettings): void {
+  if (getSetting(MIGRATION_DEVICE_SYNC_PORT_V01221_KEY) === MIGRATION_FLAG_DONE) return;
+  const endpoint = settings.deviceSync.endpoint.trim().replace(/\/$/, '');
+  if (endpoint === 'http://127.0.0.1:8787') {
+    settings.deviceSync.endpoint = DEFAULT_SETTINGS.deviceSync.endpoint;
+    store.store = settings;
+    setSetting(SETTINGS_KEY, JSON.stringify(settings));
+    logger.info('settings', 'v0.12.21 migration: loopback sync endpoint 8787 -> 18787');
+  }
+  setSetting(MIGRATION_DEVICE_SYNC_PORT_V01221_KEY, MIGRATION_FLAG_DONE);
+}
+
 export function saveSettings(settings: AppSettings): AppSettings {
+  settings.tomatodo.defaultSubject = '学习';
   store.store = settings;
   setSetting(SETTINGS_KEY, JSON.stringify(settings));
   logger.info('settings', 'saved', { theme: settings.theme, syncMode: settings.syncMode });

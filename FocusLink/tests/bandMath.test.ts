@@ -18,6 +18,7 @@ import {
   particleAgedColor,
   particleAshColor,
   particleCellHash,
+  particleDepthProfile,
   particleFieldFadeIn,
   particleFieldParams,
   particleFieldStepSec,
@@ -238,6 +239,19 @@ describe('bandMath', () => {
           expect(spec.deathK).toBeLessThanOrEqual(1);
         }
       }
+    });
+
+    it('projects particle rows into a readable back-to-front depth profile', () => {
+      const back = particleDepthProfile(0.15, 1);
+      const middle = particleDepthProfile(0.5, 1);
+      const front = particleDepthProfile(0.9, 1);
+
+      expect(back.projectedRatio).toBeLessThan(middle.projectedRatio);
+      expect(middle.projectedRatio).toBeLessThan(front.projectedRatio);
+      expect(back.sizeScale).toBeLessThan(front.sizeScale);
+      expect(back.alphaScale).toBeLessThan(front.alphaScale);
+      expect(particleDepthProfile(-1, 0).projectedRatio).toBe(0);
+      expect(particleDepthProfile(2, 0).projectedRatio).toBe(1);
     });
 
     it('field params: dense and solid near the pointer, sparse and scattered far away', () => {

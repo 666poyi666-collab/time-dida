@@ -9,13 +9,16 @@ const { spawn } = require('node:child_process');
 const WebSocket = require('ws');
 
 const root = path.resolve(__dirname, '..', '..');
-const repoRoot = path.resolve(root, '..');
 const outputDir = path.resolve(
-  process.argv[2] || path.join(repoRoot, 'visual-review', 'redesign-0116'),
+  process.argv[2] || path.join(os.tmpdir(), 'focuslink-visual-review'),
 );
 const packagedExecutable = process.argv[3] ? path.resolve(process.argv[3]) : null;
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'focuslink-review-'));
-let port = 0;
+// Electron does not consistently publish a usable DevToolsActivePort file when
+// launched with port 0 on Windows. Use an isolated high loopback port, matching
+// the mini-window smoke driver, so renderer discovery cannot stall on an empty
+// target while still avoiding the app's normal ports.
+let port = 9200 + Math.floor(Math.random() * 600);
 
 fs.mkdirSync(outputDir, { recursive: true });
 

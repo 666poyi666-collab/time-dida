@@ -1,0 +1,106 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import { buildMobileDashboard, mobileStatsRange } from '../src/mobile/dashboardModel';
+import type { CachedBundle } from '../src/mobile/cache';
+import { DashboardView } from '../src/mobile/DashboardView';
+
+const now = new Date(2026, 6, 21, 12, 0, 0, 0).getTime();
+
+describe('mobile dashboard model', () => {
+  it('uses natural-day windows for all supported ranges', () => {
+    const today = mobileStatsRange('today', now);
+    const sevenDays = mobileStatsRange('7d', now);
+    const thirtyDays = mobileStatsRange('30d', now);
+    expect(new Date(today.start).getHours()).toBe(0);
+    expect(new Date(today.end).getHours()).toBe(23);
+    expect((today.start - sevenDays.start) / 86400000).toBe(6);
+    expect((today.start - thirtyDays.start) / 86400000).toBe(29);
+  });
+
+  it('reuses the shared analytics contract for subjects and hours', () => {
+    const record = makeRecord();
+    const result = buildMobileDashboard([record], 'today', now);
+    expect(result.totals.activeMs).toBe(25 * 60_000);
+    expect(result.subjects).toEqual([{ subject: '数学', activeMs: 25 * 60_000, segmentCount: 1 }]);
+    expect(result.hourly[9].activeMs).toBe(25 * 60_000);
+  });
+
+  it('renders the analytics model in the mobile dashboard surface', () => {
+    const markup = renderToStaticMarkup(
+      createElement(DashboardView, {
+        records: [makeRecord()],
+        ready: true,
+        configured: true,
+        lastSyncAt: now,
+        cursor: 'cursor-1',
+        referenceNow: now,
+      }),
+    );
+
+    expect(markup).toContain('专注统计');
+    expect(markup).toContain('近 7 天');
+    expect(markup).toContain('专注趋势');
+    expect(markup).toContain('数学');
+    expect(markup).toContain('24 小时时段');
+    expect(markup).toContain('日期热力');
+    expect(markup).toContain('函数复习');
+  });
+});
+
+function makeRecord(): CachedBundle {
+  const startedAt = new Date(2026, 6, 21, 9, 0, 0, 0).getTime();
+  return {
+    entityId: 'session-1',
+    revision: 1,
+    changeSeq: 1,
+    sourceDeviceId: 'desktop-1',
+    bundle: {
+      session: {
+        id: 'session-1',
+        title: '函数复习',
+        status: 'finished',
+        startedAt,
+        endedAt: startedAt + 30 * 60_000,
+        activeElapsedMs: 25 * 60_000,
+        pauseElapsedMs: 5 * 60_000,
+        wallElapsedMs: 30 * 60_000,
+        defaultTaskId: 'task-1',
+        defaultTaskSource: 'ticktick',
+        defaultTaskTitle: '函数复习',
+        note: null,
+        createdAt: startedAt,
+        updatedAt: startedAt + 30 * 60_000,
+      },
+      segments: [
+        {
+          id: 'segment-1',
+          sessionId: 'session-1',
+          taskId: 'task-1',
+          taskSource: 'ticktick',
+          title: '函数复习',
+          startedAt,
+          endedAt: startedAt + 25 * 60_000,
+          activeElapsedMs: 25 * 60_000,
+          note: null,
+          tomatodoSubject: null,
+          createdAt: startedAt,
+          updatedAt: startedAt + 25 * 60_000,
+        },
+      ],
+      pauses: [
+        {
+          id: 'pause-1',
+          sessionId: 'session-1',
+          segmentId: 'segment-1',
+          pauseStartedAt: startedAt + 25 * 60_000,
+          pauseEndedAt: startedAt + 30 * 60_000,
+          durationMs: 5 * 60_000,
+          reason: null,
+          createdAt: startedAt + 25 * 60_000,
+          updatedAt: startedAt + 30 * 60_000,
+        },
+      ],
+    },
+  };
+}

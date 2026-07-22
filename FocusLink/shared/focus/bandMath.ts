@@ -193,6 +193,30 @@ export function fieldParticleSpec(ix: number, iy: number): FieldParticleSpec {
   };
 }
 
+export type ParticleDepthProfile = {
+  /** 透视投影后的纵向比例：远端压缩、近端展开。 */
+  projectedRatio: number;
+  /** 前景粒子略大，形成稳定的前后层次。 */
+  sizeScale: number;
+  /** 远端轻微退灰，前景保持完整可读。 */
+  alphaScale: number;
+};
+
+/**
+ * 时间带纵深剖面。只改变纵向投影与视觉权重，不改变粒子的世界时间坐标；
+ * detail=1 的秒级近景比远景有更清楚的透视压缩。
+ */
+export function particleDepthProfile(rowRatio: number, detail: number): ParticleDepthProfile {
+  const row = clamp01(rowRatio);
+  const strength = clamp01(detail);
+  const projectedRatio = row ** (1.16 + strength * 0.18);
+  return {
+    projectedRatio,
+    sizeScale: 0.66 + projectedRatio * 0.54,
+    alphaScale: 0.72 + projectedRatio * 0.28,
+  };
+}
+
 export type ParticleFieldParams = {
   /** 距离系数（smoothstep，0 = 紧贴“现在”，1 = 远端） */
   s: number;

@@ -9,8 +9,16 @@ describe('Windows installer process policy', () => {
   it('keeps the smoke bypass and closes current-user instances without enumeration', () => {
     expect(builderConfig).toContain('include: build/installer.nsh');
     expect(installerScript).toContain('FOCUSLINK_INSTALLER_SKIP_CLOSE');
-    expect(installerScript).toContain('/fi "USERNAME eq %USERNAME%"');
+    expect(installerScript).toContain('/fi "USERNAME eq %USERDOMAIN%\\%USERNAME%"');
+    expect(installerScript).not.toContain('/fi "USERNAME eq %USERNAME%"');
+    expect(installerScript).toContain("Get-Process -Name 'FocusLink'");
+    expect(installerScript).toContain('StartsWith($$profile');
+    expect(installerScript).toContain('Stop-Process -Force');
     expect(installerScript).toContain('/f /im "${APP_EXECUTABLE_FILENAME}"');
+    expect(
+      installerScript.match(/\/f \/im "\$\{APP_EXECUTABLE_FILENAME\}"/g)?.length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(installerScript).toContain('Sleep 1600');
     expect(installerScript).toContain('$SYSDIR\\cmd.exe');
     expect(installerScript).not.toContain('%SYSTEMROOT%');
     expect(installerScript).toContain('!macro customInit');

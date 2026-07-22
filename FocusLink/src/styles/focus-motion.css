@@ -39,6 +39,92 @@
   animation: focus-stagger-rise 240ms var(--ease-fluid) 60ms both;
 }
 
+@keyframes focus-state-dot-arrive {
+  from {
+    opacity: 0.28;
+    transform: scale(0.55);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.focus-state-word.state-running .focus-state-dot,
+.focus-state-word.state-paused .focus-state-dot {
+  animation: focus-state-dot-arrive 360ms var(--ease-fluid) both;
+}
+
+/* 开始与结束只给一次性校准反馈；不会与时间之带争夺持续运动。 */
+.focus-instrument::after,
+.focus-immersive::after {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+}
+
+.focus-console[data-transition='start'] .focus-instrument::after,
+.focus-immersive[data-transition='start']::after {
+  background: linear-gradient(
+    90deg,
+    transparent calc(50% - 1px),
+    rgb(var(--app-accent) / 0.42) 50%,
+    transparent calc(50% + 1px)
+  );
+  animation: focus-session-start 560ms var(--ease-fluid) both;
+}
+
+.focus-console[data-transition='finish'] .focus-instrument::after,
+.focus-immersive[data-transition='finish']::after {
+  top: 49%;
+  right: 14%;
+  bottom: auto;
+  left: 14%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    rgb(var(--app-accent) / 0.08) 18%,
+    rgb(var(--app-accent) / 0.42) 50%,
+    rgb(var(--app-accent) / 0.08) 82%,
+    transparent 100%
+  );
+  transform-origin: center;
+  animation: focus-session-finish 720ms var(--ease-standard) both;
+}
+
+@keyframes focus-session-start {
+  from {
+    opacity: 0;
+    transform: translateX(-52%);
+  }
+  38% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(52%);
+  }
+}
+
+@keyframes focus-session-finish {
+  from {
+    opacity: 0;
+    transform: scaleX(0.08);
+  }
+  34% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  to {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+
 /* ─── 2. 统计数字：值变化时的 settle 过渡（≤300ms，tabular-nums 不抖动） ───
  * StatValue 以 key={value} 重挂载，每次变化播放一次 260ms 轻微上浮显现。
  * ------------------------------------------------------------------------- */
@@ -152,7 +238,10 @@
   .focus-console .focus-state-word,
   .focus-console .timer-context-strip,
   .focus-console .timer-totals,
-  .focus-value-tick {
+  .focus-value-tick,
+  .focus-state-word .focus-state-dot,
+  .focus-console[data-transition] .focus-instrument::after,
+  .focus-immersive[data-transition]::after {
     animation: none;
   }
 

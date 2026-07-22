@@ -67,11 +67,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(
-    closest-side,
-    rgb(var(--app-accent) / 0.14),
-    transparent 75%
-  );
+  background: radial-gradient(closest-side, rgb(var(--app-accent) / 0.14), transparent 75%);
   opacity: 0;
   transition: opacity var(--dur-micro) var(--ease-standard);
   pointer-events: none;

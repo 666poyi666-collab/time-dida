@@ -120,10 +120,18 @@ export function toDeviceSyncBundle(
   delete portableSession.segmentCount;
   delete portableSession.linkedSegmentCount;
   delete portableSession.ticktickLinkedSegmentCount;
+  const segmentIds = new Set(segments.map((segment) => segment.id));
   return {
     session: portableSession,
     segments: segments.map(({ cloudFocusId: _providerLocalId, ...segment }) => segment),
-    pauses: pauses.map((pause) => ({ ...pause })),
+    // Older builds could leave a pause pointing at a deleted/merged segment. The
+    // portable protocol permits a session-level pause, so repair only the wire
+    // representation and keep the user's original local row untouched.
+    pauses: pauses.map((pause) => ({
+      ...pause,
+      segmentId:
+        pause.segmentId === null || segmentIds.has(pause.segmentId) ? pause.segmentId : null,
+    })),
   };
 }
 

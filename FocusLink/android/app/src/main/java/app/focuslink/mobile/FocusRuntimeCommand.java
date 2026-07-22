@@ -83,4 +83,18 @@ final class FocusRuntimeCommand {
             .put("stateRevision", stateRevision)
             .put("issuedAtEpochMs", issuedAtEpochMs);
     }
+
+    JSObject toCloudRequest(String deviceId) {
+        return new JSObject()
+            .put("protocolVersion", 1)
+            .put("deviceId", deviceId)
+            .put(
+                "command",
+                new JSObject()
+                    .put("commandId", id)
+                    .put("action", type)
+                    .put("expectedRevision", stateRevision)
+                    .put("sessionId", sessionId)
+            );
+    }
 }

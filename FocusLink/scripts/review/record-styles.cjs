@@ -8,9 +8,8 @@ const { pathToFileURL } = require('node:url');
 const WebSocket = require('ws');
 
 const root = path.resolve(__dirname, '..', '..');
-const mockDir = path.resolve(
-  process.argv[2] || path.join(root, '..', 'visual-review', 'styles-v3'),
-);
+if (!process.argv[2]) throw new Error('mockDir is required');
+const mockDir = path.resolve(process.argv[2]);
 const FRAMES = Number(process.argv[3] || 26);
 const INTERVAL = Number(process.argv[4] || 132);
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'focuslink-styles-'));

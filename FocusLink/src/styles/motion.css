@@ -93,11 +93,7 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: radial-gradient(
-    closest-side,
-    rgb(var(--motion-glow-color) / 0.16),
-    transparent 72%
-  );
+  background: radial-gradient(closest-side, rgb(var(--motion-glow-color) / 0.16), transparent 72%);
   opacity: 1;
   pointer-events: none;
   z-index: 0;

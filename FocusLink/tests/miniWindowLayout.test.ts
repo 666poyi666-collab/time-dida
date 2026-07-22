@@ -9,12 +9,14 @@ import {
   MINI_WINDOW_EXPANDED_SIZE,
   MINI_WINDOW_SIZE_PRESETS,
   anchorMiniWindowToEdge,
+  anchorMiniWindowToPlacement,
   areMiniWindowBoundsClose,
   detectMiniWindowEdge,
   getExpandedMiniWindowSize,
   fitMiniWindowInWorkArea,
   getMiniWindowEdgeDistance,
   resizeMiniWindowAroundCenter,
+  resolveMiniWindowDockPlacement,
   snapMiniWindowSize,
 } from '../shared/miniWindowLayout';
 
@@ -147,6 +149,50 @@ describe('mini window layout policy', () => {
         ),
       },
     );
+  });
+
+  it('keeps all four corner placements pinned on both axes', () => {
+    const workArea = { x: -1280, y: 40, width: 1280, height: 720 };
+    const cases = [
+      ['top-left', { x: workArea.x, y: workArea.y }],
+      [
+        'top-right',
+        { x: workArea.x + workArea.width - MINI_WINDOW_COLLAPSED_SIZE.width, y: workArea.y },
+      ],
+      [
+        'bottom-left',
+        { x: workArea.x, y: workArea.y + workArea.height - MINI_WINDOW_COLLAPSED_SIZE.height },
+      ],
+      [
+        'bottom-right',
+        {
+          x: workArea.x + workArea.width - MINI_WINDOW_COLLAPSED_SIZE.width,
+          y: workArea.y + workArea.height - MINI_WINDOW_COLLAPSED_SIZE.height,
+        },
+      ],
+    ] as const;
+
+    for (const [placement, expected] of cases) {
+      const expanded = {
+        x: placement.includes('right')
+          ? workArea.x + workArea.width - MINI_WINDOW_EXPANDED_SIZE.width
+          : workArea.x,
+        y: placement.includes('bottom')
+          ? workArea.y + workArea.height - MINI_WINDOW_EXPANDED_SIZE.height
+          : workArea.y,
+        ...MINI_WINDOW_EXPANDED_SIZE,
+      };
+      expect(
+        resolveMiniWindowDockPlacement(
+          expanded,
+          workArea,
+          placement.includes('left') ? 'left' : 'right',
+        ),
+      ).toBe(placement);
+      expect(
+        anchorMiniWindowToPlacement(expanded, MINI_WINDOW_COLLAPSED_SIZE, workArea, placement),
+      ).toEqual({ ...expected, ...MINI_WINDOW_COLLAPSED_SIZE });
+    }
   });
 
   it('keeps every edge inside a negative-coordinate secondary display', () => {

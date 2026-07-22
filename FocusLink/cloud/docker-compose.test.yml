@@ -1,0 +1,13 @@
+services:
+  focuslink-web:
+    image: focuslink-web:local
+    ports:
+      - '127.0.0.1:${FOCUSLINK_TEST_WEB_PORT:-18080}:80'
+
+  focuslink-cloud:
+    image: focuslink-cloud:local
+    environment:
+      FOCUSLINK_CLOUD_REQUIRE_HTTPS: 'false'
+      FOCUSLINK_CLOUD_RATE_LIMIT: '600'
+    ports:
+      - '127.0.0.1:${FOCUSLINK_TEST_CLOUD_PORT:-18787}:8787'

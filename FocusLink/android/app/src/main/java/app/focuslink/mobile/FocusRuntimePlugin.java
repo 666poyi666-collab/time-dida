@@ -1,13 +1,17 @@
 package app.focuslink.mobile;
 
 import android.Manifest;
+import android.app.ActivityManager;
 import android.app.StatusBarManager;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.drawable.Icon;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.provider.Settings;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -19,7 +23,9 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 @CapacitorPlugin(
     name = FocusRuntimeContract.PLUGIN_NAME,
@@ -81,10 +87,56 @@ public final class FocusRuntimePlugin extends Plugin {
             FocusRuntimeStore.putSnapshot(getContext(), snapshot);
             FocusNotificationService.synchronize(getContext());
             FocusRuntimeTileService.requestRefresh(getContext());
-            call.resolve(nativeStatus(snapshot));
+            call.resolve(nativeStatus(FocusRuntimeStore.getSnapshot(getContext())));
         } catch (IllegalArgumentException exception) {
             call.reject(exception.getMessage(), "invalid_snapshot");
         }
+    }
+
+    @PluginMethod
+    public void configureConnection(PluginCall call) {
+        try {
+            FocusRuntimeConnectionStore.Connection previous = FocusRuntimeConnectionStore.get(
+                getContext()
+            );
+            FocusRuntimeConnectionStore.put(
+                getContext(),
+                call.getString("endpoint"),
+                call.getString("accessToken"),
+                call.getString("deviceId")
+            );
+            FocusRuntimeConnectionStore.Connection configured = FocusRuntimeConnectionStore.get(
+                getContext()
+            );
+            if (!sameConnection(previous, configured)) FocusRuntimeStore.clearSnapshot(getContext());
+            FocusNotificationService.synchronize(getContext());
+            call.resolve();
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            call.reject(exception.getMessage(), "invalid_connection");
+        }
+    }
+
+    @PluginMethod
+    public void clearConnection(PluginCall call) {
+        FocusRuntimeConnectionStore.clear(getContext());
+        FocusRuntimeStore.clearSnapshot(getContext());
+        FocusNotificationService.synchronize(getContext());
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void openBackgroundSettings(PluginCall call) {
+        List<Intent> candidates = new ArrayList<>();
+        candidates.add(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+        candidates.add(applicationDetailsIntent());
+        boolean opened = startFirstResolvable(candidates);
+        call.resolve(new JSObject().put("opened", opened).put("target", "battery"));
+    }
+
+    @PluginMethod
+    public void openAutoStartSettings(PluginCall call) {
+        boolean opened = startFirstResolvable(autoStartSettingsCandidates(getContext()));
+        call.resolve(new JSObject().put("opened", opened).put("target", "autostart"));
     }
 
     @PluginMethod
@@ -221,12 +273,24 @@ public final class FocusRuntimePlugin extends Plugin {
     }
 
     private JSObject nativeStatus(FocusRuntimeSnapshot snapshot) {
+        PowerManager powerManager = getContext().getSystemService(PowerManager.class);
+        ActivityManager activityManager = getContext().getSystemService(ActivityManager.class);
+        boolean batteryOptimizationExempt = powerManager != null &&
+        powerManager.isIgnoringBatteryOptimizations(getContext().getPackageName());
+        boolean backgroundRestricted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+        activityManager != null &&
+        activityManager.isBackgroundRestricted();
         return new JSObject()
             .put("notificationPermission", FocusNotificationPermission.status(getContext()))
             .put("canPostNotification", FocusNotificationPermission.canPost(getContext()))
             .put("quickSettingsSupported", true)
+            .put("manufacturer", Build.MANUFACTURER)
+            .put("batteryOptimizationExempt", batteryOptimizationExempt)
+            .put("backgroundRestricted", backgroundRestricted)
+            .put("nativeConnectionConfigured", FocusRuntimeConnectionStore.get(getContext()) != null)
             .put("controlsAvailable", snapshot.allowsCommands(getContext()))
             .put("pendingCommandCount", FocusRuntimeStore.pendingCount(getContext()))
+            .put("cloudPoll", FocusNotificationService.pollDiagnostics(getContext()))
             .put("snapshot", snapshot.toPublicJson());
     }
 
@@ -260,5 +324,84 @@ public final class FocusRuntimePlugin extends Plugin {
             status = "error";
         }
         return new JSObject().put("status", status).put("manualRequired", false);
+    }
+
+    private static boolean sameConnection(
+        FocusRuntimeConnectionStore.Connection left,
+        FocusRuntimeConnectionStore.Connection right
+    ) {
+        if (left == null || right == null) return left == right;
+        return left.endpoint.equals(right.endpoint) &&
+        left.accessToken.equals(right.accessToken) &&
+        left.deviceId.equals(right.deviceId);
+    }
+
+    static List<Intent> autoStartSettingsCandidates(Context context) {
+        List<Intent> candidates = new ArrayList<>();
+        for (String key : autoStartSettingsCandidateKeys(Build.MANUFACTURER)) {
+            if (key.startsWith("action:")) {
+                candidates.add(new Intent(key.substring("action:".length())));
+                continue;
+            }
+            if (key.startsWith("component:")) {
+                String[] parts = key.substring("component:".length()).split("/", 2);
+                candidates.add(explicitIntent(parts[0], parts[1]));
+            }
+        }
+        candidates.add(
+            new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(
+                Uri.parse("package:" + context.getPackageName())
+            )
+        );
+        return candidates;
+    }
+
+    static List<String> autoStartSettingsCandidateKeys(String rawManufacturer) {
+        String manufacturer = rawManufacturer == null
+            ? ""
+            : rawManufacturer.toLowerCase(Locale.ROOT);
+        List<String> candidates = new ArrayList<>();
+        if (manufacturer.contains("huawei") || manufacturer.contains("honor")) {
+            candidates.add(
+                "component:com.huawei.systemmanager/" +
+                "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
+            );
+            candidates.add(
+                "component:com.huawei.systemmanager/" +
+                "com.huawei.systemmanager.optimize.process.ProtectActivity"
+            );
+            candidates.add("action:huawei.intent.action.HSM_STARTUPAPP_MANAGER");
+        }
+        if (manufacturer.contains("xiaomi") || manufacturer.contains("redmi")) {
+            candidates.add(
+                "component:com.miui.securitycenter/" +
+                "com.miui.permcenter.autostart.AutoStartManagementActivity"
+            );
+        }
+        return candidates;
+    }
+
+    private boolean startFirstResolvable(List<Intent> candidates) {
+        for (Intent candidate : candidates) {
+            candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                if (candidate.resolveActivity(getContext().getPackageManager()) == null) continue;
+                getContext().startActivity(candidate);
+                return true;
+            } catch (RuntimeException ignored) {
+                // OEM settings components vary by system release; continue to the safe fallback.
+            }
+        }
+        return false;
+    }
+
+    private Intent applicationDetailsIntent() {
+        return new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(
+            Uri.parse("package:" + getContext().getPackageName())
+        );
+    }
+
+    private static Intent explicitIntent(String packageName, String className) {
+        return new Intent().setComponent(new ComponentName(packageName, className));
     }
 }

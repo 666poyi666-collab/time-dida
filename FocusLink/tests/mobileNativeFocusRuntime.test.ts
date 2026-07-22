@@ -23,7 +23,7 @@ describe('mobile native focus display projection', () => {
     capacitorHarness.pluginAvailable = false;
   });
 
-  it('sends only a short-lived display snapshot to Android', () => {
+  it('keeps a bounded native snapshot alive between background cloud polls', () => {
     const snapshot = {
       ...idleLiveFocusSnapshot(9, 100_000),
       state: 'paused' as const,
@@ -45,7 +45,7 @@ describe('mobile native focus display projection', () => {
       primaryElapsedMs: 10_000,
       primaryAdvances: true,
       controlsEnabled: true,
-      validUntilEpochMs: 195_000,
+      validUntilEpochMs: 1_905_000,
     });
   });
 

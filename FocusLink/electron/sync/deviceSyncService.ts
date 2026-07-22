@@ -22,6 +22,16 @@ import type {
   DeviceSyncRunResult,
   DeviceSyncStatus,
 } from '@shared/ipc/api';
+import type { Project, Task } from '@shared/types';
+import {
+  TASK_SNAPSHOT_PATH,
+  TASK_SNAPSHOT_PROTOCOL_VERSION,
+  toTaskSnapshotPayload,
+  validateTaskSnapshotPayload,
+  type TaskSnapshotPayload,
+  type TaskSnapshotPublishRequest,
+  type TaskSnapshotResponse,
+} from '@shared/sync/taskSnapshotProtocol';
 import {
   getSession,
   getMeta,
@@ -44,6 +54,7 @@ const META_DEVICE_ID = 'deviceSync.deviceIdV1';
 const META_CHECKPOINT_PREFIX = 'deviceSync.checkpointV2';
 const META_LAST_SYNC_AT_PREFIX = 'deviceSync.lastSyncAtV2';
 const META_LAST_ERROR_PREFIX = 'deviceSync.lastErrorV2';
+const META_PENDING_TASK_SNAPSHOT = 'deviceSync.pendingTaskSnapshotV1';
 const REQUEST_TIMEOUT_MS = 15_000;
 
 interface LocalEntityState {
@@ -120,6 +131,7 @@ class DeviceSyncHttpError extends Error {
 }
 
 let inFlight: { scope: string | null; promise: Promise<DeviceSyncRunResult> } | null = null;
+let taskPublishInFlight: Promise<boolean> | null = null;
 
 export function getDeviceSyncStatus(): DeviceSyncStatus {
   const settings = getSettings().deviceSync;
@@ -208,7 +220,109 @@ export function runDeviceSync(): Promise<DeviceSyncRunResult> {
 export async function runAutomaticDeviceSync(): Promise<DeviceSyncRunResult | null> {
   const settings = getSettings().deviceSync;
   if (!settings.enabled || !settings.autoSync || !hasDeviceSyncToken()) return null;
-  return runDeviceSync();
+  const result = await runDeviceSync();
+  await flushPendingTaskSnapshot();
+  return result;
+}
+
+/** Publish the last task list successfully read by the PC. Task refresh remains usable offline. */
+export async function publishDeviceTaskSnapshot(
+  projects: readonly Project[],
+  tasks: readonly Task[],
+  refreshedAt: number,
+): Promise<boolean> {
+  const settings = getSettings().deviceSync;
+  if (!settings?.enabled || !hasDeviceSyncToken()) return false;
+  const snapshot = toTaskSnapshotPayload(projects, tasks, refreshedAt);
+  setMeta(META_PENDING_TASK_SNAPSHOT, JSON.stringify(snapshot));
+  return flushPendingTaskSnapshot();
+}
+
+async function flushPendingTaskSnapshot(): Promise<boolean> {
+  if (taskPublishInFlight) return taskPublishInFlight;
+  const operation = flushPendingTaskSnapshotInternal().finally(() => {
+    if (taskPublishInFlight === operation) taskPublishInFlight = null;
+  });
+  taskPublishInFlight = operation;
+  return operation;
+}
+
+async function flushPendingTaskSnapshotInternal(): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const serialized = getMeta(META_PENDING_TASK_SNAPSHOT);
+    if (!serialized) return true;
+    let snapshot: TaskSnapshotPayload;
+    try {
+      const parsed = JSON.parse(serialized) as unknown;
+      if (!validateTaskSnapshotPayload(parsed)) throw new Error('invalid task snapshot');
+      snapshot = parsed;
+    } catch (error) {
+      logger.warn('deviceSync', 'discarding invalid pending task snapshot', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      setMeta(META_PENDING_TASK_SNAPSHOT, '');
+      return false;
+    }
+    const published = await postTaskSnapshot(snapshot);
+    if (!published) return false;
+    if (getMeta(META_PENDING_TASK_SNAPSHOT) === serialized) {
+      setMeta(META_PENDING_TASK_SNAPSHOT, '');
+      return true;
+    }
+  }
+  return false;
+}
+
+async function postTaskSnapshot(snapshot: TaskSnapshotPayload): Promise<boolean> {
+  const settings = getSettings().deviceSync;
+  if (!settings?.enabled || !hasDeviceSyncToken()) return false;
+  const endpoint = normalizeDeviceSyncEndpoint(settings.endpoint);
+  const accessToken = getDeviceSyncToken();
+  if (!accessToken) return false;
+  const request: TaskSnapshotPublishRequest = {
+    protocolVersion: TASK_SNAPSHOT_PROTOCOL_VERSION,
+    deviceId: getOrCreateDeviceId(),
+    snapshot,
+  };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const url = `${endpoint}${TASK_SNAPSHOT_PATH}`;
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw await readDeviceSyncHttpError(response);
+    const value = (await readDeviceSyncJsonResponse(response)) as Partial<TaskSnapshotResponse>;
+    if (
+      value.protocolVersion !== TASK_SNAPSHOT_PROTOCOL_VERSION ||
+      !Number.isSafeInteger(value.revision)
+    ) {
+      throw new Error('任务快照服务返回了无效响应');
+    }
+    logger.info('deviceSync', 'desktop task snapshot published', {
+      revision: value.revision,
+      taskCount: request.snapshot.tasks.length,
+    });
+    return true;
+  } catch (error) {
+    logger.warn('deviceSync', 'desktop task snapshot publish failed', {
+      error: isNetworkTransportError(error)
+        ? `无法连接跨设备同步服务（${url}），请检查服务是否启动、地址或网络`
+        : error instanceof Error
+          ? error.message
+          : String(error),
+    });
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function runDeviceSyncInternal(): Promise<DeviceSyncRunResult> {
@@ -383,7 +497,19 @@ function collectPendingMutations(
   const pending: PendingMutation[] = [];
   let invalidLocal = 0;
   for (const session of listFinishedSessionsForDeviceSync()) {
-    const bundle = toDeviceSyncBundle(session, listSegments(session.id), listPauses(session.id));
+    const segments = listSegments(session.id);
+    const pauses = listPauses(session.id);
+    const segmentIds = new Set(segments.map((segment) => segment.id));
+    const orphanPauseCount = pauses.filter(
+      (pause) => pause.segmentId !== null && !segmentIds.has(pause.segmentId),
+    ).length;
+    if (orphanPauseCount > 0) {
+      logger.warn('deviceSync', 'repairing orphan pause references for transport', {
+        sessionId: session.id,
+        orphanPauseCount,
+      });
+    }
+    const bundle = toDeviceSyncBundle(session, segments, pauses);
     const validation = validateDeviceSyncBundle(bundle);
     if (!validation.ok) {
       invalidLocal += 1;
@@ -496,8 +622,9 @@ async function postSync(
 ): Promise<DeviceSyncResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const url = `${endpoint}/v1/sync`;
   try {
-    const response = await fetch(`${endpoint}/v1/sync`, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${accessToken}`,
@@ -525,10 +652,18 @@ async function postSync(
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('跨设备同步请求超时');
     }
+    if (isNetworkTransportError(error)) {
+      throw new Error(`无法连接跨设备同步服务（${url}），请检查服务是否启动、地址或网络`);
+    }
     throw error;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function isNetworkTransportError(error: unknown): boolean {
+  if (error instanceof TypeError) return true;
+  return error instanceof Error && /fetch failed|network error|连接被拒绝/i.test(error.message);
 }
 
 function responseAcksMatchRequest(

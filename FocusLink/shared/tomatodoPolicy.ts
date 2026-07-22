@@ -370,7 +370,7 @@ export function collectSyncedSegmentIds(
 
 export function resolveSegmentSubject(
   segment: { tomatodoSubject: TomatodoSubject | null; title?: string | null },
-  defaultSubject: TomatodoSubject,
+  _defaultSubject: TomatodoSubject,
   ...candidateTexts: TomatodoSubjectCandidateText[]
 ): TomatodoSubject {
   // 手动选择永远是最高优先级；兼容旧库中的“杂”并迁移为“学习”。
@@ -380,5 +380,5 @@ export function resolveSegmentSubject(
   }
   const inferred = inferTomatodoSubject(segment.title, ...candidateTexts);
   if (inferred) return inferred;
-  return normalizeSubject(defaultSubject);
+  return TOMATODO_FALLBACK_SUBJECT;
 }

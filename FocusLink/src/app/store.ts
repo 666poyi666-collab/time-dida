@@ -56,7 +56,13 @@ export const useStore = create<AppState>((set) => ({
   consumeTaskPickerRequest: () => set({ taskPickerRequest: 0 }),
   addToast: (message, type = 'info') => {
     const id = Math.random().toString(36).slice(2);
-    set((st) => ({ toasts: [...st.toasts, { id, message, type }] }));
+    let added = false;
+    set((st) => {
+      if (st.toasts.some((toast) => toast.message === message && toast.type === type)) return st;
+      added = true;
+      return { toasts: [...st.toasts, { id, message, type }] };
+    });
+    if (!added) return;
     setTimeout(() => {
       set((st) => ({ toasts: st.toasts.filter((t) => t.id !== id) }));
     }, 3200);

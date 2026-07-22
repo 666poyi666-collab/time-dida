@@ -1,5 +1,5 @@
 // Renders design mock HTML files in a real Electron window and captures them.
-// Usage: node scripts/review/mock-shots.cjs [mockDir]
+// Usage: node scripts/review/mock-shots.cjs <mockDir>
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -8,7 +8,8 @@ const { pathToFileURL } = require('node:url');
 const WebSocket = require('ws');
 
 const root = path.resolve(__dirname, '..', '..');
-const mockDir = path.resolve(process.argv[2] || path.join(root, '..', 'visual-review', 'mock-v2'));
+if (!process.argv[2]) throw new Error('mockDir is required');
+const mockDir = path.resolve(process.argv[2]);
 const shotsDir = path.join(mockDir, 'shots');
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'focuslink-mock-'));
 let port = 0;

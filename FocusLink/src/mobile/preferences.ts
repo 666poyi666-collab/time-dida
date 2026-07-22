@@ -15,7 +15,7 @@ export function loadConnectionPreferences(): MobileConnectionPreferences {
   return {
     endpoint:
       localStorage.getItem(ENDPOINT_KEY) ??
-      (Capacitor.isNativePlatform() ? 'http://127.0.0.1:8787' : ''),
+      (Capacitor.isNativePlatform() ? 'http://127.0.0.1:18787' : ''),
     token: rememberToken
       ? (localStorage.getItem(TOKEN_LOCAL_KEY) ?? '')
       : (sessionStorage.getItem(TOKEN_SESSION_KEY) ?? ''),

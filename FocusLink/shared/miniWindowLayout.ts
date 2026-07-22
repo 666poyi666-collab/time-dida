@@ -5,6 +5,8 @@ export type MiniWindowSize = {
 
 export type MiniWindowBounds = MiniWindowSize & { x: number; y: number };
 export type MiniWindowEdge = 'left' | 'right' | 'top' | 'bottom';
+export type MiniWindowDockPlacement =
+  MiniWindowEdge | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 /**
  * The mini window deliberately has two product-owned sizes. Keeping these as
@@ -121,6 +123,25 @@ export function detectMiniWindowEdge(
   return nearest;
 }
 
+/** Resolve corners separately so a docked strip can stay pinned to both contacted edges. */
+export function resolveMiniWindowDockPlacement(
+  bounds: MiniWindowBounds,
+  workArea: MiniWindowBounds,
+  edge: MiniWindowEdge,
+  threshold = MINI_WINDOW_EDGE_SNAP_DISTANCE,
+): MiniWindowDockPlacement {
+  const nearLeft = getMiniWindowEdgeDistance(bounds, workArea, 'left') <= threshold;
+  const nearRight = getMiniWindowEdgeDistance(bounds, workArea, 'right') <= threshold;
+  const nearTop = getMiniWindowEdgeDistance(bounds, workArea, 'top') <= threshold;
+  const nearBottom = getMiniWindowEdgeDistance(bounds, workArea, 'bottom') <= threshold;
+
+  if (nearTop && (edge === 'left' || nearLeft)) return 'top-left';
+  if (nearTop && (edge === 'right' || nearRight)) return 'top-right';
+  if (nearBottom && (edge === 'left' || nearLeft)) return 'bottom-left';
+  if (nearBottom && (edge === 'right' || nearRight)) return 'bottom-right';
+  return edge;
+}
+
 /** Resize around the current visual centre, then clamp into the active work area. */
 export function resizeMiniWindowAroundCenter(
   current: MiniWindowBounds,
@@ -154,5 +175,35 @@ export function anchorMiniWindowToEdge(
       return { ...centered, y: workArea.y };
     case 'bottom':
       return { ...centered, y: workArea.y + workArea.height - target.height };
+  }
+}
+
+/** Keep a side or corner placement pinned while changing between the two presets. */
+export function anchorMiniWindowToPlacement(
+  current: MiniWindowBounds,
+  target: MiniWindowSize,
+  workArea: MiniWindowBounds,
+  placement: MiniWindowDockPlacement,
+): MiniWindowBounds {
+  if (!placement.includes('-')) {
+    return anchorMiniWindowToEdge(current, target, workArea, placement as MiniWindowEdge);
+  }
+
+  const centered = resizeMiniWindowAroundCenter(current, target, workArea);
+  const left = workArea.x;
+  const right = workArea.x + workArea.width - target.width;
+  const top = workArea.y;
+  const bottom = workArea.y + workArea.height - target.height;
+  switch (placement) {
+    case 'top-left':
+      return { ...centered, x: left, y: top };
+    case 'top-right':
+      return { ...centered, x: right, y: top };
+    case 'bottom-left':
+      return { ...centered, x: left, y: bottom };
+    case 'bottom-right':
+      return { ...centered, x: right, y: bottom };
+    default:
+      return centered;
   }
 }

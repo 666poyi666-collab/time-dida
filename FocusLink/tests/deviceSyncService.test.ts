@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { FocusSession } from '@shared/types';
+import type { FocusSession, Project, Task } from '@shared/types';
 import type {
   DeviceSyncRequest,
   DeviceSyncResponse,
@@ -56,6 +56,8 @@ vi.mock('../electron/sync/deviceSyncCredentials.js', () => ({
 import {
   configureDeviceSync,
   getDeviceSyncStatus,
+  publishDeviceTaskSnapshot,
+  runAutomaticDeviceSync,
   runDeviceSync,
 } from '../electron/sync/deviceSyncService';
 
@@ -125,6 +127,65 @@ describe('desktop device sync checkpoints', () => {
     harness.sessions = [finishedSession()];
     harness.inserted = [];
     vi.restoreAllMocks();
+  });
+
+  it('durably retries the latest PC task snapshot during automatic sync', async () => {
+    configureDeviceSync({
+      enabled: true,
+      endpoint: 'https://sync-a.example',
+      autoSync: true,
+      accessToken: 'token-a-with-enough-entropy',
+    });
+    const projects: Project[] = [
+      {
+        id: 'project-1',
+        source: 'ticktick',
+        externalId: 'project-1',
+        name: '第一张清单',
+        color: null,
+      },
+    ];
+    const tasks: Task[] = [
+      {
+        id: 'task-1',
+        source: 'ticktick',
+        externalId: 'task-1',
+        projectId: 'project-1',
+        title: '复习化学',
+        status: 'pending',
+        priority: null,
+        dueDate: null,
+        tags: [],
+        content: null,
+      },
+    ];
+    let taskCalls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input).endsWith('/v1/tasks')) {
+          taskCalls += 1;
+          if (taskCalls === 1) throw new Error('offline');
+          return jsonResponse({
+            protocolVersion: 1,
+            revision: 1,
+            sourceDeviceId: 'desktop',
+            snapshot: JSON.parse(String(init?.body)).snapshot,
+            serverTime: Date.now(),
+          });
+        }
+        const request = readRequest(init);
+        return jsonResponse(successResponse(request, 'cursor-task-retry'));
+      }),
+    );
+
+    await expect(publishDeviceTaskSnapshot(projects, tasks, Date.now())).resolves.toBe(false);
+    expect([...harness.meta.keys()].some((key) => key.includes('pendingTaskSnapshot'))).toBe(true);
+    await expect(runAutomaticDeviceSync()).resolves.toMatchObject({ cursor: 'cursor-task-retry' });
+    expect(taskCalls).toBe(2);
+    expect(
+      [...harness.meta.entries()].find(([key]) => key.includes('pendingTaskSnapshot'))?.[1],
+    ).toBe('');
   });
 
   it('keeps cursor and revision checkpoints isolated by endpoint and token', async () => {
@@ -356,10 +417,12 @@ describe('desktop device sync checkpoints', () => {
       accessToken: 'token-a-with-enough-entropy',
     });
 
-    await expect(runDeviceSync()).rejects.toThrow('offline');
+    await expect(runDeviceSync()).rejects.toThrow(
+      '无法连接跨设备同步服务（https://sync-a.example/v1/sync）',
+    );
     expect(getDeviceSyncStatus()).toMatchObject({
       unresolvedConflicts: 1,
-      lastError: expect.stringContaining('offline'),
+      lastError: expect.stringContaining('无法连接跨设备同步服务'),
     });
   });
 

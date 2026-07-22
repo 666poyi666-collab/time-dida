@@ -11,6 +11,11 @@ import {
 } from '@shared/sync/liveFocusProtocol';
 import { normalizeDeviceSyncEndpoint } from '@shared/sync/deviceProtocol';
 import { FINISHED_PRESENTATION_HOLD_MS } from '@shared/focus/bandMath';
+import {
+  liveSnapshotVersion,
+  shouldAcceptLiveSnapshot,
+  type LiveSnapshotVersion,
+} from '@shared/sync/liveSnapshotPolicy';
 import { logger } from '../logger.js';
 import { getSession } from '../db/index.js';
 import {
@@ -21,6 +26,9 @@ import {
 import type { SnapshotListener, TimerManager } from './manager.js';
 
 const RECONNECT_DELAY_MS = 2_000;
+const MAX_RECONNECT_DELAY_MS = 60_000;
+const REQUEST_RETRY_DELAY_MS = 250;
+const REQUEST_MAX_ATTEMPTS = 2;
 
 export class FocusTimerController {
   private snapshot: TimerSnapshot;
@@ -32,6 +40,9 @@ export class FocusTimerController {
   private tickTimer: NodeJS.Timeout | null = null;
   private generation = 0;
   private liveMode = false;
+  private reconnectAttempt = 0;
+  private acceptedLiveVersion: LiveSnapshotVersion | null = null;
+  private liveConnectionKey: string | null = null;
 
   constructor(private readonly local: TimerManager) {
     this.snapshot = local.getSnapshot();
@@ -50,25 +61,35 @@ export class FocusTimerController {
   }
 
   reloadConfiguration(): void {
+    // A confirmed remote running/paused session is the authoritative fact source. If the
+    // connection is restarted (or briefly disappears), keep that lock instead of silently
+    // exposing the idle local manager as a second timer.
+    const preserveActiveLiveSession =
+      this.liveMode && (this.snapshot.state === 'running' || this.snapshot.state === 'paused');
     this.generation += 1;
     this.stopLiveLoop();
-    this.liveMode = false;
-    if (!getDeviceSyncRuntimeConnection()) {
-      setDeviceSyncLiveTelemetry({
-        liveConnected: false,
-        liveRevision: null,
-        liveState: 'disconnected',
-      });
-      this.publish(this.local.getSnapshot());
+    if (!preserveActiveLiveSession) this.liveMode = false;
+    this.reconnectAttempt = 0;
+    const connection = getDeviceSyncRuntimeConnection();
+    const nextConnectionKey = connection
+      ? `${normalizeDeviceSyncEndpoint(connection.endpoint)}\u0000${connection.accessToken}`
+      : null;
+    if (nextConnectionKey !== this.liveConnectionKey) {
+      this.liveConnectionKey = nextConnectionKey;
+      this.liveRevision = 0;
+      this.acceptedLiveVersion = null;
+    }
+    if (!connection) {
+      this.markLiveDisconnected();
+      this.publish(preserveActiveLiveSession ? this.snapshot : this.local.getSnapshot());
       return;
     }
     const localSnapshot = this.local.getSnapshot();
-    if (localSnapshot.state !== 'idle') {
+    if (!preserveActiveLiveSession && localSnapshot.state !== 'idle') {
       logger.warn('liveFocus', 'live control deferred until local timer is idle');
       this.publish(localSnapshot);
       return;
     }
-    this.liveMode = true;
     void this.refreshAndWait(this.generation);
   }
 
@@ -87,7 +108,13 @@ export class FocusTimerController {
 
   async toggle(): Promise<TimerSnapshot> {
     if (!this.isLiveEnabled()) return this.local.toggle();
-    if (this.snapshot.state === 'idle') return this.send('start');
+    if (this.snapshot.state === 'idle') {
+      try {
+        return await this.send('start');
+      } catch (error) {
+        return this.fallbackToLocalStart(error, () => this.local.toggle());
+      }
+    }
     if (this.snapshot.state === 'running') return this.send('pause');
     if (this.snapshot.state === 'paused') return this.send('resume');
     return this.snapshot;
@@ -121,7 +148,34 @@ export class FocusTimerController {
     taskTitle?: string,
   ): Promise<TimerSnapshot> {
     if (!this.isLiveEnabled()) return this.local.startWithTask(taskId, taskSource, taskTitle);
-    return this.send('start', { taskId, taskSource, taskTitle: taskTitle ?? null });
+    try {
+      return await this.send('start', { taskId, taskSource, taskTitle: taskTitle ?? null });
+    } catch (error) {
+      return this.fallbackToLocalStart(error, () =>
+        this.local.startWithTask(taskId, taskSource, taskTitle),
+      );
+    }
+  }
+
+  private fallbackToLocalStart(error: unknown, startLocal: () => TimerSnapshot): TimerSnapshot {
+    if (
+      this.snapshot.state !== 'idle' ||
+      this.local.getSnapshot().state !== 'idle' ||
+      !isTransportFailure(error)
+    ) {
+      throw error;
+    }
+    // Cancel the old long-poll before changing fact sources. Otherwise a late
+    // response from a dying service could overwrite the newly started local timer.
+    this.generation += 1;
+    this.stopLiveLoop();
+    this.liveMode = false;
+    this.markLiveDisconnected();
+    this.publish(this.local.getSnapshot());
+    logger.warn('liveFocus', 'start command unavailable; falling back to local timer', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return startLocal();
   }
 
   linkSegmentTask(...args: Parameters<TimerManager['linkSegmentTask']>): void {
@@ -233,11 +287,28 @@ export class FocusTimerController {
   private async refreshAndWait(generation: number): Promise<void> {
     const connection = getDeviceSyncRuntimeConnection();
     if (!connection || generation !== this.generation) return;
+    if (!this.liveMode && this.local.getSnapshot().state !== 'idle') return;
     try {
+      // Do not switch the local fact source until the first authoritative snapshot
+      // has been fetched and accepted. A configured-but-stopped loopback service must
+      // never block the ordinary desktop timer.
+      const initialController = new AbortController();
+      this.abortController = initialController;
       const initial = (await (
-        await this.request('/v1/live', connection)
+        await this.request('/v1/live', connection, {}, initialController.signal)
       ).json()) as LiveFocusSnapshotResponse;
+      if (generation !== this.generation || !this.isCurrentConnection(connection)) return;
+      if (!this.liveMode && this.local.getSnapshot().state !== 'idle') {
+        this.markLiveDisconnected();
+        this.publish(this.local.getSnapshot());
+        return;
+      }
+      this.abortController = null;
+      // Do not advertise live mode until the initial response has passed `accept`. If protocol
+      // validation fails, the desktop remains on the local fact source and can still start.
       this.accept(initial);
+      this.liveMode = true;
+      this.reconnectAttempt = 0;
       while (generation === this.generation && getDeviceSyncRuntimeConnection()) {
         const controller = new AbortController();
         this.abortController = controller;
@@ -274,24 +345,74 @@ export class FocusTimerController {
         (error instanceof DOMException && error.name === 'AbortError')
       )
         return;
-      logger.warn('liveFocus', 'live connection lost', {
+      this.abortController = null;
+      const wasUsingLiveMode = this.liveMode;
+      // Keep active remote sessions authoritative; idle sessions can safely fall back offline.
+      const canFallBackToLocal =
+        wasUsingLiveMode &&
+        this.snapshot.state === 'idle' &&
+        this.local.getSnapshot().state === 'idle';
+      if (canFallBackToLocal) this.liveMode = false;
+      if (!wasUsingLiveMode || canFallBackToLocal) {
+        // Initial handshakes are optional for the desktop timer. Keep the local
+        // controller usable and expose the disconnected state in Settings instead
+        // of routing every start click into a dead endpoint.
+        this.publish(this.local.getSnapshot());
+      }
+      const delay = this.nextReconnectDelay();
+      logger.warn('liveFocus', 'live connection lost; retry scheduled', {
         error: error instanceof Error ? error.message : String(error),
+        retryInMs: delay,
+        liveMode: this.liveMode,
       });
-      setDeviceSyncLiveTelemetry({
-        liveConnected: false,
-        liveRevision: this.liveRevision,
-        liveState: 'disconnected',
-      });
-      this.reconnectTimer = setTimeout(
-        () => void this.refreshAndWait(generation),
-        RECONNECT_DELAY_MS,
-      );
+      this.markLiveDisconnected();
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        void this.refreshAndWait(generation);
+      }, delay);
+      this.reconnectTimer.unref?.();
     }
+  }
+
+  private isCurrentConnection(connection: { endpoint: string; accessToken: string }): boolean {
+    const current = getDeviceSyncRuntimeConnection();
+    if (!current) return false;
+    return (
+      normalizeDeviceSyncEndpoint(current.endpoint) ===
+        normalizeDeviceSyncEndpoint(connection.endpoint) &&
+      current.accessToken === connection.accessToken
+    );
+  }
+
+  private nextReconnectDelay(): number {
+    const delay = Math.min(
+      RECONNECT_DELAY_MS * 2 ** Math.min(this.reconnectAttempt, 5),
+      MAX_RECONNECT_DELAY_MS,
+    );
+    this.reconnectAttempt = Math.min(this.reconnectAttempt + 1, 6);
+    return delay;
+  }
+
+  private markLiveDisconnected(): void {
+    setDeviceSyncLiveTelemetry({
+      liveConnected: false,
+      liveRevision: this.liveRevision > 0 ? this.liveRevision : null,
+      liveState: 'disconnected',
+    });
   }
 
   private accept(response: LiveFocusSnapshotResponse, publish = true): void {
     if (response.protocolVersion !== LIVE_FOCUS_PROTOCOL_VERSION)
       throw new Error('实时协议版本不兼容');
+    const incomingVersion = liveSnapshotVersion(response);
+    if (!shouldAcceptLiveSnapshot(this.acceptedLiveVersion, incomingVersion)) {
+      logger.warn('liveFocus', 'ignored stale or inconsistent live snapshot', {
+        currentRevision: this.acceptedLiveVersion?.revision ?? null,
+        incomingRevision: incomingVersion.revision,
+      });
+      return;
+    }
+    this.acceptedLiveVersion = incomingVersion;
     const observedAt = Date.now();
     this.clockOffsetMs = observedAt - response.serverTime;
     this.liveRevision = response.snapshot.revision;
@@ -381,7 +502,9 @@ export class FocusTimerController {
     init: { method?: string; body?: string } = {},
     signal?: AbortSignal,
   ): Promise<Response> {
-    const response = await fetch(`${normalizeDeviceSyncEndpoint(connection.endpoint)}${path}`, {
+    const endpoint = normalizeDeviceSyncEndpoint(connection.endpoint);
+    const url = `${endpoint}${path}`;
+    const requestInit: RequestInit = {
       method: init.method ?? 'GET',
       headers: {
         Accept: 'application/json',
@@ -390,17 +513,69 @@ export class FocusTimerController {
       },
       body: init.body,
       signal,
-    });
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'error',
+    };
+    let response: Response | null = null;
+    for (let attempt = 1; attempt <= REQUEST_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        response = await fetch(url, requestInit);
+        break;
+      } catch (error) {
+        if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+          throw error;
+        }
+        if (attempt < REQUEST_MAX_ATTEMPTS) {
+          await waitForRetry(signal);
+          continue;
+        }
+        const reason = error instanceof Error ? error.message : String(error);
+        const suffix = reason && reason !== 'fetch failed' ? `：${reason}` : '';
+        throw new Error(`无法连接实时同步服务（${url}）${suffix}，请检查服务是否启动、地址或网络`);
+      }
+    }
+    if (!response) throw new Error(`实时同步请求未返回响应（${url}）`);
     if (!response.ok) throw new Error(`实时同步服务返回 HTTP ${response.status}`);
     return response;
   }
 
   private commandError(code: string | null): string {
-    if (code === 'revision_conflict') return '实时状态已被其他设备更新，请重试';
-    if (code === 'active_session_exists') return '其他设备已有进行中的专注';
-    if (code === 'no_active_session') return '实时专注已在其他设备结束';
+    if (code === 'revision_conflict')
+      return '本次操作未执行：云端 revision 已变化，请确认当前状态后重试';
+    if (code === 'active_session_exists') return '本次操作未执行：云端已有进行中的专注';
+    if (code === 'no_active_session') return '本次操作未执行：云端当前没有活动专注';
     return `实时专注命令未确认${code ? `（${code}）` : ''}`;
   }
+}
+
+function waitForRetry(signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('The operation was aborted.', 'AbortError'));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    }, REQUEST_RETRY_DELAY_MS);
+    const abort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      reject(new DOMException('The operation was aborted.', 'AbortError'));
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
+function isTransportFailure(error: unknown): boolean {
+  if (error instanceof TypeError && /fetch failed|network error|连接被拒绝/i.test(error.message)) {
+    return true;
+  }
+  return (
+    error instanceof Error &&
+    /fetch failed|network error|无法连接实时同步服务|连接被拒绝/i.test(error.message)
+  );
 }
 
 function idleSnapshot(now: number): TimerSnapshot {

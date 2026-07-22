@@ -3,6 +3,7 @@ import type { IpcResult, TaskWorkspaceRefreshData } from '@shared/ipc/api';
 import { ticktickAdapter } from '../integrations/ticktick/oauthAdapter.js';
 import { detectCli, ticktickCliProvider } from './cliProvider.js';
 import { LocalTaskProvider } from './localProvider.js';
+import { publishDeviceTaskSnapshot } from '../sync/deviceSyncService.js';
 
 export async function setTaskCompleted(task: Task, completed: boolean): Promise<Task> {
   if (task.source === 'local') return LocalTaskProvider.setCompleted(task.id, completed);
@@ -48,15 +49,18 @@ export async function refreshTaskWorkspace(
         selectedProjectId,
         normalizedOptions,
       );
-      return {
+      const refreshedAt = Date.now();
+      const result = {
         ok: true,
         data: {
           provider: 'dida-cli',
           projects,
           tasks,
-          refreshedAt: Date.now(),
+          refreshedAt,
         },
-      };
+      } satisfies IpcResult<TaskWorkspaceRefreshData>;
+      void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+      return result;
     }
 
     if (!ticktickAdapter.isAuthenticated) {
@@ -72,15 +76,18 @@ export async function refreshTaskWorkspace(
       projects,
       normalizedOptions,
     );
-    return {
+    const refreshedAt = Date.now();
+    const result = {
       ok: true,
       data: {
         provider: 'ticktick-oauth',
         projects,
         tasks,
-        refreshedAt: Date.now(),
+        refreshedAt,
       },
-    };
+    } satisfies IpcResult<TaskWorkspaceRefreshData>;
+    void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+    return result;
   } catch (error) {
     return {
       ok: false,

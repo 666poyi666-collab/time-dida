@@ -85,14 +85,14 @@ app.whenReady().then(async () => {
       const timer = new TimerManager('new-segment');
       timer.recover();
       const snap = timer.getSnapshot();
-      const session = getActiveSession();
       // 然后 stop 结束会话
       const finalSnap = timer.stop();
       const sessionId = finalSnap.sessionId;
+      const finalSession = sessionId ? getSession(sessionId) : null;
       const segments = sessionId ? listSegments(sessionId) : [];
       const pauses = sessionId ? listPauses(sessionId) : [];
 
-      writeResult({
+      const result = {
         phase: 'recovered-paused-then-stopped',
         recoveredState: snap.state,
         recoveredActiveMs: snap.activeElapsedMs,
@@ -112,14 +112,20 @@ app.whenReady().then(async () => {
         wallGeActive: finalSnap.wallElapsedMs >= finalSnap.activeElapsedMs,
         segmentsCount: segments.length,
         pausesCount: pauses.length,
-        sessionStatus: session?.status,
+        sessionStatus: finalSession?.status,
         success:
           snap.state === 'paused' &&
+          finalSnap.state === 'finished' &&
           finalSnap.pauseElapsedMs >= 700 &&
-          finalSnap.activeElapsedMs >= 0,
-      });
+          finalSnap.activeElapsedMs >= 0 &&
+          finalSnap.wallElapsedMs >= finalSnap.activeElapsedMs &&
+          finalSession?.status === 'finished' &&
+          segments.length >= 1 &&
+          pauses.length >= 1,
+      };
+      writeResult(result);
       closeDatabase();
-      app.exit(0);
+      app.exit(result.success ? 0 : 1);
     } else {
       throw new Error(`unknown crash-recovery phase: ${phase}`);
     }

@@ -27,6 +27,7 @@ import {
   particleAgedColor,
   particleAshColor,
   particleCellHash,
+  particleDepthProfile,
   particleFieldFadeIn,
   particleFieldParams,
   particleFieldStepSec,
@@ -475,10 +476,7 @@ function renderBand(
     }
   }
   const activeGridFade = engine.gridFade;
-  const gridMix = particleGridCrossfade(
-    activeGridFade ? activeGridFade.start : null,
-    frameNowMs,
-  );
+  const gridMix = particleGridCrossfade(activeGridFade ? activeGridFade.start : null, frameNowMs);
   if (gridMix >= 1) engine.gridFade = null;
 
   // 从 idle 开始专注：粒子场 300ms 带尾淡入；reduced-motion 直接完整显示。
@@ -740,14 +738,26 @@ function drawMaterialBed(
   ctx.fillRect(0, input.fieldTop, input.width, fieldHeight);
   ctx.restore();
 
-  // 实体边缘与三条导轨让所有状态共享同一块材料，不再像叠在背景上的独立进度条。
+  // 实体边缘与透视导轨让所有状态共享同一块材料；远端压缩、近端展开。
   ctx.fillStyle = `rgba(${input.colors.borderStrong},0.9)`;
   ctx.fillRect(0, input.fieldTop, input.width, 1);
   ctx.fillRect(0, input.fieldBottom - 1, input.width, 1);
-  ctx.fillStyle = `rgba(${input.colors.ink},${0.045 + input.detail * 0.025})`;
-  for (const ratio of [0.25, 0.5, 0.75]) {
-    ctx.fillRect(0, input.fieldTop + fieldHeight * ratio, input.width, 0.6);
+  for (const ratio of [0.16, 0.38, 0.64, 0.86]) {
+    const depth = particleDepthProfile(ratio, input.detail);
+    ctx.fillStyle = `rgba(${input.colors.ink},${0.026 + depth.projectedRatio * 0.052})`;
+    ctx.fillRect(0, input.fieldTop + fieldHeight * depth.projectedRatio, input.width, 0.7);
   }
+
+  // 前缘切面位于材料床内部，不侵占刻度标签空间；高光+暗边提供明确厚度。
+  const lipHeight = clamp(fieldHeight * 0.075, 5, 10);
+  const lip = ctx.createLinearGradient(0, input.fieldBottom - lipHeight, 0, input.fieldBottom);
+  lip.addColorStop(0, `rgba(${input.colors.surface2},0.24)`);
+  lip.addColorStop(0.2, `rgba(${input.colors.ink},0.035)`);
+  lip.addColorStop(1, `rgba(${input.colors.ink},0.16)`);
+  ctx.fillStyle = lip;
+  ctx.fillRect(0, input.fieldBottom - lipHeight, input.width, lipHeight);
+  ctx.fillStyle = `rgba(255,255,255,${0.08 + input.detail * 0.04})`;
+  ctx.fillRect(0, input.fieldBottom - lipHeight, input.width, 0.7);
 
   // 静态微纹理：种子不依赖时间，所以 idle / finished 的位图可以严格冻结。
   ctx.fillStyle = `rgba(${input.colors.ink},0.026)`;
@@ -886,17 +896,14 @@ function drawMomentParticleField(
 
   const fieldHeight = input.fieldBottom - input.fieldTop;
   const rows = Math.max(1, Math.floor(fieldHeight / cellPx));
+  const depthDetail = bandDetailMix(input.scale);
   const t = input.timeSec;
   const still = input.reducedMotion;
 
   for (let ix = Math.floor(worldMin / stepSec); ix * stepSec < worldMax; ix += 1) {
     const columnX = (ix * stepSec - input.displaySeconds) * input.scale + input.pointerX;
     if (columnX < -40 || columnX > input.viewportWidth + 40) continue;
-    const params = particleFieldParams(
-      input.pointerX - columnX,
-      input.viewportWidth,
-      input.scale,
-    );
+    const params = particleFieldParams(input.pointerX - columnX, input.viewportWidth, input.scale);
     const spawnProb = params.spawnProb * input.densityScale;
 
     for (let iy = 0; iy < rows; iy += 1) {
@@ -909,16 +916,18 @@ function drawMomentParticleField(
       const screenX = (worldSec - input.displaySeconds) * input.scale + input.pointerX;
       if (screenX < -40 || screenX > input.viewportWidth + 40) continue;
 
-      const baseY = input.fieldTop + (iy + spec.offsetY) * cellPx;
+      const rowRatio = (iy + spec.offsetY) / Math.max(1, rows);
+      const depth = particleDepthProfile(rowRatio, depthDetail);
+      const baseY = input.fieldTop + depth.projectedRatio * fieldHeight;
       const spread =
         spec.dir * params.scatter * (still ? 0.55 : 0.55 + 0.45 * Math.sin(t * 0.35 + spec.phase));
       const wobble = still ? 0 : Math.sin(t * 0.9 + spec.phase * 1.7) * 1.4;
       const y = baseY + spread + wobble - params.rise * spec.riseK;
       const flicker = still ? 1 : 0.78 + 0.22 * Math.sin(t * 2 + spec.phase * 3);
-      const alpha = params.alpha * flicker * alphaScale;
+      const alpha = params.alpha * flicker * alphaScale * depth.alphaScale;
       if (alpha <= 0.02) continue;
 
-      const size = Math.max(1.2, cellPx * spec.sizeK) * (1 - params.s * 0.35);
+      const size = Math.max(1.2, cellPx * spec.sizeK) * (1 - params.s * 0.35) * depth.sizeScale;
       const rotation = spec.phase + (still ? 0 : Math.sin(t * 0.5 + spec.phase) * 0.3);
       const color = particleAgedColor(
         particleToneColor(spec.tone, input.palette.base, input.palette.deep, input.palette.soft),
@@ -929,6 +938,10 @@ function drawMomentParticleField(
       ctx.save();
       ctx.translate(screenX, y);
       ctx.rotate(rotation);
+      if (depth.projectedRatio > 0.42 && size > 1.25) {
+        ctx.fillStyle = `rgba(${input.palette.ash[0]},${input.palette.ash[1]},${input.palette.ash[2]},${alpha * 0.12})`;
+        ctx.fillRect(-size * 0.42 + 0.7, size * 0.28, size * 0.84, Math.max(0.5, size * 0.22));
+      }
       ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
       ctx.fillRect(-size / 2, -size / 2, size, size);
       ctx.restore();
@@ -1250,14 +1263,7 @@ function drawPauseDissolve(
   // 燃烧头外层红晕：白芯之外的柔和径向光晕，随秒相位轻微呼吸（峰值 ≤0.18）；
   // reduced-motion 下参数固定，光晕静态。
   const halo = burnHeadHalo(input.pulseAge, input.reducedMotion);
-  const outerGlow = ctx.createRadialGradient(
-    input.end,
-    fuseY,
-    1.5,
-    input.end,
-    fuseY,
-    halo.radius,
-  );
+  const outerGlow = ctx.createRadialGradient(input.end, fuseY, 1.5, input.end, fuseY, halo.radius);
   outerGlow.addColorStop(0, `rgba(${input.colors.pause},${halo.alpha})`);
   outerGlow.addColorStop(0.5, `rgba(${input.colors.pause},${halo.alpha * 0.45})`);
   outerGlow.addColorStop(1, `rgba(${input.colors.pause},0)`);

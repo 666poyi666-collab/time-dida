@@ -38,11 +38,13 @@ import {
   MINI_WINDOW_EDGE_RELEASE_DISTANCE,
   MINI_WINDOW_EXPANDED_SIZE,
   MINI_WINDOW_SIZE_PRESETS,
-  anchorMiniWindowToEdge,
+  anchorMiniWindowToPlacement,
   areMiniWindowBoundsClose,
   detectMiniWindowEdge,
   getExpandedMiniWindowSize,
   resizeMiniWindowAroundCenter,
+  resolveMiniWindowDockPlacement,
+  type MiniWindowDockPlacement,
   type MiniWindowEdge,
 } from '@shared/miniWindowLayout';
 import { MAIN_WINDOW_DEFAULT_SIZE, MAIN_WINDOW_MIN_SIZE } from '@shared/mainWindowLayout';
@@ -59,6 +61,10 @@ import {
   getPendingTomatodoCount,
 } from './sync/tomatodoSyncService.js';
 import { runAutomaticDeviceSync } from './sync/deviceSyncService.js';
+import {
+  closeEmbeddedDeviceSyncServer,
+  reconcileEmbeddedDeviceSyncServer,
+} from './sync/embeddedDeviceSyncServer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -77,6 +83,7 @@ function getAppIcon(): Electron.NativeImage {
 let mainWindow: BrowserWindow | null = null;
 let miniWindow: BrowserWindow | null = null;
 let miniDockedEdge: MiniWindowEdge | null = null;
+let miniDockedPlacement: MiniWindowDockPlacement | null = null;
 let miniEdgeTimer: NodeJS.Timeout | null = null;
 let miniDockTransitionActive = false;
 let miniDockSnapBounds: Electron.Rectangle | null = null;
@@ -411,8 +418,17 @@ function createMiniWindow(): BrowserWindow {
       initialDisplay.workArea,
       MINI_WINDOW_EDGE_RELEASE_DISTANCE,
     );
+    miniDockedPlacement = miniDockedEdge
+      ? resolveMiniWindowDockPlacement(
+          initialBounds,
+          initialDisplay.workArea,
+          miniDockedEdge,
+          MINI_WINDOW_EDGE_RELEASE_DISTANCE,
+        )
+      : null;
   } else {
     miniDockedEdge = null;
+    miniDockedPlacement = null;
   }
 
   // 应用透明度（通过 setOpacity 控制整个窗口透明度）
@@ -425,6 +441,14 @@ function createMiniWindow(): BrowserWindow {
   } else {
     win.loadFile(path.join(__dirname, '../dist/mini.html'));
   }
+  win.webContents.on('did-finish-load', () => {
+    if (!getSettings().miniWindow.collapsed) return;
+    win.webContents.send('mini:dock-transition', {
+      phase: 'settled',
+      edge: miniDockedEdge,
+      placement: miniDockedPlacement,
+    });
+  });
 
   // 节流保存窗口位置和大小
   let saveTimer: NodeJS.Timeout | null = null;
@@ -485,7 +509,11 @@ function createMiniWindow(): BrowserWindow {
       miniDockTransitionActive = false;
       miniDockSnapBounds = null;
       miniBoundsMutationUntil = 0;
-      win.webContents.send('mini:dock-transition', { phase: 'cancel', edge: null });
+      win.webContents.send('mini:dock-transition', {
+        phase: 'cancel',
+        edge: null,
+        placement: null,
+      });
     } else if (now < miniBoundsMutationUntil) {
       return;
     }
@@ -496,6 +524,7 @@ function createMiniWindow(): BrowserWindow {
     const cur = getSettings();
     if (!cur.miniWindow.edgeAutoCollapse) {
       miniDockedEdge = null;
+      miniDockedPlacement = null;
       return;
     }
 
@@ -510,7 +539,21 @@ function createMiniWindow(): BrowserWindow {
         MINI_WINDOW_EDGE_RELEASE_DISTANCE,
       );
       if (releaseEdge) {
-        miniDockedEdge = releaseEdge;
+        const nextPlacement = resolveMiniWindowDockPlacement(
+          bounds,
+          display.workArea,
+          releaseEdge,
+          MINI_WINDOW_EDGE_RELEASE_DISTANCE,
+        );
+        if (miniDockedEdge !== releaseEdge || miniDockedPlacement !== nextPlacement) {
+          miniDockedEdge = releaseEdge;
+          miniDockedPlacement = nextPlacement;
+          win.webContents.send('mini:dock-transition', {
+            phase: 'settled',
+            edge: miniDockedEdge,
+            placement: miniDockedPlacement,
+          });
+        }
         return;
       }
       // A manually collapsed window stays compact when moved. Only a docked
@@ -529,6 +572,7 @@ function createMiniWindow(): BrowserWindow {
           // Drag-away is different from a click-to-expand: preserve the user's
           // new location instead of snapping the larger panel back to its old edge.
           miniDockedEdge = null;
+          miniDockedPlacement = null;
           expandMiniWindow();
         }
       }, 140);
@@ -543,18 +587,24 @@ function createMiniWindow(): BrowserWindow {
       const latestDisplay = screen.getDisplayMatching(latestBounds);
       const latestEdge = detectMiniWindowEdge(latestBounds, latestDisplay.workArea);
       if (!latestEdge) return;
+      const latestPlacement = resolveMiniWindowDockPlacement(
+        latestBounds,
+        latestDisplay.workArea,
+        latestEdge,
+      );
 
       // A real Windows drag reaches this timer only after WM_EXITSIZEMOVE. The
       // delay is a post-release settle period; it never resizes under the pointer.
       // Programmatic moves and non-Windows development builds use the same
       // debounced fallback. Snap first, then show the renderer fold cue.
-      const snapped = anchorMiniWindowToEdge(
+      const snapped = anchorMiniWindowToPlacement(
         latestBounds,
         MINI_WINDOW_EXPANDED_SIZE,
         latestDisplay.workArea,
-        latestEdge,
+        latestPlacement,
       );
       miniDockedEdge = latestEdge;
+      miniDockedPlacement = latestPlacement;
       miniDockSnapBounds = snapped;
       applyMiniWindowBounds(snapped);
       miniBoundsMutationUntil = Date.now() + MINI_WINDOW_DOCK_TRANSITION_MS + 80;
@@ -562,12 +612,13 @@ function createMiniWindow(): BrowserWindow {
       miniWindow.webContents.send('mini:dock-transition', {
         phase: 'prepare',
         edge: latestEdge,
+        placement: latestPlacement,
       });
       miniEdgeTimer = setTimeout(() => {
         miniEdgeTimer = null;
         miniDockTransitionActive = false;
         miniDockSnapBounds = null;
-        collapseMiniWindow(latestEdge);
+        collapseMiniWindow(latestEdge, latestPlacement);
       }, MINI_WINDOW_DOCK_TRANSITION_MS);
     }, delay);
   };
@@ -589,7 +640,11 @@ function createMiniWindow(): BrowserWindow {
         miniDockTransitionActive = false;
         miniDockSnapBounds = null;
         miniBoundsMutationUntil = 0;
-        win.webContents.send('mini:dock-transition', { phase: 'cancel', edge: null });
+        win.webContents.send('mini:dock-transition', {
+          phase: 'cancel',
+          edge: null,
+          placement: null,
+        });
       }
     });
     win.hookWindowMessage(WM_EXITSIZEMOVE, () => {
@@ -605,6 +660,7 @@ function createMiniWindow(): BrowserWindow {
     miniDockTransitionActive = false;
     miniDockSnapBounds = null;
     miniDockedEdge = null;
+    miniDockedPlacement = null;
     nativeMoveLoopActive = false;
     miniWindow = null;
   });
@@ -630,7 +686,7 @@ function applyMiniWindowBounds(bounds: Electron.Rectangle): void {
 }
 
 /** 收起小窗：围绕中心缩成进度胶囊；贴边时始终钉住接触边。 */
-function collapseMiniWindow(edge?: MiniWindowEdge): void {
+function collapseMiniWindow(edge?: MiniWindowEdge, placement?: MiniWindowDockPlacement): void {
   if (!miniWindow || miniWindow.isDestroyed()) return;
   const cur = getSettings();
   if (cur.miniWindow.collapsed) return;
@@ -645,11 +701,25 @@ function collapseMiniWindow(edge?: MiniWindowEdge): void {
   const dockedEdge =
     edge ??
     (cur.miniWindow.edgeAutoCollapse ? detectMiniWindowEdge(bounds, display.workArea) : null);
-  const target = dockedEdge
-    ? anchorMiniWindowToEdge(bounds, MINI_WINDOW_COLLAPSED_SIZE, display.workArea, dockedEdge)
+  const dockedPlacement =
+    placement ??
+    (dockedEdge ? resolveMiniWindowDockPlacement(bounds, display.workArea, dockedEdge) : null);
+  const target = dockedPlacement
+    ? anchorMiniWindowToPlacement(
+        bounds,
+        MINI_WINDOW_COLLAPSED_SIZE,
+        display.workArea,
+        dockedPlacement,
+      )
     : resizeMiniWindowAroundCenter(bounds, MINI_WINDOW_COLLAPSED_SIZE, display.workArea);
   miniDockedEdge = dockedEdge;
+  miniDockedPlacement = dockedPlacement;
   applyMiniWindowBounds(target);
+  miniWindow.webContents.send('mini:dock-transition', {
+    phase: 'settled',
+    edge: dockedEdge,
+    placement: dockedPlacement,
+  });
   const next = updateSettings({
     miniWindow: {
       ...cur.miniWindow,
@@ -661,6 +731,7 @@ function collapseMiniWindow(edge?: MiniWindowEdge): void {
   broadcastMiniSettings(next);
   logger.info('main', 'mini window collapsed', {
     edge: dockedEdge,
+    placement: dockedPlacement,
     x: target.x,
     y: target.y,
   });
@@ -676,20 +747,26 @@ function expandMiniWindow(): void {
   if (miniDockTransitionActive) {
     miniDockTransitionActive = false;
     miniDockSnapBounds = null;
-    miniWindow.webContents.send('mini:dock-transition', { phase: 'cancel', edge: null });
   }
+  miniWindow.webContents.send('mini:dock-transition', {
+    phase: 'cancel',
+    edge: null,
+    placement: null,
+  });
   const bounds = miniWindow.getBounds();
   const restore = getExpandedMiniWindowSize(cur.miniWindow.width, cur.miniWindow.height);
   const display = screen.getDisplayMatching(bounds);
   const edge = miniDockedEdge;
-  const target = edge
-    ? anchorMiniWindowToEdge(bounds, restore, display.workArea, edge)
+  const placement = miniDockedPlacement;
+  const target = placement
+    ? anchorMiniWindowToPlacement(bounds, restore, display.workArea, placement)
     : resizeMiniWindowAroundCenter(bounds, restore, display.workArea);
   applyMiniWindowBounds(target);
   // A click on the docked capsule opens a usable panel. A later drag to an
   // edge re-arms auto-collapse; no hover loop can resize it underneath input.
   miniEdgeSuppressUntil = Date.now() + 900;
   miniDockedEdge = null;
+  miniDockedPlacement = null;
   const next = updateSettings({
     miniWindow: {
       ...cur.miniWindow,
@@ -701,7 +778,12 @@ function expandMiniWindow(): void {
     },
   });
   broadcastMiniSettings(next);
-  logger.info('main', 'mini window expanded', { edge, x: target.x, y: target.y });
+  logger.info('main', 'mini window expanded', {
+    edge,
+    placement,
+    x: target.x,
+    y: target.y,
+  });
 }
 
 /** 重置小窗位置和大小为默认 */
@@ -720,7 +802,13 @@ function resetMiniWindow(): void {
   });
   const primary = screen.getPrimaryDisplay();
   miniDockedEdge = null;
+  miniDockedPlacement = null;
   miniEdgeSuppressUntil = Date.now() + 900;
+  miniWindow.webContents.send('mini:dock-transition', {
+    phase: 'cancel',
+    edge: null,
+    placement: null,
+  });
   applyMiniWindowBounds({
     x: primary.workArea.x + primary.workArea.width - MINI_WINDOW_SIZE_PRESETS[1].width - 24,
     y: primary.workArea.y + 24,
@@ -1061,11 +1149,13 @@ app.whenReady().then(() => {
       });
     });
 
-  void runAutomaticDeviceSync().catch((error) => {
-    logger.warn('deviceSync', 'startup sync failed', {
-      error: error instanceof Error ? error.message : String(error),
+  void reconcileEmbeddedDeviceSyncServer()
+    .then(() => runAutomaticDeviceSync())
+    .catch((error) => {
+      logger.warn('deviceSync', 'startup sync failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     });
-  });
 
   // 启动后立即检查，并持续探测番茄 Todo：用户晚于 FocusLink 启动客户端时也能自动补传。
   const TOMATODO_UPLOAD_INTERVAL_MS = 20_000;
@@ -1183,6 +1273,13 @@ app.on('before-quit', (e) => {
     runtimeUiInitialized = false;
     destroyTray();
     unregisterAll();
+    try {
+      await closeEmbeddedDeviceSyncServer();
+    } catch (error) {
+      logger.warn('deviceSync', 'embedded service shutdown failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     closeDatabase();
     app.exit(0);
   })();
