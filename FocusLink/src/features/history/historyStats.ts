@@ -1,4 +1,5 @@
 import type { FocusSession } from '@shared/types';
+import type { SessionAnalyticsDaily } from '@shared/ipc/api';
 
 export type RangePreset = 'today' | 'yesterday' | '7d' | '15d' | '30d' | 'custom';
 
@@ -31,6 +32,26 @@ export function summarizeSessions(sessions: FocusSession[]): SessionSummary {
       wall: acc.wall + session.wallElapsedMs,
     }),
     { count: 0, active: 0, pause: 0, wall: 0 },
+  );
+}
+
+/**
+ * Build the presentation summary from the same natural-day clipped buckets used by every chart.
+ * The session count is supplied separately because a session which overlaps more than one day
+ * appears in multiple daily buckets but must still count as one completed round.
+ */
+export function summarizeAnalyticsRange(
+  daily: readonly SessionAnalyticsDaily[],
+  sessionCount: number,
+): SessionSummary {
+  return daily.reduce<SessionSummary>(
+    (summary, day) => ({
+      count: summary.count,
+      active: summary.active + day.activeMs,
+      pause: summary.pause + day.pauseMs,
+      wall: summary.wall + day.wallMs,
+    }),
+    { count: Math.max(0, sessionCount), active: 0, pause: 0, wall: 0 },
   );
 }
 

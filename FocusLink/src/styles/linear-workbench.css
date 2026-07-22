@@ -2218,6 +2218,13 @@
     filter var(--motion-fast);
 }
 
+.stats-day-column {
+  transform: scaleY(var(--bar-scale, 0));
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  transition: transform 360ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .stats-trend-chart .active-bar {
   fill: rgb(var(--app-accent));
 }
@@ -2408,10 +2415,22 @@
 
 @media (max-width: 1060px) {
   .stats-brief {
-    grid-template-columns: 1fr 1.35fr;
+    grid-template-columns: minmax(190px, 0.72fr) minmax(240px, 1.2fr) 82px;
+    gap: 20px;
   }
   .stats-focus-gauge {
-    display: none;
+    width: 72px;
+    height: 72px;
+  }
+  .stats-focus-gauge > div {
+    width: 54px;
+    height: 54px;
+  }
+  .stats-focus-gauge strong {
+    font-size: 16px;
+  }
+  .stats-focus-gauge span {
+    font-size: 8px;
   }
   .stats-main-grid {
     grid-template-columns: 1fr;
@@ -2467,7 +2486,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .stats-dashboard,
-  .stats-time-block {
+  .stats-time-block,
+  .stats-day-column {
     animation: none;
     transition: none;
   }

@@ -1,4 +1,4 @@
-# FocusLink v0.12.25
+# FocusLink v0.12.26
 
 > 发布日期：2026-07-22
 >
@@ -34,7 +34,7 @@
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.12.25-x64.exe` | `<SHA256>` |
-| `FocusLink-0.12.25-x64-portable.exe` | `<SHA256>` |
+| `FocusLink-0.12.26-x64.exe` | `<SHA256>` |
+| `FocusLink-0.12.26-x64-portable.exe` | `<SHA256>` |
 
 同时提供 `SHA256SUMS.txt`。

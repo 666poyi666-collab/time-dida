@@ -582,7 +582,9 @@ async function main() {
   results.historyMinimum = await inspectMainWindowSize(980, 660);
   results.historyMinimum.dashboard = await evaluate(`(() => {
     const dashboard = document.querySelector('.stats-dashboard');
+    const focusGauge = document.querySelector('.stats-focus-gauge');
     const rect = dashboard?.getBoundingClientRect();
+    const focusGaugeRect = focusGauge?.getBoundingClientRect();
     return {
       present: Boolean(dashboard),
       left: rect?.left ?? null,
@@ -590,6 +592,11 @@ async function main() {
       width: rect?.width ?? null,
       viewportWidth: window.innerWidth,
       scrollWidth: document.documentElement.scrollWidth,
+      focusGaugeVisible:
+        Boolean(focusGauge) &&
+        getComputedStyle(focusGauge).display !== 'none' &&
+        (focusGaugeRect?.width ?? 0) > 0 &&
+        (focusGaugeRect?.height ?? 0) > 0,
     };
   })()`);
   await evaluate(`window.resizeTo(${originalWindowSize[0]}, ${originalWindowSize[1]})`);
@@ -930,6 +937,10 @@ async function main() {
         results.historyMinimum.dashboard.scrollWidth <=
           results.historyMinimum.dashboard.viewportWidth,
       'dashboard stays inside the 980px minimum viewport without horizontal overflow',
+    ],
+    [
+      results.historyMinimum.dashboard.focusGaugeVisible,
+      'dashboard keeps the focus-rate gauge visible at the 980px minimum viewport',
     ],
     [!results.historyInspection.hasRing, 'history removes decorative focus composition ring'],
     [

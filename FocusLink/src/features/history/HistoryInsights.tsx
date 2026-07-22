@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useInView, useReducedMotion } from 'framer-motion';
 import type { FocusSession } from '@shared/types';
 import type { SessionAnalyticsResult, SessionAnalyticsTimelineItem } from '@shared/ipc/api';
+import { buildDashboardTaskAllocation } from '@shared/dashboardPresentation';
 import { Icon } from '../../ui/Icon';
 import { formatClock, formatMinutes } from '../../lib/time';
 import {
@@ -70,21 +71,6 @@ function CountUp({ value, format }: { value: number; format: (current: number) =
     return () => cancelAnimationFrame(raf);
   }, [inView, reduceMotion, value]);
   return <span ref={ref}>{format(display)}</span>;
-}
-
-function roundedPercentages(values: number[]): number[] {
-  const total = values.reduce((sum, value) => sum + Math.max(0, value), 0);
-  if (total <= 0) return values.map(() => 0);
-  const raw = values.map((value) => (Math.max(0, value) / total) * 100);
-  const result = raw.map(Math.floor);
-  let remaining = 100 - result.reduce((sum, value) => sum + value, 0);
-  const order = raw
-    .map((value, index) => ({ index, fraction: value - result[index] }))
-    .sort((left, right) => right.fraction - left.fraction || left.index - right.index);
-  for (let cursor = 0; remaining > 0; cursor += 1, remaining -= 1) {
-    result[order[cursor % order.length].index] += 1;
-  }
-  return result;
 }
 
 export function HistoryInsights({
@@ -439,8 +425,9 @@ function DailyActivityChart({ daily }: { daily: SessionAnalyticsResult['daily'] 
         })}
         {daily.map((day, index) => {
           const x = padX + slotWidth * index + (slotWidth - barWidth) / 2;
-          const activeHeight = (day.activeMs / max) * plotHeight;
-          const pauseHeight = (day.pauseMs / max) * plotHeight;
+          const total = day.activeMs + day.pauseMs;
+          const activeShare = total > 0 ? day.activeMs / total : 0;
+          const pauseShare = total > 0 ? day.pauseMs / total : 0;
           const baseline = height - padY;
           const title = `${day.date} · 专注 ${duration(day.activeMs)} · 暂停 ${duration(day.pauseMs)} · ${day.sessionCount} 轮`;
           return (
@@ -450,21 +437,22 @@ function DailyActivityChart({ daily }: { daily: SessionAnalyticsResult['daily'] 
               role="img"
               tabIndex={0}
               aria-label={title}
+              style={{ '--bar-scale': total / max } as CSSProperties}
             >
               <title>{title}</title>
               <rect
                 className="active-bar"
                 x={x}
-                y={baseline - activeHeight}
+                y={baseline - activeShare * plotHeight}
                 width={barWidth}
-                height={Math.max(day.activeMs > 0 ? 1 : 0, activeHeight)}
+                height={activeShare * plotHeight}
               />
               <rect
                 className="pause-bar"
                 x={x}
-                y={baseline - activeHeight - pauseHeight}
+                y={baseline - plotHeight}
                 width={barWidth}
-                height={Math.max(day.pauseMs > 0 ? 1 : 0, pauseHeight)}
+                height={pauseShare * plotHeight}
               />
             </g>
           );
@@ -498,71 +486,10 @@ function TaskAllocation({
   analytics: SessionAnalyticsResult | null;
   totalActive: number;
 }) {
-  const allocation = useMemo(() => {
-    const source = (analytics?.tasks ?? []).slice().sort((a, b) => b.activeMs - a.activeMs);
-    const linked = source.filter((task) => task.taskId !== null);
-    const unlinked = source.filter((task) => task.taskId === null);
-    const primary = linked.slice(0, 4).map((task, index) => ({
-      key: task.key,
-      title: task.title,
-      activeMs: task.activeMs,
-      tone: 'linked' as const,
-      alpha: Math.max(0.52, 1 - index * 0.14),
-    }));
-    const otherLinkedMs = linked.slice(4).reduce((sum, task) => sum + task.activeMs, 0);
-    const unlinkedMs = unlinked.reduce((sum, task) => sum + task.activeMs, 0);
-    const accountedMs = source.reduce((sum, task) => sum + task.activeMs, 0);
-    const legacyMs = Math.max(0, totalActive - accountedMs);
-    const items = [
-      ...primary,
-      ...(otherLinkedMs > 0
-        ? [
-            {
-              key: 'other-linked',
-              title: `其他已关联任务（${Math.max(0, linked.length - 4)}）`,
-              activeMs: otherLinkedMs,
-              tone: 'other' as const,
-              alpha: 0.32,
-            },
-          ]
-        : []),
-      ...(unlinkedMs > 0
-        ? [
-            {
-              key: 'unlinked',
-              title: `未关联任务（${unlinked.length}）`,
-              activeMs: unlinkedMs,
-              tone: 'unlinked' as const,
-              alpha: 1,
-            },
-          ]
-        : []),
-      ...(legacyMs > 0
-        ? [
-            {
-              key: 'legacy',
-              title: '旧记录（无片段归类）',
-              activeMs: legacyMs,
-              tone: 'legacy' as const,
-              alpha: 1,
-            },
-          ]
-        : []),
-    ];
-    const shares = roundedPercentages(items.map((item) => item.activeMs));
-    const visualTotal = Math.max(
-      1,
-      items.reduce((sum, item) => sum + item.activeMs, 0),
-    );
-    return {
-      items: items.map((item, index) => ({
-        ...item,
-        share: shares[index] ?? 0,
-        width: (item.activeMs / visualTotal) * 100,
-      })),
-      linkedCount: linked.length,
-    };
-  }, [analytics, totalActive]);
+  const allocation = useMemo(
+    () => buildDashboardTaskAllocation(analytics?.tasks ?? [], totalActive),
+    [analytics?.tasks, totalActive],
+  );
 
   return (
     <article className="stats-panel stats-allocation-panel">

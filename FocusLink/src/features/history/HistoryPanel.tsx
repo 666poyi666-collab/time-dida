@@ -6,7 +6,6 @@ import { Icon } from '../../ui/Icon';
 import { useStore } from '../../app/store';
 import { formatClock, formatDuration, formatRelative, formatMinutes } from '../../lib/time';
 import {
-  filterSessionsByRange,
   formatDayLabel,
   formatShortDate,
   getDayRange,
@@ -14,7 +13,7 @@ import {
   isSameLocalDay,
   shiftLocalDay,
   startOfDay,
-  summarizeSessions,
+  summarizeAnalyticsRange,
   toDateInput,
   type RangePreset,
 } from './historyStats';
@@ -147,8 +146,14 @@ export function HistoryPanel() {
     [rangePreset, customStart, customEnd, dayCursor],
   );
   const sessions = analytics?.sessions ?? EMPTY_SESSIONS;
-  const filteredSessions = useMemo(() => filterSessionsByRange(sessions, range), [sessions, range]);
-  const rangeStats = useMemo(() => summarizeSessions(filteredSessions), [filteredSessions]);
+  // analytics.sessions is already the authoritative overlap result for the requested range.
+  // Filtering again by startedAt would drop a session which began before midnight but continued
+  // into the selected day, while the chart buckets correctly retained its clipped contribution.
+  const filteredSessions = sessions;
+  const rangeStats = useMemo(
+    () => summarizeAnalyticsRange(analytics?.daily ?? [], filteredSessions.length),
+    [analytics?.daily, filteredSessions.length],
+  );
   const persistedSyncStates = useMemo(() => buildSessionSyncStateMap(syncQueue), [syncQueue]);
   const segmentSyncStates = useMemo(() => buildSegmentSyncStateMap(syncQueue), [syncQueue]);
 

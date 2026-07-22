@@ -43,7 +43,13 @@ describe('mobile dashboard model', () => {
     expect(markup).toContain('专注趋势');
     expect(markup).toContain('数学');
     expect(markup).toContain('24 小时时段');
+    expect(markup).toContain('任务投入');
+    expect(markup).toContain('任务专注时间构成，函数复习 100%');
     expect(markup).toContain('日期热力');
+    expect(markup).toContain('暂停损耗与时间守恒');
+    expect(markup).toContain('有效专注 83%，暂停 17%');
+    expect(markup).toContain('role="img" tabindex="0"');
+    expect(markup).toContain('09:00 至 10:00，专注 25:00，暂停 05:00');
     expect(markup).toContain('函数复习');
   });
 });

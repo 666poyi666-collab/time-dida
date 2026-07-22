@@ -1621,15 +1621,24 @@ code {
 }
 
 .daily-trend-bars {
-  display: flex;
+  position: relative;
+  display: block;
   width: min(100%, 34px);
   height: 100%;
-  flex-direction: column-reverse;
-  justify-content: flex-start;
   align-self: end;
 }
 
-.daily-trend-bars i {
+.daily-trend-stack {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  transform: scaleY(var(--trend-scale, 0));
+  transform-origin: center bottom;
+  transition: transform 360ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.daily-trend-stack i {
   display: block;
   width: 100%;
   min-height: 0;
@@ -1761,11 +1770,16 @@ code {
   height: 100%;
   align-items: flex-end;
   gap: 1px;
+  outline-offset: 2px;
 }
 
 .hourly-column i {
   display: block;
   width: 50%;
+  height: 100%;
+  transform: scaleY(var(--hour-scale, 0));
+  transform-origin: center bottom;
+  transition: transform 360ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .hourly-column .hour-active {
@@ -1783,6 +1797,150 @@ code {
   color: var(--subtle);
   font-family: var(--number);
   font-size: 9px;
+}
+
+.daily-trend-column:focus-visible,
+.hourly-column:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.mobile-task-allocation {
+  display: grid;
+  gap: 14px;
+  padding: 20px clamp(18px, 5vw, 42px) 24px;
+}
+
+.mobile-task-allocation-track {
+  display: flex;
+  height: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+}
+
+.mobile-task-allocation-track > i {
+  min-width: 1px;
+  border-right: 1px solid var(--surface);
+  background: rgb(var(--app-accent) / var(--allocation-alpha, 1));
+}
+
+.mobile-task-allocation-track > i:last-child {
+  border-right: 0;
+}
+
+.mobile-task-allocation-track > i.tone-unlinked,
+.mobile-task-allocation-row.tone-unlinked > i {
+  background: var(--muted);
+}
+
+.mobile-task-allocation-track > i.tone-legacy,
+.mobile-task-allocation-row.tone-legacy > i {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+}
+
+.mobile-task-allocation-list {
+  display: grid;
+}
+
+.mobile-task-allocation-row {
+  display: grid;
+  min-height: 44px;
+  grid-template-columns: 7px minmax(0, 1fr) 40px minmax(62px, auto);
+  align-items: center;
+  gap: 9px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mobile-task-allocation-row:last-child {
+  border-bottom: 0;
+}
+
+.mobile-task-allocation-row > i {
+  width: 7px;
+  height: 7px;
+  background: rgb(var(--app-accent) / var(--allocation-alpha, 1));
+}
+
+.mobile-task-allocation-row strong {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-task-allocation-row span,
+.mobile-task-allocation-row small {
+  color: var(--muted);
+  font-family: var(--number);
+  font-size: 10px;
+  text-align: right;
+}
+
+.dashboard-pause-cost {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border);
+}
+
+.dashboard-pause-cost > div:not(.mobile-pause-cost-track) {
+  display: grid;
+  min-width: 0;
+  min-height: 78px;
+  align-content: center;
+  gap: 5px;
+  padding: 12px clamp(12px, 3vw, 28px);
+  border-right: 1px solid var(--border);
+}
+
+.dashboard-pause-cost > div:nth-child(3) {
+  border-right: 0;
+}
+
+.dashboard-pause-cost span {
+  color: var(--muted);
+  font-size: 9.5px;
+}
+
+.dashboard-pause-cost strong {
+  overflow: hidden;
+  font-family: var(--number);
+  font-size: clamp(14px, 3.8vw, 21px);
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-pause-cost strong.tone-pause {
+  color: var(--pause);
+}
+
+.mobile-pause-cost-track {
+  position: relative;
+  height: 8px;
+  grid-column: 1 / -1;
+  margin: 2px clamp(18px, 5vw, 42px) 20px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.mobile-pause-cost-track i {
+  position: absolute;
+  inset-block: 0;
+  transition:
+    left 360ms cubic-bezier(0.4, 0, 0.2, 1),
+    width 360ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mobile-pause-cost-track .focus {
+  left: 0;
+  background: var(--focus);
+}
+
+.mobile-pause-cost-track .pause {
+  background: var(--pause);
 }
 
 .daily-heatmap {
@@ -2378,6 +2536,12 @@ code {
 @media (prefers-reduced-motion: reduce) {
   .mobile-workspace {
     animation: none;
+  }
+
+  .daily-trend-stack,
+  .hourly-column i,
+  .mobile-pause-cost-track i {
+    transition: none !important;
   }
 }
 

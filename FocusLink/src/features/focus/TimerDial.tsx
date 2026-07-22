@@ -4,7 +4,7 @@
 // - pixel    像素点阵：7×9 整数网格数字 + 随累计专注点亮的专注核心
 // - thin     高反差编辑：Bodoni Moda 衬线字，排版感
 // 状态色语义统一：running=专注强调色，paused=暂停红，其余=墨色。
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { FlipDigits } from '../../ui/FlipDigits';
 import { formatDurationPadded } from '../../lib/time';
 import '../../styles/dial-motion.css';
@@ -121,6 +121,23 @@ const SEGMENT_PATHS: Record<string, string> = {
   g: 'M12 45 L48 45 L53 50 L48 55 L12 55 L7 50 Z',
 };
 
+const SEGMENT_PATH_ENTRIES = Object.entries(SEGMENT_PATHS);
+
+const SevenSegmentDigit = memo(function SevenSegmentDigit({ char }: { char: string }) {
+  const litSegments = SEGMENTS[char] ?? '';
+  return (
+    <svg className="segment-digit" viewBox="0 0 60 100" aria-hidden="true">
+      {SEGMENT_PATH_ENTRIES.map(([name, d]) => (
+        <path
+          key={name}
+          d={d}
+          className={litSegments.includes(name) ? 'segment-on' : 'segment-off'}
+        />
+      ))}
+    </svg>
+  );
+});
+
 function SegmentDial({ text, state }: { text: string; state: string }) {
   const reducedMotion = useReducedMotionPreference();
   const carry = useCarryPulse(text, !reducedMotion && state === 'running');
@@ -133,15 +150,7 @@ function SegmentDial({ text, state }: { text: string; state: string }) {
             <circle cx="10" cy="68" r="4" />
           </svg>
         ) : (
-          <svg className="segment-digit" viewBox="0 0 60 100" aria-hidden="true" key={index}>
-            {Object.entries(SEGMENT_PATHS).map(([name, d]) => (
-              <path
-                key={name}
-                d={d}
-                className={(SEGMENTS[char] ?? '').includes(name) ? 'segment-on' : 'segment-off'}
-              />
-            ))}
-          </svg>
+          <SevenSegmentDigit char={char} key={index} />
         ),
       )}
       <DialSweep pulse={carry} />
@@ -239,7 +248,15 @@ const GAP = 2;
 const CHAR_W = PIXEL_FONT_COLS * (CELL + GAP);
 const COLON_W = 2 * (CELL + GAP);
 
-function PixelChar({ ch, offsetX, prevCh }: { ch: string; offsetX: number; prevCh: string }) {
+const PixelChar = memo(function PixelChar({
+  ch,
+  offsetX,
+  prevCh,
+}: {
+  ch: string;
+  offsetX: number;
+  prevCh: string;
+}) {
   const rows = PIXEL_FONT[ch] ?? PIXEL_FONT['-'];
   const prevRows = PIXEL_FONT[prevCh] ?? PIXEL_FONT['-'];
   const rects = [];
@@ -261,7 +278,37 @@ function PixelChar({ ch, offsetX, prevCh }: { ch: string; offsetX: number; prevC
     }
   }
   return <>{rects}</>;
-}
+});
+
+const PixelCore = memo(function PixelCore({ lit, percent }: { lit: number; percent: number }) {
+  const order = useMemo(() => focusCoreOrder(), []);
+  const litSet = useMemo(
+    () => new Set(order.slice(0, lit).map(([cx, cy]) => `${cx},${cy}`)),
+    [order, lit],
+  );
+
+  return (
+    <div className="pixel-core" title={`本轮充能 ${percent}%`}>
+      <svg viewBox={`0 0 ${FOCUS_CORE_SIZE} ${FOCUS_CORE_SIZE}`} aria-hidden="true">
+        {FOCUS_CORE_GRID.flatMap((row, cy) =>
+          Array.from(row).map((cell, cx) =>
+            cell === '#' ? (
+              <rect
+                key={`${cx}-${cy}`}
+                x={cx + 0.08}
+                y={cy + 0.08}
+                width={0.84}
+                height={0.84}
+                className={litSet.has(`${cx},${cy}`) ? 'core-lit' : 'core-off'}
+              />
+            ) : null,
+          ),
+        )}
+      </svg>
+      <span className="pixel-core-caption">充能 {percent}%</span>
+    </div>
+  );
+});
 
 function PixelDial({ text, state, coreRatio }: { text: string; state: string; coreRatio: number }) {
   const chars = useMemo(() => Array.from(text), [text]);
@@ -277,12 +324,8 @@ function PixelDial({ text, state, coreRatio }: { text: string; state: string; co
   const height = PIXEL_FONT_ROWS * (CELL + GAP);
   let x = 0;
 
-  const order = useMemo(() => focusCoreOrder(), []);
   const lit = focusCoreLitCount(coreRatio);
-  const litSet = useMemo(
-    () => new Set(order.slice(0, lit).map(([cx, cy]) => `${cx},${cy}`)),
-    [order, lit],
-  );
+  const percent = Math.round(coreRatio * 100);
 
   return (
     <div className={`timer-dial dial-pixel state-${state}`} aria-label={text}>
@@ -303,25 +346,7 @@ function PixelDial({ text, state, coreRatio }: { text: string; state: string; co
       <span className="pixel-spec" aria-hidden="true">
         DOT MATRIX · 7×9
       </span>
-      <div className="pixel-core" title={`本轮充能 ${Math.round(coreRatio * 100)}%`}>
-        <svg viewBox={`0 0 ${FOCUS_CORE_SIZE} ${FOCUS_CORE_SIZE}`} aria-hidden="true">
-          {FOCUS_CORE_GRID.flatMap((row, cy) =>
-            Array.from(row).map((cell, cx) =>
-              cell === '#' ? (
-                <rect
-                  key={`${cx}-${cy}`}
-                  x={cx + 0.08}
-                  y={cy + 0.08}
-                  width={0.84}
-                  height={0.84}
-                  className={litSet.has(`${cx},${cy}`) ? 'core-lit' : 'core-off'}
-                />
-              ) : null,
-            ),
-          )}
-        </svg>
-        <span className="pixel-core-caption">充能 {Math.round(coreRatio * 100)}%</span>
-      </div>
+      <PixelCore lit={lit} percent={percent} />
     </div>
   );
 }

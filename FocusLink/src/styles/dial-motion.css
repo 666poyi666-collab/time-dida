@@ -16,6 +16,7 @@
 /* ---------- 通用：状态色切换柔化（ink ↔ success ↔ pause，240ms） ---------- */
 .timer-dial {
   transition: color var(--dur-base, 240ms) var(--ease-standard, cubic-bezier(0.4, 0, 0.2, 1));
+  contain: layout style;
 }
 
 /* ---------- standard：数字变化 240ms 垂直滑动 + 淡入 ----------
@@ -75,31 +76,33 @@
 @keyframes dial-flip-fold {
   from {
     transform: rotateX(0deg);
-    filter: brightness(1);
+    opacity: 1;
   }
   to {
     transform: rotateX(-90deg);
-    filter: brightness(0.72);
+    opacity: 0.78;
   }
 }
 
 @keyframes dial-flip-unfold {
   from {
     transform: rotateX(90deg);
-    filter: brightness(0.72);
+    opacity: 0.78;
   }
   to {
     transform: rotateX(0deg);
-    filter: brightness(1);
+    opacity: 1;
   }
 }
 
 .timer-dial.dial-flip .flip-flap-top {
   animation: dial-flip-fold 160ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
 }
 
 .timer-dial.dial-flip .flip-flap-bottom {
   animation: dial-flip-unfold 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
 }
 
 /* flip：低透明背光。颜色取 currentColor（随 state 经 .timer-dial 的 color 过渡柔化），
@@ -182,6 +185,12 @@
 /* segment：段码亮灭 140ms 透明度过渡，消除硬闪 */
 .timer-dial.dial-segment .segment-digit path {
   transition: opacity var(--dur-micro, 140ms) var(--ease-standard, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.timer-dial .motion-digit-flip,
+.timer-dial.dial-segment .segment-digit,
+.timer-dial.dial-pixel .pixel-digits {
+  transform: translateZ(0);
 }
 
 /* ---------- reduced-motion 显式降级 ----------

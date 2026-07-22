@@ -9,6 +9,7 @@ import {
   groupByWeek,
   isSameLocalDay,
   shiftLocalDay,
+  summarizeAnalyticsRange,
   summarizeSessions,
 } from '../src/features/history/historyStats';
 
@@ -133,6 +134,35 @@ describe('history stats and range grouping', () => {
       active: 60 * 60_000,
       pause: 5 * 60_000,
       wall: 65 * 60_000,
+    });
+  });
+
+  it('summarizes natural-day clipped analytics without double-counting overlapping sessions', () => {
+    const summary = summarizeAnalyticsRange(
+      [
+        {
+          date: '2026-06-30',
+          activeMs: 20 * 60_000,
+          pauseMs: 5 * 60_000,
+          wallMs: 25 * 60_000,
+          sessionCount: 1,
+        },
+        {
+          date: '2026-07-01',
+          activeMs: 10 * 60_000,
+          pauseMs: 0,
+          wallMs: 10 * 60_000,
+          sessionCount: 1,
+        },
+      ],
+      1,
+    );
+
+    expect(summary).toEqual({
+      count: 1,
+      active: 30 * 60_000,
+      pause: 5 * 60_000,
+      wall: 35 * 60_000,
     });
   });
 });

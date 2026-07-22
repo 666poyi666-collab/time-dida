@@ -1,6 +1,6 @@
 // 时间之带：专注与暂停都按真实墙钟留下完整时段；材质本身由粒子构成。
 // 绿色表达已经凝结的专注，红色以“残留底 + 短寿命活动层”持续表现时间消逝。
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BAND_PAUSE_MOTION_MS,
   BAND_POINTER_RATIO,
@@ -28,6 +28,7 @@ import {
 import type { RgbTuple } from '@shared/focus/bandMath';
 import { getCumulativeActiveMs, getCurrentPauseDisplayMs } from '@shared/focus/selectors';
 import { buildMixedTimelineItems } from '@shared/focus/timeline';
+import type { TimelineItem } from '@shared/focus/timeline';
 import type { TimerSnapshot, TimerState } from '@shared/types';
 
 type BandEngine = {
@@ -40,8 +41,6 @@ type BandEngine = {
   prevState: TimerState | null;
   /** 专注实体淡入起始时间（performance.now 时间轴）。 */
   materialFadeStart: number | null;
-  /** 连续材料/时间粒子按 30fps 绘制。 */
-  lastMotionFrameAt: number;
 };
 
 type BandColors = {
@@ -60,7 +59,12 @@ type BandColors = {
   borderStrong: string;
 };
 
-const PARTICLE_FRAME_INTERVAL_MS = 1000 / 30;
+type BandPaintStyle = {
+  colors: BandColors;
+  fontNumber: string;
+  fontSmallNumber: string;
+  fontUi: string;
+};
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(
@@ -95,12 +99,26 @@ export function TemporalRibbon({
     lastSecond: -1,
     prevState: null,
     materialFadeStart: null,
-    lastMotionFrameAt: 0,
   });
+  const scheduleDrawRef = useRef<() => void>(() => undefined);
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
   const stateRef = useRef(state);
   stateRef.current = state;
+  const timelineItems = useMemo(
+    () =>
+      buildMixedTimelineItems({
+        segments: snapshot?.segments ?? [],
+        pauseEvents: snapshot?.pauseEvents ?? [],
+        currentSegmentId: snapshot?.currentSegmentId ?? null,
+        state,
+        // 进行中区间的绘制终点始终使用当前帧墙钟；duration 不参与 Canvas 投影。
+        now: 0,
+      }),
+    [snapshot?.segments, snapshot?.pauseEvents, snapshot?.currentSegmentId, state],
+  );
+  const timelineItemsRef = useRef(timelineItems);
+  timelineItemsRef.current = timelineItems;
 
   const reducedMotion = useReducedMotion();
   const [viewMode, setViewMode] = useState<'auto' | 'near' | 'far'>('auto');
@@ -159,7 +177,6 @@ export function TemporalRibbon({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const canvasElement = canvas;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const context = ctx;
@@ -167,11 +184,16 @@ export function TemporalRibbon({
     let raf = 0;
     let wakeTimer: number | null = null;
     let disposed = false;
+    let paintStyle = readBandPaintStyle();
+    const viewport = { width: 0, height: 0 };
 
     const resize = () => {
-      const dpr = Math.min(3, window.devicePixelRatio || 1);
+      // 2x 已足够保持文字和粒子锐利；3x 会把每帧填充像素放大到 2.25 倍。
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
+      viewport.width = width;
+      viewport.height = height;
       const pixelWidth = Math.round(width * dpr);
       const pixelHeight = Math.round(height * dpr);
       if (
@@ -210,29 +232,14 @@ export function TemporalRibbon({
 
       const currentState = stateRef.current;
       const wallNowMs = Date.now();
-      const frameAt = performance.now();
-      const continuousMotion =
-        !reducedMotion &&
-        (currentState === 'running' ||
-          currentState === 'paused' ||
-          engineRef.current.zoom !== null ||
-          engineRef.current.materialFadeStart !== null);
-
-      if (
-        continuousMotion &&
-        frameAt - engineRef.current.lastMotionFrameAt < PARTICLE_FRAME_INTERVAL_MS
-      ) {
-        schedule();
-        return;
-      }
-      engineRef.current.lastMotionFrameAt = continuousMotion ? frameAt : 0;
-
-      resize();
-      renderBand(context, canvasElement, engineRef.current, {
+      renderBand(context, engineRef.current, {
         snapshot: snapshotRef.current,
         state: currentState,
         nowMs: wallNowMs,
         reducedMotion,
+        moments: timelineItemsRef.current,
+        paintStyle,
+        viewport,
       });
 
       if (
@@ -252,23 +259,39 @@ export function TemporalRibbon({
       resize();
       schedule();
     });
-    const themeObserver = new MutationObserver(schedule);
+    const handleWindowResize = () => {
+      resize();
+      schedule();
+    };
+    const themeObserver = new MutationObserver(() => {
+      paintStyle = readBandPaintStyle();
+      schedule();
+    });
     observer.observe(canvas);
+    window.addEventListener('resize', handleWindowResize);
     themeObserver.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['class', 'style'],
     });
     resize();
+    scheduleDrawRef.current = schedule;
     schedule();
 
     return () => {
       disposed = true;
+      scheduleDrawRef.current = () => undefined;
       cancelAnimationFrame(raf);
       if (wakeTimer !== null) window.clearTimeout(wakeTimer);
       observer.disconnect();
+      window.removeEventListener('resize', handleWindowResize);
       themeObserver.disconnect();
     };
-  }, [reducedMotion, renderRevision, targetScale]);
+  }, [reducedMotion]);
+
+  // 数据、状态或缩放目标变化只请求一帧，不销毁 rAF、ResizeObserver 和主题观察器。
+  useEffect(() => {
+    scheduleDrawRef.current();
+  }, [renderRevision, targetScale, timelineItems]);
 
   const viewDescription = isNear
     ? state === 'paused'
@@ -357,42 +380,49 @@ export function TemporalRibbon({
 
 /* ─── Canvas 渲染内核：真实墙钟轴上的绿色专注体与红色消逝体 ─── */
 
+function readBandPaintStyle(): BandPaintStyle {
+  const css = getComputedStyle(document.documentElement);
+  const raw = (name: string) => css.getPropertyValue(name).trim();
+  const rgb = (name: string) => raw(name).split(/\s+/).slice(0, 3).join(',');
+  return {
+    colors: {
+      ink: rgb('--app-ink'),
+      text: rgb('--app-text'),
+      focus: rgb('--app-success'),
+      focusDeep: rgb('--app-success-deep'),
+      focusSoft: rgb('--app-success-soft'),
+      pause: rgb('--app-pause'),
+      pauseSoft: rgb('--app-pause-soft'),
+      muted: rgb('--app-subtle'),
+      surface: rgb('--app-surface'),
+      surface2: rgb('--app-surface-2'),
+      surface3: rgb('--app-surface-3'),
+      border: rgb('--app-border'),
+      borderStrong: rgb('--app-border-strong'),
+    },
+    fontNumber: `10px ${raw('--font-number') || 'monospace'}`,
+    fontSmallNumber: `9px ${raw('--font-number') || 'monospace'}`,
+    fontUi: `600 10px ${raw('--font-ui') || 'sans-serif'}`,
+  };
+}
+
 function renderBand(
   ctx: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
   engine: BandEngine,
   input: {
     snapshot: TimerSnapshot | null;
     state: TimerState;
     nowMs: number;
     reducedMotion: boolean;
+    moments: TimelineItem[];
+    paintStyle: BandPaintStyle;
+    viewport: { width: number; height: number };
   },
 ): void {
-  const width = canvas.clientWidth;
-  const height = canvas.clientHeight;
+  const { width, height } = input.viewport;
   if (width <= 0 || height <= 0) return;
 
-  const css = getComputedStyle(document.documentElement);
-  const raw = (name: string) => css.getPropertyValue(name).trim();
-  const rgb = (name: string) => raw(name).split(/\s+/).slice(0, 3).join(',');
-  const colors: BandColors = {
-    ink: rgb('--app-ink'),
-    text: rgb('--app-text'),
-    focus: rgb('--app-success'),
-    focusDeep: rgb('--app-success-deep'),
-    focusSoft: rgb('--app-success-soft'),
-    pause: rgb('--app-pause'),
-    pauseSoft: rgb('--app-pause-soft'),
-    muted: rgb('--app-subtle'),
-    surface: rgb('--app-surface'),
-    surface2: rgb('--app-surface-2'),
-    surface3: rgb('--app-surface-3'),
-    border: rgb('--app-border'),
-    borderStrong: rgb('--app-border-strong'),
-  };
-  const fontNumber = `10px ${raw('--font-number') || 'monospace'}`;
-  const fontSmallNumber = `9px ${raw('--font-number') || 'monospace'}`;
-  const fontUi = `600 10px ${raw('--font-ui') || 'sans-serif'}`;
+  const { colors, fontNumber, fontSmallNumber, fontUi } = input.paintStyle;
 
   let zoomEnergy = 0;
   if (engine.zoom) {
@@ -405,13 +435,7 @@ function renderBand(
     }
   }
 
-  const moments = buildMixedTimelineItems({
-    segments: input.snapshot?.segments ?? [],
-    pauseEvents: input.snapshot?.pauseEvents ?? [],
-    currentSegmentId: input.snapshot?.currentSegmentId ?? null,
-    state: input.state,
-    now: input.nowMs,
-  });
+  const moments = input.moments;
   const lastRecordedAt = moments.reduce(
     (latest, moment) => Math.max(latest, moment.endedAt ?? moment.startedAt),
     0,

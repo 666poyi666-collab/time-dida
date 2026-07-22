@@ -4,6 +4,10 @@ import {
   isInvalidDeviceSyncCursorError,
   pullDeviceSyncPage,
 } from '../src/mobile/syncClient';
+import {
+  loadConnectionPreferences,
+  migrateLegacyMobileSyncEndpoint,
+} from '../src/mobile/preferences';
 
 describe('mobile sync client request recovery', () => {
   afterEach(() => {
@@ -90,5 +94,44 @@ describe('mobile sync client request recovery', () => {
         token: 'test-token',
       }),
     ).rejects.toThrow('ADB reverse tcp:18787 tcp:18787');
+  });
+
+  it.each([
+    ['http://127.0.0.1:8787', 'http://127.0.0.1:18787'],
+    ['http://127.0.0.1:8787/', 'http://127.0.0.1:18787'],
+    ['http://localhost:8787', 'http://localhost:18787'],
+  ])('migrates the retired Android loopback endpoint from %s to %s', (legacy, current) => {
+    expect(migrateLegacyMobileSyncEndpoint(legacy)).toBe(current);
+  });
+
+  it.each([
+    'https://sync.example.test',
+    'http://127.0.0.1:18787',
+    'http://127.0.0.1:8787/custom',
+    'http://192.168.1.2:8787',
+    'not a URL',
+  ])('preserves the user-owned endpoint %s', (endpoint) => {
+    expect(migrateLegacyMobileSyncEndpoint(endpoint)).toBe(endpoint);
+  });
+
+  it('persists the migrated endpoint while preserving the saved token preference', () => {
+    const values = new Map([
+      ['focuslink.mobile.endpoint', 'http://127.0.0.1:8787'],
+      ['focuslink.mobile.remember-token', 'true'],
+      ['focuslink.mobile.token.local', 'saved-token'],
+    ]);
+    const setItem = vi.fn((key: string, value: string) => values.set(key, value));
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem,
+    });
+    vi.stubGlobal('sessionStorage', { getItem: () => null });
+
+    expect(loadConnectionPreferences()).toEqual({
+      endpoint: 'http://127.0.0.1:18787',
+      token: 'saved-token',
+      rememberToken: true,
+    });
+    expect(setItem).toHaveBeenCalledWith('focuslink.mobile.endpoint', 'http://127.0.0.1:18787');
   });
 });

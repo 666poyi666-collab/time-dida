@@ -4,6 +4,10 @@ import type {
   SessionAnalyticsHourly,
   SessionAnalyticsSubject,
 } from '@shared/ipc/api';
+import {
+  buildDashboardTaskAllocation,
+  type DashboardTaskAllocation,
+} from '@shared/dashboardPresentation';
 import type { CachedBundle } from './cache';
 import { buildMobileDashboard, mobileStatsRange, type MobileStatsRange } from './dashboardModel';
 import { formatClockDuration } from './runtimeModel';
@@ -47,8 +51,12 @@ export function DashboardView({
     (longest, session) => Math.max(longest, session.activeElapsedMs),
     0,
   );
-  const focusRate =
-    analytics.totals.wallMs > 0 ? analytics.totals.activeMs / analytics.totals.wallMs : 0;
+  const trackedMs = analytics.totals.activeMs + analytics.totals.pauseMs;
+  const focusRate = trackedMs > 0 ? analytics.totals.activeMs / trackedMs : 0;
+  const taskAllocation = useMemo(
+    () => buildDashboardTaskAllocation(analytics.tasks, analytics.totals.activeMs),
+    [analytics.tasks, analytics.totals.activeMs],
+  );
   const scopeLabel = selectedDate
     ? formatFullDate(selectedDate)
     : formatRangeLabel(bounds.start, bounds.end, range);
@@ -153,6 +161,18 @@ export function DashboardView({
           </div>
 
           <section
+            className="dashboard-band task-allocation-band"
+            aria-labelledby="dashboard-task-allocation-title"
+          >
+            <AnalyticsHeading
+              id="dashboard-task-allocation-title"
+              title="任务投入"
+              detail="已关联 / 未关联 / 旧记录"
+            />
+            <MobileTaskAllocation allocation={taskAllocation} />
+          </section>
+
+          <section
             className="dashboard-band heatmap-band"
             aria-labelledby="dashboard-heatmap-title"
           >
@@ -167,6 +187,12 @@ export function DashboardView({
               onSelect={(date) => setSelectedDate((current) => (current === date ? null : date))}
             />
           </section>
+
+          <MobilePauseCost
+            activeMs={analytics.totals.activeMs}
+            pauseMs={analytics.totals.pauseMs}
+            sessionCount={analytics.totals.sessionCount}
+          />
 
           <SessionLedger
             records={visibleRecords}
@@ -228,10 +254,32 @@ function DailyTrend({ daily }: { daily: readonly SessionAnalyticsDaily[] }) {
               className="daily-trend-column"
               key={item.date}
               title={`${formatFullDate(item.date)}：专注 ${formatClockDuration(item.activeMs)}，暂停 ${formatClockDuration(item.pauseMs)}`}
+              role="img"
+              tabIndex={0}
+              aria-label={`${formatFullDate(item.date)}：专注 ${formatClockDuration(item.activeMs)}，暂停 ${formatClockDuration(item.pauseMs)}，${item.sessionCount} 场会话`}
             >
               <span className="daily-trend-bars" aria-hidden="true">
-                <i className="trend-active" style={{ height: `${activeHeight}%` }} />
-                <i className="trend-pause" style={{ height: `${pauseHeight}%` }} />
+                <span
+                  className="daily-trend-stack"
+                  style={
+                    {
+                      '--trend-scale': (item.activeMs + item.pauseMs) / max,
+                    } as CSSProperties
+                  }
+                >
+                  <i
+                    className="trend-active"
+                    style={{
+                      flexBasis: `${activeHeight + pauseHeight > 0 ? (activeHeight / (activeHeight + pauseHeight)) * 100 : 0}%`,
+                    }}
+                  />
+                  <i
+                    className="trend-pause"
+                    style={{
+                      flexBasis: `${activeHeight + pauseHeight > 0 ? (pauseHeight / (activeHeight + pauseHeight)) * 100 : 0}%`,
+                    }}
+                  />
+                </span>
               </span>
               <small>{showLabel ? formatShortDate(item.date) : ''}</small>
             </div>
@@ -284,9 +332,20 @@ function HourlyDistribution({ hourly }: { hourly: readonly SessionAnalyticsHourl
             className="hourly-column"
             key={item.hour}
             title={`${String(item.hour).padStart(2, '0')}:00：专注 ${formatClockDuration(item.activeMs)}，暂停 ${formatClockDuration(item.pauseMs)}`}
+            role="img"
+            tabIndex={0}
+            aria-label={`${String(item.hour).padStart(2, '0')}:00 至 ${String((item.hour + 1) % 24).padStart(2, '0')}:00，专注 ${formatClockDuration(item.activeMs)}，暂停 ${formatClockDuration(item.pauseMs)}`}
           >
-            <i className="hour-active" style={{ height: `${(item.activeMs / max) * 100}%` }} />
-            <i className="hour-pause" style={{ height: `${(item.pauseMs / max) * 100}%` }} />
+            <i
+              className="hour-active"
+              style={{ '--hour-scale': item.activeMs / max } as CSSProperties}
+              aria-hidden="true"
+            />
+            <i
+              className="hour-pause"
+              style={{ '--hour-scale': item.pauseMs / max } as CSSProperties}
+              aria-hidden="true"
+            />
           </span>
         ))}
       </div>
@@ -298,6 +357,86 @@ function HourlyDistribution({ hourly }: { hourly: readonly SessionAnalyticsHourl
         <span>24</span>
       </div>
     </div>
+  );
+}
+
+function MobileTaskAllocation({ allocation }: { allocation: DashboardTaskAllocation }) {
+  if (allocation.items.length === 0) {
+    return <p className="analytics-empty">这个范围还没有可归类的任务投入。</p>;
+  }
+  return (
+    <div className="mobile-task-allocation">
+      <div
+        className="mobile-task-allocation-track"
+        role="img"
+        aria-label={`任务专注时间构成，${allocation.items.map((item) => `${item.title} ${item.share}%`).join('，')}`}
+      >
+        {allocation.items.map((item) => (
+          <i
+            key={item.key}
+            className={`tone-${item.tone}`}
+            style={
+              {
+                width: `${item.width}%`,
+                '--allocation-alpha': item.alpha,
+              } as CSSProperties
+            }
+          />
+        ))}
+      </div>
+      <div className="mobile-task-allocation-list">
+        {allocation.items.map((item) => (
+          <div className={`mobile-task-allocation-row tone-${item.tone}`} key={item.key}>
+            <i style={{ '--allocation-alpha': item.alpha } as CSSProperties} />
+            <strong>{item.title}</strong>
+            <span>{item.share}%</span>
+            <small>{formatClockDuration(item.activeMs)}</small>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MobilePauseCost({
+  activeMs,
+  pauseMs,
+  sessionCount,
+}: {
+  activeMs: number;
+  pauseMs: number;
+  sessionCount: number;
+}) {
+  const tracked = activeMs + pauseMs;
+  const focusRate = tracked > 0 ? activeMs / tracked : 0;
+  const pauseRate = tracked > 0 ? pauseMs / tracked : 0;
+  const average = sessionCount > 0 ? activeMs / sessionCount : 0;
+  return (
+    <section className="dashboard-pause-cost" aria-label="暂停损耗与时间守恒">
+      <div>
+        <span>暂停损耗</span>
+        <strong className="tone-pause">{formatClockDuration(pauseMs)}</strong>
+      </div>
+      <div>
+        <span>每轮平均专注</span>
+        <strong>{formatClockDuration(average)}</strong>
+      </div>
+      <div>
+        <span>时间利用</span>
+        <strong>{formatPercent(focusRate)}</strong>
+      </div>
+      <div
+        className="mobile-pause-cost-track"
+        role="img"
+        aria-label={`有效专注 ${formatPercent(focusRate)}，暂停 ${formatPercent(pauseRate)}`}
+      >
+        <i className="focus" style={{ width: `${focusRate * 100}%` }} />
+        <i
+          className="pause"
+          style={{ left: `${focusRate * 100}%`, width: `${pauseRate * 100}%` }}
+        />
+      </div>
+    </section>
   );
 }
 

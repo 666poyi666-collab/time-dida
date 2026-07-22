@@ -1,8 +1,12 @@
+import { Capacitor } from '@capacitor/core';
+
 const ENDPOINT_KEY = 'focuslink.mobile.endpoint';
 const TOKEN_SESSION_KEY = 'focuslink.mobile.token.session';
 const TOKEN_LOCAL_KEY = 'focuslink.mobile.token.local';
 const REMEMBER_TOKEN_KEY = 'focuslink.mobile.remember-token';
 const DEVICE_ID_KEY = 'focuslink.mobile.device-id';
+const CURRENT_LOOPBACK_ENDPOINT = 'http://127.0.0.1:18787';
+const LEGACY_LOOPBACK_PORT = '8787';
 
 export interface MobileConnectionPreferences {
   endpoint: string;
@@ -12,15 +16,44 @@ export interface MobileConnectionPreferences {
 
 export function loadConnectionPreferences(): MobileConnectionPreferences {
   const rememberToken = localStorage.getItem(REMEMBER_TOKEN_KEY) === 'true';
+  const storedEndpoint = localStorage.getItem(ENDPOINT_KEY);
+  const endpoint = migrateLegacyMobileSyncEndpoint(
+    storedEndpoint ?? (Capacitor.isNativePlatform() ? CURRENT_LOOPBACK_ENDPOINT : ''),
+  );
+  if (storedEndpoint !== null && endpoint !== storedEndpoint) {
+    // Desktop moved its embedded service from 8787 to 18787 in v0.12.21. Android
+    // localStorage survives an overwrite install, so migrate the matching old mobile
+    // default too; otherwise the UI retries 8787 forever while adb reverse targets 18787.
+    localStorage.setItem(ENDPOINT_KEY, endpoint);
+  }
   return {
-    endpoint:
-      localStorage.getItem(ENDPOINT_KEY) ??
-      (Capacitor.isNativePlatform() ? 'http://127.0.0.1:18787' : ''),
+    endpoint,
     token: rememberToken
       ? (localStorage.getItem(TOKEN_LOCAL_KEY) ?? '')
       : (sessionStorage.getItem(TOKEN_SESSION_KEY) ?? ''),
     rememberToken,
   };
+}
+
+/** Only migrate the retired loopback default; HTTPS and user-owned endpoints stay untouched. */
+export function migrateLegacyMobileSyncEndpoint(endpoint: string): string {
+  try {
+    const url = new URL(endpoint);
+    const isLegacyLoopback =
+      url.protocol === 'http:' &&
+      (url.hostname === '127.0.0.1' || url.hostname === 'localhost') &&
+      url.port === LEGACY_LOOPBACK_PORT &&
+      url.pathname === '/' &&
+      !url.search &&
+      !url.hash &&
+      !url.username &&
+      !url.password;
+    if (!isLegacyLoopback) return endpoint;
+    url.port = '18787';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return endpoint;
+  }
 }
 
 export function saveConnectionPreferences(value: MobileConnectionPreferences): void {
@@ -49,4 +82,3 @@ export function getOrCreateDeviceId(): string {
   localStorage.setItem(DEVICE_ID_KEY, created);
   return created;
 }
-import { Capacitor } from '@capacitor/core';

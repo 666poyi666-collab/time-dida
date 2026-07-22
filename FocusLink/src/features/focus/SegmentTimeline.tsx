@@ -3,11 +3,12 @@
 // 数据源不变：snapshot.segments + snapshot.pauseEvents，经 buildMixedTimelineItems 混合。
 // 语义契约：已关联/未关联 = 本地任务关联；已同步/未同步/同步失败 = 滴答云同步队列，
 // 同步状态只出现在滴答来源的专注片段上，提示语统一为「同步到滴答清单」。
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { memo, useEffect, useMemo, useState, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useStore } from '../../app/store';
 import { formatDuration, formatMinutes, formatClock } from '../../lib/time';
-import { buildMixedTimelineItems } from '@shared/focus/timeline';
+import { buildMixedTimelineItems, getTimelineDisplayDuration } from '@shared/focus/timeline';
+import type { TimelineItem } from '@shared/focus/timeline';
 import { getCurrentTaskTitle } from '@shared/focus/selectors';
 import {
   NOT_SYNCED_STATE,
@@ -45,13 +46,87 @@ function buildSegmentSyncMap(queue: SyncQueueItem[]): Record<string, SessionSync
   );
 }
 
+const TimelineRow = memo(function TimelineRow({
+  item,
+  state,
+  liveNow,
+  lastTick,
+  syncState,
+  reducedMotion,
+}: {
+  item: TimelineItem;
+  state: string;
+  liveNow: number;
+  lastTick: number;
+  syncState: SessionSyncState | null;
+  reducedMotion: boolean;
+}) {
+  const isFocus = item.type === 'focus';
+  const duration = getTimelineDisplayDuration(item, liveNow, lastTick);
+  const isCurrent = item.isActive;
+  const pausedNow = isFocus && isCurrent && state === 'paused';
+
+  return (
+    <motion.div
+      initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+      animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+      exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -3 }}
+      transition={{ duration: reducedMotion ? 0.12 : 0.24, ease: [0.16, 1, 0.3, 1] }}
+      className={`ledger-row ${isFocus ? 'row-focus' : 'row-pause'} ${
+        isCurrent ? 'is-current' : ''
+      }`}
+    >
+      <div className="ledger-row-main">
+        <span
+          className="ledger-row-title"
+          title={isFocus ? `${String(item.index).padStart(2, '0')} · ${item.title}` : '暂停'}
+        >
+          {isFocus ? `${String(item.index).padStart(2, '0')} · ${item.title}` : '暂停'}
+        </span>
+        <span className="ledger-row-duration">
+          {isFocus ? formatDuration(duration) : formatMinutes(duration)}
+        </span>
+      </div>
+      <div className="ledger-row-sub">
+        <span className="tabular-nums">{formatClock(item.startedAt)}</span>
+        {item.isOngoing ? (
+          <span className="tabular-nums">— 此刻</span>
+        ) : item.endedAt ? (
+          <span className="tabular-nums">— {formatClock(item.endedAt)}</span>
+        ) : null}
+        {item.isOngoing ? (
+          <span className={`ledger-live ${isFocus ? 'focus' : 'pause'}`}>
+            {isFocus ? '进行中' : '已暂停'}
+          </span>
+        ) : pausedNow ? (
+          <span className="ledger-live pause">已暂停</span>
+        ) : null}
+        {isFocus && (
+          <span
+            className={`ledger-assoc ${item.taskId ? 'linked' : 'unlinked'}`}
+            title={item.taskId ? '已关联本地任务' : '未关联任务'}
+          >
+            {item.taskId ? '已关联' : '未关联'}
+          </span>
+        )}
+        {isFocus && syncState && (
+          <span
+            className={`ledger-sync tone-${syncState.tone}`}
+            title={`同步到滴答清单：${syncState.title ?? syncState.label}`}
+          >
+            {syncState.label}
+          </span>
+        )}
+      </div>
+    </motion.div>
+  );
+});
+
 export function SegmentTimeline() {
   const { snapshot, syncQueue, setSyncQueue } = useStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion() ?? false;
 
-  const segments = snapshot?.segments ?? [];
-  const pauseEvents = snapshot?.pauseEvents ?? [];
   const state = snapshot?.state ?? 'idle';
   const sessionId = snapshot?.sessionId ?? null;
   const currentSegmentId = snapshot?.currentSegmentId ?? null;
@@ -60,13 +135,18 @@ export function SegmentTimeline() {
   const hasOngoing = state === 'running' || state === 'paused';
   const now = useNowTick(hasOngoing);
 
-  const items = buildMixedTimelineItems({
-    segments,
-    pauseEvents,
-    currentSegmentId,
-    state,
-    now,
-  });
+  const items = useMemo(
+    () =>
+      buildMixedTimelineItems({
+        segments: snapshot?.segments ?? [],
+        pauseEvents: snapshot?.pauseEvents ?? [],
+        currentSegmentId,
+        state,
+        // 实时行时长由 TimelineRow 单独计算，避免每秒重建和重排整份账本。
+        now: 0,
+      }),
+    [snapshot?.segments, snapshot?.pauseEvents, currentSegmentId, state],
+  );
 
   const focusCount = items.filter((i) => i.type === 'focus').length;
   const pauseCount = items.filter((i) => i.type === 'pause').length;
@@ -107,13 +187,6 @@ export function SegmentTimeline() {
       scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
     }
   }, [items.length]);
-
-  const getDisplayDuration = (item: (typeof items)[number]): number => {
-    if (item.type === 'focus' && item.isOngoing && lastTick > 0) {
-      return item.durationMs + Math.max(0, now - lastTick);
-    }
-    return item.durationMs;
-  };
 
   if (items.length === 0) {
     return (
@@ -159,75 +232,24 @@ export function SegmentTimeline() {
       </div>
 
       <div ref={scrollRef} className="ledger-list">
-        <AnimatePresence initial={false} mode="popLayout">
+        <AnimatePresence initial={false}>
           {items.map((item) => {
             const isFocus = item.type === 'focus';
-            const duration = getDisplayDuration(item);
-            const isCurrent = item.isActive;
-            const pausedNow = isFocus && isCurrent && state === 'paused';
             const syncState =
               isFocus && item.taskSource === 'ticktick'
                 ? (segmentSyncMap[item.id] ?? NOT_SYNCED_STATE)
                 : null;
 
             return (
-              <motion.div
+              <TimelineRow
                 key={item.id}
-                layout
-                initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
-                animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-                exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -3 }}
-                transition={{ duration: reducedMotion ? 0.12 : 0.24, ease: [0.16, 1, 0.3, 1] }}
-                className={`ledger-row ${isFocus ? 'row-focus' : 'row-pause'} ${
-                  isCurrent ? 'is-current' : ''
-                }`}
-              >
-                <div className="ledger-row-main">
-                  <span
-                    className="ledger-row-title"
-                    title={
-                      isFocus ? `${String(item.index).padStart(2, '0')} · ${item.title}` : '暂停'
-                    }
-                  >
-                    {isFocus ? `${String(item.index).padStart(2, '0')} · ${item.title}` : '暂停'}
-                  </span>
-                  <span className="ledger-row-duration">
-                    {isFocus ? formatDuration(duration) : formatMinutes(duration)}
-                  </span>
-                </div>
-                <div className="ledger-row-sub">
-                  {/* 完整起止：进行中的条目用「此刻」占位右端，保持区间可读 */}
-                  <span className="tabular-nums">{formatClock(item.startedAt)}</span>
-                  {item.isOngoing ? (
-                    <span className="tabular-nums">— 此刻</span>
-                  ) : item.endedAt ? (
-                    <span className="tabular-nums">— {formatClock(item.endedAt)}</span>
-                  ) : null}
-                  {item.isOngoing ? (
-                    <span className={`ledger-live ${isFocus ? 'focus' : 'pause'}`}>
-                      {isFocus ? '进行中' : '已暂停'}
-                    </span>
-                  ) : pausedNow ? (
-                    <span className="ledger-live pause">已暂停</span>
-                  ) : null}
-                  {isFocus && (
-                    <span
-                      className={`ledger-assoc ${item.taskId ? 'linked' : 'unlinked'}`}
-                      title={item.taskId ? '已关联本地任务' : '未关联任务'}
-                    >
-                      {item.taskId ? '已关联' : '未关联'}
-                    </span>
-                  )}
-                  {isFocus && syncState && (
-                    <span
-                      className={`ledger-sync tone-${syncState.tone}`}
-                      title={`同步到滴答清单：${syncState.title ?? syncState.label}`}
-                    >
-                      {syncState.label}
-                    </span>
-                  )}
-                </div>
-              </motion.div>
+                item={item}
+                state={state}
+                liveNow={item.isOngoing ? now : 0}
+                lastTick={isFocus && item.isOngoing ? lastTick : 0}
+                syncState={syncState}
+                reducedMotion={reducedMotion}
+              />
             );
           })}
         </AnimatePresence>

@@ -29,6 +29,21 @@ export type TimelineItem =
       isOngoing: boolean;
     };
 
+/**
+ * 只推进当前账本行的显示时长。调用方可缓存 TimelineItem[]，每秒无需重新构建、排序整份账本。
+ */
+export function getTimelineDisplayDuration(
+  item: TimelineItem,
+  liveNow: number,
+  lastTick: number,
+): number {
+  if (liveNow <= 0 || !item.isOngoing) return item.durationMs;
+  if (item.type === 'focus' && lastTick > 0) {
+    return item.durationMs + Math.max(0, liveNow - lastTick);
+  }
+  return Math.max(0, liveNow - item.startedAt);
+}
+
 /** 构建混合时间线：按时间顺序交替排列专注片段与真实暂停事件。
  *  数据源：snapshot.segments（专注）+ snapshot.pauseEvents（真实暂停）。
  *  当前进行中的暂停（pauseEndedAt=null）用 now 计算实时时长。 */
