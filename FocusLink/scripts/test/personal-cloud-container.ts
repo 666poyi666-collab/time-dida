@@ -8,8 +8,13 @@ import {
   toTaskSnapshotPayload,
 } from '../../shared/sync/taskSnapshotProtocol';
 
-const cloudPort = 18_787;
-const webPort = 18_080;
+function readTestPort(name: string, fallback: number): number {
+  const value = Number.parseInt(process.env[name] ?? '', 10);
+  return Number.isInteger(value) && value > 0 && value <= 65_535 ? value : fallback;
+}
+
+const cloudPort = readTestPort('FOCUSLINK_TEST_CLOUD_PORT', 18_787);
+const webPort = readTestPort('FOCUSLINK_TEST_WEB_PORT', 18_080);
 const cloudUrl = `http://127.0.0.1:${cloudPort}`;
 const webUrl = `http://127.0.0.1:${webPort}`;
 const token = randomBytes(32).toString('hex');
