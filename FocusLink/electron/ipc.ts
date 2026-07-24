@@ -1,5 +1,6 @@
 // IPC 处理器 - 主进程接收渲染进程调用
 // 所有 IPC 通道类型安全；关键操作写日志
+import crypto from 'node:crypto';
 import { ipcMain, BrowserWindow, app } from 'electron';
 import type { FocusTimerController } from './timer/focusTimerController.js';
 import { LocalTaskProvider } from './tasks/localProvider.js';
@@ -52,7 +53,13 @@ import {
   getDeviceSyncStatus,
   runDeviceSync,
 } from './sync/deviceSyncService.js';
-import { reconcileEmbeddedDeviceSyncServer } from './sync/embeddedDeviceSyncServer.js';
+import {
+  EMBEDDED_DEVICE_SYNC_ENDPOINT,
+  createEmbeddedPairingOffer,
+  reconcileEmbeddedDeviceSyncServer,
+} from './sync/embeddedDeviceSyncServer.js';
+import { hasDeviceSyncToken } from './sync/deviceSyncCredentials.js';
+import { coordinateAndroidSyncDevices } from './sync/androidSyncCoordinator.js';
 import {
   listSessions,
   listSessionsInRange,
@@ -615,7 +622,61 @@ export function registerIpc(
     }
     return getDeviceSyncStatus();
   });
+  ipcMain.handle('device-sync:quick-setup', async () => {
+    configureDeviceSync({
+      enabled: true,
+      endpoint: EMBEDDED_DEVICE_SYNC_ENDPOINT,
+      autoSync: true,
+      liveControlEnabled: true,
+      accessToken: hasDeviceSyncToken() ? undefined : crypto.randomBytes(32).toString('base64url'),
+    });
+    await reconcileEmbeddedDeviceSyncServer();
+
+    let healthResponse: Response;
+    try {
+      healthResponse = await fetch(`${EMBEDDED_DEVICE_SYNC_ENDPOINT}/health`, {
+        signal: AbortSignal.timeout(5_000),
+      });
+    } catch (error) {
+      throw new Error(
+        `本机同步服务启动失败：${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (!healthResponse.ok) {
+      throw new Error(`本机同步服务健康检查失败（HTTP ${healthResponse.status}）`);
+    }
+
+    const { connectedAndroidDevices, pairedAndroidDevices, androidPairingErrors } =
+      await coordinateAndroidSyncDevices();
+    let sync: Awaited<ReturnType<typeof runDeviceSync>> | null = null;
+    let syncError: string | null = null;
+    try {
+      sync = await runDeviceSync();
+    } catch (error) {
+      syncError = error instanceof Error ? error.message : String(error);
+      logger.warn('deviceSync', 'quick setup completed but initial sync remains pending', {
+        error: syncError,
+      });
+    }
+    const next = getSettings();
+    onSettingsChanged(['deviceSync'], next);
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) {
+        w.webContents.send('settings:changed', next);
+        w.webContents.send('settings:domain-changed', ['deviceSync']);
+      }
+    }
+    return {
+      status: getDeviceSyncStatus(),
+      sync,
+      syncError,
+      connectedAndroidDevices,
+      pairedAndroidDevices,
+      androidPairingErrors,
+    };
+  });
   ipcMain.handle('device-sync:run', () => runDeviceSync());
+  ipcMain.handle('device-sync:create-pairing-offer', () => createEmbeddedPairingOffer());
 
   // ============ 番茄 Todo 同步（独立并行通道） ============
   /** 手动同步单个 segment 到番茄 Todo */

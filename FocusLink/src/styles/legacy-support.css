@@ -413,6 +413,42 @@
     opacity var(--motion-normal);
 }
 
+.picker-shell .task-tree {
+  display: grid;
+  gap: 7px;
+}
+
+.picker-shell .task-tree-node[data-depth='0'] {
+  overflow: hidden;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 9px;
+  background: rgb(var(--app-surface));
+}
+
+.picker-shell .task-tree-node[data-depth='0'] > .task-row-linear {
+  border-bottom: 0;
+}
+
+.picker-shell .task-children-wrap {
+  margin: 0 8px 8px 22px;
+  border: 1px solid rgb(var(--app-border));
+  border-left: 2px solid rgb(var(--app-border-strong));
+  border-radius: 6px;
+  background: rgb(var(--app-canvas));
+}
+
+.picker-shell .task-children-wrap .task-children-wrap {
+  margin: 0 6px 6px 16px;
+}
+
+.picker-shell .task-children-wrap .task-row-linear {
+  min-height: 42px;
+}
+
+.picker-shell .task-children-wrap > .task-tree-node:last-child > .task-row-linear {
+  border-bottom: 0;
+}
+
 .task-row-linear:hover,
 .task-row-linear:focus-within,
 .task-row-linear.is-active {

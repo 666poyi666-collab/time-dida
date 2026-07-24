@@ -9,6 +9,10 @@ import {
 export type NativeFocusCommandType = 'pause' | 'resume' | 'finish';
 export type NativeFocusCommandSource = 'notification' | 'quick-settings';
 
+export const DEFAULT_NATIVE_PAUSE_REMINDER_DELAY_MINUTES = 3;
+export const MIN_NATIVE_PAUSE_REMINDER_DELAY_MINUTES = 1;
+export const MAX_NATIVE_PAUSE_REMINDER_DELAY_MINUTES = 240;
+
 export interface NativeFocusCommand {
   id: string;
   type: NativeFocusCommandType;
@@ -39,12 +43,50 @@ export interface NativeCloudPollStatus {
   lastError: string;
 }
 
+export interface NativePauseReminderPreference {
+  enabled: boolean;
+  delayMinutes: number;
+}
+
+export interface NativePictureInPictureAspectRatio {
+  width: number;
+  height: number;
+}
+
+export interface NativeImmersiveSystemBarsResult {
+  enabled: boolean;
+  supported: boolean;
+}
+
+export interface NativePictureInPictureResult {
+  entered: boolean;
+  supported: boolean;
+  active: boolean;
+}
+
+export interface NativeSystemFocusSurface {
+  selected?: 'xiaomi-island' | 'android-live-update' | 'ongoing-notification';
+  xiaomiFocusProtocol?: number;
+  xiaomiFocusPermission?: boolean;
+  androidLiveUpdateSupported?: boolean;
+  androidLiveUpdateAllowed?: boolean;
+  standardNotificationAvailable?: boolean;
+  overlayEnabled?: boolean;
+  overlayPermissionGranted?: boolean;
+}
+
 export interface NativeFocusStatus {
   notificationPermission?: string;
   canPostNotification?: boolean;
   manufacturer?: string;
   batteryOptimizationExempt?: boolean;
   backgroundRestricted?: boolean;
+  overlayPermissionGranted?: boolean;
+  overlayEnabled?: boolean;
+  systemSurface?: NativeSystemFocusSurface;
+  pictureInPictureSupported?: boolean;
+  pictureInPictureActive?: boolean;
+  immersiveSystemBars?: boolean;
   nativeConnectionConfigured?: boolean;
   controlsAvailable?: boolean;
   pendingCommandCount?: number;
@@ -71,6 +113,20 @@ interface FocusRuntimePlugin {
   clearConnection(): Promise<void>;
   openBackgroundSettings(): Promise<{ opened?: boolean }>;
   openAutoStartSettings(): Promise<{ opened?: boolean }>;
+  openOverlayPermissionSettings(): Promise<{ opened?: boolean; granted?: boolean }>;
+  setOverlayEnabled(options: { enabled: boolean }): Promise<{
+    enabled?: boolean;
+    granted?: boolean;
+  }>;
+  setImmersiveSystemBars(options: { enabled: boolean }): Promise<NativeImmersiveSystemBarsResult>;
+  enterPictureInPicture(options: {
+    aspectRatio?: NativePictureInPictureAspectRatio;
+  }): Promise<NativePictureInPictureResult>;
+  getPauseReminderPreference(): Promise<NativePauseReminderPreference>;
+  setPauseReminderPreference(options: {
+    enabled: boolean;
+    delayMinutes?: number;
+  }): Promise<NativePauseReminderPreference>;
   addListener(
     eventName: 'nativeCommand',
     listener: (command: NativeFocusCommand) => void,
@@ -81,6 +137,25 @@ const FocusRuntime = registerPlugin<FocusRuntimePlugin>('FocusRuntime');
 
 export function isNativeFocusRuntimeAvailable(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('FocusRuntime');
+}
+
+export function normalizeNativePauseReminderDelayMinutes(value?: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_NATIVE_PAUSE_REMINDER_DELAY_MINUTES;
+  }
+  return Math.min(
+    MAX_NATIVE_PAUSE_REMINDER_DELAY_MINUTES,
+    Math.max(MIN_NATIVE_PAUSE_REMINDER_DELAY_MINUTES, Math.round(value)),
+  );
+}
+
+export function currentNativePictureInPictureAspectRatio():
+  NativePictureInPictureAspectRatio | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const width = Math.round(window.innerWidth);
+  const height = Math.round(window.innerHeight);
+  if (width < 1 || height < 1) return undefined;
+  return { width, height };
 }
 
 export function nativeFocusCommandSuccessCopy(
@@ -137,6 +212,66 @@ export async function openNativeBackgroundSettings(): Promise<boolean> {
 export async function openNativeAutoStartSettings(): Promise<boolean> {
   if (!isNativeFocusRuntimeAvailable()) return false;
   return (await FocusRuntime.openAutoStartSettings()).opened === true;
+}
+
+export async function openNativeOverlayPermissionSettings(): Promise<{
+  opened: boolean;
+  granted: boolean;
+}> {
+  if (!isNativeFocusRuntimeAvailable()) return { opened: false, granted: false };
+  const result = await FocusRuntime.openOverlayPermissionSettings();
+  return { opened: result.opened === true, granted: result.granted === true };
+}
+
+export async function setNativeOverlayEnabled(enabled: boolean): Promise<{
+  enabled: boolean;
+  granted: boolean;
+}> {
+  if (!isNativeFocusRuntimeAvailable()) return { enabled: false, granted: false };
+  const result = await FocusRuntime.setOverlayEnabled({ enabled });
+  return { enabled: result.enabled === true, granted: result.granted === true };
+}
+
+export async function setNativeImmersiveSystemBars(
+  enabled: boolean,
+): Promise<NativeImmersiveSystemBarsResult> {
+  if (!isNativeFocusRuntimeAvailable()) return { enabled: false, supported: false };
+  return FocusRuntime.setImmersiveSystemBars({ enabled });
+}
+
+export async function enterNativePictureInPicture(
+  aspectRatio = currentNativePictureInPictureAspectRatio(),
+): Promise<NativePictureInPictureResult> {
+  if (!isNativeFocusRuntimeAvailable()) {
+    return { entered: false, supported: false, active: false };
+  }
+  return FocusRuntime.enterPictureInPicture(aspectRatio ? { aspectRatio } : {});
+}
+
+export async function readNativePauseReminderPreference(): Promise<NativePauseReminderPreference | null> {
+  if (!isNativeFocusRuntimeAvailable()) return null;
+  const preference = await FocusRuntime.getPauseReminderPreference();
+  return {
+    enabled: preference.enabled === true,
+    delayMinutes: normalizeNativePauseReminderDelayMinutes(preference.delayMinutes),
+  };
+}
+
+export async function setNativePauseReminderPreference(
+  preference: Pick<NativePauseReminderPreference, 'enabled'> & { delayMinutes?: number },
+): Promise<NativePauseReminderPreference | null> {
+  if (!isNativeFocusRuntimeAvailable()) return null;
+  const options: { enabled: boolean; delayMinutes?: number } = {
+    enabled: preference.enabled,
+  };
+  if (preference.delayMinutes !== undefined) {
+    options.delayMinutes = normalizeNativePauseReminderDelayMinutes(preference.delayMinutes);
+  }
+  const next = await FocusRuntime.setPauseReminderPreference(options);
+  return {
+    enabled: next.enabled === true,
+    delayMinutes: normalizeNativePauseReminderDelayMinutes(next.delayMinutes),
+  };
 }
 
 export async function updateNativeFocusSnapshot(

@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  DEFAULT_NATIVE_PAUSE_REMINDER_DELAY_MINUTES,
+  MAX_NATIVE_PAUSE_REMINDER_DELAY_MINUTES,
+  MIN_NATIVE_PAUSE_REMINDER_DELAY_MINUTES,
   isNativeFocusRuntimeAvailable,
   openNativeAutoStartSettings,
   openNativeBackgroundSettings,
+  openNativeOverlayPermissionSettings,
   readNativeFocusStatus,
+  readNativePauseReminderPreference,
   requestNativeNotificationPermission,
   requestNativeQuickSettingsTile,
+  setNativeOverlayEnabled,
+  setNativePauseReminderPreference,
+  type NativePauseReminderPreference,
   type NativeFocusStatus,
 } from './nativeFocusRuntime';
 
@@ -13,9 +21,13 @@ export function NativeSystemControls() {
   const [available] = useState(() => isNativeFocusRuntimeAvailable());
   const [status, setStatus] = useState<NativeFocusStatus | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [busy, setBusy] = useState<'notification' | 'tile' | 'background' | 'autostart' | null>(
-    null,
-  );
+  const [pauseReminder, setPauseReminder] = useState<NativePauseReminderPreference>({
+    enabled: true,
+    delayMinutes: DEFAULT_NATIVE_PAUSE_REMINDER_DELAY_MINUTES,
+  });
+  const [busy, setBusy] = useState<
+    'notification' | 'tile' | 'background' | 'autostart' | 'overlay' | 'pause-reminder' | null
+  >(null);
 
   const refreshStatus = useCallback(async () => {
     const next = await readNativeFocusStatus();
@@ -26,9 +38,11 @@ export function NativeSystemControls() {
     if (!available) return;
     let active = true;
     const read = () => {
-      void readNativeFocusStatus()
-        .then((next) => {
-          if (active) setStatus(next);
+      void Promise.all([readNativeFocusStatus(), readNativePauseReminderPreference()])
+        .then(([nextStatus, nextPauseReminder]) => {
+          if (!active) return;
+          setStatus(nextStatus);
+          if (nextPauseReminder) setPauseReminder(nextPauseReminder);
         })
         .catch(() => {
           // Native capability actions remain available for an explicit retry.
@@ -130,6 +144,58 @@ export function NativeSystemControls() {
     }
   };
 
+  const enableDesktopTimer = async () => {
+    setBusy('overlay');
+    setNotice(null);
+    try {
+      await setNativeOverlayEnabled(true);
+      const result = await openNativeOverlayPermissionSettings();
+      setNotice(
+        result.granted
+          ? '可移动悬浮计时已启用；长按后拖动可保存位置。'
+          : result.opened
+            ? '请允许 FocusLink 显示在其他应用上层；返回后可长按拖动。'
+            : '系统没有打开悬浮窗设置，请在应用详情中手动允许。',
+      );
+      await refreshStatus();
+    } catch (error) {
+      setNotice(`无法打开桌面计时权限：${errorMessage(error)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const disableDesktopTimer = async () => {
+    setBusy('overlay');
+    setNotice(null);
+    try {
+      await setNativeOverlayEnabled(false);
+      setNotice('悬浮计时已关闭；系统常驻通知仍会继续显示。');
+      await refreshStatus();
+    } catch (error) {
+      setNotice(`无法关闭悬浮计时：${errorMessage(error)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const savePauseReminder = async (next: NativePauseReminderPreference) => {
+    if (busy !== null) return;
+    setBusy('pause-reminder');
+    setNotice(null);
+    try {
+      const saved = await setNativePauseReminderPreference(next);
+      if (saved) setPauseReminder(saved);
+      setNotice(
+        next.enabled ? `暂停超过 ${next.delayMinutes} 分钟时将提醒继续专注。` : '暂停提醒已关闭。',
+      );
+    } catch (error) {
+      setNotice(`无法保存暂停提醒：${errorMessage(error)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <section className="native-system-controls" aria-label="Android 系统控制">
       <div>
@@ -139,11 +205,15 @@ export function NativeSystemControls() {
         </small>
       </div>
       <div className="native-system-health" aria-live="polite">
+        <span className="is-ok">{systemSurfaceLabel(status)}</span>
         <span className={status?.nativeConnectionConfigured ? 'is-ok' : 'is-warning'}>
           {status?.nativeConnectionConfigured ? '原生后台连接已加密保存' : '原生后台连接未配置'}
         </span>
         <span className={status?.batteryOptimizationExempt ? 'is-ok' : 'is-warning'}>
           {status?.batteryOptimizationExempt ? '省电限制已豁免' : '仍受系统省电限制'}
+        </span>
+        <span className={status?.overlayPermissionGranted ? 'is-ok' : 'is-warning'}>
+          {status?.overlayPermissionGranted ? '桌面计时已授权' : '桌面计时未授权'}
         </span>
         {status?.backgroundRestricted && <span className="is-warning">系统已限制后台活动</span>}
         {activeSnapshot && (
@@ -157,7 +227,51 @@ export function NativeSystemControls() {
           <span>最近确认 {formatStatusTime(poll.lastSuccessAtEpochMs)}</span>
         ) : null}
       </div>
+      <div className="native-pause-reminder">
+        <label>
+          <input
+            type="checkbox"
+            checked={pauseReminder.enabled}
+            disabled={busy !== null}
+            onChange={(event) =>
+              void savePauseReminder({ ...pauseReminder, enabled: event.target.checked })
+            }
+          />
+          <span>暂停超时提醒</span>
+        </label>
+        <label>
+          <span>上限</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={MIN_NATIVE_PAUSE_REMINDER_DELAY_MINUTES}
+            max={MAX_NATIVE_PAUSE_REMINDER_DELAY_MINUTES}
+            value={pauseReminder.delayMinutes}
+            disabled={!pauseReminder.enabled || busy !== null}
+            onChange={(event) =>
+              setPauseReminder((current) => ({
+                ...current,
+                delayMinutes: Number(event.target.value),
+              }))
+            }
+            onBlur={() => void savePauseReminder(pauseReminder)}
+          />
+          <span>分钟</span>
+        </label>
+      </div>
       <div className="native-system-actions">
+        <button type="button" onClick={() => void enableDesktopTimer()} disabled={busy !== null}>
+          {busy === 'overlay'
+            ? '正在处理…'
+            : status?.overlayEnabled
+              ? '重新授权悬浮计时'
+              : '启用可移动悬浮计时'}
+        </button>
+        {status?.overlayEnabled && (
+          <button type="button" onClick={() => void disableDesktopTimer()} disabled={busy !== null}>
+            关闭悬浮计时
+          </button>
+        )}
         <button type="button" onClick={() => void enableNotifications()} disabled={busy !== null}>
           {busy === 'notification' ? '请求中…' : '启用通知控制'}
         </button>
@@ -182,6 +296,14 @@ export function NativeSystemControls() {
       )}
     </section>
   );
+}
+
+function systemSurfaceLabel(status: NativeFocusStatus | null): string {
+  const surface = status?.systemSurface;
+  if (surface?.selected === 'xiaomi-island') return '系统展示：小米超级岛';
+  if (surface?.selected === 'android-live-update') return '系统展示：Android 实时更新';
+  if (surface?.selected === 'ongoing-notification') return '系统展示：常驻通知';
+  return '系统展示：等待能力检测';
 }
 
 function formatStatusTime(epochMs: number): string {

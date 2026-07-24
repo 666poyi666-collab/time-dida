@@ -50,6 +50,7 @@ import {
 import { MAIN_WINDOW_DEFAULT_SIZE, MAIN_WINDOW_MIN_SIZE } from '@shared/mainWindowLayout';
 import {
   getLoginItemSettings,
+  shouldRunDeviceSyncAtLogin,
   shouldAutoSelectDidaTaskSource,
   shouldStartHiddenToTray,
 } from '@shared/startupPolicy';
@@ -61,6 +62,7 @@ import {
   getPendingTomatodoCount,
 } from './sync/tomatodoSyncService.js';
 import { runAutomaticDeviceSync } from './sync/deviceSyncService.js';
+import { coordinateAndroidSyncDevices } from './sync/androidSyncCoordinator.js';
 import {
   closeEmbeddedDeviceSyncServer,
   reconcileEmbeddedDeviceSyncServer,
@@ -323,7 +325,7 @@ function createMainWindow(): BrowserWindow {
 function createMiniWindow(): BrowserWindow {
   const settings = getSettings();
   const cfg = settings.miniWindow;
-  // 小窗固定尺寸：边缘进度条 184×35，展开控制台尺寸来自 shared 唯一真值。
+  // 小窗固定尺寸：收纳条与展开控制台尺寸都来自 shared 唯一真值。
   const MIN_W = MINI_WINDOW_SIZE_PRESETS[0].width;
   const MIN_H = MINI_WINDOW_COLLAPSED_HEIGHT;
   const MAX_W = MINI_WINDOW_SIZE_PRESETS[1].width;
@@ -671,18 +673,9 @@ function createMiniWindow(): BrowserWindow {
 function applyMiniWindowBounds(bounds: Electron.Rectangle): void {
   if (!miniWindow || miniWindow.isDestroyed()) return;
   miniBoundsMutationUntil = Date.now() + 260;
-  if (
-    bounds.width === MINI_WINDOW_COLLAPSED_SIZE.width &&
-    bounds.height === MINI_WINDOW_COLLAPSED_SIZE.height
-  ) {
-    // Windows enforces a ~44px native minimum frame even for transparent
-    // frameless windows. Content bounds keep the visible progress strip at the
-    // product-owned 35px height while the unavoidable transparent frame stays
-    // outside the renderer surface.
-    miniWindow.setContentBounds(bounds, false);
-  } else {
-    miniWindow.setBounds(bounds, false);
-  }
+  // 44px is the product-owned collapsed height and also the stable Windows
+  // frameless minimum, so the renderer and native bounds always stay identical.
+  miniWindow.setBounds(bounds, false);
 }
 
 /** 收起小窗：围绕中心缩成进度胶囊；贴边时始终钉住接触边。 */
@@ -1118,6 +1111,16 @@ app.whenReady().then(() => {
     }
     if (domains.includes('deviceSync')) {
       timer.reloadConfiguration();
+      void coordinateAndroidSyncDevices()
+        .then((result) => {
+          if (result.pairedAndroidDevices.length > 0) return runAutomaticDeviceSync();
+          return undefined;
+        })
+        .catch((error) => {
+          logger.warn('deviceSync', 'Android coordination after settings change failed', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
     }
     // 只有快捷键域变更才重新注册 - 主题/小窗/任务来源变更不再触发快捷键重注册
     if (domains.includes('hotkeys')) {
@@ -1126,8 +1129,16 @@ app.whenReady().then(() => {
       broadcastResults(getAllWindows(), results);
     }
     // 开机自启
-    if (domains.includes('general')) {
-      app.setLoginItemSettings(getLoginItemSettings(s.autoStart));
+    if (domains.includes('general') || domains.includes('deviceSync')) {
+      app.setLoginItemSettings(
+        getLoginItemSettings(
+          shouldRunDeviceSyncAtLogin({
+            autoStart: s.autoStart,
+            syncEnabled: s.deviceSync.enabled,
+            autoSync: s.deviceSync.autoSync,
+          }),
+        ),
+      );
     }
     // Tray actions do not depend on mutable settings. Recreating it leaked the previous timer
     // listener and multiplied native menu rebuilds on every tick, so keep the single tray alive.
@@ -1150,7 +1161,12 @@ app.whenReady().then(() => {
     });
 
   void reconcileEmbeddedDeviceSyncServer()
-    .then(() => runAutomaticDeviceSync())
+    .then(async () => {
+      const pairing = await coordinateAndroidSyncDevices();
+      if (process.argv.includes('--repair-android-sync'))
+        logger.info('deviceSync', 'requested Android pairing repair completed', pairing);
+      return runAutomaticDeviceSync();
+    })
     .catch((error) => {
       logger.warn('deviceSync', 'startup sync failed', {
         error: error instanceof Error ? error.message : String(error),
@@ -1193,6 +1209,21 @@ app.whenReady().then(() => {
   }, DEVICE_SYNC_INTERVAL_MS);
   deviceSyncInterval.unref?.();
 
+  const ANDROID_BRIDGE_INTERVAL_MS = 30_000;
+  const androidBridgeInterval = setInterval(() => {
+    void coordinateAndroidSyncDevices()
+      .then((result) => {
+        if (result.pairedAndroidDevices.length > 0) return runAutomaticDeviceSync();
+        return undefined;
+      })
+      .catch((error) => {
+        logger.warn('deviceSync', 'periodic Android coordination failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }, ANDROID_BRIDGE_INTERVAL_MS);
+  androidBridgeInterval.unref?.();
+
   // 专注小窗 IPC 控制
   ipcMain.on('mini:show', () => showMiniWindow());
   ipcMain.on('mini:hide', () => hideMiniWindow());
@@ -1219,7 +1250,15 @@ app.whenReady().then(() => {
     ensureTrayAndHotkeys();
   }
 
-  app.setLoginItemSettings(getLoginItemSettings(settings.autoStart));
+  app.setLoginItemSettings(
+    getLoginItemSettings(
+      shouldRunDeviceSyncAtLogin({
+        autoStart: settings.autoStart,
+        syncEnabled: settings.deviceSync.enabled,
+        autoSync: settings.deviceSync.autoSync,
+      }),
+    ),
+  );
 
   // 电源事件
   powerMonitor.on('suspend', () => {
@@ -1228,6 +1267,16 @@ app.whenReady().then(() => {
   powerMonitor.on('resume', () => {
     logger.info('main', 'system resume');
     timer?.reconnect();
+    void reconcileEmbeddedDeviceSyncServer()
+      .then(async () => {
+        await coordinateAndroidSyncDevices();
+        return runAutomaticDeviceSync();
+      })
+      .catch((error) => {
+        logger.warn('deviceSync', 'resume sync failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
   });
 
   app.on('activate', () => {

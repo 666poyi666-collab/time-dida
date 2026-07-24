@@ -60,6 +60,8 @@ export interface DeviceSyncCloudServerOptions {
   requireForwardedHttps?: boolean;
   /** Coarse per-process protection; a production reverse proxy should add its own limiter too. */
   maxRequestsPerMinute?: number;
+  /** Optional one-time credential exchange, used by the loopback embedded service only. */
+  pairingExchange?: (nonce: string, deviceId: string) => { accessToken: string } | null;
 }
 
 export interface DeviceSyncCloudServerAddress {
@@ -89,6 +91,7 @@ export function createDeviceSyncCloudServer(
   const profile = options.profile ?? 'test';
   const requireForwardedHttps = options.requireForwardedHttps ?? false;
   const limiter = createRateLimiter(options.maxRequestsPerMinute ?? 0);
+  const pairingExchange = options.pairingExchange;
 
   const httpServer = http.createServer((request, response) => {
     applySecurityHeaders(response);
@@ -105,6 +108,7 @@ export function createDeviceSyncCloudServer(
       allowedOrigins,
       profile,
       requireForwardedHttps,
+      pairingExchange,
     ).catch((error) => {
       if (!response.headersSent) {
         sendError(response, 500, 'internal_error', 'sync server failed');
@@ -167,6 +171,7 @@ async function handleRequest(
   allowedOrigins: ReadonlySet<string>,
   profile: 'test' | 'personal-cloud',
   requireForwardedHttps: boolean,
+  pairingExchange?: (nonce: string, deviceId: string) => { accessToken: string } | null,
 ): Promise<void> {
   const requestUrl = new URL(request.url ?? '/', 'http://focuslink.test');
   if (
@@ -203,6 +208,46 @@ async function handleRequest(
           : 'focuslink-device-sync-test',
       production: profile === 'personal-cloud',
       protocolVersion: DEVICE_SYNC_PROTOCOL_VERSION,
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === '/v1/pair') {
+    if (!pairingExchange) {
+      sendError(response, 404, 'not_found', 'pairing is not available');
+      return;
+    }
+    if (request.method !== 'POST') {
+      response.setHeader('Allow', 'POST, OPTIONS');
+      sendError(response, 405, 'method_not_allowed', 'method not allowed');
+      return;
+    }
+    if (!hasJsonContentType(request)) {
+      sendError(response, 415, 'unsupported_media_type', 'application/json required');
+      return;
+    }
+    let pairBody: unknown;
+    try {
+      pairBody = JSON.parse(await readRequestBody(request, 8 * 1024)) as unknown;
+    } catch {
+      sendError(response, 400, 'invalid_request', 'invalid pairing request');
+      return;
+    }
+    const record = pairBody as Record<string, unknown>;
+    const nonce = typeof record?.nonce === 'string' ? record.nonce : '';
+    const deviceId = typeof record?.deviceId === 'string' ? record.deviceId : '';
+    if (!/^[A-Za-z0-9_-]{8,128}$/.test(nonce) || !/^[A-Za-z0-9._-]{1,200}$/.test(deviceId)) {
+      sendError(response, 400, 'invalid_request', 'invalid pairing fields');
+      return;
+    }
+    const exchanged = pairingExchange(nonce, deviceId);
+    if (!exchanged) {
+      sendError(response, 410, 'pairing_expired', 'pairing code expired or was already used');
+      return;
+    }
+    sendJson(response, 200, {
+      protocolVersion: DEVICE_SYNC_PROTOCOL_VERSION,
+      accessToken: exchanged.accessToken,
     });
     return;
   }
@@ -358,7 +403,8 @@ async function handleRequest(
 }
 
 function routeMethod(pathname: string): 'GET' | 'POST' | null {
-  if (pathname === '/v1/sync' || pathname === LIVE_FOCUS_COMMAND_PATH) return 'POST';
+  if (pathname === '/v1/pair' || pathname === '/v1/sync' || pathname === LIVE_FOCUS_COMMAND_PATH)
+    return 'POST';
   if (pathname === TASK_SNAPSHOT_PATH) return 'POST';
   if (pathname === LIVE_FOCUS_SNAPSHOT_PATH || pathname === LIVE_FOCUS_WAIT_PATH) return 'GET';
   return null;

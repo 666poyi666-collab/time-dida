@@ -2,7 +2,7 @@
 
 > 适用版本：v0.12.x
 >
-> 当前实现：v0.12.27
+> 当前实现：v0.12.42
 >
 > 文档责任：Electron 主进程、SQLite、IPC、任务 Provider、同步、测试与发布。
 
@@ -19,12 +19,13 @@
 - [TEST_AND_RELEASE.md](TEST_AND_RELEASE.md)：自动化、真实服务、打包、校验和 GitHub Release 门禁。
 - [INSTALLER_TROUBLESHOOTING.md](INSTALLER_TROUBLESHOOTING.md)：Windows 安装、升级、卸载错误编号与可复现排查命令。
 - [SYNC_TROUBLESHOOTING.md](SYNC_TROUBLESHOOTING.md)：跨设备实时专注、账本同步和本地孤立暂停错误编号与排查命令。
-- [v0.12.27 发布正文](../../release-v01227/RELEASE_NOTES.md)：当前版本的本地 Release 正文源，与 GitHub Release 使用同一正文。
+- v0.12.42 正在执行 Windows、华为平板和小米手机同版门禁；三端任一版本或验收缺失时不进入发布。
 - [根 CHANGELOG](../../CHANGELOG.md)：跨版本历史的唯一索引；最近三个版本的完整正文保留在根 `release-v*/` 目录。
 
 ### 开发与交接
 
 - [AI_HANDOFF_CHECKLIST.md](AI_HANDOFF_CHECKLIST.md)：维护者接手、实现和交付清单。
+- [IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md)：关键实现决策、三端验证矩阵、部署结果和遗留风险。
 - [../frontend-design/FRONTEND_SPEC.md](../frontend-design/FRONTEND_SPEC.md)：用户可见行为、主题、动效与小窗表现。
 
 ## 源码责任

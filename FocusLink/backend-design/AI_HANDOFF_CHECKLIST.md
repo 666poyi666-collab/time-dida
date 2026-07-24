@@ -56,6 +56,8 @@
 
 ## 交付前
 
+- [ ] 本轮跨端 UI/行为候选已递增补丁版本，Windows、指定华为平板和指定小米手机均安装并回读到同一版本；任一端不一致时停止打包、tag 和发布。
+- [ ] 在 [IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md) 与前端 [USER_REQUIREMENTS.md](../frontend-design/USER_REQUIREMENTS.md) 给出 Windows、手机、平板实现/测试/部署矩阵；适用终端缺少结论时不得标记完成。
 - [ ] 更新 `BACKEND_SPEC.md`、根 [CHANGELOG.md](../../CHANGELOG.md) 和当前 Release 正文源。
 - [ ] 完成 [TEST_AND_RELEASE.md](TEST_AND_RELEASE.md) 全部门禁。
 - [ ] 多端改动额外构建 Web/PWA 与测试云；Android 必须通过 Capacitor sync、unit/lint/assemble、前台通知/Tile instrumentation 与华为/小米双机 smoke。

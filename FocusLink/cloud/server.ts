@@ -24,6 +24,7 @@ export interface StartDeviceSyncTestBackendOptions {
   accountId?: string;
   allowedOrigins?: readonly string[];
   persistencePath?: string;
+  pairingExchange?: (nonce: string, deviceId: string) => { accessToken: string } | null;
 }
 
 export interface PersonalCloudAccount {
@@ -57,6 +58,7 @@ export async function startDeviceSyncTestBackend(
     port: options.port ?? DEFAULT_DEVICE_SYNC_TEST_PORT,
     allowedOrigins: options.allowedOrigins ?? DEFAULT_DEVICE_SYNC_TEST_ORIGINS,
     tokenAccounts: new Map([[token, accountId]]),
+    pairingExchange: options.pairingExchange,
     store: createDeviceSyncCloudStore({ persistencePath: options.persistencePath }),
   });
   await server.listen();

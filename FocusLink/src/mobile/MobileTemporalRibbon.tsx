@@ -130,6 +130,7 @@ function drawRibbon(
   const focus = color('--focus', '#0b9f78');
   const pause = color('--pause', '#d94b43');
   const muted = color('--muted', '#7e8790');
+  const border = color('--border', '#d8dbd7');
   const surface = color('--canvas', '#f3f4f1');
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = surface;
@@ -137,17 +138,23 @@ function drawRibbon(
   const top = 12;
   const bottom = height - 16;
   const fieldHeight = Math.max(20, bottom - top);
-  ctx.fillStyle = `color-mix(in srgb, ${muted} 16%, transparent)`;
+  ctx.fillStyle = border;
+  ctx.globalAlpha = 0.8;
   ctx.fillRect(0, bottom - 1, width, 1);
+  ctx.globalAlpha = 1;
 
-  const origin = input.startedAt ?? input.now - input.wallElapsedMs;
-  const wallNow = input.state === 'idle' ? origin + input.wallElapsedMs : input.now;
-  const spanMs = Math.max(1_000, wallNow - origin);
+  const sessionOrigin = input.startedAt ?? input.now - input.wallElapsedMs;
+  const wallNow = input.state === 'idle' ? sessionOrigin + input.wallElapsedMs : input.now;
+  const elapsedSpanMs = Math.max(0, wallNow - sessionOrigin);
+  const spanMs = clamp(elapsedSpanMs * 1.12, 60_000, 30 * 60_000);
+  const origin = elapsedSpanMs > spanMs ? wallNow - spanMs : sessionOrigin;
   const left = 8;
   const right = width - 8;
   const toX = (time: number) => left + clamp((time - origin) / spanMs, 0, 1) * (right - left);
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const motionSeconds = reduced ? 0 : input.now / 1_000;
+
+  drawTimeGrid(ctx, left, right, top, bottom, origin, spanMs, muted, wallNow);
 
   for (const segment of input.segments) {
     const end = segment.endedAt ?? wallNow;
@@ -187,6 +194,37 @@ function drawRibbon(
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
+}
+
+function drawTimeGrid(
+  ctx: CanvasRenderingContext2D,
+  left: number,
+  right: number,
+  top: number,
+  bottom: number,
+  origin: number,
+  spanMs: number,
+  muted: string,
+  wallNow: number,
+): void {
+  const tickMs = spanMs <= 2 * 60_000 ? 10_000 : spanMs <= 10 * 60_000 ? 60_000 : 5 * 60_000;
+  ctx.strokeStyle = muted;
+  ctx.fillStyle = muted;
+  ctx.font = '9px sans-serif';
+  ctx.globalAlpha = 0.24;
+  for (let tick = 0; tick <= spanMs; tick += tickMs) {
+    const x = left + (tick / spanMs) * (right - left);
+    ctx.beginPath();
+    ctx.moveTo(Math.round(x) + 0.5, top);
+    ctx.lineTo(Math.round(x) + 0.5, bottom);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 0.76;
+  ctx.textAlign = 'left';
+  ctx.fillText(formatClock(origin), left, bottom + 12);
+  ctx.textAlign = 'right';
+  ctx.fillText(formatClock(Math.min(origin + spanMs, wallNow)), right, bottom + 12);
+  ctx.globalAlpha = 1;
 }
 
 function drawInterval(
@@ -249,4 +287,8 @@ function clamp(value: number, min: number, max: number): number {
 function formatDuration(milliseconds: number): string {
   const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function formatClock(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }

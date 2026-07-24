@@ -10,9 +10,14 @@
     <string name="focus_runtime_paused">专注已暂停</string>
     <string name="focus_runtime_open_app">打开 FocusLink 刷新状态</string>
     <string name="focus_runtime_waiting">正在等待云端确认</string>
+    <string name="focus_runtime_lock_screen_active">专注计时仍在继续</string>
     <string name="focus_runtime_pause">暂停</string>
     <string name="focus_runtime_resume">继续</string>
     <string name="focus_runtime_finish">结束</string>
+    <string name="focus_runtime_pause_reminder_channel_name">暂停提醒</string>
+    <string name="focus_runtime_pause_reminder_channel_description">暂停达到设定上限后的本地提醒</string>
+    <string name="focus_runtime_pause_reminder_title">暂停时间已到</string>
+    <string name="focus_runtime_pause_reminder_content">打开 FocusLink 后继续专注，或在通知中继续。</string>
     <string name="focus_runtime_tile_label">FocusLink 专注</string>
     <string name="focus_runtime_tile_open">打开 FocusLink</string>
     <string name="focus_runtime_tile_pause">暂停专注</string>

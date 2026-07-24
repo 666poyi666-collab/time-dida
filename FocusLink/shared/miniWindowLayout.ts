@@ -12,7 +12,7 @@ export type MiniWindowDockPlacement =
  * The mini window deliberately has two product-owned sizes. Keeping these as
  * shared tokens prevents renderer, main-process bounds and tests from drifting.
  */
-export const MINI_WINDOW_COLLAPSED_SIZE = { width: 184, height: 35 } as const;
+export const MINI_WINDOW_COLLAPSED_SIZE = { width: 184, height: 44 } as const;
 export const MINI_WINDOW_EXPANDED_SIZE = { width: 256, height: 70 } as const;
 
 /** Enter and leave distances are deliberately different to prevent edge jitter. */

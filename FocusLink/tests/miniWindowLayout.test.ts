@@ -21,9 +21,9 @@ import {
 } from '../shared/miniWindowLayout';
 
 describe('mini window layout policy', () => {
-  it('locks the two product-owned sizes: 256x70 expanded, 184x35 collapsed', () => {
+  it('locks the two product-owned sizes: 256x70 expanded, 184x44 collapsed', () => {
     expect(MINI_WINDOW_EXPANDED_SIZE).toEqual({ width: 256, height: 70 });
-    expect(MINI_WINDOW_COLLAPSED_SIZE).toEqual({ width: 184, height: 35 });
+    expect(MINI_WINDOW_COLLAPSED_SIZE).toEqual({ width: 184, height: 44 });
     expect(MINI_WINDOW_SIZE_PRESETS).toHaveLength(2);
   });
 

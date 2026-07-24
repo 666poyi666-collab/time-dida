@@ -4,6 +4,7 @@ import {
   DEVICE_SYNC_PROTOCOL_VERSION,
   normalizeDeviceSyncEndpoint,
   type DeviceSyncChange,
+  type DeviceSyncMutation,
   type DeviceSyncRequest,
   type DeviceSyncResponse,
 } from '@shared/sync/deviceProtocol';
@@ -34,6 +35,49 @@ export interface PullPageInput {
   deviceId: string;
   cursor: string | null;
   signal?: AbortSignal;
+}
+
+export interface PushPendingBundleInput {
+  endpoint: string;
+  token: string;
+  deviceId: string;
+  mutation: DeviceSyncMutation;
+  signal?: AbortSignal;
+}
+
+export async function exchangeDeviceSyncPairingCode(input: {
+  endpoint: string;
+  code: string;
+  deviceId: string;
+  signal?: AbortSignal;
+}): Promise<string> {
+  const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
+  const code = input.code.trim();
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(code)) throw new Error('请输入有效的 8 位一次性配对码');
+  const response = await fetchWithTimeout(
+    `${endpoint}/v1/pair`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce: code, deviceId: input.deviceId }),
+    },
+    input.signal,
+    10_000,
+  );
+  const payload = await readDeviceSyncJsonResponse(response, 16 * 1024);
+  if (!response.ok) {
+    const detail = isRecord(payload) && typeof payload.message === 'string' ? payload.message : '';
+    throw new Error(detail || `配对服务返回 HTTP ${response.status}`);
+  }
+  if (
+    !isRecord(payload) ||
+    payload.protocolVersion !== DEVICE_SYNC_PROTOCOL_VERSION ||
+    typeof payload.accessToken !== 'string' ||
+    payload.accessToken.length < 16
+  ) {
+    throw new Error('配对响应无效');
+  }
+  return payload.accessToken;
 }
 
 export interface LiveFocusConnectionInput {
@@ -122,7 +166,48 @@ export async function pullDeviceSyncPage(input: PullPageInput): Promise<DeviceSy
   }
 
   const value = await readDeviceSyncJsonResponse(response);
-  return validateResponse(value);
+  return validateResponse(value, []);
+}
+
+export async function pushPendingDeviceSyncBundle(
+  input: PushPendingBundleInput,
+): Promise<DeviceSyncResponse> {
+  const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
+  const token = input.token.trim();
+  if (!token) throw new Error('请填写访问令牌');
+  const request: DeviceSyncRequest = {
+    protocolVersion: DEVICE_SYNC_PROTOCOL_VERSION,
+    deviceId: input.deviceId,
+    cursor: null,
+    mutations: [input.mutation],
+    pullLimit: 1,
+  };
+  const response = await fetchWithTimeout(
+    `${endpoint}/v1/sync`,
+    {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+    },
+    input.signal,
+    LEDGER_REQUEST_TIMEOUT_MS,
+  );
+  if (!response.ok) {
+    const detail = await readErrorResponse(response);
+    throw new DeviceSyncRequestError(
+      detail.message || `同步服务返回 HTTP ${response.status}`,
+      detail.code,
+    );
+  }
+  return validateResponse(await readDeviceSyncJsonResponse(response), [input.mutation.opId]);
 }
 
 export async function fetchLiveFocusSnapshot(
@@ -424,13 +509,13 @@ function parseLiveFocusAck(value: unknown): LiveFocusCommandAck {
   };
 }
 
-function validateResponse(value: unknown): DeviceSyncResponse {
+function validateResponse(value: unknown, expectedAckIds: readonly string[]): DeviceSyncResponse {
   if (!isRecord(value)) throw new Error('同步响应必须是对象');
   if (value.protocolVersion !== DEVICE_SYNC_PROTOCOL_VERSION) {
     throw new Error(`同步协议版本不兼容：需要 v${DEVICE_SYNC_PROTOCOL_VERSION}`);
   }
-  if (!Array.isArray(value.acks) || value.acks.length !== 0) {
-    throw new Error('只读拉取不应收到写入确认');
+  if (!Array.isArray(value.acks) || value.acks.length !== expectedAckIds.length) {
+    throw new Error('同步响应写入确认数量无效');
   }
   if (!Array.isArray(value.changes)) throw new Error('同步响应缺少 changes');
   if (typeof value.nextCursor !== 'string') throw new Error('同步响应缺少 nextCursor');
@@ -440,14 +525,36 @@ function validateResponse(value: unknown): DeviceSyncResponse {
   }
 
   const changes = value.changes.map(parseChange);
+  const acks = value.acks.map((ack, index) => parseDeviceSyncAck(ack, expectedAckIds[index]));
   return {
     protocolVersion: DEVICE_SYNC_PROTOCOL_VERSION,
-    acks: [],
+    acks,
     changes,
     nextCursor: value.nextCursor,
     hasMore: value.hasMore,
     serverTime: value.serverTime,
   };
+}
+
+function parseDeviceSyncAck(value: unknown, expectedOpId: string) {
+  if (!isRecord(value) || value.opId !== expectedOpId || typeof value.entityId !== 'string') {
+    throw new Error('同步写入确认标识无效');
+  }
+  if (
+    value.status !== 'applied' &&
+    value.status !== 'duplicate' &&
+    value.status !== 'conflict' &&
+    value.status !== 'rejected'
+  ) {
+    throw new Error('同步写入确认状态无效');
+  }
+  if (value.revision !== null && !Number.isSafeInteger(value.revision)) {
+    throw new Error('同步写入确认版本无效');
+  }
+  if (value.errorCode !== null && typeof value.errorCode !== 'string') {
+    throw new Error('同步写入确认错误码无效');
+  }
+  return value as unknown as DeviceSyncResponse['acks'][number];
 }
 
 function parseChange(value: unknown): DeviceSyncChange {

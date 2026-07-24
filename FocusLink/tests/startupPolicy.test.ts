@@ -4,6 +4,7 @@ import {
   getLoginItemSettings,
   shouldAutoSelectDidaTaskSource,
   shouldStartHiddenToTray,
+  shouldRunDeviceSyncAtLogin,
 } from '../shared/startupPolicy';
 
 describe('startup policy', () => {
@@ -16,6 +17,18 @@ describe('startup policy', () => {
       openAtLogin: false,
       args: [],
     });
+  });
+
+  it('keeps the desktop resident when authenticated auto sync is enabled', () => {
+    expect(
+      shouldRunDeviceSyncAtLogin({ autoStart: false, syncEnabled: true, autoSync: true }),
+    ).toBe(true);
+    expect(
+      shouldRunDeviceSyncAtLogin({ autoStart: false, syncEnabled: true, autoSync: false }),
+    ).toBe(false);
+    expect(
+      shouldRunDeviceSyncAtLogin({ autoStart: true, syncEnabled: false, autoSync: false }),
+    ).toBe(true);
   });
 
   it('hides the main window only for explicit hidden startup modes', () => {

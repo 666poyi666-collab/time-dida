@@ -6,7 +6,7 @@ import type {
 import type { LiveFocusSnapshotLike } from './runtimeModel';
 import { shouldAcceptLiveSnapshot } from '@shared/sync/liveSnapshotPolicy';
 
-export type LiveSnapshotSource = 'none' | 'cache' | 'server';
+export type LiveSnapshotSource = 'none' | 'cache' | 'server' | 'local';
 
 export function restoreCachedLiveSnapshot(
   cached: LiveFocusSnapshotLike | null,

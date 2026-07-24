@@ -105,10 +105,16 @@ export function runtimeControlAvailability(input: {
   connection: LiveConnectionState;
   pending: boolean;
   title: string;
+  localSession?: boolean;
+  allowOfflineStart?: boolean;
 }): RuntimeControlAvailability {
-  const ready = input.connection === 'live' && !input.pending;
+  const ready = (input.connection === 'live' || input.localSession === true) && !input.pending;
   return {
-    start: ready && input.snapshot.state === 'idle' && input.title.trim().length > 0,
+    start:
+      !input.pending &&
+      input.snapshot.state === 'idle' &&
+      input.title.trim().length > 0 &&
+      (input.connection === 'live' || input.allowOfflineStart === true),
     pause: ready && input.snapshot.state === 'running',
     resume: ready && input.snapshot.state === 'paused',
     finish: ready && input.snapshot.state !== 'idle',

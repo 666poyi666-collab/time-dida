@@ -56,6 +56,7 @@ public final class FocusRuntimePlugin extends Plugin {
             activeInstance = new WeakReference<>(this);
             runtimeForeground = true;
         }
+        FocusNotificationService.synchronize(getContext());
     }
 
     @Override
@@ -137,6 +138,140 @@ public final class FocusRuntimePlugin extends Plugin {
     public void openAutoStartSettings(PluginCall call) {
         boolean opened = startFirstResolvable(autoStartSettingsCandidates(getContext()));
         call.resolve(new JSObject().put("opened", opened).put("target", "autostart"));
+    }
+
+    @PluginMethod
+    public void openOverlayPermissionSettings(PluginCall call) {
+        boolean opened;
+        try {
+            Intent intent = new Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + getContext().getPackageName())
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            opened = true;
+        } catch (RuntimeException exception) {
+            opened = false;
+        }
+        call.resolve(
+            new JSObject()
+                .put("opened", opened)
+                .put("granted", FocusDesktopOverlayController.canDraw(getContext()))
+        );
+    }
+
+    @PluginMethod
+    public void setOverlayEnabled(PluginCall call) {
+        Boolean enabled = call.getBoolean("enabled");
+        if (enabled == null) {
+            call.reject("enabled is required", "invalid_overlay_preference");
+            return;
+        }
+        try {
+            FocusRuntimeSystemSettings.setOverlayEnabled(getContext(), enabled);
+            FocusNotificationService.synchronize(getContext());
+            call.resolve(
+                new JSObject()
+                    .put("enabled", enabled)
+                    .put("granted", FocusDesktopOverlayController.canDraw(getContext()))
+            );
+        } catch (IllegalStateException exception) {
+            call.reject(exception.getMessage(), "invalid_overlay_preference");
+        }
+    }
+
+    @PluginMethod
+    public void setImmersiveSystemBars(PluginCall call) {
+        Boolean enabled = call.getBoolean("enabled");
+        if (enabled == null) {
+            call.reject("enabled is required", "invalid_system_bars");
+            return;
+        }
+        MainActivity activity = mainActivity();
+        if (activity == null) {
+            call.resolve(new JSObject().put("enabled", false).put("supported", false));
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            activity.setFocusImmersiveSystemBars(enabled);
+            call.resolve(new JSObject().put("enabled", enabled).put("supported", true));
+        });
+    }
+
+    @PluginMethod
+    public void enterPictureInPicture(PluginCall call) {
+        JSObject aspectRatio = call.getObject("aspectRatio");
+        Integer width = null;
+        Integer height = null;
+        if (aspectRatio != null) {
+            width = aspectRatio.getInteger("width");
+            height = aspectRatio.getInteger("height");
+            if (width == null || height == null || width <= 0 || height <= 0) {
+                call.reject("aspectRatio must contain positive width and height", "invalid_picture_in_picture");
+                return;
+            }
+        }
+
+        MainActivity activity = mainActivity();
+        if (activity == null) {
+            call.resolve(
+                new JSObject()
+                    .put("entered", false)
+                    .put("supported", false)
+                    .put("active", false)
+            );
+            return;
+        }
+        Integer requestedWidth = width;
+        Integer requestedHeight = height;
+        activity.runOnUiThread(() -> {
+            boolean supported = activity.supportsFocusPictureInPicture();
+            boolean entered = activity.enterFocusPictureInPicture(
+                requestedWidth,
+                requestedHeight
+            );
+            call.resolve(
+                new JSObject()
+                    .put("entered", entered)
+                    .put("supported", supported)
+                    .put("active", entered || activity.isFocusPictureInPictureActive())
+            );
+        });
+    }
+
+    @PluginMethod
+    public void getPauseReminderPreference(PluginCall call) {
+        call.resolve(
+            pauseReminderPreferenceJson(
+                FocusRuntimeSystemSettings.getPauseReminderPreference(getContext())
+            )
+        );
+    }
+
+    @PluginMethod
+    public void setPauseReminderPreference(PluginCall call) {
+        Boolean enabled = call.getBoolean("enabled");
+        if (enabled == null) {
+            call.reject("enabled is required", "invalid_pause_reminder");
+            return;
+        }
+        Integer delayMinutes = call.getInt("delayMinutes");
+        if (call.getData().has("delayMinutes") && delayMinutes == null) {
+            call.reject("delayMinutes must be an integer", "invalid_pause_reminder");
+            return;
+        }
+        try {
+            FocusRuntimeSystemSettings.PauseReminderPreference preference =
+                FocusRuntimeSystemSettings.setPauseReminderPreference(
+                    getContext(),
+                    enabled,
+                    delayMinutes
+                );
+            FocusNotificationService.synchronize(getContext());
+            call.resolve(pauseReminderPreferenceJson(preference));
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            call.reject(exception.getMessage(), "invalid_pause_reminder");
+        }
     }
 
     @PluginMethod
@@ -275,6 +410,7 @@ public final class FocusRuntimePlugin extends Plugin {
     private JSObject nativeStatus(FocusRuntimeSnapshot snapshot) {
         PowerManager powerManager = getContext().getSystemService(PowerManager.class);
         ActivityManager activityManager = getContext().getSystemService(ActivityManager.class);
+        MainActivity activity = mainActivity();
         boolean batteryOptimizationExempt = powerManager != null &&
         powerManager.isIgnoringBatteryOptimizations(getContext().getPackageName());
         boolean backgroundRestricted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
@@ -287,6 +423,21 @@ public final class FocusRuntimePlugin extends Plugin {
             .put("manufacturer", Build.MANUFACTURER)
             .put("batteryOptimizationExempt", batteryOptimizationExempt)
             .put("backgroundRestricted", backgroundRestricted)
+            .put("overlayPermissionGranted", FocusDesktopOverlayController.canDraw(getContext()))
+            .put("overlayEnabled", FocusRuntimeSystemSettings.isOverlayEnabled(getContext()))
+            .put("systemSurface", SystemFocusSurfaceProvider.capabilities(getContext()))
+            .put(
+                "pictureInPictureSupported",
+                activity != null && activity.supportsFocusPictureInPicture()
+            )
+            .put(
+                "pictureInPictureActive",
+                activity != null && activity.isFocusPictureInPictureActive()
+            )
+            .put(
+                "immersiveSystemBars",
+                activity != null && activity.isFocusImmersiveSystemBarsEnabled()
+            )
             .put("nativeConnectionConfigured", FocusRuntimeConnectionStore.get(getContext()) != null)
             .put("controlsAvailable", snapshot.allowsCommands(getContext()))
             .put("pendingCommandCount", FocusRuntimeStore.pendingCount(getContext()))
@@ -298,6 +449,18 @@ public final class FocusRuntimePlugin extends Plugin {
         return new JSObject()
             .put("notificationPermission", FocusNotificationPermission.status(getContext()))
             .put("canPostNotification", FocusNotificationPermission.canPost(getContext()));
+    }
+
+    private static JSObject pauseReminderPreferenceJson(
+        FocusRuntimeSystemSettings.PauseReminderPreference preference
+    ) {
+        return new JSObject()
+            .put("enabled", preference.enabled)
+            .put("delayMinutes", preference.delayMinutes);
+    }
+
+    private MainActivity mainActivity() {
+        return getActivity() instanceof MainActivity ? (MainActivity) getActivity() : null;
     }
 
     private boolean openNotificationSettings() {

@@ -40,7 +40,7 @@
 - [ ] 统计默认今天，单日左右导航不会进入未来；近 7 / 15 / 30 天和自定义仍能重算真实图表。
 - [ ] 真实点击“开始专注”后可见“专注中”、开始时间、计时增长、活动轨和片段账本；smoke 不绕过按钮直接启动。
 - [ ] 设置 Switch 在亮色关闭态仍有明确轮廓，尺寸、滑块位置、`role="switch"` 与 `aria-checked` 一致。
-- [ ] 小窗仍只有两种固定状态（收起 184×35 / 展开 256×70）；所有尺寸只从 `shared/miniWindowLayout.ts` 派生。
+- [ ] 小窗仍只有两种固定状态（收起 184×44 / 展开 256×70）；所有尺寸只从 `shared/miniWindowLayout.ts` 派生。
 - [ ] 收起小窗仅有进度/状态、当前时间和展开入口，没有任务、累计统计或额外按钮；展开小窗在 74px 内容盒内完整显示，按钮不换行，任务名不用省略号/渐隐，字体切换后重新测量。
 - [ ] 小窗暂停粒子从当前分钟进度边界按真实毫秒相位分批消散，不无限循环固定 CSS 轨迹；结束态主读数等于本轮累计专注，长任务名在 reduced-motion 下可聚焦横向滚动。
 - [ ] 时间之带为 canvas 单一渲染面并使用真实墙钟横轴；每段专注以连续可读但上下羽化、非矩形的绿色粒子时间体保留完整跨度，不是实心条、规则点阵矩形、纤维线或 confetti。
@@ -57,6 +57,8 @@
 
 ## 结束前
 
+- [ ] 每轮跨端 UI/行为候选已递增补丁版本，Windows、指定华为平板和指定小米手机均安装并回读到同一版本；版本不一致时停止打包、tag 和发布。
+- [ ] 在 [USER_REQUIREMENTS.md](USER_REQUIREMENTS.md) 与后端 [IMPLEMENTATION_LOG.md](../backend-design/IMPLEMENTATION_LOG.md) 给出 Windows、手机、平板矩阵；任一适用端缺少实现与验证结论时不得标记完成。
 - [ ] 更新 `FRONTEND_SPEC.md` 中受影响的界面、token、动效或尺寸规则。
 - [ ] 运行 `npm run format:check`、`npm run typecheck`、`npm run lint`、`npm test` 和 `npm run build`。
 - [ ] 多端改动额外运行 `npm run build:web`、`npm run build:cloud` 和 `npm run android:sync`；360×800 / 412×915 验收离线缓存与 safe-area。

@@ -88,6 +88,28 @@ describe('mobile live runtime model', () => {
     ).toBe(true);
   });
 
+  it('allows only an explicitly safe offline start and local-session controls', () => {
+    const idle = idleLiveFocusSnapshot();
+    expect(
+      runtimeControlAvailability({
+        snapshot: idle,
+        connection: 'offline',
+        pending: false,
+        title: '离线复习',
+        allowOfflineStart: true,
+      }).start,
+    ).toBe(true);
+    expect(
+      runtimeControlAvailability({
+        snapshot: liveSnapshot('running'),
+        connection: 'offline',
+        pending: false,
+        title: '',
+        localSession: true,
+      }),
+    ).toEqual({ start: false, pause: true, resume: false, finish: true });
+  });
+
   it('uses exact state wording and stable clock slots', () => {
     expect(liveConnectionCopy('offline', true)).toEqual({
       title: '当前离线 · 控制已锁定',

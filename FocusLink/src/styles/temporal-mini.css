@@ -1,5 +1,5 @@
 /* FocusLink Mini Console v4
- * 两个固定尺寸的平面仪器：184×35 收纳条 / 256×70 控制台。
+ * 两个固定尺寸的平面仪器：184×44 收纳条 / 256×70 控制台。
  * 数值唯一来源：shared/miniWindowLayout.ts。 */
 
 .mini-window-shell {
@@ -16,48 +16,6 @@
     transform var(--motion-fast) var(--ease-out);
   -webkit-app-region: drag;
   cursor: grab;
-}
-
-.mini-dock-cue {
-  display: none;
-}
-
-.mini-window-docking .mini-dock-cue {
-  position: absolute;
-  z-index: 8;
-  display: block;
-  background: rgb(var(--app-accent));
-  pointer-events: none;
-}
-
-.mini-window-docking.mini-dock-edge-left .mini-dock-cue,
-.mini-window-docking.mini-dock-edge-right .mini-dock-cue {
-  top: 7px;
-  bottom: 7px;
-  width: 3px;
-}
-
-.mini-window-docking.mini-dock-edge-left .mini-dock-cue {
-  left: 0;
-}
-
-.mini-window-docking.mini-dock-edge-right .mini-dock-cue {
-  right: 0;
-}
-
-.mini-window-docking.mini-dock-edge-top .mini-dock-cue,
-.mini-window-docking.mini-dock-edge-bottom .mini-dock-cue {
-  right: 12px;
-  left: 12px;
-  height: 3px;
-}
-
-.mini-window-docking.mini-dock-edge-top .mini-dock-cue {
-  top: 0;
-}
-
-.mini-window-docking.mini-dock-edge-bottom .mini-dock-cue {
-  bottom: 0;
 }
 
 .no-drag {
@@ -147,98 +105,6 @@
   align-items: center;
   padding: 0 3px 0 11px;
   -webkit-app-region: drag;
-}
-
-.mini-window-collapsed {
-  --mini-edge-color: var(--app-accent);
-}
-
-.mini-window-collapsed.mini-window-running,
-.mini-window-collapsed.mini-window-finished {
-  --mini-edge-color: var(--app-success);
-}
-
-.mini-window-collapsed.mini-window-paused {
-  --mini-edge-color: var(--app-pause);
-}
-
-/* Side and corner placements retain the 184x35 preset. Two slim rails form an
- * L-shaped edge signature without introducing a third native window size. */
-.mini-window-collapsed[class*='mini-dock-placement-'] .mini-collapsed-content::before,
-.mini-window-collapsed[class*='mini-dock-placement-'] .mini-collapsed-content::after {
-  position: absolute;
-  z-index: 2;
-  display: block;
-  background: rgb(var(--mini-edge-color));
-  content: '';
-  pointer-events: none;
-}
-
-.mini-dock-placement-left .mini-collapsed-content::before,
-.mini-dock-placement-top-left .mini-collapsed-content::before,
-.mini-dock-placement-bottom-left .mini-collapsed-content::before {
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 3px;
-}
-
-.mini-dock-placement-right .mini-collapsed-content::before,
-.mini-dock-placement-top-right .mini-collapsed-content::before,
-.mini-dock-placement-bottom-right .mini-collapsed-content::before {
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 3px;
-}
-
-.mini-dock-placement-left .mini-collapsed-content::after,
-.mini-dock-placement-bottom-left .mini-collapsed-content::after,
-.mini-dock-placement-bottom-right .mini-collapsed-content::after,
-.mini-dock-placement-right .mini-collapsed-content::after {
-  bottom: 0;
-  width: 48px;
-  height: 3px;
-}
-
-.mini-dock-placement-left .mini-collapsed-content::after,
-.mini-dock-placement-bottom-left .mini-collapsed-content::after {
-  left: 0;
-}
-
-.mini-dock-placement-right .mini-collapsed-content::after,
-.mini-dock-placement-bottom-right .mini-collapsed-content::after {
-  right: 0;
-}
-
-.mini-dock-placement-top-left .mini-collapsed-content::after,
-.mini-dock-placement-top-right .mini-collapsed-content::after {
-  top: 0;
-  width: 48px;
-  height: 3px;
-}
-
-.mini-dock-placement-top-left .mini-collapsed-content::after {
-  left: 0;
-}
-
-.mini-dock-placement-top-right .mini-collapsed-content::after {
-  right: 0;
-}
-
-.mini-dock-placement-top .mini-collapsed-content::after,
-.mini-dock-placement-bottom .mini-collapsed-content::after {
-  right: 12px;
-  left: 12px;
-  height: 3px;
-}
-
-.mini-dock-placement-top .mini-collapsed-content::after {
-  top: 0;
-}
-
-.mini-dock-placement-bottom .mini-collapsed-content::after {
-  bottom: 0;
 }
 
 .mini-collapsed-current,

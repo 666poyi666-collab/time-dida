@@ -1,5 +1,6 @@
 import type { DeviceSyncChange, DeviceSyncSessionBundle } from '@shared/sync/deviceProtocol';
-import { validateDeviceSyncBundle } from '@shared/sync/deviceProtocol';
+import { makeDeviceSyncOperationId, validateDeviceSyncBundle } from '@shared/sync/deviceProtocol';
+import { isOfflineFocusRuntime, type OfflineFocusRuntime } from './offlineFocusRuntime';
 import type { LiveFocusSnapshotLike } from './runtimeModel';
 import {
   TASK_SNAPSHOT_PROTOCOL_VERSION,
@@ -8,15 +9,17 @@ import {
 } from '@shared/sync/taskSnapshotProtocol';
 
 const DATABASE_NAME = 'focuslink-mobile-preview';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const BUNDLE_STORE = 'bundles';
 const META_STORE = 'meta';
+const PENDING_STORE = 'pendingBundles';
 
 const CURSOR_KEY = 'cursor';
 const LAST_SYNC_KEY = 'lastSyncAt';
 const SERVER_TIME_KEY = 'serverTime';
 const LIVE_FOCUS_KEY = 'liveFocusSnapshot';
 const TASK_SNAPSHOT_KEY = 'taskSnapshot';
+const OFFLINE_FOCUS_KEY = 'offlineFocusRuntime';
 
 export interface CachedBundle {
   entityId: string;
@@ -31,6 +34,13 @@ export interface MobileCacheSnapshot {
   cursor: string | null;
   lastSyncAt: number | null;
   serverTime: number | null;
+}
+
+export interface PendingDeviceSyncBundle {
+  opId: string;
+  entityId: string;
+  bundle: DeviceSyncSessionBundle;
+  createdAt: number;
 }
 
 interface MetaRecord {
@@ -119,7 +129,100 @@ export async function clearMobileCache(): Promise<void> {
   const database = await openDatabase();
   const transaction = database.transaction([BUNDLE_STORE, META_STORE], 'readwrite');
   transaction.objectStore(BUNDLE_STORE).clear();
-  transaction.objectStore(META_STORE).clear();
+  const metaStore = transaction.objectStore(META_STORE);
+  metaStore.delete(CURSOR_KEY);
+  metaStore.delete(LAST_SYNC_KEY);
+  metaStore.delete(SERVER_TIME_KEY);
+  metaStore.delete(LIVE_FOCUS_KEY);
+  metaStore.delete(TASK_SNAPSHOT_KEY);
+  await transactionDone(transaction);
+  database.close();
+}
+
+export async function readPendingDeviceSyncBundles(): Promise<PendingDeviceSyncBundle[]> {
+  const database = await openDatabase();
+  const transaction = database.transaction(PENDING_STORE, 'readonly');
+  const records = await requestValue<PendingDeviceSyncBundle[]>(
+    transaction.objectStore(PENDING_STORE).getAll(),
+  );
+  await transactionDone(transaction);
+  database.close();
+  return records.sort((left, right) => left.createdAt - right.createdAt);
+}
+
+export async function enqueuePendingDeviceSyncBundle(
+  bundle: DeviceSyncSessionBundle,
+): Promise<PendingDeviceSyncBundle> {
+  const validation = validateDeviceSyncBundle(bundle);
+  if (!validation.ok) throw new Error(`无法保存离线会话：${validation.error ?? '格式无效'}`);
+  const record: PendingDeviceSyncBundle = {
+    opId: makeDeviceSyncOperationId(bundle.session.id, 'put', 0, bundle),
+    entityId: bundle.session.id,
+    bundle,
+    createdAt: Date.now(),
+  };
+  const database = await openDatabase();
+  const transaction = database.transaction(PENDING_STORE, 'readwrite');
+  transaction.objectStore(PENDING_STORE).put(record);
+  await transactionDone(transaction);
+  database.close();
+  return record;
+}
+
+export async function completeOfflineFocusRuntime(
+  bundle: DeviceSyncSessionBundle,
+): Promise<PendingDeviceSyncBundle> {
+  const validation = validateDeviceSyncBundle(bundle);
+  if (!validation.ok) throw new Error(`无法保存离线会话：${validation.error ?? '格式无效'}`);
+  const record: PendingDeviceSyncBundle = {
+    opId: makeDeviceSyncOperationId(bundle.session.id, 'put', 0, bundle),
+    entityId: bundle.session.id,
+    bundle,
+    createdAt: Date.now(),
+  };
+  const database = await openDatabase();
+  const transaction = database.transaction([PENDING_STORE, META_STORE], 'readwrite');
+  transaction.objectStore(PENDING_STORE).put(record);
+  transaction.objectStore(META_STORE).delete(OFFLINE_FOCUS_KEY);
+  await transactionDone(transaction);
+  database.close();
+  return record;
+}
+
+export async function removePendingDeviceSyncBundle(opId: string): Promise<void> {
+  const database = await openDatabase();
+  const transaction = database.transaction(PENDING_STORE, 'readwrite');
+  transaction.objectStore(PENDING_STORE).delete(opId);
+  await transactionDone(transaction);
+  database.close();
+}
+
+export async function readOfflineFocusRuntime(): Promise<OfflineFocusRuntime | null> {
+  const database = await openDatabase();
+  const transaction = database.transaction(META_STORE, 'readonly');
+  const record = await requestValue<MetaRecord | undefined>(
+    transaction.objectStore(META_STORE).get(OFFLINE_FOCUS_KEY),
+  );
+  await transactionDone(transaction);
+  database.close();
+  return isOfflineFocusRuntime(record?.value) ? record.value : null;
+}
+
+export async function writeOfflineFocusRuntime(runtime: OfflineFocusRuntime): Promise<void> {
+  const database = await openDatabase();
+  const transaction = database.transaction(META_STORE, 'readwrite');
+  transaction.objectStore(META_STORE).put({
+    key: OFFLINE_FOCUS_KEY,
+    value: runtime,
+  } satisfies MetaRecord);
+  await transactionDone(transaction);
+  database.close();
+}
+
+export async function clearOfflineFocusRuntime(): Promise<void> {
+  const database = await openDatabase();
+  const transaction = database.transaction(META_STORE, 'readwrite');
+  transaction.objectStore(META_STORE).delete(OFFLINE_FOCUS_KEY);
   await transactionDone(transaction);
   database.close();
 }
@@ -221,6 +324,9 @@ function openDatabase(): Promise<IDBDatabase> {
       }
       if (!database.objectStoreNames.contains(META_STORE)) {
         database.createObjectStore(META_STORE, { keyPath: 'key' });
+      }
+      if (!database.objectStoreNames.contains(PENDING_STORE)) {
+        database.createObjectStore(PENDING_STORE, { keyPath: 'opId' });
       }
     };
     request.onsuccess = () => resolve(request.result);

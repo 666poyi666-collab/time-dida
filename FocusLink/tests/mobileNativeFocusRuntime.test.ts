@@ -3,6 +3,7 @@ import {
   isNativeFocusRuntimeAvailable,
   makeNativeDisplaySnapshot,
   nativeFocusCommandSuccessCopy,
+  normalizeNativePauseReminderDelayMinutes,
 } from '../src/mobile/nativeFocusRuntime';
 import { idleLiveFocusSnapshot } from '../src/mobile/runtimeModel';
 
@@ -70,5 +71,13 @@ describe('mobile native focus display projection', () => {
     expect(nativeFocusCommandSuccessCopy({ type: 'finish', source: 'notification' })).toBe(
       '通知动作已确认结束，正在收敛账本',
     );
+  });
+
+  it('normalizes the native pause reminder delay to the supported range', () => {
+    expect(normalizeNativePauseReminderDelayMinutes()).toBe(3);
+    expect(normalizeNativePauseReminderDelayMinutes(Number.NaN)).toBe(3);
+    expect(normalizeNativePauseReminderDelayMinutes(0)).toBe(1);
+    expect(normalizeNativePauseReminderDelayMinutes(3.6)).toBe(4);
+    expect(normalizeNativePauseReminderDelayMinutes(999)).toBe(240);
   });
 });

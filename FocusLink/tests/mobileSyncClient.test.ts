@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  exchangeDeviceSyncPairingCode,
   fetchLiveFocusSnapshot,
   isInvalidDeviceSyncCursorError,
   pullDeviceSyncPage,
@@ -13,6 +14,54 @@ describe('mobile sync client request recovery', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('exchanges a one-time pairing code and sends no existing bearer credential', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          protocolVersion: 1,
+          accessToken: 'received-long-lived-token',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      exchangeDeviceSyncPairingCode({
+        endpoint: 'http://127.0.0.1:18787',
+        code: 'A1B2C3D4',
+        deviceId: 'android-test-device',
+      }),
+    ).resolves.toBe('received-long-lived-token');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:18787/v1/pair',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nonce: 'A1B2C3D4', deviceId: 'android-test-device' }),
+      }),
+    );
+  });
+
+  it('rejects an expired pairing response without retaining a credential', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ message: 'pairing code expired or was already used' }), {
+          status: 410,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+    await expect(
+      exchangeDeviceSyncPairingCode({
+        endpoint: 'https://sync.example.test',
+        code: 'A1B2C3D4',
+        deviceId: 'android-test-device',
+      }),
+    ).rejects.toThrow('pairing code expired');
   });
 
   it('times out a dead connection instead of leaving the live loop hung forever', async () => {

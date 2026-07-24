@@ -65,7 +65,7 @@ function TaskTreeNode({
   const reduceMotion = useReducedMotion();
 
   return (
-    <>
+    <div className="task-tree-node" data-depth={depth}>
       {renderRow({
         task,
         depth,
@@ -103,6 +103,6 @@ function TaskTreeNode({
           )}
         </AnimatePresence>
       )}
-    </>
+    </div>
   );
 }

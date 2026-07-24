@@ -4,6 +4,17 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M3,3h11v3H6v4h7v3H6v8H3z" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M14,8h3v10h4v3h-7z" />
+    <!--
+      EMUI renders the notification glyph inside a fixed 28dp capsule icon slot.
+      Keep the Android resource at the required 24dp size, but limit the visible
+      FocusLink mark to roughly 12dp so it does not crowd the timer text.
+    -->
+    <group
+        android:pivotX="12"
+        android:pivotY="12"
+        android:scaleX="0.67"
+        android:scaleY="0.67">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M3,3h11v3H6v4h7v3H6v8H3z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M14,8h3v10h4v3h-7z" />
+    </group>
 </vector>

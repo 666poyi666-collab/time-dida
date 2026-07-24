@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相；当前实现 v0.12.27
+> 状态：v0.12.x 后端单一真相；当前实现 v0.12.37
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -181,10 +181,14 @@ revision、服务端单调 change sequence 与不透明 cursor。规则如下：
 - `cloudFocusId`、第三方投递结果、CLI/OAuth 凭据、TomaToDo 路径、窗口/快捷键/小窗设置均不进入会话包。
 - 服务端以 `(account, opId)` 去重；稳定 `opId` 同时包含实体、正文与 `baseRevision`，相同 op 重放返回 `duplicate`，`baseRevision` 过期返回 `conflict`，不使用客户端 `updatedAt` 静默覆盖。
 - Electron 以 SQLite 完成会话为耐久事实源，网络失败后下次重新扫描补传；cursor、每个会话的已确认 revision/fingerprint 与未解决冲突写入同一个原子 `app_meta` 检查点。检查点按“规范化 endpoint + token 的不可逆摘要”分区，切换服务/账号不得复用旧状态；服务明确返回 `invalid_cursor` 时清理当前分区并完整重试一次。Web/PWA/Android 若从旧安装或旧账号缓存恢复出无效 cursor，也必须识别结构化 `invalid_cursor` 错误码，清空该设备的旧账本缓存并从空 cursor 重建一次；禁止保留旧账号会话或按错误文本无限重试。
+- Android/Web 的本机离线会话使用同一 completed bundle 协议，不新增移动端业务服务。活动草稿和待上传 bundle 分开存入 IndexedDB；结束操作必须在一个事务中写入稳定 `opId` 的 pending 记录并删除活动草稿。每次在线账本拉取前先串行补传 pending，只有 `applied/duplicate` 删除，`conflict/rejected` 或网络失败保留；普通“清缓存”不得删除 pending。移动端应用沙箱保护账本，Android token 仍只存 Keystore，Electron token 仍只存 `safeStorage`，日志、overlay 和通知均不得输出令牌或 endpoint。
+- Windows 登录项的有效策略为“用户显式自动启动”或“跨设备同步已启用且 autoSync 已启用”。后一种情况必须隐藏启动并常驻托盘；睡眠恢复后重新确认回环服务、ADB bridge 并立即跑一次同步。回环开发后端只监听 `127.0.0.1:18787`，不得为了手机发现而开放 LAN。
+- 对已授权且当前 `adb devices` 状态为 `device` 的 Android 设备，Electron 可用 `execFile` 参数数组每 30 秒及恢复后刷新 `adb -s <serial> reverse tcp:18787 tcp:18787`；不得扫描局域网、自动授权未知设备或把该桥接描述为异地生产同步。异地同步仍要求 HTTPS 个人云。
 - 拉回的全新会话在一个 SQLite 事务中插入 session/segments/pauses；不会自动触发 dida 或 TomaToDo 副作用。同一次 cursor catch-up 的所有响应页先在内存按实体折叠到最新 revision，完整收敛后才写 SQLite 与原子检查点；中途断网不会暴露旧 revision。拉取完成后的既有记录或已改动的同 ID 正文写入耐久冲突箱。冲突未解决时界面不得清空错误或宣称完全收敛。
 - 服务端对 cursor 之后同一实体的多次历史 revision 先折叠为最新状态，再按 change sequence、条数与响应字节预算分页；全新设备不得先导入旧 revision 再把同一批历史误判为本地冲突。
 - 当前桌面端不执行远端删除，也不自动覆盖已有会话；删除/编辑冲突需要后续显式清理与合并流程。
 - Electron 访问令牌只经 `safeStorage` 加密落盘，不进入 `AppSettings`、renderer 日志或多端 payload。
+- 回环内置服务可生成 2 分钟一次性配对 offer。二维码/短码只暴露协议版本、回环 endpoint、密码学随机 nonce 和过期时间；`POST /v1/pair` 在校验设备 ID 后一次性兑换当前长期令牌，成功后立即消费，过期或重放返回 410。配对路由不记录请求体、nonce 或令牌；Android 兑换后的令牌仍进入 Keystore，Web/PWA 仍遵循用户明确选择的会话级/记住策略。
 - Electron 只有在首次 `GET /v1/live` 成功并通过协议校验后才切换到实时事实源；握手失败时保持本机 idle/计时可用，并以 `2s → 4s → 8s … → 60s` 有界退避重连。已确认的 running/paused 实时会话断线时不得切回本机空闲状态或伪造云端确认。
 - 生成 completed bundle 时，旧版本遗留的暂停孤立引用只在传输副本中归一为 `segmentId: null`，原始 SQLite 行不被静默删除；诊断必须记录会话 ID 和孤立数量。
 
@@ -212,6 +216,9 @@ revision、服务端单调 change sequence 与不透明 cursor。规则如下：
 - dida 和番茄 To-do 始终是桌面副作用。移动命令与实时快照不携带凭据或伪造投递结果；结束会话进入 FocusLink 账本后，只有桌面端真实执行相应队列并得到可验证结果才能显示外部同步成功。
 - Android 前台 Service、通知动作与 Quick Settings Tile 是薄传输层：只保存最后一次已确认快照和至少一次 native command 队列，不自行推进业务计时，不在云端确认前乐观翻转。待处理动作必须含 session/revision 并支持冷启动 drain/ack；Service 通过可注入的 `FocusCloudClient` 使用 Keystore 连接直接 POST 同一个幂等命令，Web 层并发重试由 command id 去重，且只有匹配 command id 的 applied/duplicate/conflict/rejected 才能完成本地队列项。Android 12+ 的通知动作必须直接使用 Activity PendingIntent，不得经 Receiver/Service 再拉起 Activity；Tile 的 pending 展示保持 inactive 且可点击打开 App，避免 OEM 缓存 unavailable 后永久无法自愈。
 - Android 后台只读刷新采用自调度链而非周期 Future：主线程触发单线程 HTTP 请求，请求的 `finally` 安排下一次 20 秒刷新，任何异常不得永久取消后续轮询。最近尝试次数、成功时间、revision 与错误写入本机诊断状态。原生快照写入按 revision 单调拒绝旧值，云端 idle 快照必须保留 revision；只有 endpoint/token/device identity 确认变化时才允许清空 revision 护栏。
+- Android 系统表面由 `SystemFocusSurfaceProvider` 从同一快照选择并报告实际结果：小米 focus protocol/权限可用时写焦点字段与动作；华为/荣耀设备写 EMUI `notification.live.event=TIMER` 与 capsule Bundle，投影运行/暂停、elapsed、图标和颜色；Android 16+ 且 promoted ongoing 获准时请求 promoted；其余使用 ongoing notification。华为兼容字段被系统忽略时，原始 ongoing notification 必须仍然完整可用；它不等同于 HarmonyOS ArkTS Live View Kit。持续通知提供 `VISIBILITY_PUBLIC` 的脱敏锁屏版本，只投影运行/暂停状态和 chronometer，不泄露任务标题或连接信息。暂停超时提醒是原生本地偏好（默认开启、3 分钟、合法范围 1–240 分钟）：它按当前暂停快照的 elapsed 和 session/revision 排程，每个暂停 revision 最多提醒一次；偏好变化立即重排。提醒不得自行提交 resume/finish，也不得成为云端状态真值。
+- Android 的沉浸系统栏与画中画由 `MainActivity` 通过公开 API 提供，Capacitor 插件只暴露能力、当前状态和显式用户动作。结束活动会话后 renderer 必须恢复系统栏；画中画不支持时返回结构化 `supported: false`。这些显示能力不得引入第二套计时器、kiosk/设备所有者权限或厂商私有 API 依赖。
+- Android 桌面后备计时使用 `TYPE_APPLICATION_OVERLAY` 和显式 `SYSTEM_ALERT_WINDOW` 特殊授权，默认关闭且不得因通知可用而自动显示。overlay 仅由前台通知 Service 根据同一份脱敏 native snapshot 更新；长按拖动、短按回到 App，touch slop 必须阻止拖动后点击。位置以归一化坐标持久化，并在旋转、分屏、重启后按 system bars/display cutout 安全区重新夹取；idle、Service 销毁或权限撤回时移除。不得静默拉起授权页、遮盖全屏或显示任务与连接秘密。
 
 电脑任务清单使用独立的权威快照平面，协议真值位于 `shared/sync/taskSnapshotProtocol.ts`：
 
@@ -223,7 +230,7 @@ revision、服务端单调 change sequence 与不透明 cursor。规则如下：
 
 ## 9. 小窗与边缘状态
 
-- 只有 `collapsed` 和 `expanded` 两种合法尺寸，数值唯一来自 `shared/miniWindowLayout.ts`。当前为 `184×35` 与 `256×70`，不引入第三尺寸；常量变化必须同步更新前端规范。
+- 只有 `collapsed` 和 `expanded` 两种合法尺寸，数值唯一来自 `shared/miniWindowLayout.ts`。当前为 `184×44` 与 `256×70`，不引入第三尺寸；44px 收起高度避免 Windows 原生无框最小高度与 renderer 内容尺寸错位，常量变化必须同步更新前端规范。
 - `MiniWindowDockPlacement` 在四条边之外区分四个 corner placement；角落收起/展开必须同时锚定 X/Y 两轴。主进程通过 `mini:dock-transition` 明确发送 `prepare / settled / cancel` 与 edge/placement，renderer 不得从 CSS 猜测原生屏幕位置。
 - Windows 原生移动循环结束后才允许吸附与收起；纯展示进度轨必须保留 `-webkit-app-region: drag`。用户拖离 release hysteresis 后在新位置展开，任何 programmatic bounds 变化都不得被误判为新的用户拖动。
 - collapsed renderer 契约仅允许进度/状态、当前时间、底部 2px 当前分钟秒级消逝轨和展开入口；该轨不是专注率。不传达任务详情、三组累计或其他控制。expanded 契约须在 74px 内容盒内完整呈现任务名、当前时间、累计专注/暂停/总历时与全部控制，时间与按钮分属独立网格行、结构上不重叠或换行。验收字号为 collapsed 25px、expanded 至少 21px。

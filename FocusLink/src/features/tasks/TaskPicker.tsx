@@ -643,7 +643,7 @@ function PickerRow({
       className={`task-row-linear group ${isSelected ? 'task-row-highlighted' : ''} ${
         isCompleted ? 'task-row-done' : ''
       } ${active ? 'is-active' : ''}`}
-      style={{ paddingLeft: depth * 17 + 8 }}
+      style={{ paddingLeft: Math.min(depth, 2) * 17 + 8 }}
       data-depth={depth}
       data-picker-option={task.id}
       onClick={() => onPick(task)}

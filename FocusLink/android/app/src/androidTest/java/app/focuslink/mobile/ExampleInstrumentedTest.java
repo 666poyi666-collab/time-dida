@@ -8,6 +8,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 
 import android.Manifest;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
@@ -18,6 +21,7 @@ import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.service.notification.StatusBarNotification;
 import android.webkit.WebView;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -27,6 +31,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.core.content.ContextCompat;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry;
 import androidx.test.runner.lifecycle.Stage;
@@ -36,6 +41,55 @@ import org.json.JSONObject;
 
 @RunWith(AndroidJUnit4.class)
 public class ExampleInstrumentedTest {
+    @Test
+    public void holdsDesktopOverlayForManualScreenshot() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        boolean savedOverlayEnabled = FocusRuntimeSystemSettings.isOverlayEnabled(context);
+        FocusRuntimeConnectionStore.Connection savedConnection =
+            FocusRuntimeConnectionStore.get(context);
+        FocusRuntimeStore.clearForTests(context);
+        FocusRuntimeConnectionStore.clear(context);
+        try {
+            long now = System.currentTimeMillis();
+            FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromPlugin(
+                context,
+                new JSObject()
+                    .put("state", "running")
+                    .put("sessionId", "overlay-manual-smoke")
+                    .put("stateRevision", 1)
+                    .put("title", "overlay manual smoke")
+                    .put("timeLabel", "00:08")
+                    .put("detail", "专注中")
+                    .put("primaryElapsedMs", 8_000)
+                    .put("primaryAdvances", true)
+                    .put("controlsEnabled", false)
+                    .put("validUntilEpochMs", now + 30_000)
+            );
+            assertTrue(FocusRuntimeStore.putSnapshot(context, snapshot));
+            assertTrue(FocusDesktopOverlayController.canDraw(context));
+            FocusRuntimeSystemSettings.setOverlayEnabled(context, true);
+            FocusNotificationService.synchronize(context);
+
+            Intent home = new Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_HOME)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(home);
+            Thread.sleep(12_000L);
+        } finally {
+            FocusRuntimeSystemSettings.setOverlayEnabled(context, savedOverlayEnabled);
+            FocusRuntimeStore.clearForTests(context);
+            context.stopService(new Intent(context, FocusNotificationService.class));
+            if (savedConnection != null) {
+                FocusRuntimeConnectionStore.put(
+                    context,
+                    savedConnection.endpoint,
+                    savedConnection.accessToken,
+                    savedConnection.deviceId
+                );
+            }
+        }
+    }
+
     @Test
     public void usesFocusLinkApplicationContext() throws Exception {
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -61,6 +115,7 @@ public class ExampleInstrumentedTest {
             );
         List<String> permissions = Arrays.asList(packageInfo.requestedPermissions);
         assertTrue(permissions.contains(Manifest.permission.POST_NOTIFICATIONS));
+        assertTrue(permissions.contains("android.permission.POST_PROMOTED_NOTIFICATIONS"));
         assertTrue(permissions.contains(Manifest.permission.FOREGROUND_SERVICE));
         assertTrue(permissions.contains(Manifest.permission.WAKE_LOCK));
         assertTrue(
@@ -86,6 +141,337 @@ public class ExampleInstrumentedTest {
         );
         assertTrue(tile.exported);
         assertEquals("android.permission.BIND_QUICK_SETTINGS_TILE", tile.permission);
+    }
+
+    @Test
+    public void reportsTruthfulSystemSurfaceCapabilities() {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        JSObject capabilities = SystemFocusSurfaceProvider.capabilities(context);
+        String selected = capabilities.getString("selected");
+        assertNotNull(selected);
+        System.out.println("FOCUSLINK_SYSTEM_SURFACE " + capabilities.toString());
+
+        if (capabilities.getBool("huaweiLiveCandidate")) {
+            assertEquals(SystemFocusSurfaceProvider.SURFACE_HUAWEI_LIVE_CAPSULE, selected);
+        } else if (
+            capabilities.getInteger("xiaomiFocusProtocol") >= 3 &&
+            capabilities.getBool("xiaomiFocusPermission")
+        ) {
+            assertEquals(SystemFocusSurfaceProvider.SURFACE_XIAOMI_ISLAND, selected);
+        } else if (
+            capabilities.getBool("androidLiveUpdateSupported") &&
+            capabilities.getBool("androidLiveUpdateAllowed")
+        ) {
+            assertEquals(SystemFocusSurfaceProvider.SURFACE_ANDROID_LIVE_UPDATE, selected);
+        } else {
+            assertEquals(SystemFocusSurfaceProvider.SURFACE_ONGOING_NOTIFICATION, selected);
+        }
+    }
+
+    @Test
+    public void projectsHuaweiTimerCapsuleExtras() {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        JSObject capabilities = SystemFocusSurfaceProvider.capabilities(context);
+        assumeTrue(capabilities.getBool("huaweiLiveCandidate"));
+        long now = System.currentTimeMillis();
+        FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromPlugin(
+            context,
+            new JSObject()
+                .put("state", "running")
+                .put("sessionId", "huawei-capsule-smoke")
+                .put("stateRevision", 1)
+                .put("title", "capsule smoke")
+                .put("timeLabel", "01:02")
+                .put("detail", "")
+                .put("primaryElapsedMs", 62_000)
+                .put("primaryAdvances", true)
+                .put("controlsEnabled", false)
+                .put("validUntilEpochMs", now + 60_000)
+        );
+        Notification notification = SystemFocusSurfaceProvider.apply(
+            context,
+            new Notification(),
+            snapshot,
+            "capsule smoke",
+            "01:02"
+        );
+
+        assertEquals("TIMER", notification.extras.getString("notification.live.event"));
+        assertEquals(1, notification.extras.getInt("notification.live.type"));
+        assertTrue(notification.extras.getBoolean("CapsuleEnabled"));
+        Bundle capsule = notification.extras.getBundle("notification.live.capsule");
+        assertNotNull(capsule);
+        assertEquals(62_000L, capsule.getLong("notification.live.capsuleTime"));
+        assertEquals(1, capsule.getInt("notification.live.capsuleStatus"));
+        assertFalse(capsule.getBoolean("notification.live.capsuleCountDown"));
+        assertFalse(capsule.getBoolean("notification.live.capsuleCountdown"));
+        assertFalse(notification.extras.getBoolean("android.chronometerCountDown"));
+
+        FocusRuntimeSnapshot pausedSnapshot = FocusRuntimeSnapshot.fromPlugin(
+            context,
+            new JSObject()
+                .put("state", "paused")
+                .put("sessionId", "huawei-capsule-paused-smoke")
+                .put("stateRevision", 2)
+                .put("title", "capsule paused smoke")
+                .put("timeLabel", "01:02")
+                .put("detail", "")
+                .put("primaryElapsedMs", 62_000)
+                .put("primaryAdvances", true)
+                .put("controlsEnabled", false)
+                .put("validUntilEpochMs", now + 60_000)
+        );
+        Notification pausedNotification = SystemFocusSurfaceProvider.apply(
+            context,
+            new Notification(),
+            pausedSnapshot,
+            "capsule paused smoke",
+            "01:02"
+        );
+        Bundle pausedCapsule = pausedNotification.extras.getBundle(
+            "notification.live.capsule"
+        );
+        assertNotNull(pausedCapsule);
+        assertEquals(1, pausedCapsule.getInt("notification.live.capsuleStatus"));
+        assertFalse(pausedCapsule.getBoolean("notification.live.capsulePause"));
+        assertEquals(0xFFD94B43, pausedCapsule.getInt("notification.live.capsuleBgColor"));
+    }
+
+    @Test
+    public void holdsHuaweiCapsuleForManualScreenshot() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        JSObject capabilities = SystemFocusSurfaceProvider.capabilities(context);
+        assertTrue(capabilities.getBool("huaweiLiveCandidate"));
+        grantNotificationPermissionForTest(context);
+        assertTrue(FocusNotificationPermission.canPost(context));
+        FocusNotificationService.setCloudClientFactoryForTests(
+            () -> new FocusCloudClient(
+                (method, url, token, body) -> {
+                    throw new java.io.IOException("manual capsule smoke is offline");
+                }
+            )
+        );
+        FocusRuntimeStore.clearForTests(context);
+        long now = System.currentTimeMillis();
+        FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromPlugin(
+            context,
+            new JSObject()
+                .put("state", "running")
+                .put("sessionId", "huawei-capsule-manual-smoke")
+                .put("stateRevision", 1)
+                .put("title", "FocusLink 胶囊验收")
+                .put("timeLabel", "01:02")
+                .put("detail", "专注中")
+                .put("primaryElapsedMs", 62_000)
+                .put("primaryAdvances", true)
+                .put("controlsEnabled", false)
+                .put("validUntilEpochMs", now + 90_000)
+        );
+        try {
+            assertTrue(FocusRuntimeStore.putSnapshot(context, snapshot));
+            assertTrue(
+                FocusRuntimeStore.getSnapshot(context).isFresh(
+                    context,
+                    System.currentTimeMillis(),
+                    SystemClock.elapsedRealtime()
+                )
+            );
+            ContextCompat.startForegroundService(
+                context,
+                new Intent(context, FocusNotificationService.class)
+            );
+            Thread.sleep(5_000L);
+            NotificationManager manager = context.getSystemService(NotificationManager.class);
+            assertNotNull(manager);
+            String activeIds = Arrays.stream(manager.getActiveNotifications())
+                .map(notification -> Integer.toString(notification.getId()))
+                .reduce((left, right) -> left + "," + right)
+                .orElse("none");
+            assertTrue(
+                "Huawei capsule notification 1216 must be active; activeIds=" + activeIds,
+                Arrays.stream(manager.getActiveNotifications())
+                    .mapToInt(StatusBarNotification::getId)
+                    .anyMatch(id -> id == 1216)
+            );
+            Intent home = new Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_HOME)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(home);
+            Thread.sleep(45_000L);
+        } finally {
+            FocusNotificationService.setCloudClientFactoryForTests(null);
+            FocusRuntimeStore.clearForTests(context);
+            context.stopService(new Intent(context, FocusNotificationService.class));
+        }
+    }
+
+    @Test
+    public void holdsHuaweiPausedCapsuleForManualScreenshot() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertTrue(
+            SystemFocusSurfaceProvider.capabilities(context).getBool("huaweiLiveCandidate")
+        );
+        grantNotificationPermissionForTest(context);
+        FocusNotificationService.setCloudClientFactoryForTests(
+            () -> new FocusCloudClient(
+                (method, url, token, body) -> {
+                    throw new java.io.IOException("manual paused capsule smoke is offline");
+                }
+            )
+        );
+        FocusRuntimeStore.clearForTests(context);
+        long now = System.currentTimeMillis();
+        FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromPlugin(
+            context,
+            new JSObject()
+                .put("state", "paused")
+                .put("sessionId", "huawei-paused-capsule-manual-smoke")
+                .put("stateRevision", 1)
+                .put("title", "FocusLink 暂停胶囊验收")
+                .put("timeLabel", "01:02")
+                .put("detail", "已暂停")
+                .put("primaryElapsedMs", 62_000)
+                .put("primaryAdvances", true)
+                .put("controlsEnabled", false)
+                .put("validUntilEpochMs", now + 90_000)
+        );
+        try {
+            assertTrue(FocusRuntimeStore.putSnapshot(context, snapshot));
+            ContextCompat.startForegroundService(
+                context,
+                new Intent(context, FocusNotificationService.class)
+            );
+            Thread.sleep(5_000L);
+            NotificationManager manager = context.getSystemService(NotificationManager.class);
+            assertNotNull(manager);
+            StatusBarNotification capsuleNotification = Arrays.stream(
+                manager.getActiveNotifications()
+            )
+                .filter(active -> active.getId() == 1216)
+                .findFirst()
+                .orElse(null);
+            assertNotNull(capsuleNotification);
+            Bundle capsule = capsuleNotification.getNotification().extras.getBundle(
+                "notification.live.capsule"
+            );
+            assertNotNull(capsule);
+            assertEquals(1, capsule.getInt("notification.live.capsuleStatus"));
+            assertFalse(capsule.getBoolean("notification.live.capsulePause"));
+            assertEquals(0xFFD94B43, capsule.getInt("notification.live.capsuleBgColor"));
+            Intent home = new Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_HOME)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(home);
+            Thread.sleep(45_000L);
+        } finally {
+            FocusNotificationService.setCloudClientFactoryForTests(null);
+            FocusRuntimeStore.clearForTests(context);
+            context.stopService(new Intent(context, FocusNotificationService.class));
+        }
+    }
+
+    @Test
+    public void projectsXiaomiIslandPayload() {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        JSObject capabilities = SystemFocusSurfaceProvider.capabilities(context);
+        assertEquals(
+            SystemFocusSurfaceProvider.SURFACE_XIAOMI_ISLAND,
+            capabilities.getString("selected")
+        );
+        assertTrue(capabilities.getBool("xiaomiFocusPermission"));
+        grantNotificationPermissionForTest(context);
+        assertTrue(FocusNotificationPermission.canPost(context));
+        long now = System.currentTimeMillis();
+        FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromPlugin(
+            context,
+            new JSObject()
+                .put("state", "running")
+                .put("sessionId", "xiaomi-island-manual-smoke")
+                .put("stateRevision", 1)
+                .put("title", "FocusLink 超级岛验收")
+                .put("timeLabel", "01:02")
+                .put("detail", "专注中")
+                .put("primaryElapsedMs", 62_000)
+                .put("primaryAdvances", true)
+                .put("controlsEnabled", false)
+                .put("validUntilEpochMs", now + 90_000)
+        );
+        Notification projected = SystemFocusSurfaceProvider.apply(
+            context,
+            new Notification(),
+            snapshot,
+            snapshot.title,
+            snapshot.detail
+        );
+        assertEquals(
+            SystemFocusSurfaceProvider.SURFACE_XIAOMI_ISLAND,
+            projected.extras.getString("focuslink.systemSurface")
+        );
+        String islandPayload = projected.extras.getString("miui.focus.param");
+        assertNotNull(islandPayload);
+        assertTrue(islandPayload.contains("param_island"));
+        assertTrue(islandPayload.contains("01:02"));
+    }
+
+    @Test
+    public void persistsPauseReminderSettings() {
+        Context context = isolatedRuntimeContext();
+        FocusRuntimeSystemSettings.clearForTests(context);
+        try {
+            FocusRuntimeSystemSettings.PauseReminderPreference initial =
+                FocusRuntimeSystemSettings.getPauseReminderPreference(context);
+            assertTrue(initial.enabled);
+            assertEquals(3, initial.delayMinutes);
+
+            FocusRuntimeSystemSettings.PauseReminderPreference saved =
+                FocusRuntimeSystemSettings.setPauseReminderPreference(context, false, 12);
+            assertFalse(saved.enabled);
+            assertEquals(12, saved.delayMinutes);
+            assertEquals(
+                12,
+                FocusRuntimeSystemSettings.getPauseReminderPreference(context).delayMinutes
+            );
+
+            boolean rejected = false;
+            try {
+                FocusRuntimeSystemSettings.setPauseReminderPreference(context, true, 0);
+            } catch (IllegalArgumentException expected) {
+                rejected = true;
+            }
+            assertTrue(rejected);
+        } finally {
+            FocusRuntimeSystemSettings.clearForTests(context);
+        }
+    }
+
+    @Test
+    public void togglesImmersiveBarsAndEntersPictureInPicture() throws Exception {
+        android.app.Instrumentation instrumentation =
+            InstrumentationRegistry.getInstrumentation();
+        Context context = instrumentation.getTargetContext();
+        Intent launch = context
+            .getPackageManager()
+            .getLaunchIntentForPackage(context.getPackageName());
+        assertNotNull(launch);
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        context.startActivity(launch);
+        MainActivity activity = awaitMainActivity(instrumentation);
+
+        instrumentation.runOnMainSync(() -> activity.setFocusImmersiveSystemBars(true));
+        assertTrue(activity.isFocusImmersiveSystemBarsEnabled());
+        instrumentation.runOnMainSync(() -> activity.setFocusImmersiveSystemBars(false));
+        assertFalse(activity.isFocusImmersiveSystemBarsEnabled());
+
+        assumeTrue("device does not support picture in picture", activity.supportsFocusPictureInPicture());
+        AtomicReference<Boolean> entered = new AtomicReference<>(false);
+        instrumentation.runOnMainSync(
+            () -> entered.set(activity.enterFocusPictureInPicture(16, 9))
+        );
+        assertTrue(entered.get());
+        awaitPictureInPicture(instrumentation, activity);
+
+        context.startActivity(launch);
+        awaitMainActivity(instrumentation);
     }
 
     @Test
@@ -564,6 +950,22 @@ public class ExampleInstrumentedTest {
         throw new AssertionError("MainActivity did not start");
     }
 
+    private static void awaitPictureInPicture(
+        android.app.Instrumentation instrumentation,
+        MainActivity activity
+    ) throws Exception {
+        long deadline = SystemClock.elapsedRealtime() + 5_000L;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            AtomicReference<Boolean> active = new AtomicReference<>(false);
+            instrumentation.runOnMainSync(
+                () -> active.set(activity.isFocusPictureInPictureActive())
+            );
+            if (active.get()) return;
+            SystemClock.sleep(100L);
+        }
+        throw new AssertionError("MainActivity did not enter picture in picture");
+    }
+
     private static void clickButtonWithConfirm(
         android.app.Instrumentation instrumentation,
         MainActivity activity,
@@ -786,4 +1188,5 @@ public class ExampleInstrumentedTest {
         }
         throw new AssertionError("Missing Android service " + className);
     }
+
 }

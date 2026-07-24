@@ -73,6 +73,13 @@ Keep state labels precise:
 - After a native drag is released near a display work-area edge, snap first and then auto-collapse. Never steal the pointer during drag.
 - Expand toward the inside of the current display and clamp to its work area; cover multi-display and DPI behavior in layout tests and smoke tests.
 
+## Three-Device Version Gate
+
+- Every cross-device UI or behavior candidate must increment the patch version. Do not reuse an APK or Windows build number for another iteration.
+- Windows, the designated Huawei tablet, and the designated Xiaomi phone must receive the same version before the iteration is marked complete, packaged, tagged, or released.
+- Read back the installed version on all three devices and record the Windows / Xiaomi / Huawei verification matrix. A missing, stale, or mismatched endpoint is a failed gate.
+- Preserve the two-state Windows mini window, the active Huawei capsule layout module, and the Xiaomi system-surface path unless the current change explicitly replaces them and re-runs their acceptance tests.
+
 ## Verification Before Release
 
 Run these from `FocusLink/` before packaging:

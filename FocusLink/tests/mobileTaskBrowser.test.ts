@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 import type { SyncedTask, SyncedTaskProject } from '../shared/sync/taskSnapshotProtocol';
 import {
   ALL_PROJECTS,
+  buildSyncedTaskForest,
   filterSyncedTasks,
+  flattenSyncedTaskTree,
   groupSyncedTasks,
   NO_PROJECT,
   projectNameForTask,
@@ -58,6 +60,46 @@ describe('mobile task browser model', () => {
       ['学习', ['chemistry', 'english']],
       ['无清单', ['inbox']],
     ]);
+  });
+
+  it('rebuilds flattened parent ids into a stable task forest', () => {
+    const flat = [
+      makeTask({ id: 'parent', title: '父任务', projectId: 'study' }),
+      makeTask({ id: 'child', title: '子任务', projectId: 'study', parentId: 'parent' }),
+      makeTask({ id: 'grandchild', title: '孙任务', projectId: 'study', parentId: 'child' }),
+      makeTask({ id: 'orphan', title: '孤立任务', projectId: 'study', parentId: 'missing' }),
+    ];
+    const forest = buildSyncedTaskForest(flat);
+    expect(forest.map((task) => task.id)).toEqual(['parent', 'orphan']);
+    expect(forest[0].children[0].children[0].id).toBe('grandchild');
+    expect(flattenSyncedTaskTree(flat).map(({ task, depth }) => [task.id, depth])).toEqual([
+      ['parent', 0],
+      ['child', 1],
+      ['grandchild', 2],
+      ['orphan', 0],
+    ]);
+  });
+
+  it('renders checklist children as nested rows instead of project-level peers', () => {
+    const nestedTasks = [
+      makeTask({ id: 'parent', title: '父任务', projectId: 'study' }),
+      makeTask({ id: 'child', title: '子任务', projectId: 'study', parentId: 'parent' }),
+    ];
+    const markup = renderToStaticMarkup(
+      createElement(TaskBrowser, {
+        tasks: nestedTasks,
+        projects,
+        publishedAt: null,
+        revision: 2,
+        selectedTaskId: 'parent',
+        canStart: true,
+        onSelect: () => undefined,
+        onStart: () => undefined,
+      }),
+    );
+    expect(markup).toContain('task-children');
+    expect(markup).toContain('data-depth="1"');
+    expect(markup).toContain('1 项子任务');
   });
 
   it('renders project groups collapsed before the user opens them', () => {

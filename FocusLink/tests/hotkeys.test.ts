@@ -117,4 +117,18 @@ describe('hotkey registration regression guards', () => {
       'CommandOrControl+Alt+Enter',
     );
   });
+
+  it('isolates a persisted modifiers-only shortcut instead of aborting all registration', async () => {
+    const hotkeys = await loadHotkeys();
+    const results = hotkeys.registerAllHotkeys(
+      settingsWithHotkeys({ stopTimer: 'CommandOrControl+Alt' }),
+    );
+
+    expect(results.find((result) => result.key === 'stopTimer')).toMatchObject({
+      success: false,
+      error: '快捷键格式无效，请至少包含一个修饰键和一个按键',
+    });
+    expect(hotkeys.getRegistrationStatus().registered.toggleTimer).toBeDefined();
+    expect(hotkeys.getRegistrationStatus().registered.toggleWindow).toBeDefined();
+  });
 });

@@ -417,8 +417,6 @@ export function MiniWindow() {
       onDoubleClick={collapsed ? handleExpand : undefined}
       title={collapsed ? '点击箭头展开；拖离屏幕边缘也会自动展开' : undefined}
     >
-      <span className="mini-dock-cue" aria-hidden="true" />
-
       <AnimatePresence mode="sync" initial={false}>
         {collapsed ? (
           <motion.section

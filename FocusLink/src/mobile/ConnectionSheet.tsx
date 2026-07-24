@@ -1,11 +1,14 @@
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { MobileConnectionPreferences } from './preferences';
+import { exchangeDeviceSyncPairingCode } from './syncClient';
 
 export interface ConnectionSheetProps {
   value: MobileConnectionPreferences;
   syncing: boolean;
   hasSavedToken: boolean;
+  deviceId: string;
+  initialPairingCode?: string;
   onChange: (value: MobileConnectionPreferences) => void;
   onClose: () => void;
   onSave: () => void;
@@ -17,6 +20,8 @@ export function ConnectionSheet({
   value,
   syncing,
   hasSavedToken,
+  deviceId,
+  initialPairingCode,
   onChange,
   onClose,
   onSave,
@@ -27,6 +32,13 @@ export function ConnectionSheet({
   const endpointRef = useRef<HTMLInputElement>(null);
   const reduceMotion = useReducedMotion();
   const usesLoopback = isLoopbackEndpoint(value.endpoint);
+  const [pairingCode, setPairingCode] = useState(initialPairingCode ?? '');
+  const [pairingBusy, setPairingBusy] = useState(false);
+  const [pairingNotice, setPairingNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialPairingCode) setPairingCode(initialPairingCode);
+  }, [initialPairingCode]);
 
   useEffect(() => {
     const previousFocus =
@@ -135,6 +147,48 @@ export function ConnectionSheet({
               </p>
             </div>
           )}
+        </div>
+
+        <div className="form-field">
+          <label htmlFor="sync-pairing-code">电脑一次性配对码</label>
+          <input
+            id="sync-pairing-code"
+            type="text"
+            inputMode="text"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            maxLength={128}
+            placeholder="例如 A1B2C3D4"
+            value={pairingCode}
+            onChange={(event) => setPairingCode(event.target.value.trim().toUpperCase())}
+          />
+          <small>在电脑端“同步”设置中生成；成功换取令牌后立即失效。</small>
+          <button
+            className="field-quick-action"
+            type="button"
+            disabled={pairingBusy || pairingCode.length < 8}
+            onClick={() => {
+              setPairingBusy(true);
+              setPairingNotice(null);
+              void exchangeDeviceSyncPairingCode({
+                endpoint: value.endpoint,
+                code: pairingCode,
+                deviceId,
+              })
+                .then((token) => {
+                  onChange({ ...value, token });
+                  setPairingCode('');
+                  setPairingNotice('配对成功；请点击“保存并连接”完成设置。');
+                })
+                .catch((error) =>
+                  setPairingNotice(error instanceof Error ? error.message : String(error)),
+                )
+                .finally(() => setPairingBusy(false));
+            }}
+          >
+            {pairingBusy ? '正在配对…' : '使用一次性配对码'}
+          </button>
+          {pairingNotice && <small role="status">{pairingNotice}</small>}
         </div>
 
         <div className="form-field">

@@ -914,7 +914,7 @@ function assertResult(name, result, expected) {
       'viewport height',
     ],
     // Chromium's window.outerHeight includes a runner-specific invisible frame on some
-    // Windows images (for example 64px for a real 35px frameless BrowserWindow). The
+    // Windows images can include native capture padding around a real 44px frameless BrowserWindow. The
     // executable size contract is verified by the viewport, shell and PNG dimensions
     // below; outerWidth/outerHeight remain diagnostics and idempotence signals only.
     [result.bodyScroll[0] === expected.size.width, 'no horizontal overflow'],

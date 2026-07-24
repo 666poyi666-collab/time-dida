@@ -8,10 +8,16 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../app/store';
 import { ipcErrorMessage } from '../../app/ipcError';
 import type { AppSettings } from '@shared/types';
-import type { DeviceSyncStatus, TomatodoBridgeStatus } from '@shared/ipc/api';
+import type {
+  DeviceSyncPairingOffer,
+  DeviceSyncStatus,
+  TomatodoBridgeStatus,
+} from '@shared/ipc/api';
 import { APP_VERSION } from '@shared/version';
+import { createDeviceSyncPairingUrl } from '@shared/sync/pairingProtocol';
 import { resolveFontProfile, resolveTimerStyle } from '@shared/theme';
 import { motion } from 'framer-motion';
+import QRCode from 'qrcode';
 import { Icon } from '../../ui/Icon';
 import { TimerDial } from '../focus/TimerDial';
 import '../../styles/settings-motion.css';
@@ -148,6 +154,8 @@ export function SettingsPanel() {
   const [deviceSyncToken, setDeviceSyncToken] = useState('');
   const [deviceSyncSaving, setDeviceSyncSaving] = useState(false);
   const [deviceSyncRunning, setDeviceSyncRunning] = useState(false);
+  const [deviceSyncPairing, setDeviceSyncPairing] = useState<DeviceSyncPairingOffer | null>(null);
+  const [deviceSyncPairingQr, setDeviceSyncPairingQr] = useState<string | null>(null);
   useEffect(() => {
     window.focuslink.ticktick.status().then((s) => {
       setConnected(s.connected);
@@ -312,6 +320,60 @@ export function SettingsPanel() {
       await refreshDeviceSyncStatus();
     } finally {
       setDeviceSyncRunning(false);
+    }
+  };
+
+  const handleQuickDeviceSyncSetup = async () => {
+    setDeviceSyncSaving(true);
+    try {
+      const result = await window.focuslink.deviceSync.quickSetup();
+      setDeviceSyncStatus(result.status);
+      setDeviceSyncToken('');
+      setSettings(await window.focuslink.settings.get());
+      const bridgeMessage =
+        result.connectedAndroidDevices.length > 0
+          ? `，已连接 ${result.connectedAndroidDevices.length} 台安卓设备`
+          : '';
+      if (result.syncError) {
+        addToast(`同步服务已自动修复${bridgeMessage}；账本将在后台继续重试`, 'info');
+      } else if ((result.sync?.unresolvedConflicts ?? 0) > 0 || (result.sync?.rejected ?? 0) > 0) {
+        addToast(`同步服务已自动修复${bridgeMessage}；现有冲突记录已保留，未自动覆盖`, 'info');
+      } else {
+        addToast(`本机同步已开启并完成自检${bridgeMessage}`, 'success');
+      }
+    } catch (error) {
+      addToast(`自动连接失败：${ipcErrorMessage(error)}`, 'error');
+      await refreshDeviceSyncStatus();
+    } finally {
+      setDeviceSyncSaving(false);
+    }
+  };
+
+  const handleCreatePairingOffer = async () => {
+    setDeviceSyncSaving(true);
+    try {
+      const setup = await window.focuslink.deviceSync.quickSetup();
+      setDeviceSyncStatus(setup.status);
+      setSettings(await window.focuslink.settings.get());
+      const offer = await window.focuslink.deviceSync.createPairingOffer();
+      setDeviceSyncPairing(offer);
+      setDeviceSyncPairingQr(
+        await QRCode.toDataURL(
+          createDeviceSyncPairingUrl({
+            protocolVersion: offer.protocolVersion,
+            endpoint: offer.endpoint,
+            nonce: offer.nonce,
+            expiresAt: offer.expiresAt,
+          }),
+          { errorCorrectionLevel: 'M', margin: 1, width: 176 },
+        ),
+      );
+      addToast('一次性配对码已生成，2 分钟内使用且成功后立即失效', 'success');
+    } catch (error) {
+      setDeviceSyncPairingQr(null);
+      addToast(`无法生成配对码：${ipcErrorMessage(error)}`, 'error');
+    } finally {
+      setDeviceSyncSaving(false);
     }
   };
 
@@ -685,6 +747,9 @@ export function SettingsPanel() {
   const deviceSyncTransportUnavailable = /无法连接跨设备同步服务|跨设备同步请求超时/i.test(
     deviceSyncStatus?.lastError ?? '',
   );
+  const deviceSyncConflictOnly =
+    (deviceSyncStatus?.unresolvedConflicts ?? 0) > 0 &&
+    /未解决的跨设备冲突/i.test(deviceSyncStatus?.lastError ?? '');
 
   const tomatodoBridgeLabel = (() => {
     switch (tomatodoBridge?.state) {
@@ -1252,84 +1317,63 @@ export function SettingsPanel() {
           {activeTab === 'sync' && (
             <>
               <Section
-                title="FocusLink 跨设备同步"
-                desc="同步已结束账本；可选让 PC、网页与安卓端共同控制同一场实时专注。当前服务仍是自托管测试后端。"
+                title="手机 / 平板同步"
+                desc="电脑端自动常驻。首次点击开启，之后同一个按钮会自动检查并修复连接。"
               >
-                <Row label="启用跨设备同步" desc="结束后的会话、片段与暂停账本会在设备间同步">
-                  <Toggle
-                    label="启用跨设备同步"
-                    checked={settings.deviceSync.enabled}
-                    onChange={(enabled) =>
-                      update({
-                        deviceSync: { ...settings.deviceSync, enabled },
-                      })
-                    }
-                  />
+                <Row
+                  label={deviceSyncStatus?.configured ? '同步连接' : '开始同步'}
+                  desc="自动生成安全凭据、启动本机服务、检查连接并同步，不需要填写地址或令牌"
+                >
+                  <button
+                    type="button"
+                    className="btn-accent text-[11px]"
+                    onClick={() => void handleQuickDeviceSyncSetup()}
+                    disabled={deviceSyncSaving}
+                  >
+                    {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Refresh size="xs" />}
+                    {deviceSyncStatus?.configured ? '立即检查并修复' : '一键开启本机同步'}
+                  </button>
                 </Row>
                 <Row
-                  label="PC 参与实时专注"
-                  desc="启用后云端是活动计时的唯一事实源；断线时 PC 不会伪造已确认状态"
+                  label="连接手机 / 平板"
+                  desc="点一次即可自动开启服务并生成二维码；移动端扫码后会安全保存连接"
                 >
-                  <Toggle
-                    label="PC 参与实时专注"
-                    checked={settings.deviceSync.liveControlEnabled}
-                    onChange={(liveControlEnabled) =>
-                      update({
-                        deviceSync: { ...settings.deviceSync, liveControlEnabled },
-                      })
-                    }
-                  />
-                </Row>
-                <Row label="同步服务地址" desc="生产地址必须使用 HTTPS；HTTP 只允许本机测试服务">
-                  <input
-                    className="input min-w-[320px] font-mono text-xs"
-                    value={settings.deviceSync.endpoint}
-                    onChange={(event) =>
-                      updateDebounced({
-                        deviceSync: {
-                          ...settings.deviceSync,
-                          endpoint: event.target.value,
-                        },
-                      })
-                    }
-                    onBlur={() => void persistDebouncedSettings()}
-                    placeholder="http://127.0.0.1:18787"
-                  />
-                </Row>
-                <Row
-                  label="访问令牌"
-                  desc={
-                    deviceSyncStatus?.tokenConfigured
-                      ? '已由系统安全存储保护；留空不会覆盖现有令牌'
-                      : '测试服务启动时配置的 Bearer token'
-                  }
-                >
-                  <input
-                    className="input min-w-[260px] font-mono text-xs"
-                    type="password"
-                    value={deviceSyncToken}
-                    onChange={(event) => setDeviceSyncToken(event.target.value)}
-                    autoComplete="off"
-                    placeholder={
-                      deviceSyncStatus?.tokenConfigured ? '已保存（留空保持）' : '输入访问令牌'
-                    }
-                  />
-                </Row>
-                <Row label="自动同步" desc="启动、专注结束及后台周期检查时补传">
-                  <Toggle
-                    label="自动同步"
-                    checked={settings.deviceSync.autoSync}
-                    onChange={(autoSync) =>
-                      update({
-                        deviceSync: { ...settings.deviceSync, autoSync },
-                      })
-                    }
-                  />
+                  <div className="flex min-w-[320px] flex-col items-end gap-2">
+                    <button
+                      type="button"
+                      className="btn-outline text-[11px]"
+                      onClick={() => void handleCreatePairingOffer()}
+                      disabled={deviceSyncSaving}
+                    >
+                      <Icon.Link size="xs" />
+                      显示连接二维码
+                    </button>
+                    {deviceSyncPairing && deviceSyncPairing.expiresAt > Date.now() && (
+                      <div className="flex items-center gap-3 text-right text-[11px] leading-5 text-fg-muted">
+                        {deviceSyncPairingQr && (
+                          <img
+                            src={deviceSyncPairingQr}
+                            width={88}
+                            height={88}
+                            alt="FocusLink 一次性连接二维码"
+                            className="rounded-md border border-border bg-white p-1"
+                          />
+                        )}
+                        <div>
+                          <strong className="block font-mono text-base tracking-[0.18em] text-fg">
+                            {deviceSyncPairing.shortCode}
+                          </strong>
+                          <span className="block">扫码或在移动端填写短码 · 2 分钟内有效</span>
+                          <span className="block">二维码不包含长期令牌</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </Row>
                 <div
                   className={`settings-status-strip ${
                     deviceSyncStatus?.lastError
-                      ? deviceSyncTransportUnavailable
+                      ? deviceSyncTransportUnavailable || deviceSyncConflictOnly
                         ? 'tone-warning'
                         : 'tone-danger'
                       : deviceSyncStatus?.lastSyncAt
@@ -1341,7 +1385,9 @@ export function SettingsPanel() {
                   aria-live="polite"
                 >
                   <span className="settings-status-strip-icon">
-                    {deviceSyncStatus?.lastError && !deviceSyncTransportUnavailable ? (
+                    {deviceSyncStatus?.lastError &&
+                    !deviceSyncTransportUnavailable &&
+                    !deviceSyncConflictOnly ? (
                       <Icon.AlertCircle size="sm" />
                     ) : (
                       <Icon.Cloud size="sm" />
@@ -1350,9 +1396,11 @@ export function SettingsPanel() {
                   <div className="settings-status-strip-copy">
                     <p className="settings-status-strip-title">
                       {deviceSyncStatus?.lastError
-                        ? deviceSyncTransportUnavailable
-                          ? '同步服务未连接，配置已保存'
-                          : '跨设备同步失败'
+                        ? deviceSyncConflictOnly
+                          ? '同步已连接，有记录待确认'
+                          : deviceSyncTransportUnavailable
+                            ? '同步服务未连接，配置已保存'
+                            : '跨设备同步失败'
                         : deviceSyncStatus?.lastSyncAt
                           ? '账本已完成跨设备同步'
                           : deviceSyncStatus?.configured
@@ -1367,26 +1415,32 @@ export function SettingsPanel() {
                       </span>
                     </p>
                     <p className="settings-status-strip-desc">
-                      {deviceSyncStatus?.lastError
-                        ? deviceSyncStatus.lastError
-                        : deviceSyncStatus?.liveControlEnabled
-                          ? deviceSyncStatus.liveConnected
-                            ? `实时连接已确认 · rev ${deviceSyncStatus.liveRevision ?? 0} · ${deviceSyncStatus.liveState}${deviceSyncStatus.lastSyncAt ? ` · 上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}` : ''}`
-                            : `实时连接未确认；${deviceSyncStatus.lastSyncAt ? `上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')} · ` : ''}本机计时仍可使用，第三方凭据与本地路径不会上传`
-                          : deviceSyncStatus?.lastSyncAt
-                            ? `上次同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}`
-                            : '当前只同步已结束会话；第三方凭据与本地路径不会上传'}
+                      {deviceSyncConflictOnly
+                        ? `${deviceSyncStatus?.unresolvedConflicts ?? 0} 条记录存在设备间差异，已安全保留，不会自动覆盖`
+                        : deviceSyncStatus?.lastError
+                          ? deviceSyncStatus.lastError
+                          : deviceSyncStatus?.liveControlEnabled
+                            ? deviceSyncStatus.liveConnected
+                              ? `实时连接已确认 · rev ${deviceSyncStatus.liveRevision ?? 0} · ${deviceSyncStatus.liveState}${deviceSyncStatus.lastSyncAt ? ` · 上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}` : ''}`
+                              : `实时连接未确认；${deviceSyncStatus.lastSyncAt ? `上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')} · ` : ''}本机计时仍可使用，第三方凭据与本地路径不会上传`
+                            : deviceSyncStatus?.lastSyncAt
+                              ? `上次同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}`
+                              : '当前只同步已结束会话；第三方凭据与本地路径不会上传'}
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <button
                       type="button"
                       className="btn-outline text-[11px]"
-                      onClick={handleSaveDeviceSync}
+                      onClick={() => void handleQuickDeviceSyncSetup()}
                       disabled={deviceSyncSaving}
                     >
-                      {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Check size="xs" />}
-                      保存并连接
+                      {deviceSyncSaving ? (
+                        <Icon.Loader size="xs" spin />
+                      ) : (
+                        <Icon.Refresh size="xs" />
+                      )}
+                      自动修复
                     </button>
                     <button
                       type="button"
@@ -1408,22 +1462,79 @@ export function SettingsPanel() {
                   </div>
                 </div>
                 <details className="settings-disclosure mt-2.5">
-                  <summary>同步报错怎么处理</summary>
-                  <div className="space-y-1.5 text-xs leading-5 text-[var(--text-secondary)]">
-                    <p>
-                      <code>FL-SYNC-001</code> / <code>fetch failed</code>：实时服务地址不可达。
-                      关闭「PC
-                      参与实时专注」可继续使用本机计时；要做跨设备实时专注，请先启动同步服务并确认
-                      <code>/health</code> 返回 200。
-                    </p>
-                    <p>
-                      <code>FL-SYNC-002</code>
-                      ：已结束账本同步不可达。网络恢复后点击「立即同步」，本地记录不会丢失。
-                    </p>
-                    <p>
-                      完整错误编号、PowerShell 检查命令和日志位置见项目中的
-                      `backend-design/SYNC_TROUBLESHOOTING.md`。
-                    </p>
+                  <summary>高级设置</summary>
+                  <div className="space-y-3 pt-2">
+                    <Row label="启用同步">
+                      <Toggle
+                        label="启用同步"
+                        checked={settings.deviceSync.enabled}
+                        onChange={(enabled) =>
+                          update({ deviceSync: { ...settings.deviceSync, enabled } })
+                        }
+                      />
+                    </Row>
+                    <Row label="PC 实时专注">
+                      <Toggle
+                        label="PC 实时专注"
+                        checked={settings.deviceSync.liveControlEnabled}
+                        onChange={(liveControlEnabled) =>
+                          update({
+                            deviceSync: { ...settings.deviceSync, liveControlEnabled },
+                          })
+                        }
+                      />
+                    </Row>
+                    <Row label="自动同步">
+                      <Toggle
+                        label="自动同步"
+                        checked={settings.deviceSync.autoSync}
+                        onChange={(autoSync) =>
+                          update({ deviceSync: { ...settings.deviceSync, autoSync } })
+                        }
+                      />
+                    </Row>
+                    <Row label="服务地址" desc="远程地址必须使用 HTTPS">
+                      <input
+                        className="input min-w-[320px] font-mono text-xs"
+                        value={settings.deviceSync.endpoint}
+                        onChange={(event) =>
+                          updateDebounced({
+                            deviceSync: { ...settings.deviceSync, endpoint: event.target.value },
+                          })
+                        }
+                        onBlur={() => void persistDebouncedSettings()}
+                      />
+                    </Row>
+                    <Row
+                      label="访问令牌"
+                      desc={
+                        deviceSyncStatus?.tokenConfigured
+                          ? '已由 Windows 安全存储保护；留空保持不变'
+                          : '仅自定义服务需要手动填写'
+                      }
+                    >
+                      <input
+                        className="input min-w-[260px] font-mono text-xs"
+                        type="password"
+                        value={deviceSyncToken}
+                        onChange={(event) => setDeviceSyncToken(event.target.value)}
+                        autoComplete="off"
+                        placeholder={
+                          deviceSyncStatus?.tokenConfigured ? '已安全保存' : '输入访问令牌'
+                        }
+                      />
+                    </Row>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        className="btn-outline text-[11px]"
+                        onClick={handleSaveDeviceSync}
+                        disabled={deviceSyncSaving}
+                      >
+                        <Icon.Check size="xs" />
+                        保存高级设置
+                      </button>
+                    </div>
                   </div>
                 </details>
               </Section>

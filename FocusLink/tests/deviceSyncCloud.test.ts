@@ -182,6 +182,50 @@ describe('device sync test cloud server', () => {
     expect(allowed.headers.get('access-control-allow-origin')).toBe(ALLOWED_ORIGIN);
   });
 
+  it('keeps pairing unavailable unless an exchange is configured', async () => {
+    const response = await fetch(`${baseUrl}/v1/pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce: 'A1B2C3D4', deviceId: 'mobile-test-device' }),
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it('exchanges a one-time pairing nonce without requiring or echoing credentials', async () => {
+    await server.close();
+    let available = true;
+    server = createDeviceSyncCloudServer({
+      tokenAccounts: new Map([[TOKEN_A, ACCOUNT_A]]),
+      pairingExchange: (nonce, deviceId) => {
+        if (!available || nonce !== 'A1B2C3D4' || deviceId !== 'mobile-test-device') return null;
+        available = false;
+        return { accessToken: TOKEN_A };
+      },
+    });
+    baseUrl = (await server.listen()).url;
+
+    const first = await fetch(`${baseUrl}/v1/pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce: 'A1B2C3D4', deviceId: 'mobile-test-device' }),
+    });
+    expect(first.status).toBe(200);
+    await expect(first.json()).resolves.toEqual({
+      protocolVersion: DEVICE_SYNC_PROTOCOL_VERSION,
+      accessToken: TOKEN_A,
+    });
+
+    const replay = await fetch(`${baseUrl}/v1/pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce: 'A1B2C3D4', deviceId: 'mobile-test-device' }),
+    });
+    expect(replay.status).toBe(410);
+    await expect(replay.json()).resolves.toMatchObject({
+      error: { code: 'pairing_expired' },
+    });
+  });
+
   it('rejects request bodies larger than 1 MiB', async () => {
     const response = await fetch(`${baseUrl}/v1/sync`, {
       method: 'POST',

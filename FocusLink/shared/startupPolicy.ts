@@ -11,6 +11,14 @@ export function getLoginItemSettings(autoStart: boolean): {
   };
 }
 
+export function shouldRunDeviceSyncAtLogin(input: {
+  autoStart: boolean;
+  syncEnabled: boolean;
+  autoSync: boolean;
+}): boolean {
+  return input.autoStart || (input.syncEnabled && input.autoSync);
+}
+
 export function shouldStartHiddenToTray(
   startMinimizedToTray: boolean,
   argv: readonly string[],

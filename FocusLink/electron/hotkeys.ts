@@ -42,12 +42,20 @@ export function setHotkeyHandlers(h: HotkeyHandlers): void {
 /** 注册单个快捷键，返回是否成功 */
 function registerOne(accelerator: string, action: HotkeyAction): boolean {
   if (!accelerator || accelerator.trim() === '') return false;
-  // 先尝试注销同名，并同步清理内部注册表
-  globalShortcut.unregister(accelerator);
-  registered.delete(accelerator);
-  const ok = globalShortcut.register(accelerator, () => {
-    onHotkeyTriggered(accelerator, action);
-  });
+  let ok = false;
+  try {
+    // 先尝试注销同名，并同步清理内部注册表
+    globalShortcut.unregister(accelerator);
+    registered.delete(accelerator);
+    ok = globalShortcut.register(accelerator, () => {
+      onHotkeyTriggered(accelerator, action);
+    });
+  } catch (error) {
+    logger.warn('hotkey', `invalid accelerator: ${accelerator} -> ${action}`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
   if (ok) {
     registered.set(accelerator, action);
     logger.info('hotkey', `registered: ${accelerator} -> ${action}`);
@@ -115,12 +123,17 @@ export function registerAllHotkeys(settings: AppSettings): RegistrationResult[] 
   ];
 
   for (const [action, accel] of entries) {
-    const success = registerOne(accel, action);
+    const valid = isValidAccelerator(accel);
+    const success = valid && registerOne(accel, action);
     results.push({
       key: action,
       accelerator: accel,
       success,
-      error: success ? undefined : '快捷键注册失败，可能与其他软件冲突',
+      error: success
+        ? undefined
+        : valid
+          ? '快捷键注册失败，可能与其他软件冲突'
+          : '快捷键格式无效，请至少包含一个修饰键和一个按键',
     });
   }
   lastResults = results;
@@ -199,9 +212,28 @@ export function unregisterAll(): void {
 /** 验证快捷键格式是否合法（Electron accelerator） */
 export function isValidAccelerator(accel: string): boolean {
   if (!accel) return false;
-  const parts = accel.split('+');
+  const parts = accel.split('+').map((part) => part.trim());
   if (parts.length < 2) return false;
-  return true;
+  if (parts.some((part) => part.length === 0)) return false;
+  const modifiers = new Set([
+    'command',
+    'cmd',
+    'control',
+    'ctrl',
+    'commandorcontrol',
+    'cmdorctrl',
+    'alt',
+    'option',
+    'altgr',
+    'shift',
+    'super',
+    'meta',
+  ]);
+  const normalized = parts.map((part) => part.toLowerCase());
+  return (
+    normalized.some((part) => modifiers.has(part)) &&
+    normalized.some((part) => !modifiers.has(part))
+  );
 }
 
 /** 测试快捷键能否注册（不真正绑定 handler，注册后立即注销） */

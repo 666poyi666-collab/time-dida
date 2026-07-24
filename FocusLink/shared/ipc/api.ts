@@ -208,6 +208,14 @@ export interface DeviceSyncStatus {
   unresolvedConflicts: number;
 }
 
+export interface DeviceSyncPairingOffer {
+  protocolVersion: 1;
+  endpoint: string;
+  nonce: string;
+  shortCode: string;
+  expiresAt: number;
+}
+
 export interface DeviceSyncRunResult {
   pushed: number;
   pulled: number;
@@ -217,6 +225,13 @@ export interface DeviceSyncRunResult {
   rejected: number;
   cursor: string;
   unresolvedConflicts: number;
+}
+
+export interface DeviceSyncQuickSetupResult {
+  status: DeviceSyncStatus;
+  sync: DeviceSyncRunResult | null;
+  syncError: string | null;
+  connectedAndroidDevices: string[];
 }
 
 export interface ResyncSegmentResult {
@@ -450,7 +465,9 @@ export interface FocusLinkAPI {
   deviceSync: {
     status(): Promise<DeviceSyncStatus>;
     configure(input: DeviceSyncConfigureInput): Promise<DeviceSyncStatus>;
+    quickSetup(): Promise<DeviceSyncQuickSetupResult>;
     syncNow(): Promise<DeviceSyncRunResult>;
+    createPairingOffer(): Promise<DeviceSyncPairingOffer>;
   };
   tomatodo: {
     syncSegment(segmentId: string): Promise<TomatodoSyncSegmentResult>;

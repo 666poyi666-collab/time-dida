@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Maximize2, Minimize2, PictureInPicture2 } from 'lucide-react';
 import {
   compactDeviceId,
   formatClockDuration,
@@ -14,8 +15,17 @@ import type { SyncedTask } from '@shared/sync/taskSnapshotProtocol';
 import type { LiveSnapshotSource } from './liveSnapshotPolicy';
 import { MobileConfirmDialog } from './MobileConfirmDialog';
 import { MobileTemporalRibbon } from './MobileTemporalRibbon';
+import { flattenSyncedTaskTree } from './taskBrowserModel';
 
 export type MobileFocusCommand = 'start' | 'pause' | 'resume' | 'finish';
+
+export interface NativeFocusConsoleControls {
+  available: boolean;
+  immersiveSystemBars: boolean;
+  pictureInPictureSupported: boolean;
+  pictureInPictureActive: boolean;
+  busy: 'immersive' | 'picture-in-picture' | null;
+}
 
 export interface FocusConsoleProps {
   snapshot: LiveFocusSnapshotLike | null;
@@ -32,6 +42,11 @@ export interface FocusConsoleProps {
   onOpenConnection: () => void;
   onOpenTasks: () => void;
   snapshotSource: LiveSnapshotSource;
+  nativeSystemControls: NativeFocusConsoleControls;
+  onToggleImmersiveSystemBars: () => void;
+  onEnterPictureInPicture: () => void;
+  localOfflineMode: boolean;
+  allowOfflineStart: boolean;
 }
 
 export function FocusConsole({
@@ -49,11 +64,17 @@ export function FocusConsole({
   onOpenConnection,
   onOpenTasks,
   snapshotSource,
+  nativeSystemControls,
+  onToggleImmersiveSystemBars,
+  onEnterPictureInPicture,
+  localOfflineMode,
+  allowOfflineStart,
 }: FocusConsoleProps) {
   const [now, setNow] = useState(() => Date.now());
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
   const current = snapshot ?? idleLiveFocusSnapshot(0, now);
   const active = current.state !== 'idle';
+  const taskEntries = flattenSyncedTaskTree(tasks);
 
   useEffect(() => {
     setNow(Date.now());
@@ -76,6 +97,8 @@ export function FocusConsole({
     connection,
     pending: pendingCommand !== null,
     title: titleDraft,
+    localSession: localOfflineMode,
+    allowOfflineStart,
   });
   const connectionCopy = liveConnectionCopy(connection, snapshot !== null);
   const recentDevice =
@@ -99,9 +122,11 @@ export function FocusConsole({
         </div>
         <span className="focus-state-chip" key={current.state}>
           <i aria-hidden="true" />
-          {showingCachedSnapshot
-            ? `缓存 · ${liveStateLabel(current.state)}`
-            : liveStateLabel(current.state)}
+          {localOfflineMode
+            ? `本机 · ${liveStateLabel(current.state)}`
+            : showingCachedSnapshot
+              ? `缓存 · ${liveStateLabel(current.state)}`
+              : liveStateLabel(current.state)}
         </span>
       </header>
 
@@ -117,25 +142,22 @@ export function FocusConsole({
               <div className="focus-title-field">
                 <span>从电脑任务清单选择</span>
                 <div className="focus-task-picker">
+                  <select
+                    id="focus-task"
+                    value={selectedTaskId}
+                    onChange={(event) => onTaskChange(event.target.value)}
+                    disabled={pendingCommand !== null}
+                  >
+                    <option value="">自由专注（不关联任务）</option>
+                    {taskEntries.map(({ task, depth, hasChildren }) => (
+                      <option key={`${task.source}:${task.id}`} value={task.id}>
+                        {`${'　'.repeat(depth)}${depth > 0 ? '└ ' : ''}${task.title}${hasChildren ? ' ▸' : ''}`}
+                      </option>
+                    ))}
+                  </select>
                   <button type="button" onClick={onOpenTasks} disabled={pendingCommand !== null}>
-                    <span>
-                      {tasks.find((task) => task.id === selectedTaskId)?.title || '浏览电脑任务'}
-                    </span>
-                    <small>
-                      {selectedTaskId
-                        ? '已关联'
-                        : `${tasks.filter((task) => !task.isCompleted).length} 项待办`}
-                    </small>
+                    浏览任务树
                   </button>
-                  {selectedTaskId && (
-                    <button
-                      type="button"
-                      onClick={() => onTaskChange('')}
-                      disabled={pendingCommand !== null}
-                    >
-                      自由专注
-                    </button>
-                  )}
                 </div>
                 <small>
                   {tasks.length > 0
@@ -175,13 +197,15 @@ export function FocusConsole({
             </span>
             <strong>{formatClockDuration(durations.primaryElapsedMs)}</strong>
             <small>
-              {showingCachedSnapshot
-                ? 'LAST CONFIRMED · 等待云端确认，控制已锁定'
-                : current.state === 'paused'
-                  ? `有效专注 ${formatClockDuration(durations.activeElapsedMs)} 已冻结`
-                  : current.state === 'running'
-                    ? 'LIVE · 状态按服务端确认时刻逐秒外推'
-                    : 'IDLE · 连接云端后由任一设备控制'}
+              {localOfflineMode
+                ? 'LOCAL · 结束后安全保存，联网自动补传'
+                : showingCachedSnapshot
+                  ? 'LAST CONFIRMED · 等待云端确认，控制已锁定'
+                  : current.state === 'paused'
+                    ? `有效专注 ${formatClockDuration(durations.activeElapsedMs)} 已冻结`
+                    : current.state === 'running'
+                      ? 'LIVE · 状态按服务端确认时刻逐秒外推'
+                      : 'IDLE · 连接云端后由任一设备控制'}
             </small>
           </div>
 
@@ -208,6 +232,54 @@ export function FocusConsole({
             />
             <RuntimeMetric label="总历时" value={formatClockDuration(durations.wallElapsedMs)} />
           </div>
+
+          {active && nativeSystemControls.available && (
+            <section className="focus-system-tools" aria-label="平板专注显示">
+              <div className="focus-system-tools-copy">
+                <strong>平板专注显示</strong>
+                <small>
+                  {nativeSystemControls.pictureInPictureActive
+                    ? '画中画正在运行'
+                    : nativeSystemControls.immersiveSystemBars
+                      ? '沉浸显示已开启，轻触屏幕边缘可暂时唤出系统栏'
+                      : '进入沉浸显示可收起系统状态栏与导航栏'}
+                </small>
+              </div>
+              <div className="focus-system-tool-actions">
+                <button
+                  className={nativeSystemControls.immersiveSystemBars ? 'is-active' : ''}
+                  type="button"
+                  onClick={onToggleImmersiveSystemBars}
+                  disabled={nativeSystemControls.busy !== null}
+                  aria-pressed={nativeSystemControls.immersiveSystemBars}
+                  title={nativeSystemControls.immersiveSystemBars ? '退出沉浸显示' : '进入沉浸显示'}
+                >
+                  {nativeSystemControls.immersiveSystemBars ? (
+                    <Minimize2 aria-hidden="true" />
+                  ) : (
+                    <Maximize2 aria-hidden="true" />
+                  )}
+                  <span>{nativeSystemControls.immersiveSystemBars ? '退出沉浸' : '沉浸显示'}</span>
+                </button>
+                {nativeSystemControls.pictureInPictureSupported && (
+                  <button
+                    type="button"
+                    onClick={onEnterPictureInPicture}
+                    disabled={
+                      nativeSystemControls.busy !== null ||
+                      nativeSystemControls.pictureInPictureActive
+                    }
+                    title="进入系统画中画"
+                  >
+                    <PictureInPicture2 aria-hidden="true" />
+                    <span>
+                      {nativeSystemControls.busy === 'picture-in-picture' ? '正在进入…' : '画中画'}
+                    </span>
+                  </button>
+                )}
+              </div>
+            </section>
+          )}
 
           <div className="focus-actions">
             {current.state === 'idle' && (
