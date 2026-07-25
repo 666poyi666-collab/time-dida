@@ -2,7 +2,7 @@
 
 FocusLink 是一个本地优先的 Windows 桌面专注工具：主进程精确记录专注、暂停与自然跨度，把片段关联到滴答清单任务，并通过彼此独立的队列同步滴答清单与番茄 To-do。
 
-> 当前版本：v0.12.43
+> 当前版本：v0.12.44
 >
 > 版本主题：系统计时表面 · 安全配对 · 任务层级
 
@@ -179,9 +179,9 @@ RELEASE_NOTES.md
 
 | 版本 | 本地安装版 | 版本说明 |
 | --- | --- | --- |
-| 0.12.43 | `release-v01243/FocusLink-0.12.43-x64.exe`（三端自动配对与同版交付） | [v0.12.43](release-v01243/RELEASE_NOTES.md) |
+| 0.12.44 | 待完成正式打包（三端自动配对与同版交付） | 待生成 |
+| 0.12.43 | CI 测试门禁失败，未创建 GitHub Release | [v0.12.43](release-v01243/RELEASE_NOTES.md) |
 | 0.12.42 | 标签门禁失败，未创建 GitHub Release | [v0.12.42](release-v01242/RELEASE_NOTES.md) |
-| 0.12.29 | `release-v01229/FocusLink-0.12.29-x64.exe`（双机自动配对与系统计时表面验证） | [v0.12.29](release-v01229/RELEASE_NOTES.md) |
 
 每次版本迭代必须同步更新 `CHANGELOG.md`、本地 `RELEASE_NOTES.md` 和 GitHub Release，并上传安装版、便携版与 SHA256。只推送代码或 tag 不算发布完成。
 
@@ -205,7 +205,7 @@ v0.12.11 因校验表格式被阻断；v0.12.12 的源码、回归和便携版�
 
 ### 当前发布
 
-- [v0.12.43 Release 正文](release-v01243/RELEASE_NOTES.md)
+- v0.12.44 Release 正文将在正式包生成后写入 `release-v01244/RELEASE_NOTES.md`
 - [版本历史](CHANGELOG.md)
 
 ## License

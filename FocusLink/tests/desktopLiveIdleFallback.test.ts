@@ -68,8 +68,9 @@ describe('desktop live idle fallback', () => {
     });
     const controller = new FocusTimerController(local as never);
     controller.reloadConfiguration();
-    for (let i = 0; i < 8; i += 1) await Promise.resolve();
-    expect((controller as unknown as { liveMode: boolean }).liveMode).toBe(true);
+    await vi.waitFor(() => {
+      expect((controller as unknown as { liveMode: boolean }).liveMode).toBe(true);
+    });
     await vi.advanceTimersByTimeAsync(500);
     expect((controller as unknown as { liveMode: boolean }).liveMode).toBe(false);
     const result = await controller.startWithTask('task', 'local', '数学');
@@ -104,8 +105,9 @@ describe('desktop live idle fallback', () => {
     });
     const controller = new FocusTimerController(local as never);
     controller.reloadConfiguration();
-    for (let i = 0; i < 8; i += 1) await Promise.resolve();
-    expect((controller as unknown as { liveMode: boolean }).liveMode).toBe(true);
+    await vi.waitFor(() => {
+      expect((controller as unknown as { liveMode: boolean }).liveMode).toBe(true);
+    });
 
     const start = controller.startWithTask('task', 'local', '数学');
     await new Promise((resolve) => setTimeout(resolve, 600));
