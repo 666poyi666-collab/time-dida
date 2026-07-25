@@ -113,6 +113,8 @@ For dida sync changes, also run a real temporary dida task test:
 ## Release Rules
 
 - Follow `FocusLink/backend-design/TEST_AND_RELEASE.md`; its gates are mandatory.
+- Upload to GitHub only on five-version checkpoints: patch numbers ending in `0` or `5`. Intermediate patch versions must remain local and must not push `main`, create a public tag, or create a GitHub Release.
+- Every intermediate patch still requires a completed CHANGELOG entry, the three-device version matrix, a four-file local release directory, and a backed-up Android APK. The next checkpoint release includes the accumulated changes.
 - Bump `FocusLink/package.json`, `FocusLink/package-lock.json`, `FocusLink/shared/version.ts`, `FocusLink/electron-builder.yml`, root README, root CHANGELOG, both design-spec versions, and release notes together.
 - Use release directories like `release-v029` for `0.2.9` and `release-v0210` for `0.2.10`.
 - Keep only the latest three release directories in the repo.

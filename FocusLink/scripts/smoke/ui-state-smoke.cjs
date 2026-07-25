@@ -48,7 +48,10 @@ function delay(ms) {
 
 async function waitForPage() {
   let lastError;
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 240; attempt += 1) {
+    if (app.exitCode !== null) {
+      throw new Error(`Electron exited before exposing a page (code ${app.exitCode})`);
+    }
     try {
       if (!port) {
         const activePortFile = path.join(userDataDir, 'DevToolsActivePort');
