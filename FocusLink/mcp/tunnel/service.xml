@@ -1,0 +1,11 @@
+<service>
+  <id>FoxlinkSecureMcpTunnel</id><name>Foxlink Secure MCP Tunnel</name>
+  <description>Outbound Secure MCP Tunnel for the independent Foxlink MCP.</description>
+  <executable>powershell.exe</executable>
+  <arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%BASE%\tunnel\run-service.ps1"</arguments>
+  <workingdirectory>%BASE%</workingdirectory><depend>PoyiFoxlinkMcp</depend>
+  <startmode>Automatic</startmode><delayedAutoStart>true</delayedAutoStart><stoptimeout>20sec</stoptimeout>
+  <onfailure action="restart" delay="5 sec"/><onfailure action="restart" delay="15 sec"/><onfailure action="restart" delay="60 sec"/>
+  <logpath>%ProgramData%\Poyi\FoxlinkMcp\service-logs\tunnel</logpath><log mode="roll-by-size"><sizeThreshold>10240</sizeThreshold><keepFiles>5</keepFiles></log>
+</service>
+

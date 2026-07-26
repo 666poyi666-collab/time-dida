@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "foxlink-mcp"
+version = "0.1.0"
+description = "Independent MCP server for Foxlink"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "httpx>=0.28,<1",
+  "mcp>=1.27,<2",
+  "pydantic>=2.11,<3",
+  "starlette>=1.3,<2",
+  "uvicorn[standard]>=0.35,<1",
+  "pywin32>=312; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9,<10", "pytest-asyncio>=1.1,<2", "respx>=0.22,<1", "ruff>=0.12,<1", "pyright>=1.1.403,<2"]
+
+[project.scripts]
+foxlink-mcp = "foxlink_mcp.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["foxlink_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pyright]
+typeCheckingMode = "strict"
+include = ["foxlink_mcp"]

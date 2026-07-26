@@ -1,0 +1,24 @@
+<service>
+  <id>PoyiFoxlinkMcp</id>
+  <name>Poyi Foxlink MCP</name>
+  <description>Independent local MCP server for Foxlink.</description>
+  <executable>powershell.exe</executable>
+  <arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%BASE%\service\run-service.ps1"</arguments>
+  <stopexecutable>powershell.exe</stopexecutable>
+  <stoparguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%BASE%\service\stop-service.ps1"</stoparguments>
+  <workingdirectory>%BASE%</workingdirectory>
+  <env name="FOXLINK_MCP_DATA_DIR" value="%ProgramData%\Poyi\FoxlinkMcp" />
+  <env name="FOXLINK_BUSINESS_API_TOKEN_FILE" value="%ProgramData%\Poyi\FoxlinkMcp\business-api-token" />
+  <env name="PYTHONUTF8" value="1" />
+  <env name="PYTHONUNBUFFERED" value="1" />
+  <env name="PYTHONNOUSERSITE" value="1" />
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <stoptimeout>20sec</stoptimeout>
+  <onfailure action="restart" delay="5 sec" />
+  <onfailure action="restart" delay="15 sec" />
+  <onfailure action="restart" delay="60 sec" />
+  <resetfailure>1 hour</resetfailure>
+  <logpath>%ProgramData%\Poyi\FoxlinkMcp\service-logs\mcp</logpath>
+  <log mode="roll-by-size"><sizeThreshold>10240</sizeThreshold><keepFiles>5</keepFiles></log>
+</service>

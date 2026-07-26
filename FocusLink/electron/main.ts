@@ -67,6 +67,7 @@ import {
   closeEmbeddedDeviceSyncServer,
   reconcileEmbeddedDeviceSyncServer,
 } from './sync/embeddedDeviceSyncServer.js';
+import { startFoxlinkBusinessApi, type FoxlinkBusinessApi } from './mcp/businessApi.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -101,6 +102,7 @@ const autoSyncSessions = new Set<string>();
 const autoSyncInFlight = new Set<Promise<void>>();
 let runtimeUiInitialized = false;
 let snapshotUnsubscribe: (() => void) | null = null;
+let foxlinkBusinessApi: FoxlinkBusinessApi | null = null;
 
 const RENDERER_UNRESPONSIVE_GRACE_MS = 5_000;
 const RENDERER_RECOVERY_WINDOW_MS = 60_000;
@@ -1099,6 +1101,7 @@ app.whenReady().then(() => {
   localTimer = new TimerManager();
   timer = new FocusTimerController(localTimer);
   timer.setSegmentBehavior(settings.segmentBehavior);
+  foxlinkBusinessApi = startFoxlinkBusinessApi(timer);
 
   mainWindow = createMainWindow();
 
@@ -1329,6 +1332,8 @@ app.on('before-quit', (e) => {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+    await foxlinkBusinessApi?.close();
+    foxlinkBusinessApi = null;
     closeDatabase();
     app.exit(0);
   })();
