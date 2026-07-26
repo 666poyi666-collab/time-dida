@@ -1430,14 +1430,155 @@
   background: transparent;
   box-shadow: none;
 }
+/* 任务页（3单重构）：工位横幅 + 索引｜执行列表｜详情 三栏执行台 */
+.task-workspace-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.task-console-word {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-console-count {
+  flex-shrink: 0;
+  color: rgb(var(--app-subtle));
+  font-size: 11px;
+}
+.task-console-stat {
+  color: rgb(var(--app-muted));
+  font-size: 11.5px;
+}
+.task-console-stat b {
+  margin-left: 2px;
+  color: rgb(var(--app-text));
+  font-weight: 600;
+}
 .task-workspace-shell {
-  grid-template-columns: 224px minmax(0, 1fr);
+  grid-template-columns: 224px minmax(0, 1fr) 332px;
+}
+@media (max-width: 1280px) {
+  .task-workspace-shell {
+    grid-template-columns: 224px minmax(0, 1fr);
+  }
+  .task-inspector {
+    display: none;
+  }
 }
 .task-navigation {
   border: 0;
   border-right: 1px solid rgb(var(--app-border));
   border-radius: 0;
   background: rgb(var(--app-surface) / 0.5);
+}
+
+/* 详情栏：选中任务的档案 */
+.task-inspector {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  border-left: 1px solid rgb(var(--app-border));
+  background: rgb(var(--app-surface) / 0.55);
+}
+.task-inspector-empty {
+  margin: auto;
+  max-width: 240px;
+}
+.task-inspector-sheet {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 20px 22px;
+  animation: temporal-enter var(--motion-normal) var(--ease-fluid) both;
+}
+.task-inspector-kicker {
+  color: rgb(var(--app-subtle));
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+}
+.task-inspector-title {
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.32;
+}
+.task-inspector-head .task-current-chip {
+  margin-top: 8px;
+}
+.task-inspector-meta {
+  margin: 0;
+  border-top: 1px solid rgb(var(--app-border));
+}
+.task-inspector-meta > div {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgb(var(--app-border));
+}
+.task-inspector-meta dt {
+  color: rgb(var(--app-subtle));
+  font-size: 11px;
+}
+.task-inspector-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.task-inspector-meta dd.overdue {
+  color: rgb(var(--app-warning));
+  font-weight: 600;
+}
+.task-inspector-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.task-inspector-children h3 {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgb(var(--app-muted));
+}
+.task-inspector-children ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.task-inspector-children li {
+  padding: 6px 0;
+  border-bottom: 1px solid rgb(var(--app-border));
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.task-inspector-children li.done {
+  color: rgb(var(--app-subtle));
+  text-decoration: line-through;
+}
+.task-inspector-children p {
+  margin-top: 7px;
+  color: rgb(var(--app-subtle));
+  font-size: 10.5px;
+}
+.task-inspector-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid rgb(var(--app-border));
+}
+
+/* 列表选中态：右缘 2px 指向详情栏的连接刻度 */
+.task-workbench-row.is-selected,
+.task-completed-row.is-selected {
+  background: rgb(var(--app-accent) / 0.06);
+  box-shadow: inset -2px 0 0 rgb(var(--app-accent) / 0.6);
 }
 .task-view-list button,
 .task-project-list button,
@@ -1457,12 +1598,13 @@
   border: 0;
   border-radius: 0;
   background: transparent;
-}
-.task-workbench-header {
-  min-height: 112px;
-  border-bottom: 1px solid rgb(var(--app-border));
+  /* 工位横幅接管了旧页头：工作台只剩 工具条 + 列表 两行 */
+  grid-template-rows: auto minmax(0, 1fr);
 }
 .task-workbench-toolbar {
+  margin: 0;
+  padding: 10px 24px;
+  border-top: 0;
   border-bottom: 1px solid rgb(var(--app-border));
   background: rgb(var(--app-surface) / 0.4);
 }

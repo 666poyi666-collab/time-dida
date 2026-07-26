@@ -63,6 +63,8 @@ export function TaskWorkspace() {
   const [completionGraceIds, setCompletionGraceIds] = useState<Set<string>>(new Set());
   const [undoCompletion, setUndoCompletion] = useState<UndoCompletion | null>(null);
   const [visibleLimit, setVisibleLimit] = useState(TASK_PAGE_SIZE);
+  // 详情栏选中态：选择与开始是两个独立动作（与移动端树/详情双栏同一契约）。
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const undoTimerRef = useRef<number | null>(null);
 
@@ -156,6 +158,19 @@ export function TaskWorkspace() {
   ).length;
   // 已完成/未完成分组切换淡入：reduced-motion 时仅保留 140ms 透明度过渡。
   const reduceMotion = useReducedMotion();
+
+  // 详情栏解析：优先取显式选中的任务；没有选中时回落到正在专注的当前任务。
+  const selectedTask = useMemo(() => {
+    const explicit = selectedTaskId ? findTaskById(tasks, selectedTaskId) : null;
+    if (explicit) return explicit;
+    const currentId = snapshot?.currentTaskId;
+    if (!currentId) return null;
+    return findTaskById(tasks, currentId);
+  }, [selectedTaskId, snapshot?.currentTaskId, tasks]);
+  const selectedParentTitle = useMemo(
+    () => (selectedTask ? findParentTitle(tasks, selectedTask.id) : null),
+    [selectedTask, tasks],
+  );
 
   const applyUpdatedTask = useCallback(
     (updated: Task) => {
@@ -280,8 +295,50 @@ export function TaskWorkspace() {
   const hasMore = displayedCount > visibleLimit;
 
   return (
-    <div className="task-workspace-page h-full overflow-hidden px-5 py-4">
-      <div className="task-workspace-shell mx-auto grid h-full max-w-[1280px] overflow-hidden">
+    <div className="task-workspace-page h-full overflow-hidden">
+      {/* 工位横幅：视图身份 → 全局任务读数 → 同步与刷新 */}
+      <header className="task-console view-console">
+        <div className="console-identity">
+          <span className="console-kicker">任务 · 执行台</span>
+          <span className="task-console-word">{filter === 'open' ? '待完成' : '完成档案'}</span>
+          <span className="task-console-count">{displayedCount} 项</span>
+        </div>
+        <div className="console-readout">
+          <span className="task-console-stat">
+            待完成 <b className="timer-digit">{counts.open}</b>
+          </span>
+          <span className="task-console-stat">
+            已完成 <b className="timer-digit">{completedLoaded ? counts.completed : '—'}</b>
+          </span>
+          {pendingSyncCount > 0 && (
+            <span className="task-pending-label">{pendingSyncCount} 条未同步</span>
+          )}
+        </div>
+        <div className="console-actions task-workbench-actions">
+          <button
+            type="button"
+            className="task-icon-action"
+            onClick={syncAll}
+            disabled={syncing}
+            aria-label="同步到滴答清单与番茄 Todo"
+            title="同步到滴答清单与番茄 Todo"
+          >
+            {syncing ? <Spinner size="sm" /> : <Icon.Cloud size="sm" />}
+          </button>
+          <button
+            type="button"
+            className="task-icon-action"
+            onClick={() => refresh(filter === 'completed', true, completedDays, true)}
+            disabled={refreshing}
+            aria-label="刷新滴答清单"
+            title="刷新滴答清单"
+          >
+            <Icon.Refresh size="sm" spin={refreshing} />
+          </button>
+        </div>
+      </header>
+
+      <div className="task-workspace-shell grid h-full overflow-hidden">
         <aside className="task-navigation" aria-label="任务视图与清单">
           <div className="task-navigation-heading">
             <span className="task-product-mark">
@@ -356,45 +413,6 @@ export function TaskWorkspace() {
         </aside>
 
         <section className="task-workbench">
-          <header className="task-workbench-header">
-            <div className="task-workbench-title">
-              <span className="task-workbench-kicker">
-                {filter === 'open' ? '执行序列' : '完成档案'} · {displayedCount} 项
-              </span>
-              <h1 className="text-page-title">{filter === 'open' ? '待完成' : '已完成'}</h1>
-              <p>
-                {filter === 'open'
-                  ? '选择一件事，完成或直接开始专注。'
-                  : `最近 ${completedDays} 天 · 可随时取消完成。`}
-              </p>
-            </div>
-            <div className="task-workbench-actions">
-              {pendingSyncCount > 0 && (
-                <span className="task-pending-label">{pendingSyncCount} 条未同步</span>
-              )}
-              <button
-                type="button"
-                className="task-icon-action"
-                onClick={syncAll}
-                disabled={syncing}
-                aria-label="同步到滴答清单与番茄 Todo"
-                title="同步到滴答清单与番茄 Todo"
-              >
-                {syncing ? <Spinner size="sm" /> : <Icon.Cloud size="sm" />}
-              </button>
-              <button
-                type="button"
-                className="task-icon-action"
-                onClick={() => refresh(filter === 'completed', true, completedDays, true)}
-                disabled={refreshing}
-                aria-label="刷新滴答清单"
-                title="刷新滴答清单"
-              >
-                <Icon.Refresh size="sm" spin={refreshing} />
-              </button>
-            </div>
-          </header>
-
           <div className="task-workbench-toolbar">
             <label className="task-workspace-search">
               <Icon.Search size="sm" />
@@ -494,6 +512,8 @@ export function TaskWorkspace() {
                         checking={completionGraceIds.has(context.task.id)}
                         currentTaskId={snapshot?.currentTaskId ?? null}
                         timerState={snapshot?.state ?? 'idle'}
+                        selected={selectedTask?.id === context.task.id}
+                        onSelect={() => setSelectedTaskId(context.task.id)}
                         onToggleCompleted={() => toggleCompleted(context.task)}
                         onFocus={() => focusTask(context.task)}
                       />
@@ -511,6 +531,8 @@ export function TaskWorkspace() {
                   entries={visibleCompletedEntries}
                   projects={projectById}
                   mutatingTaskIds={mutatingTaskIds}
+                  selectedTaskId={selectedTask?.id ?? null}
+                  onSelect={(task) => setSelectedTaskId(task.id)}
                   onRestore={(task) => toggleCompleted(task, false)}
                 />
               )}
@@ -527,6 +549,35 @@ export function TaskWorkspace() {
             </motion.div>
           </div>
         </section>
+
+        {/* 详情栏：选中任务的档案与主操作；选择与开始分离 */}
+        <aside className="task-inspector" aria-label="任务详情">
+          {selectedTask ? (
+            <TaskInspector
+              task={selectedTask}
+              parentTitle={selectedParentTitle}
+              project={selectedTask.projectId ? projectById.get(selectedTask.projectId) : undefined}
+              isCurrent={
+                snapshot?.currentTaskId === selectedTask.id ||
+                (!!selectedTask.externalId && snapshot?.currentTaskId === selectedTask.externalId)
+              }
+              timerState={snapshot?.state ?? 'idle'}
+              mutating={mutatingTaskIds.has(selectedTask.id)}
+              onFocus={() => focusTask(selectedTask)}
+              onToggleCompleted={() => toggleCompleted(selectedTask)}
+            />
+          ) : (
+            <div className="task-inspector-empty state-block">
+              <span className="state-block-icon">
+                <Icon.Target size="lg" />
+              </span>
+              <strong className="state-block-title">选中一项任务</strong>
+              <p className="state-block-desc">
+                在列表中点按任务查看详情；选择与「开始专注」是两个独立动作。
+              </p>
+            </div>
+          )}
+        </aside>
 
         <AnimatePresence>
           {undoCompletion && (
@@ -565,6 +616,8 @@ function WorkbenchTaskRow({
   checking,
   currentTaskId,
   timerState,
+  selected,
+  onSelect,
   onToggleCompleted,
   onFocus,
 }: TaskTreeRowContext & {
@@ -573,6 +626,8 @@ function WorkbenchTaskRow({
   checking: boolean;
   currentTaskId: string | null;
   timerState: TimerState;
+  selected: boolean;
+  onSelect: () => void;
   onToggleCompleted: () => void;
   onFocus: () => void;
 }) {
@@ -593,11 +648,16 @@ function WorkbenchTaskRow({
   };
   return (
     <div
-      className={`task-workbench-row ${task.isCompleted ? 'completed' : ''} ${current ? 'current' : ''} ${collapsing ? 'is-collapsing' : ''}`}
+      className={`task-workbench-row ${task.isCompleted ? 'completed' : ''} ${current ? 'current' : ''} ${selected ? 'is-selected' : ''} ${collapsing ? 'is-collapsing' : ''}`}
       style={{ '--task-depth': depth } as CSSProperties}
       tabIndex={0}
       aria-label={task.title}
+      aria-selected={selected || undefined}
       onKeyDown={onRowKeyDown}
+      onClick={onSelect}
+      onFocus={(event) => {
+        if (event.target === event.currentTarget) onSelect();
+      }}
     >
       <div className="task-row-indent" />
       {hasChildren ? (
@@ -676,11 +736,15 @@ function CompletedTaskList({
   entries,
   projects,
   mutatingTaskIds,
+  selectedTaskId,
+  onSelect,
   onRestore,
 }: {
   entries: CompletedTaskEntry[];
   projects: Map<string, Project>;
   mutatingTaskIds: Set<string>;
+  selectedTaskId: string | null;
+  onSelect: (task: Task) => void;
   onRestore: (task: Task) => void;
 }) {
   let previousGroup = '';
@@ -703,10 +767,12 @@ function CompletedTaskList({
           <div key={task.id}>
             {showHeading && <div className="task-completed-group">{group}</div>}
             <div
-              className="task-completed-row"
+              className={`task-completed-row ${selectedTaskId === task.id ? 'is-selected' : ''}`}
               tabIndex={0}
               aria-label={task.title}
+              aria-selected={selectedTaskId === task.id || undefined}
               onKeyDown={onRowKeyDown}
+              onClick={() => onSelect(task)}
             >
               <button
                 type="button"
@@ -750,6 +816,154 @@ function CompletedTaskList({
       })}
     </div>
   );
+}
+
+/**
+ * 详情栏：选中任务的档案视图。只呈现清单里已有的字段，不新增业务数据；
+ * 主操作沿用行内「开始专注」的同一 focusTask 语义（计时中=关联当前片段）。
+ */
+function TaskInspector({
+  task,
+  parentTitle,
+  project,
+  isCurrent,
+  timerState,
+  mutating,
+  onFocus,
+  onToggleCompleted,
+}: {
+  task: Task;
+  parentTitle: string | null;
+  project?: Project;
+  isCurrent: boolean;
+  timerState: TimerState;
+  mutating: boolean;
+  onFocus: () => void;
+  onToggleCompleted: () => void;
+}) {
+  const timerActive = timerState === 'running' || timerState === 'paused';
+  const childPreview = task.children?.slice(0, 5) ?? [];
+  const hiddenChildren = (task.children?.length ?? 0) - childPreview.length;
+  const overdue = !!task.dueDate && task.dueDate < Date.now() && !task.isCompleted;
+  return (
+    <div className="task-inspector-sheet" key={task.id}>
+      <header className="task-inspector-head">
+        <span className="task-inspector-kicker">
+          {task.source === 'ticktick' ? '滴答清单任务' : '本地任务'}
+          {task.isCompleted ? ' · 已完成' : ''}
+        </span>
+        <h2 className="task-inspector-title">{task.title}</h2>
+        {isCurrent && (
+          <span className={`task-current-chip ${timerState === 'paused' ? 'paused' : ''}`}>
+            {timerState === 'running' ? '专注中' : timerState === 'paused' ? '已暂停' : '已关联'}
+          </span>
+        )}
+      </header>
+
+      <dl className="task-inspector-meta">
+        {project && (
+          <div>
+            <dt>清单</dt>
+            <dd>{project.name}</dd>
+          </div>
+        )}
+        {parentTitle && (
+          <div>
+            <dt>父任务</dt>
+            <dd>{parentTitle}</dd>
+          </div>
+        )}
+        {(task.priority ?? 0) > 0 && (
+          <div>
+            <dt>优先级</dt>
+            <dd>{priorityLabel(task.priority)}</dd>
+          </div>
+        )}
+        {task.dueDate && (
+          <div>
+            <dt>截止</dt>
+            <dd className={overdue ? 'overdue' : ''}>
+              {formatDueDate(task.dueDate)}
+              {overdue ? ' · 已逾期' : ''}
+            </dd>
+          </div>
+        )}
+        {task.isCompleted && task.completedAt && (
+          <div>
+            <dt>完成于</dt>
+            <dd>{formatCompletedDate(task.completedAt)}</dd>
+          </div>
+        )}
+        {task.tags && task.tags.length > 0 && (
+          <div>
+            <dt>标签</dt>
+            <dd className="task-inspector-tags">
+              {task.tags.map((tag) => (
+                <em className="task-tag" key={tag}>
+                  #{tag}
+                </em>
+              ))}
+            </dd>
+          </div>
+        )}
+      </dl>
+
+      {childPreview.length > 0 && (
+        <section className="task-inspector-children">
+          <h3>子任务 · {task.children?.length ?? 0} 项</h3>
+          <ul>
+            {childPreview.map((child) => (
+              <li key={child.id} className={child.isCompleted ? 'done' : ''}>
+                {child.title}
+              </li>
+            ))}
+          </ul>
+          {hiddenChildren > 0 && <p>还有 {hiddenChildren} 项子任务，在列表中展开查看。</p>}
+        </section>
+      )}
+
+      <div className="task-inspector-actions">
+        {!task.isCompleted && (
+          <button type="button" className="btn-accent" onClick={onFocus} disabled={mutating}>
+            <Icon.Play size="xs" />
+            {timerActive ? '关联到当前片段' : '开始专注'}
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn-outline"
+          onClick={onToggleCompleted}
+          disabled={mutating}
+        >
+          {mutating ? <Spinner size="xs" /> : task.isCompleted ? '恢复任务' : '完成任务'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** 在任务树中按 id / externalId 查找任务（含子树）。 */
+function findTaskById(tasks: Task[], id: string): Task | null {
+  for (const task of tasks) {
+    if (task.id === id || task.externalId === id) return task;
+    if (task.children) {
+      const found = findTaskById(task.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/** 找到任务的直接父任务标题（详情栏面包屑用）。 */
+function findParentTitle(tasks: Task[], id: string, parent: Task | null = null): string | null {
+  for (const task of tasks) {
+    if (task.id === id || task.externalId === id) return parent?.title ?? null;
+    if (task.children) {
+      const found = findParentTitle(task.children, id, task);
+      if (found !== null) return found;
+    }
+  }
+  return null;
 }
 
 function ProjectButton({
