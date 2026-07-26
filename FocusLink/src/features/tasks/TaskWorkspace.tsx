@@ -301,7 +301,11 @@ export function TaskWorkspace() {
         <div className="console-identity">
           <span className="console-kicker">任务 · 执行台</span>
           <span className="task-console-word">{filter === 'open' ? '待完成' : '完成档案'}</span>
-          <span className="task-console-count">{displayedCount} 项</span>
+          <span className="task-console-count">
+            {filter === 'completed'
+              ? `最近 ${completedDays} 天 · ${displayedCount} 项`
+              : `${displayedCount} 项`}
+          </span>
         </div>
         <div className="console-readout">
           <span className="task-console-stat">
