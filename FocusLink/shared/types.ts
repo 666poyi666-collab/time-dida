@@ -249,15 +249,7 @@ export interface AppSettings {
   focusColor: 'emerald' | 'cobalt' | 'violet' | 'amber' | 'graphite';
   /** 主计时数字的仪表样式。特色只作用于读数，不构成完整主题。 */
   timerStyle:
-    | 'standard'
-    | 'flip'
-    | 'pixel'
-    | 'thin'
-    | 'segment'
-    | 'counter'
-    | 'analog'
-    | 'vernier'
-    | 'draft';
+    'standard' | 'flip' | 'pixel' | 'thin' | 'segment' | 'counter' | 'analog' | 'vernier' | 'draft';
   /** 主界面排版气质：正文、楷体、宋体、马克笔、正线细黑与窄体展示字。 */
   fontProfile: 'noto' | 'wenkai' | 'zhisong' | 'marker' | 'xihei' | 'smiley';
   segmentBehavior: 'new-segment' | 'continue-segment';
