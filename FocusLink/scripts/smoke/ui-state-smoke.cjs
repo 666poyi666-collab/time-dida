@@ -547,18 +547,33 @@ async function main() {
       animationName: overlay?.animationName || null,
     };
   })()`);
-  await delay(900);
-  results.finishedFreeze = {
-    before: await evaluate(`(() => ({
+  // 结算展示窗口只有 FINISHED_PRESENTATION_HOLD_MS(3s)。停止发生在 paused 态：
+  // 该暂停的前沿尾灰按 PAUSE_LOSS_MAX_LIFE_MS(1.9s) 在结束后自然演完（这是有意的
+  // 视觉设计），拉远变焦约 850ms 内收敛——因此像素级冻结只存在于 [1.9s, 3.0s]
+  // 的窗口，两次采样都必须落在其中，随后状态机自动回到 idle（同样被验收）。
+  // 画布指纹在页面内哈希：全宽 canvas 的 dataURL 走 CDP 序列化会把第二次采样
+  // 挤出窗口，哈希只回传一个整数。
+  const freezeSampleExpression = `(() => {
+    const canvas = document.querySelector('.ribbon-canvas');
+    const data = canvas ? canvas.toDataURL() : '';
+    let hash = 0;
+    for (let index = 0; index < data.length; index += 1) {
+      hash = (hash * 31 + data.charCodeAt(index)) | 0;
+    }
+    return {
       time: document.querySelector('.timer-dial')?.getAttribute('aria-label') || null,
-      canvas: document.querySelector('.ribbon-canvas')?.toDataURL() || null,
-    }))()`),
+      state: document.querySelector('.focus-console')?.dataset.state || null,
+      canvas: hash + ':' + data.length,
+    };
+  })()`;
+  await delay(2000);
+  results.finishedFreeze = {
+    before: await evaluate(freezeSampleExpression),
   };
-  await delay(850);
-  results.finishedFreeze.after = await evaluate(`(() => ({
-    time: document.querySelector('.timer-dial')?.getAttribute('aria-label') || null,
-    canvas: document.querySelector('.ribbon-canvas')?.toDataURL() || null,
-  }))()`);
+  await delay(550);
+  results.finishedFreeze.after = await evaluate(freezeSampleExpression);
+  await inspectState('idle');
+  results.finishedAutoReset = { returnedToIdle: true };
   // Starting a timer can auto-show the mini window when another app owns the
   // foreground. Restore the isolated main window before exercising analytics
   // so Chromium does not throttle the hidden renderer during this smoke.
@@ -706,15 +721,16 @@ async function main() {
     `Boolean(document.querySelector('[data-testid="confirm-dialog-layer"]'))`,
   ));
   await evaluate('document.querySelector(\'button[aria-label="设置"]\')?.click()');
-  await waitForAnyText(['外观', '界面与体验']);
+  await waitForAnyText(['外观', '界面与读数']);
   results.settingsLight = await captureScreen('settings-light');
+  // 0.12.62 起设置按六个意图分组：小窗开关在「专注」，字体与计时仪表在「外观」。
   await evaluate(`(() => {
     const tab = [...document.querySelectorAll('.settings-tab')]
-      .find((button) => button.textContent?.includes('体验'));
-    if (!tab) throw new Error('Experience settings tab was not found');
+      .find((button) => button.textContent?.includes('专注'));
+    if (!tab) throw new Error('Focus settings tab was not found');
     tab.click();
   })()`);
-  await waitForAnyText(['计时仪表']);
+  await waitForAnyText(['专注小窗']);
   const toggleSelector = '.toggle-track[aria-label^="跟随主界面主题："]';
   results.toggleInspection = {
     before: await inspectToggle(toggleSelector),
@@ -731,6 +747,14 @@ async function main() {
   await evaluate(`document.querySelector(${JSON.stringify(toggleSelector)})?.click()`);
   await delay(280);
   results.toggleInspection.restored = await inspectToggle(toggleSelector);
+  // 回到「外观」分组验证字体与计时仪表的实时预览。
+  await evaluate(`(() => {
+    const tab = [...document.querySelectorAll('.settings-tab')]
+      .find((button) => button.textContent?.includes('外观'));
+    if (!tab) throw new Error('Appearance settings tab was not found');
+    tab.click();
+  })()`);
+  await waitForAnyText(['计时仪表']);
   // 界面字体：六种设置必须落到真实不同字形，而不是同一黑体的不同字重。
   results.interfaceFonts = {};
   for (const profile of ['noto', 'wenkai', 'zhisong', 'marker', 'xihei', 'smiley']) {
@@ -863,15 +887,21 @@ async function main() {
       'paused temporal band exposes frontier particle loss',
     ],
     [
-      results.paused.ribbonDissolve === 'interval-trace',
-      'paused band declares a wall-clock particle interval trace',
+      results.paused.ribbonDissolve === 'frontier-ash',
+      'paused band declares frontier ash decay at the now edge',
     ],
     [results.paused.primaryText === '继续', 'paused primary action'],
     [Boolean(results.paused.stateMomentText?.startsWith('暂停于')), 'pause time is visible'],
     [
-      results.finishedFreeze.before.time === results.finishedFreeze.after.time &&
+      results.finishedFreeze.before.state === 'finished' &&
+        results.finishedFreeze.after.state === 'finished' &&
+        results.finishedFreeze.before.time === results.finishedFreeze.after.time &&
         results.finishedFreeze.before.canvas === results.finishedFreeze.after.canvas,
       'finished timer and temporal band remain visually frozen after the zoom settles',
+    ],
+    [
+      results.finishedAutoReset?.returnedToIdle === true,
+      'finished settlement auto-returns to idle after its hold window',
     ],
     [
       results.idle.primaryBackground.includes(results.idle.accentToken.split(' ').join(', ')),
@@ -1091,10 +1121,13 @@ async function main() {
       'task workspace no vertical overflow',
     ],
   ];
-  const failed = assertions.filter(([passed]) => !passed).map(([, label]) => label);
-  if (failed.length > 0) throw new Error(`UI state assertions failed: ${failed.join(', ')}`);
-
+  // 断言前落盘：失败的运行同样需要 states.json 才能诊断，不能只留下截图。
   fs.writeFileSync(path.join(outputDir, 'states.json'), JSON.stringify(results, null, 2));
+  const failed = assertions.filter(([passed]) => !passed).map(([, label]) => label);
+  if (failed.length > 0) {
+    throw new Error(`UI state assertions failed (see ${outputDir}): ${failed.join(', ')}`);
+  }
+
   process.stdout.write(`${JSON.stringify({ outputDir, results }, null, 2)}\n`);
 }
 

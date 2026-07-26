@@ -1457,15 +1457,8 @@
   font-weight: 600;
 }
 .task-workspace-shell {
+  /* 默认主窗 1240×800 直接呈现三栏执行台 */
   grid-template-columns: 224px minmax(0, 1fr) 332px;
-}
-@media (max-width: 1280px) {
-  .task-workspace-shell {
-    grid-template-columns: 224px minmax(0, 1fr);
-  }
-  .task-inspector {
-    display: none;
-  }
 }
 .task-navigation {
   border: 0;
@@ -1580,6 +1573,16 @@
   background: rgb(var(--app-accent) / 0.06);
   box-shadow: inset -2px 0 0 rgb(var(--app-accent) / 0.6);
 }
+
+/* 1200 以下收起详情栏（必须排在 .task-inspector 基础规则之后才能覆盖 display） */
+@media (max-width: 1199px) {
+  .task-workspace-shell {
+    grid-template-columns: 224px minmax(0, 1fr);
+  }
+  .task-inspector {
+    display: none;
+  }
+}
 .task-view-list button,
 .task-project-list button,
 .task-icon-action,
@@ -1630,7 +1633,13 @@
 .history-body {
   display: grid;
   min-height: 0;
-  grid-template-columns: minmax(0, 1fr) 432px;
+  /* 默认主窗 1240×800 必须直接呈现双区工作台：账本轨 408px 起步 */
+  grid-template-columns: minmax(0, 1fr) 408px;
+}
+@media (min-width: 1500px) {
+  .history-body {
+    grid-template-columns: minmax(0, 1fr) 440px;
+  }
 }
 @media (min-width: 1700px) {
   .history-body {
@@ -1666,8 +1675,8 @@
 .history-rail-empty {
   padding: 26px 18px;
 }
-/* 1240 以下：双区回落为单列顺读，整页统一滚动 */
-@media (max-width: 1240px) {
+/* 1200 以下：双区回落为单列顺读，整页统一滚动 */
+@media (max-width: 1199px) {
   .history-body {
     display: block;
     overflow-y: auto;
