@@ -43,7 +43,19 @@ Foxlink 本地 MCP 不发行 OAuth token；公网侧身份校验由专属 Secure
 
 - MCP SDK：initialize、tools/list、Resource 读取和 4 个控制写入均已通过；重复 `commandId` / 
   `requestId` 返回持久化结果且只生成一条 Session。
-- Tunnel：`FoxlinkSecureMcpTunnel` 独立运行，`/readyz` 通过；doctor 除本地 OAuth 元数据
-  （Tunnel 托管认证时不适用）外全部通过。
-- ChatGPT 应用：平台资源已创建到独立 Tunnel；应用创建受 OpenAI 开发者身份验证门禁阻塞，
-  身份验证完成前不得标记真实 ChatGPT 调用通过。
+- Windows：`PoyiFoxlinkMcp` 已安装为 Automatic delayed start 的原生 pywin32 服务；管理员安装后
+  SCM 状态为 `Running`，`/healthz` 返回 `alive`，`/readyz` 回读 FocusLink `0.12.60`。服务线程
+  固定使用 `SelectorEventLoop`，并禁止 Uvicorn 在工作线程安装进程信号处理器。
+- Tunnel：`FoxlinkSecureMcpTunnel` 独立运行，`/readyz` 通过；专属 Tunnel ID 为
+  `tunnel_6a656760fdf48191bf15b213f127e3c0`。doctor 除本地 OAuth 元数据（Tunnel 托管认证时
+  不适用）外全部通过；PersonalMcpGateway、Journal 和其他项目不参与 Foxlink 请求路径。
+- ChatGPT 私有连接：2026-07-26 在 ChatGPT Plus 网页 Developer Mode 创建并连接 Foxlink，应用
+  ID 为 `asdk_app_6a6585f2d3a881918a6a2781a3d124a4`，使用 `通道 + 未授权`，不进行开发者
+  身份验证或公开 App 发布。真实只读调用返回版本 `0.12.60`、revision `22`、状态 `paused`。
+- ChatGPT 写入：`foxlink_resume_focus` 将 revision `22 -> 23`、状态改为 `running`，随后
+  `foxlink_pause_focus` 将 revision `23 -> 24`、状态恢复为 `paused`。逐字复用第二次调用的
+  `requestId/commandId/expectedRevision` 后仍返回 revision `24 / paused`，证明服务端重放原结果，
+  没有重复执行。
+- Python 制品：`mcp/dist/foxlink_mcp-0.1.0-py3-none-any.whl` 的 SHA256 为
+  `74CB66BA84958466C877733056B6453C71488ECE61D51DB08570340962DB296E`；源码包 SHA256 为
+  `BB3C0DBCF9928597E47F4815B1CF1CBA0E2C335F5975C6B468E0ECBA6A5D6AE1`。

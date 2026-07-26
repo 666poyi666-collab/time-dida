@@ -1,6 +1,9 @@
 [CmdletBinding()]
-param([string]$InstallDir = "$env:ProgramFiles\Poyi\FoxlinkMcp")
+param([string]$InstallDir = "$env:ProgramW6432\Poyi\FoxlinkMcp")
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($env:ProgramW6432)) {
+  $InstallDir = "$env:ProgramFiles\Poyi\FoxlinkMcp"
+}
 $service = Get-Service PoyiFoxlinkMcp -ErrorAction SilentlyContinue
 if ($null -eq $service) { return }
 if ($service.Status -ne 'Stopped') {

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Generator
+from contextlib import contextmanager
 
 import servicemanager
 import uvicorn
@@ -10,6 +12,12 @@ import win32serviceutil
 
 from .server import build_server
 from .settings import Settings
+
+
+class ServiceUvicornServer(uvicorn.Server):
+    @contextmanager
+    def capture_signals(self) -> Generator[None, None, None]:
+        yield
 
 
 class FoxlinkMcpService(win32serviceutil.ServiceFramework):
@@ -34,10 +42,15 @@ class FoxlinkMcpService(win32serviceutil.ServiceFramework):
         servicemanager.LogInfoMsg("PoyiFoxlinkMcp starting")
         settings = Settings()
         app, _, _ = build_server(settings)
-        self.server = uvicorn.Server(
+        self.server = ServiceUvicornServer(
             uvicorn.Config(app, host=settings.host, port=settings.port, log_config=None)
         )
-        asyncio.run(self.server.serve())
+        loop = asyncio.SelectorEventLoop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self.server.serve())
+        finally:
+            loop.close()
         servicemanager.LogInfoMsg("PoyiFoxlinkMcp stopped")
 
 

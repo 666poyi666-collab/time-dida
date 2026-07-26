@@ -1,6 +1,9 @@
 [CmdletBinding()]
-param([string]$InstallDir = "$env:ProgramFiles\Poyi\FoxlinkMcp", [string]$DataDir = "$env:ProgramData\Poyi\FoxlinkMcp")
+param([string]$InstallDir = "$env:ProgramW6432\Poyi\FoxlinkMcp", [string]$DataDir = "$env:ProgramData\Poyi\FoxlinkMcp")
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($env:ProgramW6432)) {
+  $InstallDir = "$env:ProgramFiles\Poyi\FoxlinkMcp"
+}
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Run from an elevated PowerShell session.' }
