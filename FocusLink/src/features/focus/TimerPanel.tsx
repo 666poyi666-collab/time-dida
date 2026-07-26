@@ -327,6 +327,7 @@ export function TimerPanel() {
         ? formatClockTime(snapshot?.currentPauseStartedAt)
         : null;
   const showLedger = (snapshot?.segments.length ?? 0) > 0;
+  const sessionStartClock = formatClockTime(snapshot?.segments?.[0]?.startedAt ?? null);
 
   // 关闭沉浸：先挂 .is-leaving 播放 360ms 淡出+缩放，再卸载覆盖层。
   // reduced-motion 下 CSS 动画降级为静态，延迟同步缩短到 40ms。
@@ -429,25 +430,37 @@ export function TimerPanel() {
     </div>
   );
 
+  // 三项累计以「仪表列」呈现：读数 + 占总历时比例的真实刻度条（不伪造进度目标）。
+  const activeShare = wallMs > 0 ? Math.min(100, (cumulativeActiveMs / wallMs) * 100) : 0;
+  const pauseShare = wallMs > 0 ? Math.min(100, (cumulativePauseMs / wallMs) * 100) : 0;
   const totals = (
     <div className="timer-totals" key={state}>
-      <div className="timer-total">
+      <div className="timer-total tone-focus">
         <span className="timer-total-label">累计专注</span>
         <StatValue
           value={formatDuration(cumulativeActiveMs)}
           className="timer-total-value timer-digit tone-focus"
         />
+        <span className="timer-total-meter" aria-hidden="true">
+          <i className="fill-focus" style={{ width: `${activeShare}%` }} />
+        </span>
       </div>
-      <div className="timer-total">
+      <div className="timer-total tone-pause">
         <span className="timer-total-label">累计暂停</span>
         <StatValue
           value={formatDuration(cumulativePauseMs)}
           className="timer-total-value timer-digit tone-pause"
         />
+        <span className="timer-total-meter" aria-hidden="true">
+          <i className="fill-pause" style={{ width: `${pauseShare}%` }} />
+        </span>
       </div>
-      <div className="timer-total">
+      <div className="timer-total tone-wall">
         <span className="timer-total-label">总历时</span>
         <StatValue value={formatDuration(wallMs)} className="timer-total-value timer-digit" />
+        <span className="timer-total-meter" aria-hidden="true">
+          <i className="fill-wall" style={{ width: wallMs > 0 ? '100%' : '0%' }} />
+        </span>
       </div>
     </div>
   );
@@ -458,116 +471,133 @@ export function TimerPanel() {
       data-state={state}
       data-transition={transitionCue ?? undefined}
     >
-      <section className="focus-instrument">
-        <header className="focus-header">
+      {/* 工位横幅：视图身份 → 实时读数 → 视图操作；四个功能共用同一呈现语法。 */}
+      <header className="focus-header view-console">
+        <div className="console-identity">
+          <span className="console-kicker">专注 · 时间仪器</span>
           <span className={`focus-state-word state-${state}`} key={state}>
             <i className="focus-state-dot" />
             {STATE_WORD[state] ?? STATE_WORD.idle}
           </span>
+        </div>
+        <div className="console-readout">
           <span className="focus-seg-no timer-digit">
             {isRunning ? `片段 ${String(segmentOrdinal).padStart(2, '0')}` : ''}
           </span>
-          <div className="focus-header-actions">
-            {showLedger && (
-              <button
-                type="button"
-                className="focus-immersive-toggle motion-press"
-                onClick={() => setLedgerOpen((open) => !open)}
-                aria-pressed={ledgerOpen}
-              >
-                {ledgerOpen ? '收起账本' : '展开账本'}
-              </button>
-            )}
+        </div>
+        <div className="focus-header-actions console-actions">
+          {showLedger && (
             <button
               type="button"
               className="focus-immersive-toggle motion-press"
-              onClick={() => void enterImmersive()}
-              title="全屏进入沉浸模式"
+              onClick={() => setLedgerOpen((open) => !open)}
+              aria-pressed={ledgerOpen}
             >
-              <Icon.Maximize size="xs" />
-              全屏沉浸
+              {ledgerOpen ? '收起账本' : '展开账本'}
             </button>
-          </div>
-        </header>
-
-        <div className="timer-context-strip" key={state}>
-          <div className="timer-context-copy">
-            <div className="timer-context-label">
-              {contextSourceLabel}
-              {isRunning && hasContextTask ? ' · 已关联' : ''}
-            </div>
-            <div
-              className={`timer-context-title ${hasContextTask ? '' : 'is-empty'}`}
-              title={contextTitle ?? '未选择任务'}
-            >
-              {contextTitle ?? '给这一段时间一个名字'}
-            </div>
-          </div>
-          <div className="timer-context-actions">
-            <button
-              className="btn-text"
-              onClick={() => setPickerMode(isRunning ? 'segment' : 'preselect')}
-            >
-              {isRunning ? (hasContextTask ? '更换' : '关联任务') : '选择任务'}
-            </button>
-            {canSetSessionDefault && (
-              <button
-                className="btn-text"
-                onClick={() => setPickerMode('session')}
-                aria-label="设为本次默认任务"
-              >
-                设为默认
-              </button>
-            )}
-            {canClearContext && (
-              <button
-                className="btn-text"
-                onClick={isRunning ? handleClearSegmentTask : handleClearPreselect}
-              >
-                清除
-              </button>
-            )}
-            {canClearSessionDefault && (
-              <button className="btn-text" onClick={handleClearSessionDefault}>
-                清除默认
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="timer-zone">
-          {!immersive && (
-            <AnimatePresence initial={false} mode="popLayout">
-              <motion.div
-                key={timerStyle}
-                className="timer-dial-stage"
-                initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
-                transition={{
-                  duration: reducedMotion ? 0.08 : 0.24,
-                  ease: [0.16, 1, 0.3, 1],
-                }}
-              >
-                <TimerDial
-                  ms={mainMs}
-                  state={state}
-                  style={timerStyle}
-                  coreRatio={Math.min(1, cumulativeActiveMs / CORE_GOAL_MS)}
-                />
-              </motion.div>
-            </AnimatePresence>
           )}
-          {timerLabel}
+          <button
+            type="button"
+            className="focus-immersive-toggle motion-press"
+            onClick={() => void enterImmersive()}
+            title="全屏进入沉浸模式"
+          >
+            <Icon.Maximize size="xs" />
+            全屏沉浸
+          </button>
         </div>
+      </header>
 
-        {!immersive && <TemporalRibbon snapshot={snapshot} state={state} now={now} />}
-
-        <div className="focus-footer">
-          {controls}
+      <section className="focus-instrument">
+        {/* 左侧仪表列：三项累计读数与真实占比刻度，独立于中央仪表。 */}
+        <aside className="focus-meter-rail" aria-label="本场累计读数">
           {totals}
+          {sessionStartClock && (
+            <div className="meter-rail-foot text-diag">
+              本场起于 {sessionStartClock} · 共 {String(snapshot?.segments.length ?? 0)} 段
+            </div>
+          )}
+        </aside>
+
+        {/* 中央纪念碑：任务 → 主仪表 → 控制，沿同一中轴对齐。 */}
+        <div className="focus-monument">
+          <div className="timer-context-strip" key={state}>
+            <div className="timer-context-copy">
+              <div className="timer-context-label">
+                {contextSourceLabel}
+                {isRunning && hasContextTask ? ' · 已关联' : ''}
+              </div>
+              <div
+                className={`timer-context-title ${hasContextTask ? '' : 'is-empty'}`}
+                title={contextTitle ?? '未选择任务'}
+              >
+                {contextTitle ?? '给这一段时间一个名字'}
+              </div>
+            </div>
+            <div className="timer-context-actions">
+              <button
+                className="btn-text"
+                onClick={() => setPickerMode(isRunning ? 'segment' : 'preselect')}
+              >
+                {isRunning ? (hasContextTask ? '更换' : '关联任务') : '选择任务'}
+              </button>
+              {canSetSessionDefault && (
+                <button
+                  className="btn-text"
+                  onClick={() => setPickerMode('session')}
+                  aria-label="设为本次默认任务"
+                >
+                  设为默认
+                </button>
+              )}
+              {canClearContext && (
+                <button
+                  className="btn-text"
+                  onClick={isRunning ? handleClearSegmentTask : handleClearPreselect}
+                >
+                  清除
+                </button>
+              )}
+              {canClearSessionDefault && (
+                <button className="btn-text" onClick={handleClearSessionDefault}>
+                  清除默认
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="timer-zone">
+            {!immersive && (
+              <AnimatePresence initial={false} mode="popLayout">
+                <motion.div
+                  key={timerStyle}
+                  className="timer-dial-stage"
+                  initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                  transition={{
+                    duration: reducedMotion ? 0.08 : 0.24,
+                    ease: [0.16, 1, 0.3, 1],
+                  }}
+                >
+                  <TimerDial
+                    ms={mainMs}
+                    state={state}
+                    style={timerStyle}
+                    coreRatio={Math.min(1, cumulativeActiveMs / CORE_GOAL_MS)}
+                  />
+                </motion.div>
+              </AnimatePresence>
+            )}
+            {timerLabel}
+          </div>
+
+          <div className="focus-footer">{controls}</div>
         </div>
       </section>
+
+      {/* 时间之带横贯整个工位底部：仪表列、纪念碑与账本都立在同一条时间材料上。 */}
+      {!immersive && <TemporalRibbon snapshot={snapshot} state={state} now={now} />}
 
       <AnimatePresence initial={false}>
         {showLedger && ledgerOpen && (

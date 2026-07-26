@@ -188,6 +188,50 @@
   background: rgb(var(--app-pause));
 }
 
+/* ─── 工位横幅：四个功能共用的「身份 → 读数 → 操作」呈现语法 ──
+ * 3单重构（v0.12.63）：每个视图以同一条 58px 仪器横幅开场，
+ * 左=视图身份（kicker + 实时状态词），中=实时读数，右=视图级操作。 */
+.view-console {
+  position: relative;
+  z-index: 4;
+  display: grid;
+  min-height: 58px;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  padding: 0 18px 0 24px;
+  border-bottom: 1px solid rgb(var(--app-border));
+  background: rgb(var(--app-surface));
+}
+.console-identity {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 14px;
+}
+.console-kicker {
+  flex-shrink: 0;
+  color: rgb(var(--app-subtle));
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+.console-readout {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: rgb(var(--app-muted));
+  font-size: 11.5px;
+}
+.console-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: end;
+}
+
 /* ─── 按钮体系：页面切换 / 普通操作 / 危险 三型分离 ────────── */
 
 .btn-solid,
@@ -317,7 +361,8 @@
   filter: brightness(1.06);
 }
 
-/* ─── 专注页：仪器区 + 账本（同一平面） ────────────────────── */
+/* ─── 专注页（3单重构）：工位横幅 → 仪表列 + 纪念碑 → 全宽时间之带 ──
+ * 账本立在舞台右侧；时间之带横贯整个工位底部，是所有区块共同的地基。 */
 
 .session-workspace {
   height: 100%;
@@ -328,37 +373,67 @@
   display: grid;
   width: 100%;
   height: 100%;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-areas:
+    'console console'
+    'instrument ledger'
+    'band band';
+  grid-template-columns: minmax(0, 1fr) 384px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   background: rgb(var(--app-surface));
 }
 .focus-console.solo {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr) 0px;
+}
+.focus-console > .focus-header {
+  grid-area: console;
+}
+.focus-console > .temporal-ribbon {
+  grid-area: band;
 }
 
 .focus-instrument {
   position: relative;
-  display: flex;
+  display: grid;
   min-width: 0;
   min-height: 0;
-  flex-direction: column;
-  padding: 18px 44px 22px;
+  grid-area: instrument;
+  grid-template-columns: 238px minmax(0, 1fr);
   overflow: hidden;
 }
 .session-ledger-pane {
   min-width: 0;
   overflow: hidden;
+  grid-area: ledger;
   border-left: 1px solid rgb(var(--app-border));
   background: rgb(var(--app-surface));
 }
 
-.focus-header {
+/* 左侧仪表列：三项累计的机加工量块 */
+.focus-meter-rail {
   display: flex;
-  align-items: baseline;
-  gap: 14px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgb(var(--app-border));
+  min-height: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 20px 26px;
+  border-right: 1px solid rgb(var(--app-border));
+  background: rgb(var(--app-surface));
 }
+.meter-rail-foot {
+  margin-top: 16px;
+}
+
+/* 中央纪念碑：任务 → 主仪表 → 控制，同一中轴 */
+.focus-monument {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  padding: 20px 48px 24px;
+  overflow: hidden;
+}
+
+/* .focus-header 的布局全部由 .view-console 工位横幅语法承担 */
 .focus-state-word {
   display: inline-flex;
   align-items: center;
@@ -414,18 +489,25 @@
 
 .timer-context-strip {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 18px 0 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 0 0;
+  text-align: center;
+}
+.timer-context-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
 }
 .timer-context-label {
   color: rgb(var(--app-subtle));
   font-size: 11px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
 }
 .timer-context-title {
-  max-width: 34ch;
+  max-width: 44ch;
   margin-top: 4px;
   overflow-wrap: anywhere;
   font-size: clamp(19px, 2vw, 24px);
@@ -440,7 +522,9 @@
 .timer-context-actions {
   display: inline-flex;
   flex-shrink: 0;
+  justify-content: center;
   gap: 2px;
+  margin-top: 2px;
 }
 
 .timer-zone {
@@ -448,6 +532,7 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
   padding: 12px 0;
   container-type: inline-size;
@@ -458,10 +543,12 @@
   min-width: 0;
   min-height: 154px;
   align-items: center;
+  justify-content: center;
 }
 .timer-readout-meta {
   display: flex;
   align-items: baseline;
+  justify-content: center;
   gap: 16px;
   margin-top: 14px;
   color: rgb(var(--app-muted));
@@ -815,31 +902,37 @@
 .focus-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 24px;
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid rgb(var(--app-border));
+  margin-top: 12px;
 }
 .timer-controls {
   display: flex;
-  gap: 10px;
+  gap: 12px;
 }
 .timer-controls .btn-main-action {
-  min-width: 126px;
+  min-width: 158px;
+  min-height: 40px;
 }
+.timer-controls .btn-stop-action {
+  min-height: 40px;
+}
+
+/* 三项累计：仪表列量块（竖排） / 沉浸与窄屏（横排） */
 .timer-totals {
   display: flex;
+  flex-direction: column;
 }
 .timer-total {
-  padding-right: 24px;
-  margin-right: 24px;
-  border-right: 1px solid rgb(var(--app-border));
+  padding: 15px 0 13px;
+  border-bottom: 1px solid rgb(var(--app-border));
+}
+.timer-total:first-child {
+  padding-top: 0;
 }
 .timer-total:last-child {
-  padding-right: 0;
-  margin-right: 0;
-  border-right: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 .timer-total-label {
   display: block;
@@ -849,7 +942,7 @@
   letter-spacing: 0.05em;
 }
 .timer-total-value {
-  font-size: 19px;
+  font-size: 22px;
   font-weight: 550;
   letter-spacing: 0;
 }
@@ -858,6 +951,36 @@
 }
 .timer-total-value.tone-pause {
   color: rgb(var(--app-pause));
+}
+.timer-total-meter {
+  display: block;
+  height: 2px;
+  margin-top: 9px;
+  overflow: hidden;
+  background: rgb(var(--app-border) / 0.72);
+}
+.timer-total-meter i {
+  display: block;
+  height: 100%;
+  transition: width 480ms var(--ease-fluid);
+}
+.timer-total-meter .fill-focus,
+.timer-total-meter i.fill-focus {
+  background: rgb(var(--app-success));
+}
+.timer-total-meter i.fill-pause {
+  background: rgb(var(--app-pause));
+}
+.timer-total-meter i.fill-wall {
+  background: rgb(var(--app-ink) / 0.5);
+}
+
+/* 时间之带横贯工位底部：全宽呈现时补上左右留白，末行不再画底线 */
+.focus-console > .temporal-ribbon .ribbon-caption {
+  padding: 10px 24px 9px;
+}
+.focus-console > .temporal-ribbon .ribbon-canvas {
+  border-bottom: 0;
 }
 
 /* ─── 右侧账本：时间脊线 + 锚点 ───────────────────────────── */
@@ -1141,8 +1264,24 @@
   justify-content: center;
   margin-top: 0;
 }
+/* 沉浸模式沿用横排读数：量块回到竖线分隔的一行，不显示占比刻度 */
 .focus-immersive .timer-totals {
   margin-top: 0;
+  flex-direction: row;
+}
+.focus-immersive .timer-total {
+  padding: 0 24px 0 0;
+  margin-right: 24px;
+  border-bottom: 0;
+  border-right: 1px solid rgb(var(--app-border));
+}
+.focus-immersive .timer-total:last-child {
+  padding-right: 0;
+  margin-right: 0;
+  border-right: 0;
+}
+.focus-immersive .timer-total-meter {
+  display: none;
 }
 .focus-immersive .timer-controls {
   margin-top: 0;
@@ -3042,7 +3181,10 @@
 /* ─── 响应式 ────────────────────────────────────────────── */
 @media (min-width: 1600px) {
   .focus-console {
-    grid-template-columns: minmax(0, 1fr) 420px;
+    grid-template-columns: minmax(0, 1fr) 440px;
+  }
+  .focus-instrument {
+    grid-template-columns: 264px minmax(0, 1fr);
   }
   .dial-standard,
   .dial-thin,
@@ -3057,7 +3199,40 @@
 }
 
 @media (max-width: 1080px) {
+  /* 仪表列改为横档：三个量块并排立在纪念碑上方 */
   .focus-instrument {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .focus-meter-rail {
+    padding: 0 28px;
+    border-right: 0;
+    border-bottom: 1px solid rgb(var(--app-border));
+  }
+  .focus-meter-rail .timer-totals {
+    flex-direction: row;
+    justify-content: center;
+  }
+  .focus-meter-rail .timer-total {
+    flex: 1;
+    max-width: 230px;
+    padding: 12px 20px;
+    border-bottom: 0;
+    border-right: 1px solid rgb(var(--app-border));
+  }
+  .focus-meter-rail .timer-total:first-child {
+    padding-left: 0;
+  }
+  .focus-meter-rail .timer-total:last-child {
+    padding-right: 0;
+    border-right: 0;
+  }
+  .focus-meter-rail .timer-total-value {
+    font-size: 18px;
+  }
+  .meter-rail-foot {
+    display: none;
+  }
+  .focus-monument {
     padding: 16px 28px 18px;
   }
   .history-header,
@@ -3103,8 +3278,10 @@
     overflow: auto;
   }
   .focus-instrument {
-    min-height: 640px;
-    padding: 18px 24px 18px;
+    min-height: 560px;
+  }
+  .focus-monument {
+    padding: 16px 24px 18px;
   }
   .session-ledger-pane {
     min-height: 400px;
@@ -3122,12 +3299,21 @@
   .session-workspace {
     padding-top: 24px;
   }
+  .view-console {
+    min-height: 46px;
+  }
   .focus-instrument {
-    padding-top: 12px;
+    grid-template-columns: 206px minmax(0, 1fr);
+  }
+  .focus-meter-rail {
+    padding: 14px 20px;
+  }
+  .focus-monument {
+    padding-top: 10px;
     padding-bottom: 12px;
   }
   .timer-context-strip {
-    padding-top: 10px;
+    padding-top: 2px;
   }
   .dial-standard,
   .dial-thin,

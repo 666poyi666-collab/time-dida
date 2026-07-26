@@ -285,9 +285,7 @@ function TimerStage({ state }: { state: string }) {
   return (
     <div className="relative flex h-full w-full">
       <div className="min-w-0 flex-1 overflow-hidden max-[900px]:overflow-y-auto">
-        <div
-          className={`session-workspace state-${state} mx-auto h-full max-w-[1360px] max-[900px]:h-auto`}
-        >
+        <div className={`session-workspace state-${state} h-full max-[900px]:h-auto`}>
           <TimerPanel />
         </div>
       </div>
