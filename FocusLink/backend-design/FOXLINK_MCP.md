@@ -39,6 +39,11 @@ PersonalMcpGateway；安装阶段只复用已验证的 tunnel-client、私有 Py
 Foxlink 本地 MCP 不发行 OAuth token；公网侧身份校验由专属 Secure MCP Tunnel 承担，因此本地
 `/.well-known/oauth-protected-resource/mcp` 不建立虚假 issuer 契约。
 
+Tunnel 的 `%ProgramData%\Poyi\FoxlinkMcp` 数据树必须显式保留 `SYSTEM` 与本机管理员完全控制，
+桌面安装用户只读。该 ACL 同时保护 DPAPI 密文，并允许 LocalSystem 托管的 WinSW 在重启后继续
+滚动 stdout/stderr。若外部工具改写了文件级 ACL，使用提升权限的
+`mcp/tunnel/repair-acl.ps1` 原地修复并复验 8878；该操作不轮换 Runtime Key、不更换 Tunnel ID。
+
 ## 验收状态
 
 - MCP SDK：initialize、tools/list、Resource 读取和 4 个控制写入均已通过；重复 `commandId` / 
@@ -59,6 +64,9 @@ Foxlink 本地 MCP 不发行 OAuth token；公网侧身份校验由专属 Secure
   没有重复执行。
 - 正式包复验：Windows v0.12.61 覆盖安装后，ChatGPT 再次经专属 Tunnel 调用两个只读工具，
   返回版本 `0.12.61`、revision `28`、状态 `idle`，证明调用链不再依赖开发态业务进程。
+- 服务重启复验：独立 MCP/Tunnel 停止后 8770/8878 均消失且 PersonalMcpGateway 保持运行；
+  ACL 修复后 SCM 进程树为 WinSW → PowerShell → tunnel-client，8878 监听归属该子进程，持续观察
+  服务仍为 `Running`，doctor 通过且修复后没有新的 WinSW 崩溃事件。
 - Python 制品：`mcp/dist/foxlink_mcp-0.1.0-py3-none-any.whl` 的 SHA256 为
   `74CB66BA84958466C877733056B6453C71488ECE61D51DB08570340962DB296E`；源码包 SHA256 为
   `BB3C0DBCF9928597E47F4815B1CF1CBA0E2C335F5975C6B468E0ECBA6A5D6AE1`。

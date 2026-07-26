@@ -1,6 +1,8 @@
 [CmdletBinding()]param([string]$DataDir="$env:ProgramData\Poyi\FoxlinkMcp",[string]$InstallDir="$env:ProgramFiles\Poyi\FoxlinkMcp")
 $ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Security
-$enc=[Convert]::FromBase64String((Get-Content -Raw "$DataDir\runtime-key.dpapi").Trim());$entropy=[Text.Encoding]::UTF8.GetBytes('Poyi.FoxlinkMcp.v1');$plain=[Security.Cryptography.ProtectedData]::Unprotect($enc,$entropy,[Security.Cryptography.DataProtectionScope]::LocalMachine)
+$keyPath="$DataDir\runtime-key.dpapi"
+try{$keyText=Get-Content -Raw $keyPath}catch [System.UnauthorizedAccessException]{throw "Foxlink tunnel key ACL blocks diagnostics. Run tunnel/repair-acl.ps1 from elevated PowerShell. ($keyPath)"}
+$enc=[Convert]::FromBase64String($keyText.Trim());$entropy=[Text.Encoding]::UTF8.GetBytes('Poyi.FoxlinkMcp.v1');$plain=[Security.Cryptography.ProtectedData]::Unprotect($enc,$entropy,[Security.Cryptography.DataProtectionScope]::LocalMachine)
 try{
   $env:CONTROL_PLANE_API_KEY=[Text.Encoding]::UTF8.GetString($plain)
   $id=(Get-Content -Raw "$DataDir\tunnel-id").Trim()

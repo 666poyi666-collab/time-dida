@@ -210,6 +210,11 @@ git check-attr filter diff -- release-vXYZ/FocusLink-x.y.z-x64.exe release-vXYZ/
 
 两个文件都必须分别返回 `filter: lfs` 和 `diff: lfs`。正式构建前后都要记录 `.git/lfs/tmp` 的文件数与大小；目录非空或仍在增长即视为门禁失败，排除触发源后才能继续发布。
 
+Foxlink 独立 MCP 的重启门禁还必须验证：停止 `FoxlinkSecureMcpTunnel` 与 `PoyiFoxlinkMcp` 后，
+8770/8878 均消失且其他 MCP 服务保持运行；重新启动后两个 `/readyz` 恢复。若 WinSW 返回 1067，
+先从 Windows Application 事件确认是否为 `service-logs/tunnel` ACL 漂移，再以提升权限执行
+`mcp/tunnel/repair-acl.ps1`，不得通过新建 Tunnel 或替换 Runtime Key 掩盖本地权限问题。
+
 ## 3. 正式构建
 
 安装器出现“FocusLink 无法关闭”或重复重试框时，先按

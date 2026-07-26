@@ -5,6 +5,7 @@
 - **独立服务**：Foxlink MCP 以 `PoyiFoxlinkMcp` 原生 Windows 服务监听 `127.0.0.1:8770/mcp`，专属 Secure MCP Tunnel 独立运行，不依赖 PersonalMcpGateway。
 - **桌面业务 API 入包**：修复 v0.12.60 安装包早于 MCP 业务 API 合入的问题；`127.0.0.1:18770` 现在随正式 Windows 应用启动，MCP 不再依赖开发态进程。
 - **ChatGPT 私有验收**：Developer Mode 私有 Foxlink 应用已连接；真实只读、恢复、暂停及相同 `requestId/commandId` 结果重放通过。
+- **Tunnel 重启修复**：修复 WinSW 日志文件 ACL 漂移导致的 1067 与孤儿 tunnel-client；提升权限的定向修复会验证专用端口和进程类型、重置日志 ACL，并要求 SCM 持续 `Running` 后才报告成功。
 - **版本门禁**：Windows、小米和华为统一升级为 `0.12.61 / 1261`；本版仅本地交付，不推送 `main`、不创建 tag 或 GitHub Release。
 
 ## v0.12.60 - 2026-07-26（Sync v2 连续实施）
