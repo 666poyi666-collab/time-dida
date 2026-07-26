@@ -18,6 +18,7 @@
 
 | 需求 ID | 日期 | 需求摘要 | Windows 验收 | 手机验收 | 平板验收 | 状态 | 目标版本 | 关联改动 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| FL-REQ-20260726-UI3 | 2026-07-26 | 3单：四个功能视图的呈现 UI 大改，统一「工位横幅 → 主舞台 → 文脉栏」仪器语法（专注仪表列+纪念碑+全宽时间之带、任务三栏执行台、统计双区工作台、设置编号规格表） | 0.12.63 打包版通过 497 项测试、全量 UI/mini 冒烟与四视图截图目检 | 待安装回读（本单不改移动 UI） | 待安装回读（本单不改移动 UI） | 实施中；桌面已验收，三端同版矩阵待真机 | v0.12.63 | `FRONTEND_SPEC` §2/5/7/8/9、四视图源码与 `linear-workbench.css`、`ui-state-smoke` |
 | FL-REQ-20260726-FOXLINK-MCP | 2026-07-26 | 独立 Foxlink MCP、专属 Tunnel 与 ChatGPT Developer Mode 私有应用，桌面业务 API 随正式安装包启动 | 0.12.61.0 覆盖安装；18770/8770/8878 ready；ChatGPT 回读 0.12.61 | 小米覆盖并回读 0.12.61/1261；移动业务不变 | 华为覆盖并回读 0.12.61/1261；移动业务不变 | 已验收；仅本地交付 | v0.12.61 | `electron/mcp`、`mcp/`、`FOXLINK_MCP.md`、三端版本矩阵与 ChatGPT 截图 |
 | FL-REQ-20260724-SURFACE | 2026-07-24 | Android 使用真实可识别的系统计时表面，并明确能力与降级 | 设置可查看移动端真实能力 | 小米优先焦点通知，Android 16 优先 promoted ongoing，其余为常驻通知；失败状态准确 | 华为/荣耀优先 EMUI 系统计时胶囊，系统不识别时保留常驻通知 | 待视觉验收 | v0.12.28 | `SystemFocusSurfaceProvider`、系统控制区、Android 通知测试 |
 | FL-REQ-20260724-OVERLAY | 2026-07-24 | 保留用户显式启用的可移动 Android 后备悬浮条 | 不适用 | 长按拖动、点击回应用、旋转/重启恢复并夹取安全区 | 与手机相同，兼容横竖屏和分屏 | 待人工操作 | 未发布 | `FocusDesktopOverlayController`、`FocusRuntimeSystemSettings` |
