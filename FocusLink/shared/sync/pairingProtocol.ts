@@ -26,7 +26,13 @@ export function parseDeviceSyncPairingUrl(
   } catch {
     return null;
   }
-  if (url.protocol !== 'focuslink:' || url.hostname !== 'pair') return null;
+  if (url.protocol !== 'focuslink:') return null;
+  // Chromium ~85 之前把非标准 scheme 当 opaque path 解析：hostname 为空、
+  // pathname 是 "//pair"（手表的 WebView 停在 Chrome 83，正是这条路径）；
+  // 新引擎则给出 hostname === 'pair'。两种形态都必须接受，否则老 WebView
+  // 上每一个合法配对链接都会被当成无效。
+  const target = url.hostname || url.pathname.replace(/^\/+/, '').replace(/[/?#].*$/, '');
+  if (target !== 'pair') return null;
   const protocolVersion = Number(url.searchParams.get('protocolVersion'));
   const nonce = url.searchParams.get('nonce') ?? '';
   const expiresAt = Number(url.searchParams.get('expiresAt'));

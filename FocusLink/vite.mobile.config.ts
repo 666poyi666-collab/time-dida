@@ -32,6 +32,9 @@ export default defineConfig({
   build: {
     outDir: path.resolve(projectRoot, 'dist-mobile'),
     emptyOutDir: true,
-    target: 'es2022',
+    // 手表的系统 WebView 停在 Chrome 83 且不会更新；es2022 会原样输出
+    // 逻辑赋值等 83 解析不了的语法，整包在解析期就死。降到 chrome83，
+    // 现代设备照跑，代价只是少量转译体积。
+    target: 'chrome83',
   },
 });

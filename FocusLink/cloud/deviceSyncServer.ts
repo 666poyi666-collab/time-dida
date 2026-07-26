@@ -642,6 +642,12 @@ function handlePreflight(
 function applyCorsHeaders(response: http.ServerResponse, origin: string): void {
   response.setHeader('Access-Control-Allow-Origin', origin);
   response.setHeader('Vary', 'Origin');
+  // 全局安全头默认 CORP: same-site，但 Capacitor 客户端的 origin 是
+  // https://localhost，服务在 http://127.0.0.1——按定义不同 site。老 WebView
+  // （手表的 Chrome 83）把 CORP 连带用在预检与 CORS 响应上，带 Authorization
+  // 的每一个请求都会被 ERR_BLOCKED_BY_RESPONSE 拦死。对已通过精确 Origin
+  // 白名单的响应放开 CORP；未带白名单 Origin 的响应仍保持 same-site。
+  response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
 }
 
 function readRequestBody(request: http.IncomingMessage, byteLimit: number): Promise<string> {

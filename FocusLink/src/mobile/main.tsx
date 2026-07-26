@@ -1,3 +1,4 @@
+import './compat';
 import ReactDOM from 'react-dom/client';
 import { MobileApp } from './MobileApp';
 import { WatchApp } from './WatchApp';
@@ -5,10 +6,11 @@ import { applyMobileAppearance, loadMobileAppearance } from './appearance';
 import './mobile.css';
 import './mobile-confirm.css';
 
-// 手表（OPPO OWW221 = 189×248 dp）跑的是同一个 APK；按视口分流到专用壳层。
-// 完整控制台是为 393dp+ 设计的，塞进 189dp 只会得到一屏折行 + 130px 横向溢出。
-// 手机最小也有 ~640dp 长边（分屏也到不了 320），这个阈值不会误伤。
-const isWatchViewport = Math.max(window.innerWidth, window.innerHeight) <= 320;
+// 手表（OPPO OWW221，378×496 物理像素）跑的是同一个 APK；按视口分流到专用壳层。
+// 注意 Android WebView 有 320px 的视口下限：手表上 width=device-width 实际得到
+// 320×420 CSS @ dpr 1.18，而不是按密度算出的 189×248。以 CSS 长边 ≤460 为界：
+// 手表 420，手机竖屏长边最少也有 ~640（本机小米 895、华为 1024），不会误伤。
+const isWatchViewport = Math.max(window.innerWidth, window.innerHeight) <= 460;
 
 document.documentElement.dataset.runtime = isWatchViewport ? 'watch-focus' : 'mobile-focus';
 if (isWatchViewport) document.documentElement.classList.add('watch-runtime');

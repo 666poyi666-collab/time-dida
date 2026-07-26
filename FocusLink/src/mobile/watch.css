@@ -1,4 +1,6 @@
-/* 手表壳层（189×248 dp）：一屏放下「状态 · 读数 · 任务 · 操作」，零滚动。
+/* 手表壳层：同一块表在不同启动条件下报告过 189×248 @2x 与 320×420 @1.18x
+   两种 CSS 视口——尺寸一律用视口单位或上限收敛，两种读数都必须成立。
+   一屏放下「状态 · 读数 · 任务 · 操作」，零滚动。
    颜色与状态语义沿用 temporal-foundation 的同一套令牌——专注 = 强调色、
    暂停 = 红，与桌面/手机/平板完全一致；只有排版是手表自己的。 */
 .watch-runtime,
@@ -16,31 +18,32 @@
 }
 
 .watch-shell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+  /* Chrome 83 没有 flex gap（84 起）；grid 的 gap 从 66 就有，手表壳层全用 grid。 */
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: min(12px, 3.2vw);
   width: 100vw;
   height: 100vh;
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  padding: 4vw 5vw calc(4vw + env(safe-area-inset-bottom, 0px));
   color: rgb(var(--app-text));
   font-family: var(--font-ui);
   text-align: center;
 }
 
 .watch-state-line {
-  display: flex;
+  display: grid;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  grid-auto-flow: column;
   margin: 0;
   color: rgb(var(--app-muted));
-  font-size: 11px;
+  font-size: min(14px, 4vw);
 }
 
 .watch-dot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: rgb(var(--app-subtle));
 }
@@ -60,7 +63,7 @@
 .watch-clock {
   margin: 0;
   font-family: var(--font-number);
-  font-size: 44px;
+  font-size: min(76px, 22vw);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
@@ -77,12 +80,12 @@
 .watch-task-line {
   overflow: hidden;
   max-width: 100%;
-  padding: 4px 10px;
+  padding: 6px 14px;
   border: 1px solid rgb(var(--app-border));
   border-radius: 999px;
   background: rgb(var(--app-surface));
   color: rgb(var(--app-muted));
-  font-size: 11px;
+  font-size: min(14px, 3.9vw);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -96,7 +99,7 @@
 .watch-notice {
   margin: 0;
   color: rgb(var(--app-muted));
-  font-size: 10px;
+  font-size: min(13px, 3.6vw);
   line-height: 1.5;
 }
 .watch-notice {
@@ -104,18 +107,19 @@
 }
 
 .watch-actions {
-  display: flex;
-  gap: 8px;
+  display: grid;
+  gap: 10px;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
   width: 100%;
 }
 .watch-actions button {
-  flex: 1;
-  min-height: 40px;
+  min-height: min(52px, 13vw);
   border: 1px solid rgb(var(--app-border-strong));
   border-radius: 999px;
   background: rgb(var(--app-surface));
   color: rgb(var(--app-text));
-  font-size: 13px;
+  font-size: min(17px, 4.6vw);
   font-weight: 600;
 }
 .watch-actions .watch-primary {
@@ -133,42 +137,41 @@
 
 /* ── 任务选择页：整屏可滚列表 ─────────────────────────────── */
 .watch-tasks-header {
-  display: flex;
-  flex-shrink: 0;
+  display: grid;
   align-items: center;
   gap: 8px;
+  grid-template-columns: auto 1fr;
   width: 100%;
   font-size: 12px;
   font-weight: 600;
 }
 .watch-tasks-header button {
-  padding: 4px 10px;
+  padding: 6px 14px;
   border: 1px solid rgb(var(--app-border));
   border-radius: 999px;
   background: rgb(var(--app-surface));
   color: rgb(var(--app-muted));
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .watch-task-list {
-  display: flex;
+  display: grid;
   overflow: hidden auto;
-  flex: 1;
-  flex-direction: column;
+  align-content: start;
   gap: 4px;
   width: 100%;
+  max-height: calc(100vh - 22vw);
   padding-bottom: 6px;
 }
 .watch-task-list > button {
   overflow: hidden;
-  flex-shrink: 0;
-  min-height: 34px;
-  padding: 6px 10px;
+  min-height: min(46px, 12vw);
+  padding: 6px 12px;
   border: 1px solid rgb(var(--app-border));
   border-radius: 8px;
   background: rgb(var(--app-surface));
   color: rgb(var(--app-text));
-  font-size: 11.5px;
+  font-size: min(14px, 3.9vw);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -181,5 +184,5 @@
 .watch-task-empty {
   margin: 12px 0 0;
   color: rgb(var(--app-muted));
-  font-size: 10.5px;
+  font-size: 13px;
 }

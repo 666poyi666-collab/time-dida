@@ -8,7 +8,7 @@
 // 视口取自本机三台设备的实测值（adb shell wm size / wm density）：
 //   华为 DBY-W09  1600×2560 @400dpi → 640×1024 dp
 //   小米 22041216C 1080×2460 @440dpi → 393×895 dp
-//   OPPO OWW221    378×496  @320dpi → 189×248 dp（手表）
+//   OPPO OWW221    378×496 物理；WebView 有 320px 视口下限 → 实际 320×420 CSS @1.18x
 import { app, BrowserWindow } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -21,7 +21,15 @@ const outputDir = path.resolve(projectRoot, 'test-data', 'mobile-viewport-screen
 const VIEWPORTS = [
   { id: 'phone', label: '小米 22041216C', width: 393, height: 895, scale: 2.75 },
   { id: 'tablet', label: '华为 DBY-W09', width: 640, height: 1024, scale: 2.5 },
-  { id: 'watch', label: 'OPPO OWW221', width: 189, height: 248, scale: 2 },
+  // 同一块表在不同启动条件下报告过两种 CSS 视口，两种都必须过。
+  { id: 'watch', label: 'OPPO OWW221 (189×248 @2x)', width: 189, height: 248, scale: 2 },
+  {
+    id: 'watch-legacy',
+    label: 'OPPO OWW221 (320×420 @1.18x)',
+    width: 320,
+    height: 420,
+    scale: 1.18,
+  },
 ] as const;
 
 /** 六个可选字族都必须真的能用；任何一个静默回退，选它的用户就永远看不到自己选的字。 */
@@ -89,7 +97,7 @@ app
         throw new Error(`${viewport.id} 横向溢出：${metrics.scrollWidth} > ${metrics.innerWidth}`);
       }
       // 手表视口必须分流到手表壳层，绝不允许整套控制台被塞进 189dp。
-      if (viewport.id === 'watch' && metrics.runtime !== 'watch-focus') {
+      if (viewport.id.startsWith('watch') && metrics.runtime !== 'watch-focus') {
         throw new Error(`watch 视口未启用手表壳层：runtime=${String(metrics.runtime)}`);
       }
 
