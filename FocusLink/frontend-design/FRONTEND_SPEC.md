@@ -1,6 +1,6 @@
 # FocusLink 前端设计规范
 
-> 目标版本：v0.12.x（当前实现：v0.12.37）
+> 目标版本：v0.12.x（当前实现：v0.12.61）
 >
 > 当前状态：「时间仪器 Time Instrument」设计系统已实现并取代 Linear Workbench。
 >
@@ -12,7 +12,7 @@
 - 统计界面吸收参考项目的高密度时间统计、趋势、热力、时段分布与宽屏时间轴组织方式，但必须使用 FocusLink 的真实账本、自然日裁切、任务关联和同步语义，不照搬品牌皮肤或假数据。
 - 桌面统计重点改善顺读层级与宽屏布局；手机和平板统计保持同一分析模型，并分别适配单列触控与宽屏双栏。
 - 时间之带与五套计时仪表继续优化逐秒更新的平滑度；不得用高频 React 全树重渲染换取视觉连续，也不得牺牲真实秒边界、冻结态或 reduced-motion。
-- 本轮先生成 Windows 安装版供用户覆盖安装并验收；用户确认安装后再继续三端联调。手机和平板交付采用覆盖安装，不清除现有应用数据。
+- v0.12.53 已完成 Windows 覆盖安装与手机、平板同版联调；移动端覆盖安装保留应用数据，三端统一连接 Cloudflare HTTPS 自定义域名。
 
 ## 目录
 
@@ -302,7 +302,7 @@ Web/PWA 与 Capacitor Android 继续复用同一套 `src/mobile/` React 界面�
 - 实时状态由云端 revision 作为权威事实。客户端以响应 `serverTime` 为显示基点逐秒外推三时间；断线时明确标记「离线推算」，不得把本机 tick 冒充另一设备已经确认的状态。
 - 所有命令携带幂等 command id 与 `expectedRevision`。版本冲突时本次命令不执行，界面显示提交 revision、当前云端 revision 与当前状态，不静默覆盖，也不臆测一定是另一设备造成。
 - 实时活动态是服务端权威的 compare-and-swap 寄存器，不做字段级或 CRDT 合并：客户端只接受更高 revision；同 revision 仅允许同一 session/state 的较新时间物化，禁止旧响应或同版本异态倒灌。连接身份切换后，旧 endpoint/token 的在途响应必须失效。未配置令牌时不得恢复或展示旧活动快照；离线缓存必须明确标记「缓存」，不能和已确认云端态并列成叠加态。
-- PC 关机或网络不可达时，只有“最后一次已确认云端状态为 idle”的设备可以开启明确标为「本机」的离线专注；最后确认仍为 running/paused 或从未确认过状态时继续锁定，避免分裂计时。本机活动态持久化到应用沙箱，结束时先原子写入待补传队列再显示完成；恢复连接后自动补传，收到 `applied/duplicate` 才出队。存在本机活动态或待补传记录时禁止更换 endpoint/token 或移除令牌。
+- PC 关机、未配置连接或云端不可达时，移动端始终允许新建明确标为「本机」的独立 UUID；陈旧 running/paused 缓存只提示“其他设备可能仍有活动会话”，不得复用旧 sessionId。离线开始的整轮会话保持本机权威，不中途升级为云端 live。恢复连接只读探测；发现不同云端活动 UUID 时进入 `forked-local`，同时展示本机会话和远端会话提示，两个控制域互不操作、互不覆盖、分别结束入账。本机结束事务先写 completed bundle 再移除运行态，收到 `applied/duplicate` 才删除 pending 与同步元数据；`conflict/rejected` 保留诊断且不阻塞后续记录。存在本机活动态或待处理记录时禁止更换 endpoint/token 或移除令牌。
 - ACK 文案必须区分 applied、duplicate、conflict、rejected：duplicate 表示没有再次执行；conflict 表示本次操作未执行并显示提交 revision 与云端 revision；不得笼统宣称「另一设备覆盖」或「已同步到所有设备」。顶部连接色只表达实时控制连接，账本拉取失败不能把仍然正常的实时连接染成错误态。
 - 在线时通过有界长轮询等待 revision 变化；页面隐藏、网络切换、连接参数变化和组件卸载必须取消旧请求，重连不得累加轮询或让旧账号数据回填。
 - 结束会话后继续复用完整的 Session / Segment / Pause 账本与 IndexedDB 缓存。关联状态仍使用「已关联 / 未关联」，来源设备不能写成任务来源；缓存命中、实时状态确认和账本拉取是三种不同结果。旧安装或账号切换留下的账本 cursor 被服务判定为 `invalid_cursor` 时，移动端应自动清空旧账号缓存并从头重建一次，不向用户暴露英文协议错误，也不得把旧账号会话与新账号结果叠加。
@@ -316,9 +316,9 @@ Web/PWA 与 Capacitor Android 继续复用同一套 `src/mobile/` React 界面�
 - PWA manifest、页面标题与离线 app shell 使用「FocusLink 专注」语义，不再写「只读预览」。Service Worker 只缓存同源静态资源，不缓存 Bearer 响应或跨源实时接口。
 - Capacitor 仅包装同一个 `dist-mobile`，Android 工程只提供薄原生集成。最低 API 24；禁止系统备份 WebView token/账本缓存，Network Security Config 仅为 localhost/127.0.0.1 回环测试开放明文，生产地址必须 HTTPS。
 - Android 活动会话使用可见前台通知，动作包含暂停/继续/结束；快捷设置 Tile 在已有活动快照时只转发暂停/继续，待机时打开 App 完成必要输入。原生层不推进业务时钟，也不先行改变状态；通知/Tile 动作进入至少一次命令队列，携带 session/revision。前台 Service 可直接用 Keystore 凭据提交同一个幂等命令，Web 层也可并发重试；只有云端返回 applied/duplicate/conflict/rejected 与最新快照后才移除队列，WebView 被回收不得让系统动作失效。
-- Android 把 endpoint、device id 与 token 交给薄原生层，token 必须用 Android Keystore 加密；活动通知 Service 在 WebView 后台时以“主线程延时触发、单线程网络读取、完成后再安排下一轮”的方式每 20 秒读取云端权威快照，网络恢复后自动校准，另一设备结束后移除通知。原生快照 revision 必须单调，idle 也保留云端 revision，WebView 的旧缓存不得覆盖更新状态。系统控制区显示原生连接、省电豁免、后台限制、轮询次数/最近成功/错误，并分别提供省电设置和华为/荣耀/小米自启动设置入口；未取得 OEM 许可时不得宣称绝不会被系统冻结。
+- Android 把 endpoint、device id 与 token 交给薄原生层，token 必须用 Android Keystore 加密；活动通知 Service 在 WebView 后台时以“主线程延时触发、单线程网络读取、完成后再安排下一轮”的方式每 20 秒读取云端权威快照。原生显示快照携带 `localAuthority`；本机离线会话活动期间，云端结果只可用于诊断，不得写入 Store、替换通知/悬浮条或上传指向本机 UUID 的云端命令；本机结束并清除该标记后才恢复云端投影。云端快照 revision 仍必须单调，idle 也保留 revision。系统控制区显示原生连接、省电豁免、后台限制、轮询次数/最近成功/错误，并分别提供省电设置和厂商自启动入口。
 - PWA 受浏览器后台冻结与网络调度限制，不能承诺常驻长连接；它必须缓存最后状态、给请求设置硬超时，并在 online/pageshow/重新可见时废弃旧请求立即重连。Android 用前台通知维持活动会话入口，但网络事实仍以云端快照为准。原生系统表面必须报告实际选择：小米协议与权限可用时为 `xiaomi-island`，华为/荣耀 EMUI 兼容投影为 `huawei-live-capsule`，Android 16 promoted ongoing 可用时为 `android-live-update`，否则为 `ongoing-notification`；不得笼统显示“系统级已启用”。华为兼容投影不改写云端计时事实，系统忽略字段时继续显示标准通知。
-- Android 后备悬浮条默认关闭，只能由用户显式启用；长按进入拖动，点击回到 FocusLink，拖动不得误触点击。位置按横竖屏归一化保存，旋转、分屏和重启后根据 system bars、刘海与当前可用屏幕重新夹取；系统通知可用时不得自动打开 overlay。
+- Android 后备悬浮条默认关闭，只能由用户显式启用；点按计时条显示关闭按钮，3 秒无操作自动收起，点关闭后持久写入禁用且不结束专注或常驻通知，只能回应用重新开启。长按进入拖动，位置更新每帧最多提交一次；拖动开始缓存安全区和尺寸，旋转、分屏和重启后根据 system bars、刘海与当前可用屏幕重新夹取。计时 tick 复用运行/暂停背景，不重复读取 WindowMetrics；系统通知可用时不得自动打开 overlay。
 - `cloud/` 当前仍是回环优先测试后端，不具备生产身份、备份、限流与监控；测试通过不等于已上线公共云服务。
 
 ## 11. 通用组件与状态

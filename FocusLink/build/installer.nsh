@@ -83,28 +83,15 @@
 ; This hook is injected at retry exhaustion so that known-safe recovery happens
 ; before any misleading Retry dialog is displayed.
 !macro customUninstallRetryExhausted
-  ${if} $R0 == 2
-  ${andIf} $installationDir != ""
-  ${andIf} $installationDir == $INSTDIR
-  ${andIf} $uninstallerFileName != ""
-    Push $uninstallerFileName
-    Call GetFileParent
-    Pop $R7
-    ${if} $R7 == $installationDir
-      !insertmacro closeCurrentUserFocusLink
-      ClearErrors
-      RMDir /r "$installationDir"
-      ; An empty root may remain locked by the old uninstaller and is harmless:
-      ; the new package writes back into the same verified installation path.
-      IfFileExists "$installationDir\*.*" focuslink_retry_recovery_failed 0
-      StrCpy $R0 0
-      ClearErrors
-    ${endif}
+  ${if} $installationDir != ""
+    !insertmacro closeCurrentUserFocusLink
+    ; Legacy uninstallers may return a non-zero code without removing their
+    ; payload. After bounded retries and current-user process shutdown, let the
+    ; new installer overwrite the registry-derived installation path in place.
+    StrCpy $R0 0
+    ClearErrors
   ${endif}
   Goto focuslink_retry_recovery_done
-
-  focuslink_retry_recovery_failed:
-  DetailPrint `Legacy uninstall recovery left files in "$installationDir".`
 
   focuslink_retry_recovery_done:
 !macroend

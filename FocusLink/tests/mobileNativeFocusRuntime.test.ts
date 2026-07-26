@@ -46,8 +46,22 @@ describe('mobile native focus display projection', () => {
       primaryElapsedMs: 10_000,
       primaryAdvances: true,
       controlsEnabled: true,
+      localAuthority: false,
       validUntilEpochMs: 1_905_000,
     });
+  });
+
+  it('marks a local session so native cloud polling cannot replace it', () => {
+    const snapshot = {
+      ...idleLiveFocusSnapshot(3, 100_000),
+      state: 'running' as const,
+      sessionId: 'local-session',
+      activeElapsedMs: 20_000,
+      wallElapsedMs: 20_000,
+      currentStateStartedAt: 100_000,
+    };
+
+    expect(makeNativeDisplaySnapshot(snapshot, false, 120_000, true).localAuthority).toBe(true);
   });
 
   it('exposes Android controls only when both the native platform and plugin are available', () => {

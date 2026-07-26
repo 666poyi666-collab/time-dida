@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相；当前实现 v0.12.37
+> 状态：v0.12.x 后端单一真相；当前实现 v0.12.61
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -10,7 +10,19 @@
 - 桌面、Web/PWA 与 Android 继续共享协议、幂等 command id、revision 冲突处理和 completed ledger；移动 renderer 不复制 Electron 业务服务。
 - 移动端覆盖安装必须保留兼容的 endpoint、token 选择与本地账本缓存；协议或缓存升级只能做显式兼容迁移，不能靠清除应用数据恢复。
 - Android 原生 Keystore 连接与 WebView 偏好必须执行同一旧默认端口迁移；WebView 会话令牌被系统回收不得隐式清空仍服务于活动通知的原生连接。
-- Windows 安装版先交由用户覆盖安装；用户确认安装后再继续三端真实联调与移动覆盖安装。
+- v0.12.53 已完成 Windows 覆盖安装与双 Android 真实联调；三端生产连接使用同一 Cloudflare HTTPS 自定义域名，本机 Node/Docker 服务保留为回归与应急实现。
+- v0.12.60 在 v1 实时控制面之外增加 Sync v2：三类实体独立 revision；SQLite/IndexedDB 租约 Outbox、base snapshot、显式 epoch、设备水位、tombstone/graveyard 和冲突中心共同保证本地修改不会被静默覆盖。
+
+## Sync v2 不变量
+
+- 已结束时间账本不可直接覆盖；时间、segment 或 pause 修正都生成带原因的 correction。
+- metadata 以 base/local/remote 三方比较；标题、学科、任务、备注双边异值进入冲突，标签以稳定 tagId 合并。
+- 业务写入与 Outbox 同事务；`uploading` 持有有期限 lease；只有 `applied/duplicate` 原子更新 base 后删除 Outbox。
+- Bootstrap 固定为 `uninitialized → inventory-uploaded → manifest-received → base-established → v2-active`。generation 或 epoch 改变时保留 Outbox 并重新建立 base。
+- 设备 90 天未上线标 stale；tombstone 至少保留 180 天并等待全部活跃设备水位；graveyard 继续阻止旧副本复活。
+- 设备令牌使用 `fl2_` 路由格式；账号 DO 只保存 pepper HMAC、scope、过期和撤销状态，token 正文不落日志。
+- 推送只传 needSync hint，HTTPS/cursor 始终是数据真相。当前厂商凭据缺失，状态为 `credential-missing`。
+- R2 恢复进入 maintenance 并切换 generation 与 epoch。当前账户未启用 R2，Wrangler API `10042` 代表真实备份门禁未通过。
 
 ## 1. 分层
 
@@ -198,6 +210,8 @@ revision、服务端单调 change sequence 与不透明 cursor。规则如下：
 
 个人云部署使用 `cloud/Dockerfile`、`cloud/Web.Dockerfile` + `cloud/docker-compose.yml`，目标平台固定为免费开源的自托管 Coolify。Compose 同时发布 `focuslink-web` PWA 与 `focuslink-cloud` API；Coolify 分别绑定 Web HTTPS 域名和同步 HTTPS 域名，Web 域名必须加入 API 的精确 CORS allowlist；生产服务还固定附加 Capacitor 所需的 `https://localhost` 与 `capacitor://localhost`，否则原生 App 会在 Bearer 请求前被浏览器 CORS 拦截。API 模式使用 `FOCUSLINK_CLOUD_MODE=production`，监听容器 `8787`，要求反向代理确认原始 HTTPS、至少 32 字符随机 Bearer token、精确 HTTPS CORS origin、持久卷 `/data`、安全响应头、请求超时和进程级限流。Coolify 必须启用自动证书、两个健康检查和名为 `focuslink-cloud-data` 的持久卷；API 只允许单实例运行，升级前备份该卷。账号环境变量格式为 JSON 数组：`[{"accountId":"owner","accessToken":"<openssl rand -hex 32>"}]`，不得写入仓库或构建日志。
 
+Cloudflare 是 v0.12.47 起的公网托管实现，入口为 `cloudflare/worker.ts`，账号级 SQLite Durable Object 位于 `cloudflare/accountDurableObject.ts`，配置真值为 `wrangler.jsonc`。Worker 必须与 Node/Docker 实现保持相同的 `/health`、`/v1/sync`、`/v1/tasks`、`/v1/live`、`/v1/live/wait`、`/v1/live/command` DTO 和结构化错误；SQLite 表分别保存实体、revision、opId、change log、任务快照、实时会话和 commandId。Durable Object 以 Bearer token 派生账号边界并串行提交账号操作；任何日志和响应都不得返回 token。生产客户端使用已验证的 HTTPS 自定义域名，`workers.dev` 只作为部署诊断入口。Node/Docker 仍是协议回归与应急实现，不因 Cloudflare 上线而删除。
+
 该个人云配置满足单用户多设备持续在线，但不冒充通用 SaaS 身份平台：它没有 PKCE/OIDC、自助注册、设备撤销、refresh token、多实例数据库协调或托管备份。若未来开放给不受信任的多用户，必须先增加正式身份、租户数据库、KMS、审计、外部限流、备份恢复演练与 cursor 压缩/过期策略；当前不得水平扩容。
 
 实时活动会话是独立控制平面，协议真值位于 `shared/sync/liveFocusProtocol.ts`。Web/PWA、Android
@@ -214,11 +228,11 @@ revision、服务端单调 change sequence 与不透明 cursor。规则如下：
 - 实时快照携带 segment/pause 边界；Electron 以 `serverTime` 计算本机时钟偏移后投影 `TimerSnapshot`。由任一设备结束时，Electron 必须先运行账本拉取并确认完整 bundle 已进入 SQLite，再发出 `finished` 快照触发 dida/TomaToDo 副作用。
 - 实时快照、命令幂等记录与 completed ledger 共用账号级原子 JSON 提交并向后兼容旧测试文件；进程重启后必须保留活动时间边界和命令去重。该 JSON 仍只允许单进程本地测试。
 - dida 和番茄 To-do 始终是桌面副作用。移动命令与实时快照不携带凭据或伪造投递结果；结束会话进入 FocusLink 账本后，只有桌面端真实执行相应队列并得到可验证结果才能显示外部同步成功。
-- Android 前台 Service、通知动作与 Quick Settings Tile 是薄传输层：只保存最后一次已确认快照和至少一次 native command 队列，不自行推进业务计时，不在云端确认前乐观翻转。待处理动作必须含 session/revision 并支持冷启动 drain/ack；Service 通过可注入的 `FocusCloudClient` 使用 Keystore 连接直接 POST 同一个幂等命令，Web 层并发重试由 command id 去重，且只有匹配 command id 的 applied/duplicate/conflict/rejected 才能完成本地队列项。Android 12+ 的通知动作必须直接使用 Activity PendingIntent，不得经 Receiver/Service 再拉起 Activity；Tile 的 pending 展示保持 inactive 且可点击打开 App，避免 OEM 缓存 unavailable 后永久无法自愈。
-- Android 后台只读刷新采用自调度链而非周期 Future：主线程触发单线程 HTTP 请求，请求的 `finally` 安排下一次 20 秒刷新，任何异常不得永久取消后续轮询。最近尝试次数、成功时间、revision 与错误写入本机诊断状态。原生快照写入按 revision 单调拒绝旧值，云端 idle 快照必须保留 revision；只有 endpoint/token/device identity 确认变化时才允许清空 revision 护栏。
-- Android 系统表面由 `SystemFocusSurfaceProvider` 从同一快照选择并报告实际结果：小米 focus protocol/权限可用时写焦点字段与动作；华为/荣耀设备写 EMUI `notification.live.event=TIMER` 与 capsule Bundle，投影运行/暂停、elapsed、图标和颜色；Android 16+ 且 promoted ongoing 获准时请求 promoted；其余使用 ongoing notification。华为兼容字段被系统忽略时，原始 ongoing notification 必须仍然完整可用；它不等同于 HarmonyOS ArkTS Live View Kit。持续通知提供 `VISIBILITY_PUBLIC` 的脱敏锁屏版本，只投影运行/暂停状态和 chronometer，不泄露任务标题或连接信息。暂停超时提醒是原生本地偏好（默认开启、3 分钟、合法范围 1–240 分钟）：它按当前暂停快照的 elapsed 和 session/revision 排程，每个暂停 revision 最多提醒一次；偏好变化立即重排。提醒不得自行提交 resume/finish，也不得成为云端状态真值。
+- Android 前台 Service、通知动作与 Quick Settings Tile 是薄传输层：只保存当前显示快照和至少一次 native command 队列，不自行推进业务计时，不在云端确认前乐观翻转。快照的 `localAuthority=true` 表示 WebView 正在运行本机离线会话；此时 Service 不上传 native 云端命令，迟到的云端响应也必须在 Store 原子门禁处被拒绝，不能覆盖本机通知或 overlay。待处理云端动作必须含 session/revision 并支持冷启动 drain/ack；只有匹配 command id 的 applied/duplicate/conflict/rejected 才能完成本地队列项。
+- Android 后台只读刷新采用自调度链而非周期 Future：主线程触发单线程 HTTP 请求，请求的 `finally` 安排下一次 20 秒刷新，任何异常不得永久取消后续轮询。最近尝试次数、成功时间、revision 与错误写入本机诊断状态。本机权威期间允许记录探测成功，但不得 `putSnapshot/applyCloudSnapshot`；其余云端快照写入按 revision 单调拒绝旧值，idle 必须保留 revision。
+- Android 系统表面由 `SystemFocusSurfaceProvider` 选择，`StandardNotificationAdapter`、`XiaomiIslandAdapter` 与 `HuaweiCapsuleAdapter` 只共享脱敏 `FocusRuntimeSnapshot`，不共享厂商载荷。小米使用稳定业务 ID、通知 ID 与协议 3 start/running/pause/resume/finish 投影；能力证据依次为 `unsupported/protocol-selected/systemui-accepted/visually-verified`，最后一级只能由真机截图和人工矩阵写入。标准 ongoing notification 始终独立可用；华为既有 TIMER/capsule 字段与布局保持不变。
 - Android 的沉浸系统栏与画中画由 `MainActivity` 通过公开 API 提供，Capacitor 插件只暴露能力、当前状态和显式用户动作。结束活动会话后 renderer 必须恢复系统栏；画中画不支持时返回结构化 `supported: false`。这些显示能力不得引入第二套计时器、kiosk/设备所有者权限或厂商私有 API 依赖。
-- Android 桌面后备计时使用 `TYPE_APPLICATION_OVERLAY` 和显式 `SYSTEM_ALERT_WINDOW` 特殊授权，默认关闭且不得因通知可用而自动显示。overlay 仅由前台通知 Service 根据同一份脱敏 native snapshot 更新；长按拖动、短按回到 App，touch slop 必须阻止拖动后点击。位置以归一化坐标持久化，并在旋转、分屏、重启后按 system bars/display cutout 安全区重新夹取；idle、Service 销毁或权限撤回时移除。不得静默拉起授权页、遮盖全屏或显示任务与连接秘密。
+- Android 桌面后备计时使用 `TYPE_APPLICATION_OVERLAY` 和显式 `SYSTEM_ALERT_WINDOW` 特殊授权，默认关闭且不得因通知可用而自动显示。点按显示关闭按钮并在 3 秒无操作后收起；关闭持久禁用 overlay，但不结束会话或通知，重新启用只能来自应用设置。拖动目标坐标通过 `postOnAnimation` 每帧最多更新一次，拖动期间缓存安全区/尺寸，背景 drawable 按状态复用；位置继续归一化持久化并在配置变化后重新夹取。
 
 电脑任务清单使用独立的权威快照平面，协议真值位于 `shared/sync/taskSnapshotProtocol.ts`：
 

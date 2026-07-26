@@ -29,6 +29,12 @@ import {
   createDeviceSyncCloudStore,
   type DeviceSyncCloudStore,
 } from './deviceSyncStore';
+import { SyncV2Store, SyncV2StoreError } from './syncV2Store';
+import type {
+  SyncV2BootstrapEntitiesRequest,
+  SyncV2BootstrapInventoryRequest,
+  SyncV2Request,
+} from '../shared/sync/v2Protocol';
 
 export const DEVICE_SYNC_TEST_BODY_LIMIT_BYTES = DEVICE_SYNC_MAX_BODY_BYTES;
 export const DEFAULT_DEVICE_SYNC_TEST_HOST = '127.0.0.1';
@@ -62,6 +68,7 @@ export interface DeviceSyncCloudServerOptions {
   maxRequestsPerMinute?: number;
   /** Optional one-time credential exchange, used by the loopback embedded service only. */
   pairingExchange?: (nonce: string, deviceId: string) => { accessToken: string } | null;
+  v2Store?: SyncV2Store;
 }
 
 export interface DeviceSyncCloudServerAddress {
@@ -73,6 +80,7 @@ export interface DeviceSyncCloudServerAddress {
 export interface DeviceSyncCloudServer {
   readonly httpServer: http.Server;
   readonly store: DeviceSyncCloudStore;
+  readonly v2Store: SyncV2Store;
   listen(): Promise<DeviceSyncCloudServerAddress>;
   close(): Promise<void>;
 }
@@ -84,6 +92,7 @@ export function createDeviceSyncCloudServer(
   options: DeviceSyncCloudServerOptions = {},
 ): DeviceSyncCloudServer {
   const store = options.store ?? createDeviceSyncCloudStore();
+  const v2Store = options.v2Store ?? new SyncV2Store();
   const tokenAccounts = normalizeTokenAccounts(options.tokenAccounts);
   const allowedOrigins = new Set(options.allowedOrigins ?? DEFAULT_DEVICE_SYNC_TEST_ORIGINS);
   const host = options.host ?? DEFAULT_DEVICE_SYNC_TEST_HOST;
@@ -104,6 +113,7 @@ export function createDeviceSyncCloudServer(
       request,
       response,
       store,
+      v2Store,
       tokenAccounts,
       allowedOrigins,
       profile,
@@ -129,6 +139,7 @@ export function createDeviceSyncCloudServer(
   return {
     httpServer,
     store,
+    v2Store,
     listen: () =>
       new Promise<DeviceSyncCloudServerAddress>((resolve, reject) => {
         if (httpServer.listening) {
@@ -167,6 +178,7 @@ async function handleRequest(
   request: http.IncomingMessage,
   response: http.ServerResponse,
   store: DeviceSyncCloudStore,
+  v2Store: SyncV2Store,
   tokenAccounts: ReadonlyMap<string, string>,
   allowedOrigins: ReadonlySet<string>,
   profile: 'test' | 'personal-cloud',
@@ -367,6 +379,37 @@ async function handleRequest(
     return;
   }
 
+  if (requestUrl.pathname.startsWith('/v2/')) {
+    try {
+      if (requestUrl.pathname === '/v2/bootstrap/inventory') {
+        sendJson(
+          response,
+          200,
+          v2Store.inventory(accountId, parsed as SyncV2BootstrapInventoryRequest),
+        );
+        return;
+      }
+      if (requestUrl.pathname === '/v2/bootstrap/entities') {
+        sendJson(
+          response,
+          200,
+          v2Store.establish(accountId, parsed as SyncV2BootstrapEntitiesRequest),
+        );
+        return;
+      }
+      if (requestUrl.pathname === '/v2/sync') {
+        sendJson(response, 200, v2Store.sync(accountId, parsed as SyncV2Request));
+        return;
+      }
+    } catch (error) {
+      if (error instanceof SyncV2StoreError) {
+        sendError(response, 409, error.code, error.message);
+        return;
+      }
+      throw error;
+    }
+  }
+
   if (requestUrl.pathname === TASK_SNAPSHOT_PATH) {
     if (!validateTaskSnapshotPublishRequest(parsed)) {
       sendError(response, 400, 'invalid_request', 'invalid task snapshot');
@@ -403,6 +446,12 @@ async function handleRequest(
 }
 
 function routeMethod(pathname: string): 'GET' | 'POST' | null {
+  if (
+    pathname === '/v2/bootstrap/inventory' ||
+    pathname === '/v2/bootstrap/entities' ||
+    pathname === '/v2/sync'
+  )
+    return 'POST';
   if (pathname === '/v1/pair' || pathname === '/v1/sync' || pathname === LIVE_FOCUS_COMMAND_PATH)
     return 'POST';
   if (pathname === TASK_SNAPSHOT_PATH) return 'POST';

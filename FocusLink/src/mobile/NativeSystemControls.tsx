@@ -300,7 +300,13 @@ export function NativeSystemControls() {
 
 function systemSurfaceLabel(status: NativeFocusStatus | null): string {
   const surface = status?.systemSurface;
-  if (surface?.selected === 'xiaomi-island') return '系统展示：小米超级岛';
+  if (surface?.selected === 'xiaomi-island') {
+    if (surface.xiaomiEvidenceLevel === 'visually-verified')
+      return '系统展示：小米超级岛 · 真机已验收';
+    if (surface.xiaomiEvidenceLevel === 'systemui-accepted')
+      return '系统展示：小米超级岛 · SystemUI 已接收';
+    return '系统展示：小米超级岛协议已选择 · 待真机确认';
+  }
   if (surface?.selected === 'android-live-update') return '系统展示：Android 实时更新';
   if (surface?.selected === 'ongoing-notification') return '系统展示：常驻通知';
   return '系统展示：等待能力检测';

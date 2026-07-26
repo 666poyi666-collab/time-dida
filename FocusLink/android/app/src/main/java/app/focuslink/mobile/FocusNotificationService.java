@@ -203,14 +203,18 @@ public final class FocusNotificationService extends Service {
             recordPollFailure("connection-not-configured");
             return;
         }
-        uploadPendingCommand(connection);
+        FocusRuntimeSnapshot current = FocusRuntimeStore.getSnapshot(this);
+        if (!current.localAuthority) uploadPendingCommand(connection);
         try {
             FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromCloudResponse(
                 this,
                 cloudClient.fetchLive(connection)
             );
-            FocusRuntimeStore.putSnapshot(this, snapshot);
             recordPollSuccess(snapshot.stateRevision);
+            if (!FocusRuntimeStore.putCloudSnapshotIfNoLocalAuthority(this, snapshot)) {
+                Log.i(TAG, "Cloud focus snapshot retained as diagnostics while local authority is active");
+                return;
+            }
             Log.i(TAG, "Background cloud focus snapshot confirmed at revision " + snapshot.stateRevision);
             handler.post(() -> applyCloudSnapshot(snapshot));
         } catch (Throwable exception) {
@@ -220,13 +224,14 @@ public final class FocusNotificationService extends Service {
     }
 
     private void uploadPendingCommand(FocusRuntimeConnectionStore.Connection connection) {
+        if (FocusRuntimeStore.getSnapshot(this).localAuthority) return;
         java.util.List<FocusRuntimeCommand> pending = FocusRuntimeStore.drainPendingCommands(this);
         if (pending.isEmpty()) return;
         FocusRuntimeCommand command = pending.get(0);
         try {
             JSONObject response = cloudClient.sendCommand(connection, command);
             FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromCloudResponse(this, response);
-            FocusRuntimeStore.putSnapshot(this, snapshot);
+            if (!FocusRuntimeStore.putCloudSnapshotIfNoLocalAuthority(this, snapshot)) return;
             FocusRuntimeStore.completeCommand(this, command.id);
             handler.post(() -> applyCloudSnapshot(snapshot));
         } catch (Throwable exception) {

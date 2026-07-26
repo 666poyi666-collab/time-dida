@@ -21,6 +21,7 @@ final class FocusRuntimeSnapshot {
     final long primaryElapsedMs;
     final boolean primaryAdvances;
     final boolean controlsEnabled;
+    final boolean localAuthority;
     final long validUntilEpochMs;
     final long receivedAtEpochMs;
     final long receivedAtElapsedMs;
@@ -36,6 +37,7 @@ final class FocusRuntimeSnapshot {
         long primaryElapsedMs,
         boolean primaryAdvances,
         boolean controlsEnabled,
+        boolean localAuthority,
         long validUntilEpochMs,
         long receivedAtEpochMs,
         long receivedAtElapsedMs,
@@ -50,6 +52,7 @@ final class FocusRuntimeSnapshot {
         this.primaryElapsedMs = primaryElapsedMs;
         this.primaryAdvances = primaryAdvances;
         this.controlsEnabled = controlsEnabled;
+        this.localAuthority = localAuthority;
         this.validUntilEpochMs = validUntilEpochMs;
         this.receivedAtEpochMs = receivedAtEpochMs;
         this.receivedAtElapsedMs = receivedAtElapsedMs;
@@ -103,6 +106,7 @@ final class FocusRuntimeSnapshot {
             "",
             "",
             0L,
+            false,
             false,
             false,
             0L,
@@ -167,6 +171,7 @@ final class FocusRuntimeSnapshot {
             primaryElapsedMs,
             true,
             true,
+            false,
             nowEpochMs + FocusRuntimeContract.MAX_NATIVE_SNAPSHOT_AGE_MS,
             nowEpochMs,
             SystemClock.elapsedRealtime(),
@@ -199,6 +204,7 @@ final class FocusRuntimeSnapshot {
         long primaryElapsedMs = safeInteger(object, "primaryElapsedMs", active);
         boolean primaryAdvances = strictBoolean(object, "primaryAdvances", active);
         boolean controlsEnabled = object.optBoolean("controlsEnabled", false);
+        boolean localAuthority = object.optBoolean("localAuthority", false);
         long validUntilEpochMs = safeInteger(object, "validUntilEpochMs", active);
 
         if (active && sessionId.isEmpty()) {
@@ -224,6 +230,7 @@ final class FocusRuntimeSnapshot {
             active ? primaryElapsedMs : 0L,
             active && primaryAdvances,
             active && controlsEnabled,
+            active && localAuthority,
             active ? validUntilEpochMs : 0L,
             receivedAtEpochMs,
             receivedAtElapsedMs,
@@ -288,6 +295,7 @@ final class FocusRuntimeSnapshot {
             .put("primaryElapsedMs", primaryElapsedMs)
             .put("primaryAdvances", primaryAdvances)
             .put("controlsEnabled", controlsEnabled)
+            .put("localAuthority", localAuthority)
             .put("validUntilEpochMs", validUntilEpochMs);
     }
 

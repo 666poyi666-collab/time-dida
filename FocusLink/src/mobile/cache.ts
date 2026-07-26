@@ -9,10 +9,16 @@ import {
 } from '@shared/sync/taskSnapshotProtocol';
 
 const DATABASE_NAME = 'focuslink-mobile-preview';
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 4;
 const BUNDLE_STORE = 'bundles';
 const META_STORE = 'meta';
 const PENDING_STORE = 'pendingBundles';
+const SESSION_SYNC_META_STORE = 'sessionSyncMeta';
+const V2_OUTBOX_STORE = 'syncOutbox';
+const V2_ENTITY_STATE_STORE = 'syncEntityState';
+const V2_CONFLICT_STORE = 'syncConflicts';
+const V2_OPERATION_HISTORY_STORE = 'syncOperationHistory';
+const V2_DEVICE_STORE = 'syncDevices';
 
 const CURSOR_KEY = 'cursor';
 const LAST_SYNC_KEY = 'lastSyncAt';
@@ -36,11 +42,30 @@ export interface MobileCacheSnapshot {
   serverTime: number | null;
 }
 
+export type MobileAuthorityMode = 'cloud-live' | 'local-offline' | 'reconnecting' | 'forked-local';
+
+export interface LocalSessionSyncMeta {
+  sessionId: string;
+  authorityMode: 'local-offline' | 'forked-local';
+  originDeviceId: string;
+  baseCloudRevision: number | null;
+  suspectedRemoteSessionId: string | null;
+  detectedRemoteRevision: number | null;
+  detectedAt: number | null;
+}
+
+export type PendingDeviceSyncState = 'pending' | 'uploading' | 'retry' | 'conflict' | 'rejected';
+
 export interface PendingDeviceSyncBundle {
   opId: string;
   entityId: string;
   bundle: DeviceSyncSessionBundle;
+  state: PendingDeviceSyncState;
+  attemptCount: number;
+  nextRetryAt: number;
+  lastErrorCode: string | null;
   createdAt: number;
+  updatedAt: number;
 }
 
 interface MetaRecord {
@@ -142,10 +167,16 @@ export async function clearMobileCache(): Promise<void> {
 export async function readPendingDeviceSyncBundles(): Promise<PendingDeviceSyncBundle[]> {
   const database = await openDatabase();
   const transaction = database.transaction(PENDING_STORE, 'readonly');
-  const records = await requestValue<PendingDeviceSyncBundle[]>(
-    transaction.objectStore(PENDING_STORE).getAll(),
-  );
+  const stored = await requestValue<unknown[]>(transaction.objectStore(PENDING_STORE).getAll());
   await transactionDone(transaction);
+  const now = Date.now();
+  const records = stored.map((record) => normalizePendingRecord(record, now));
+  if (records.some((record, index) => record !== stored[index])) {
+    const migration = database.transaction(PENDING_STORE, 'readwrite');
+    const store = migration.objectStore(PENDING_STORE);
+    for (const record of records) store.put(record);
+    await transactionDone(migration);
+  }
   database.close();
   return records.sort((left, right) => left.createdAt - right.createdAt);
 }
@@ -159,7 +190,12 @@ export async function enqueuePendingDeviceSyncBundle(
     opId: makeDeviceSyncOperationId(bundle.session.id, 'put', 0, bundle),
     entityId: bundle.session.id,
     bundle,
+    state: 'pending',
+    attemptCount: 0,
+    nextRetryAt: 0,
+    lastErrorCode: null,
     createdAt: Date.now(),
+    updatedAt: Date.now(),
   };
   const database = await openDatabase();
   const transaction = database.transaction(PENDING_STORE, 'readwrite');
@@ -174,11 +210,17 @@ export async function completeOfflineFocusRuntime(
 ): Promise<PendingDeviceSyncBundle> {
   const validation = validateDeviceSyncBundle(bundle);
   if (!validation.ok) throw new Error(`无法保存离线会话：${validation.error ?? '格式无效'}`);
+  const now = Date.now();
   const record: PendingDeviceSyncBundle = {
     opId: makeDeviceSyncOperationId(bundle.session.id, 'put', 0, bundle),
     entityId: bundle.session.id,
     bundle,
-    createdAt: Date.now(),
+    state: 'pending',
+    attemptCount: 0,
+    nextRetryAt: 0,
+    lastErrorCode: null,
+    createdAt: now,
+    updatedAt: now,
   };
   const database = await openDatabase();
   const transaction = database.transaction([PENDING_STORE, META_STORE], 'readwrite');
@@ -191,8 +233,74 @@ export async function completeOfflineFocusRuntime(
 
 export async function removePendingDeviceSyncBundle(opId: string): Promise<void> {
   const database = await openDatabase();
-  const transaction = database.transaction(PENDING_STORE, 'readwrite');
-  transaction.objectStore(PENDING_STORE).delete(opId);
+  const transaction = database.transaction([PENDING_STORE, SESSION_SYNC_META_STORE], 'readwrite');
+  const pendingStore = transaction.objectStore(PENDING_STORE);
+  const existing = await requestValue<PendingDeviceSyncBundle | undefined>(pendingStore.get(opId));
+  pendingStore.delete(opId);
+  if (existing?.entityId) {
+    transaction.objectStore(SESSION_SYNC_META_STORE).delete(existing.entityId);
+  }
+  await transactionDone(transaction);
+  database.close();
+}
+
+export async function markPendingDeviceSyncUploading(
+  record: PendingDeviceSyncBundle,
+): Promise<PendingDeviceSyncBundle> {
+  return updatePendingDeviceSyncBundle(record.opId, {
+    state: 'uploading',
+    attemptCount: record.attemptCount + 1,
+    lastErrorCode: null,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function markPendingDeviceSyncFailure(
+  opId: string,
+  state: Extract<PendingDeviceSyncState, 'retry' | 'conflict' | 'rejected'>,
+  lastErrorCode: string,
+  nextRetryAt: number,
+): Promise<PendingDeviceSyncBundle> {
+  return updatePendingDeviceSyncBundle(opId, {
+    state,
+    lastErrorCode,
+    nextRetryAt,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function createOfflineFocusRuntime(
+  runtime: OfflineFocusRuntime,
+  syncMeta: LocalSessionSyncMeta,
+): Promise<void> {
+  const database = await openDatabase();
+  const transaction = database.transaction([META_STORE, SESSION_SYNC_META_STORE], 'readwrite');
+  transaction.objectStore(META_STORE).put({
+    key: OFFLINE_FOCUS_KEY,
+    value: runtime,
+  } satisfies MetaRecord);
+  transaction.objectStore(SESSION_SYNC_META_STORE).put(syncMeta);
+  await transactionDone(transaction);
+  database.close();
+}
+
+export async function readLocalSessionSyncMeta(
+  sessionId: string,
+): Promise<LocalSessionSyncMeta | null> {
+  const database = await openDatabase();
+  const transaction = database.transaction(SESSION_SYNC_META_STORE, 'readonly');
+  const value = await requestValue<unknown>(
+    transaction.objectStore(SESSION_SYNC_META_STORE).get(sessionId),
+  );
+  await transactionDone(transaction);
+  database.close();
+  return isLocalSessionSyncMeta(value) ? value : null;
+}
+
+export async function writeLocalSessionSyncMeta(meta: LocalSessionSyncMeta): Promise<void> {
+  const database = await openDatabase();
+  const transaction = database.transaction(SESSION_SYNC_META_STORE, 'readwrite');
+  transaction.objectStore(SESSION_SYNC_META_STORE).put(meta);
   await transactionDone(transaction);
   database.close();
 }
@@ -328,11 +436,38 @@ function openDatabase(): Promise<IDBDatabase> {
       if (!database.objectStoreNames.contains(PENDING_STORE)) {
         database.createObjectStore(PENDING_STORE, { keyPath: 'opId' });
       }
+      if (!database.objectStoreNames.contains(SESSION_SYNC_META_STORE)) {
+        database.createObjectStore(SESSION_SYNC_META_STORE, { keyPath: 'sessionId' });
+      }
+      if (!database.objectStoreNames.contains(V2_OUTBOX_STORE)) {
+        const store = database.createObjectStore(V2_OUTBOX_STORE, { keyPath: 'opId' });
+        store.createIndex('ready', ['state', 'nextRetryAt', 'createdAt']);
+        store.createIndex('leaseExpiresAt', 'leaseExpiresAt');
+      }
+      if (!database.objectStoreNames.contains(V2_ENTITY_STATE_STORE)) {
+        database.createObjectStore(V2_ENTITY_STATE_STORE, { keyPath: ['entityType', 'entityId'] });
+      }
+      if (!database.objectStoreNames.contains(V2_CONFLICT_STORE)) {
+        const store = database.createObjectStore(V2_CONFLICT_STORE, { keyPath: 'conflictId' });
+        store.createIndex('status', ['status', 'createdAt']);
+      }
+      if (!database.objectStoreNames.contains(V2_OPERATION_HISTORY_STORE)) {
+        const store = database.createObjectStore(V2_OPERATION_HISTORY_STORE, { keyPath: 'opId' });
+        store.createIndex('completedAt', 'completedAt');
+      }
+      if (!database.objectStoreNames.contains(V2_DEVICE_STORE)) {
+        database.createObjectStore(V2_DEVICE_STORE, { keyPath: 'deviceId' });
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error('无法打开本地缓存'));
     request.onblocked = () => reject(new Error('本地缓存正在被另一个页面占用'));
   });
+}
+
+/** Shared only by the mobile v2 persistence module; product data remains in one IndexedDB. */
+export function openMobileDatabase(): Promise<IDBDatabase> {
+  return openDatabase();
 }
 
 function requestValue<T>(request: IDBRequest<T>): Promise<T> {
@@ -392,4 +527,76 @@ function isCachedTaskSnapshot(value: unknown): value is TaskSnapshotResponse {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizePendingRecord(value: unknown, now: number): PendingDeviceSyncBundle {
+  if (!isRecord(value) || typeof value.opId !== 'string' || typeof value.entityId !== 'string') {
+    throw new Error('本机待上传会话记录无效');
+  }
+  const state =
+    value.state === 'pending' ||
+    value.state === 'retry' ||
+    value.state === 'conflict' ||
+    value.state === 'rejected'
+      ? value.state
+      : value.state === 'uploading'
+        ? 'retry'
+        : 'pending';
+  const attemptCount = Number.isSafeInteger(value.attemptCount)
+    ? Math.max(0, Number(value.attemptCount))
+    : 0;
+  const createdAt = typeof value.createdAt === 'number' ? value.createdAt : now;
+  const normalized: PendingDeviceSyncBundle = {
+    opId: value.opId,
+    entityId: value.entityId,
+    bundle: value.bundle as DeviceSyncSessionBundle,
+    state,
+    attemptCount,
+    nextRetryAt: typeof value.nextRetryAt === 'number' ? Math.max(0, value.nextRetryAt) : 0,
+    lastErrorCode: typeof value.lastErrorCode === 'string' ? value.lastErrorCode : null,
+    createdAt,
+    updatedAt: typeof value.updatedAt === 'number' ? value.updatedAt : createdAt,
+  };
+  const unchanged =
+    value.state === normalized.state &&
+    value.attemptCount === normalized.attemptCount &&
+    value.nextRetryAt === normalized.nextRetryAt &&
+    value.lastErrorCode === normalized.lastErrorCode &&
+    value.createdAt === normalized.createdAt &&
+    value.updatedAt === normalized.updatedAt;
+  return unchanged ? (value as unknown as PendingDeviceSyncBundle) : normalized;
+}
+
+async function updatePendingDeviceSyncBundle(
+  opId: string,
+  patch: Partial<PendingDeviceSyncBundle>,
+): Promise<PendingDeviceSyncBundle> {
+  const database = await openDatabase();
+  const transaction = database.transaction(PENDING_STORE, 'readwrite');
+  const store = transaction.objectStore(PENDING_STORE);
+  const existing = await requestValue<PendingDeviceSyncBundle | undefined>(store.get(opId));
+  if (!existing) {
+    transaction.abort();
+    database.close();
+    throw new Error('待上传会话不存在');
+  }
+  const next = { ...existing, ...patch };
+  store.put(next);
+  await transactionDone(transaction);
+  database.close();
+  return next;
+}
+
+function isLocalSessionSyncMeta(value: unknown): value is LocalSessionSyncMeta {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.sessionId === 'string' &&
+    (value.authorityMode === 'local-offline' || value.authorityMode === 'forked-local') &&
+    typeof value.originDeviceId === 'string' &&
+    (value.baseCloudRevision === null || Number.isSafeInteger(value.baseCloudRevision)) &&
+    (value.suspectedRemoteSessionId === null ||
+      typeof value.suspectedRemoteSessionId === 'string') &&
+    (value.detectedRemoteRevision === null || Number.isSafeInteger(value.detectedRemoteRevision)) &&
+    (value.detectedAt === null || typeof value.detectedAt === 'number')
+  );
 }

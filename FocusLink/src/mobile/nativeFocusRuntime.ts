@@ -32,6 +32,7 @@ interface NativeFocusDisplaySnapshot {
   primaryElapsedMs: number;
   primaryAdvances: boolean;
   controlsEnabled: boolean;
+  localAuthority: boolean;
   validUntilEpochMs: number;
 }
 
@@ -68,6 +69,8 @@ export interface NativeSystemFocusSurface {
   selected?: 'xiaomi-island' | 'android-live-update' | 'ongoing-notification';
   xiaomiFocusProtocol?: number;
   xiaomiFocusPermission?: boolean;
+  xiaomiEvidenceLevel?:
+    'unsupported' | 'protocol-selected' | 'systemui-accepted' | 'visually-verified';
   androidLiveUpdateSupported?: boolean;
   androidLiveUpdateAllowed?: boolean;
   standardNotificationAvailable?: boolean;
@@ -171,6 +174,7 @@ export function makeNativeDisplaySnapshot(
   snapshot: LiveFocusSnapshotLike,
   controlsEnabled: boolean,
   now = Date.now(),
+  localAuthority = false,
 ): NativeFocusDisplaySnapshot {
   const durations = projectLiveFocusDurations(snapshot, now);
   return {
@@ -186,6 +190,7 @@ export function makeNativeDisplaySnapshot(
     primaryElapsedMs: Math.floor(durations.primaryElapsedMs),
     primaryAdvances: snapshot.state !== 'idle',
     controlsEnabled,
+    localAuthority,
     validUntilEpochMs: now + 30 * 60_000,
   };
 }
@@ -278,10 +283,11 @@ export async function updateNativeFocusSnapshot(
   snapshot: LiveFocusSnapshotLike,
   controlsEnabled: boolean,
   now = Date.now(),
+  localAuthority = false,
 ): Promise<void> {
   if (!isNativeFocusRuntimeAvailable()) return;
   await FocusRuntime.updateSnapshot({
-    snapshot: makeNativeDisplaySnapshot(snapshot, controlsEnabled, now),
+    snapshot: makeNativeDisplaySnapshot(snapshot, controlsEnabled, now, localAuthority),
   });
 }
 

@@ -18,12 +18,17 @@
 
 | 需求 ID | 日期 | 需求摘要 | Windows 验收 | 手机验收 | 平板验收 | 状态 | 目标版本 | 关联改动 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| FL-REQ-20260726-FOXLINK-MCP | 2026-07-26 | 独立 Foxlink MCP、专属 Tunnel 与 ChatGPT Developer Mode 私有应用，桌面业务 API 随正式安装包启动 | 0.12.61.0 覆盖安装；18770/8770/8878 ready；ChatGPT 回读 0.12.61 | 小米覆盖并回读 0.12.61/1261；移动业务不变 | 华为覆盖并回读 0.12.61/1261；移动业务不变 | 已验收；仅本地交付 | v0.12.61 | `electron/mcp`、`mcp/`、`FOXLINK_MCP.md`、三端版本矩阵与 ChatGPT 截图 |
 | FL-REQ-20260724-SURFACE | 2026-07-24 | Android 使用真实可识别的系统计时表面，并明确能力与降级 | 设置可查看移动端真实能力 | 小米优先焦点通知，Android 16 优先 promoted ongoing，其余为常驻通知；失败状态准确 | 华为/荣耀优先 EMUI 系统计时胶囊，系统不识别时保留常驻通知 | 待视觉验收 | v0.12.28 | `SystemFocusSurfaceProvider`、系统控制区、Android 通知测试 |
 | FL-REQ-20260724-OVERLAY | 2026-07-24 | 保留用户显式启用的可移动 Android 后备悬浮条 | 不适用 | 长按拖动、点击回应用、旋转/重启恢复并夹取安全区 | 与手机相同，兼容横竖屏和分屏 | 待人工操作 | 未发布 | `FocusDesktopOverlayController`、`FocusRuntimeSystemSettings` |
 | FL-REQ-20260724-MINI | 2026-07-24 | 修复 Windows 小窗黑色残边和贴边绿色装饰 | 仅 184×44/256×70 两态；四边/四角无黑条、绿条和像素缝 | 不适用 | 不适用 | 实施中 | 未发布 | `miniWindowLayout.ts`、mini CSS、layout/smoke 测试 |
 | FL-REQ-20260724-TASK-TREE | 2026-07-24 | 三端父子任务使用真实叠层层级，选择与开始分离 | 选择器显示父摘要与内嵌子组 | 父摘要、紧凑子清单、深层路径提示 | 760px 起树/详情双栏，窄分屏回落单栏 | 实施中 | 未发布 | `TaskTree`、`TaskPicker`、`TaskBrowser`、响应式 CSS |
 | FL-REQ-20260724-PAIRING | 2026-07-24 | 用一次性二维码/短码简化连接，长期凭据安全保存 | 已验证启动、周期探测和晚连接协调；两台设备独立配对后立即同步 | 小米晚连接/重连与同代幂等通过；临时已结束账本写入与 tombstone 清理均收敛 | 华为断开再连接后一个探测周期内恢复 reverse 并同步；临时账本写入与清理均收敛 | 已验收 | v0.12.45 | `/v1/pair`、`AndroidSyncCoordinator`、Android 深链、配对与协调器测试 |
-| FL-REQ-20260724-TRI-END | 2026-07-24 | 每轮 UI/行为迭代递增补丁版本并完成 Windows、手机、平板同版矩阵 | 待安装并回读 0.12.45 | 小米待回读 0.12.45 / 1245 | 华为待回读 0.12.45 / 1245 | 0.12.44 CI 便携启动超时，0.12.45 扩展有界等待并作为五版本 GitHub 上传节点 | v0.12.42 起持续 | `AGENTS.md`、发布规范、前后端接手清单、实施日志 |
+| FL-REQ-20260724-TRI-END | 2026-07-24 | 每轮 UI/行为迭代递增补丁版本并完成 Windows、手机、平板同版矩阵 | 覆盖安装并回读 0.12.53，数据库/设置保留且公网同步通过 | 小米回读 0.12.53 / 1253 | 华为回读 0.12.53 / 1253 | 已验收；按本轮要求仅本地交付 | v0.12.42 起持续 | `AGENTS.md`、发布规范、实施日志、v0.12.53 证据矩阵 |
+| FL-REQ-20260725-MOBILE-LOCAL | 2026-07-25 | 电脑或服务不可达时手机/平板仍可完整专注，并与云端活动会话隔离 | Windows 两态小窗不变；Cloudflare 回收两份账本且各一次 | 电脑停止时完成开始/暂停/继续/结束，2 段/1 暂停只入账一次 | 与小米相同，独立 UUID 只入账一次 | 已验收；自动化、真机与公网收敛均通过 | v0.12.53 | `authorityPolicy`、IndexedDB v3、SQLite Durable Object、三端账本证据 |
+| FL-REQ-20260725-OVERLAY-ISLAND | 2026-07-25 | 悬浮条点按关闭/3 秒收起/逐帧拖动；小米超级岛提供真实可见证据或明确兼容性结论 | Windows 小窗与新界面截图回归通过 | overlay janky 3.54%、无 >100 ms 帧；FocusPlugin `onAuthFailed`，该 ROM/签名视觉不兼容 | overlay janky 3.43%、无 >100 ms 帧；华为既有胶囊路径保持 | 已验收；小米结论为明确不兼容而非 `visually-verified` | v0.12.47 | 三系统表面适配器、`FocusDesktopOverlayController`、gfxinfo 与 SystemUI 证据 |
+| FL-REQ-20260726-CF-PUBLIC | 2026-07-26 | 三端使用 Cloudflare 公网同步，电脑关机不影响移动端完整专注和最终入账 | 自定义域名连接、凭据安全存储、上传/拉取与账本导入通过 | 公网完整会话、幂等与 cursor 重建通过 | 公网完整会话、幂等与 cursor 重建通过 | 已验收 | v0.12.53 | `cloudflare/`、`wrangler.jsonc`、公网协议与三端账本证据 |
+| FL-REQ-20260726-SYNC-V2 | 2026-07-26 | Outbox、base、三方合并、删除恢复、设备身份、冲突中心、推送与加密灾备连续实施 | 0.12.60.0 覆盖安装；SQLite 完整，158 个 base 建立、Outbox 清零 | 指定小米离线，0.12.60 未安装 | 0.12.60/1260 已安装，18 项 instrumentation 完成 | 部分验收；R2 账户未启用（10042），小米端不可达 | v0.12.60 | v2 协议与 store、公网状态文件、R2 与 ADB 错误证据 |
 | FL-REQ-20260724-HARMONY | 2026-07-24 | HarmonyOS 原生客户端接入 Live View Kit | 不适用 | 不在 Android APK 伪造 | 后续独立 ArkTS 薄客户端 | 延后 | 待定 | 需独立立项与华为公开 SDK |
 | FL-REQ-20260724-SYNC-SIMPLE | 2026-07-24 | 跨设备同步采用一键开启、自检、修复和扫码连接，高级参数不阻塞主流程 | 一键自动生成安全凭据、启动本机服务、健康检查、建立已授权安卓桥接并同步；冲突不自动覆盖 | 扫码一次性配对，断线继续本地记录 | 与手机相同 | 待桌面候选验收 | 未发布 | `device-sync:quick-setup`、设置页同步主流程、配对二维码 |
 | FL-REQ-20260724-HUAWEI-CAPSULE | 2026-07-24 | 华为桌面状态栏计时达到参考应用的系统实况窗效果 | 不适用 | 不适用 | EMUI 14.2 生成系统托管 `TIMER` 胶囊，运行/暂停和 elapsed 来自同一权威快照 | 待视觉验收 | v0.12.28 | 参考 APK 静态反编译、真机通知对象、`SystemFocusSurfaceProvider`、华为 instrumentation |

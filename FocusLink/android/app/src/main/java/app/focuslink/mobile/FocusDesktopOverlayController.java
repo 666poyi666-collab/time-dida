@@ -19,18 +19,22 @@ import android.view.ViewConfiguration;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.WindowMetrics;
+import android.widget.FrameLayout;
 import android.widget.TextView;
 import java.util.Locale;
 
 final class FocusDesktopOverlayController {
     private static final String TAG = "FocusRuntime";
     private static final long TICK_INTERVAL_MS = 1_000L;
+    private static final long CLOSE_CONTROL_TIMEOUT_MS = 3_000L;
 
     private final Context context;
     private final Handler handler;
     private final WindowManager windowManager;
     private final Runnable tickRunnable = this::tick;
-    private TextView textView;
+    private FrameLayout overlayView;
+    private TextView timerView;
+    private TextView closeView;
     private FocusRuntimeSnapshot snapshot;
     private WindowManager.LayoutParams layoutParams;
     private float downRawX;
@@ -39,6 +43,17 @@ final class FocusDesktopOverlayController {
     private int downWindowY;
     private long downAtMs;
     private boolean dragging;
+    private boolean frameUpdateScheduled;
+    private int pendingWindowX;
+    private int pendingWindowY;
+    private Rect dragFrame;
+    private int dragViewWidth;
+    private int dragViewHeight;
+    private String renderedState;
+    private GradientDrawable runningBackground;
+    private GradientDrawable pausedBackground;
+    private final Runnable collapseControlsRunnable = this::collapseCloseControl;
+    private final Runnable applyPendingPositionRunnable = this::applyPendingPosition;
 
     FocusDesktopOverlayController(Context context, Handler handler) {
         this.context = context.getApplicationContext();
@@ -61,7 +76,7 @@ final class FocusDesktopOverlayController {
             return;
         }
         snapshot = next;
-        if (textView == null) show();
+        if (overlayView == null) show();
         render();
         handler.removeCallbacks(tickRunnable);
         handler.postDelayed(tickRunnable, delayUntilNextSecond());
@@ -69,29 +84,54 @@ final class FocusDesktopOverlayController {
 
     void hide() {
         handler.removeCallbacks(tickRunnable);
+        handler.removeCallbacks(collapseControlsRunnable);
         snapshot = null;
-        if (textView == null || windowManager == null) return;
+        if (overlayView == null || windowManager == null) return;
         try {
-            windowManager.removeView(textView);
+            windowManager.removeView(overlayView);
         } catch (IllegalArgumentException ignored) {
             // The system already removed the overlay with the process window token.
         }
-        textView = null;
+        overlayView = null;
+        timerView = null;
+        closeView = null;
         layoutParams = null;
+        dragFrame = null;
+        frameUpdateScheduled = false;
+        renderedState = null;
     }
 
     private void show() {
-        TextView view = new TextView(context);
-        view.setTextColor(Color.WHITE);
-        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
-        view.setGravity(Gravity.CENTER);
+        FrameLayout root = new FrameLayout(context);
+        TextView timer = new TextView(context);
+        timer.setTextColor(Color.WHITE);
+        timer.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
+        timer.setGravity(Gravity.CENTER);
         int horizontal = dp(12);
         int vertical = dp(7);
-        view.setPadding(horizontal, vertical, horizontal, vertical);
-        view.setElevation(dp(6));
-        view.setContentDescription("FocusLink 桌面专注计时");
-        view.setOnClickListener(this::openFocusLink);
-        view.setOnTouchListener(this::handleTouch);
+        timer.setPadding(horizontal, vertical, horizontal, vertical);
+        timer.setContentDescription("FocusLink 桌面专注计时；点按显示关闭按钮");
+        timer.setOnClickListener(ignored -> revealCloseControl());
+        timer.setOnTouchListener(this::handleTouch);
+        root.addView(timer, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.START | Gravity.CENTER_VERTICAL
+        ));
+
+        TextView close = new TextView(context);
+        close.setText("×");
+        close.setTextColor(Color.WHITE);
+        close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f);
+        close.setGravity(Gravity.CENTER);
+        close.setContentDescription("关闭悬浮计时");
+        close.setBackground(roundedBackground("#9F2F2A", 8));
+        close.setVisibility(View.GONE);
+        close.setOnClickListener(ignored -> closeOverlayFromSurface());
+        FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(dp(34), dp(34));
+        closeParams.gravity = Gravity.END | Gravity.CENTER_VERTICAL;
+        root.addView(close, closeParams);
+        root.setElevation(dp(6));
 
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -109,46 +149,72 @@ final class FocusDesktopOverlayController {
         params.x = frame.left;
         params.y = frame.top;
         try {
-            windowManager.addView(view, params);
-            textView = view;
+            windowManager.addView(root, params);
+            overlayView = root;
+            timerView = timer;
+            closeView = close;
             layoutParams = params;
-            view.post(this::restorePosition);
+            root.post(this::restorePosition);
         } catch (RuntimeException exception) {
             Log.w(TAG, "Unable to show desktop focus timer", exception);
-            textView = null;
+            overlayView = null;
+            timerView = null;
+            closeView = null;
         }
     }
 
     private void tick() {
-        if (snapshot == null || textView == null) return;
+        if (snapshot == null || overlayView == null) return;
         render();
         handler.postDelayed(tickRunnable, delayUntilNextSecond());
     }
 
     private void render() {
-        if (snapshot == null || textView == null) return;
-        clampPosition(false);
+        if (snapshot == null || timerView == null) return;
         long elapsedMs = snapshot.primaryElapsedMs;
         if (snapshot.primaryAdvances && snapshot.receivedAtElapsedMs >= 0L) {
             elapsedMs += Math.max(0L, SystemClock.elapsedRealtime() - snapshot.receivedAtElapsedMs);
         }
         boolean paused = FocusRuntimeContract.STATE_PAUSED.equals(snapshot.state);
-        textView.setText((paused ? "暂停 " : "专注 ") + formatDuration(elapsedMs));
-        GradientDrawable background = new GradientDrawable();
-        background.setColor(Color.parseColor(paused ? "#C63F38" : "#087F63"));
-        background.setCornerRadius(dp(8));
-        textView.setBackground(background);
+        timerView.setText((paused ? "暂停 " : "专注 ") + formatDuration(elapsedMs));
+        String nextState = paused ? FocusRuntimeContract.STATE_PAUSED : FocusRuntimeContract.STATE_RUNNING;
+        if (!nextState.equals(renderedState)) {
+            if (runningBackground == null) runningBackground = roundedBackground("#087F63", 8);
+            if (pausedBackground == null) pausedBackground = roundedBackground("#C63F38", 8);
+            timerView.setBackground(paused ? pausedBackground : runningBackground);
+            renderedState = nextState;
+        }
     }
 
-    private void openFocusLink(View ignored) {
-        Intent intent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
-        if (intent == null) return;
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+    private void revealCloseControl() {
+        if (closeView == null || timerView == null || overlayView == null) return;
+        closeView.setVisibility(View.VISIBLE);
+        FrameLayout.LayoutParams timerParams = (FrameLayout.LayoutParams) timerView.getLayoutParams();
+        timerParams.rightMargin = dp(38);
+        timerView.setLayoutParams(timerParams);
+        handler.removeCallbacks(collapseControlsRunnable);
+        handler.postDelayed(collapseControlsRunnable, CLOSE_CONTROL_TIMEOUT_MS);
+        overlayView.post(() -> clampPosition(true));
+    }
+
+    private void collapseCloseControl() {
+        if (closeView == null || timerView == null || overlayView == null) return;
+        closeView.setVisibility(View.GONE);
+        FrameLayout.LayoutParams timerParams = (FrameLayout.LayoutParams) timerView.getLayoutParams();
+        timerParams.rightMargin = 0;
+        timerView.setLayoutParams(timerParams);
+        overlayView.post(() -> clampPosition(true));
+    }
+
+    private void closeOverlayFromSurface() {
+        handler.removeCallbacks(collapseControlsRunnable);
         try {
-            context.startActivity(intent);
-        } catch (RuntimeException exception) {
-            Log.w(TAG, "Unable to open FocusLink from desktop timer", exception);
+            FocusRuntimeSystemSettings.setOverlayEnabled(context, false);
+        } catch (IllegalStateException exception) {
+            Log.w(TAG, "Unable to persist overlay close action", exception);
+            return;
         }
+        hide();
     }
 
     private boolean handleTouch(View view, MotionEvent event) {
@@ -161,6 +227,10 @@ final class FocusDesktopOverlayController {
                 downWindowY = layoutParams.y;
                 downAtMs = SystemClock.uptimeMillis();
                 dragging = false;
+                dragFrame = availableFrame();
+                dragViewWidth = overlayView == null ? 0 : overlayView.getWidth();
+                dragViewHeight = overlayView == null ? 0 : overlayView.getHeight();
+                handler.removeCallbacks(collapseControlsRunnable);
                 return true;
             case MotionEvent.ACTION_MOVE:
                 float dx = event.getRawX() - downRawX;
@@ -169,22 +239,25 @@ final class FocusDesktopOverlayController {
                 boolean longPressed = SystemClock.uptimeMillis() - downAtMs >= 220L;
                 if (longPressed && (dragging || Math.hypot(dx, dy) >= slop)) {
                     dragging = true;
-                    layoutParams.x = downWindowX + Math.round(dx);
-                    layoutParams.y = downWindowY + Math.round(dy);
-                    clampPosition(true);
+                    pendingWindowX = downWindowX + Math.round(dx);
+                    pendingWindowY = downWindowY + Math.round(dy);
+                    schedulePositionUpdate();
                 }
                 return true;
             case MotionEvent.ACTION_UP:
                 if (dragging) {
+                    applyPendingPosition();
                     clampPosition(true);
                     persistPosition();
                 } else {
                     view.performClick();
                 }
                 dragging = false;
+                dragFrame = null;
                 return true;
             case MotionEvent.ACTION_CANCEL:
                 dragging = false;
+                dragFrame = null;
                 return true;
             default:
                 return false;
@@ -192,22 +265,24 @@ final class FocusDesktopOverlayController {
     }
 
     private void restorePosition() {
-        if (textView == null || layoutParams == null) return;
+        if (overlayView == null || layoutParams == null) return;
         Rect frame = availableFrame();
         FocusRuntimeSystemSettings.OverlayPosition stored =
             FocusRuntimeSystemSettings.getOverlayPosition(context);
-        int travelX = Math.max(0, frame.width() - textView.getWidth());
-        int travelY = Math.max(0, frame.height() - textView.getHeight());
+        int travelX = Math.max(0, frame.width() - overlayView.getWidth());
+        int travelY = Math.max(0, frame.height() - overlayView.getHeight());
         layoutParams.x = frame.left + Math.round(travelX * stored.xFraction);
         layoutParams.y = frame.top + Math.round(travelY * stored.yFraction);
         clampPosition(true);
     }
 
     private void clampPosition(boolean updateLayout) {
-        if (textView == null || layoutParams == null || windowManager == null) return;
-        Rect frame = availableFrame();
-        int maxX = Math.max(frame.left, frame.right - textView.getWidth());
-        int maxY = Math.max(frame.top, frame.bottom - textView.getHeight());
+        if (overlayView == null || layoutParams == null || windowManager == null) return;
+        Rect frame = dragFrame == null ? availableFrame() : dragFrame;
+        int width = dragFrame == null ? overlayView.getWidth() : dragViewWidth;
+        int height = dragFrame == null ? overlayView.getHeight() : dragViewHeight;
+        int maxX = Math.max(frame.left, frame.right - width);
+        int maxY = Math.max(frame.top, frame.bottom - height);
         int nextX = Math.max(frame.left, Math.min(maxX, layoutParams.x));
         int nextY = Math.max(frame.top, Math.min(maxY, layoutParams.y));
         boolean changed = nextX != layoutParams.x || nextY != layoutParams.y;
@@ -215,7 +290,7 @@ final class FocusDesktopOverlayController {
         layoutParams.y = nextY;
         if (updateLayout || changed) {
             try {
-                windowManager.updateViewLayout(textView, layoutParams);
+                windowManager.updateViewLayout(overlayView, layoutParams);
             } catch (IllegalArgumentException ignored) {
                 // The overlay was removed while a display/configuration change was settling.
             }
@@ -223,13 +298,34 @@ final class FocusDesktopOverlayController {
     }
 
     private void persistPosition() {
-        if (textView == null || layoutParams == null) return;
+        if (overlayView == null || layoutParams == null) return;
         Rect frame = availableFrame();
-        int travelX = Math.max(1, frame.width() - textView.getWidth());
-        int travelY = Math.max(1, frame.height() - textView.getHeight());
+        int travelX = Math.max(1, frame.width() - overlayView.getWidth());
+        int travelY = Math.max(1, frame.height() - overlayView.getHeight());
         float x = (layoutParams.x - frame.left) / (float) travelX;
         float y = (layoutParams.y - frame.top) / (float) travelY;
         FocusRuntimeSystemSettings.setOverlayPosition(context, x, y);
+    }
+
+    private void schedulePositionUpdate() {
+        if (overlayView == null || frameUpdateScheduled) return;
+        frameUpdateScheduled = true;
+        overlayView.postOnAnimation(applyPendingPositionRunnable);
+    }
+
+    private void applyPendingPosition() {
+        frameUpdateScheduled = false;
+        if (!dragging || layoutParams == null) return;
+        layoutParams.x = pendingWindowX;
+        layoutParams.y = pendingWindowY;
+        clampPosition(true);
+    }
+
+    private GradientDrawable roundedBackground(String color, int radiusDp) {
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(Color.parseColor(color));
+        background.setCornerRadius(dp(radiusDp));
+        return background;
     }
 
     private Rect availableFrame() {

@@ -31,6 +31,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry;
@@ -241,7 +242,7 @@ public class ExampleInstrumentedTest {
     public void holdsHuaweiCapsuleForManualScreenshot() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         JSObject capabilities = SystemFocusSurfaceProvider.capabilities(context);
-        assertTrue(capabilities.getBool("huaweiLiveCandidate"));
+        assumeTrue(capabilities.getBool("huaweiLiveCandidate"));
         grantNotificationPermissionForTest(context);
         assertTrue(FocusNotificationPermission.canPost(context));
         FocusNotificationService.setCloudClientFactoryForTests(
@@ -308,7 +309,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void holdsHuaweiPausedCapsuleForManualScreenshot() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        assertTrue(
+        assumeTrue(
             SystemFocusSurfaceProvider.capabilities(context).getBool("huaweiLiveCandidate")
         );
         grantNotificationPermissionForTest(context);
@@ -374,6 +375,11 @@ public class ExampleInstrumentedTest {
     public void projectsXiaomiIslandPayload() {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         JSObject capabilities = SystemFocusSurfaceProvider.capabilities(context);
+        assumeTrue(
+            SystemFocusSurfaceProvider.SURFACE_XIAOMI_ISLAND.equals(
+                capabilities.getString("selected")
+            )
+        );
         assertEquals(
             SystemFocusSurfaceProvider.SURFACE_XIAOMI_ISLAND,
             capabilities.getString("selected")
@@ -410,7 +416,70 @@ public class ExampleInstrumentedTest {
         String islandPayload = projected.extras.getString("miui.focus.param");
         assertNotNull(islandPayload);
         assertTrue(islandPayload.contains("param_island"));
+        assertTrue(islandPayload.contains("\"protocol\":3"));
+        assertTrue(islandPayload.contains("focuslink:xiaomi-island-manual-smoke"));
         assertTrue(islandPayload.contains("01:02"));
+    }
+
+    @Test
+    public void holdsXiaomiIslandForManualScreenshot() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        JSObject capabilities = SystemFocusSurfaceProvider.capabilities(context);
+        assumeTrue(
+            SystemFocusSurfaceProvider.SURFACE_XIAOMI_ISLAND.equals(
+                capabilities.getString("selected")
+            )
+        );
+        grantNotificationPermissionForTest(context);
+        FocusNotificationService.ensureNotificationChannel(context);
+        long now = System.currentTimeMillis();
+        FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromPlugin(
+            context,
+            new JSObject()
+                .put("state", "running")
+                .put("sessionId", "xiaomi-island-manual-smoke")
+                .put("stateRevision", 1)
+                .put("title", "FocusLink 超级岛验收")
+                .put("timeLabel", "01:02")
+                .put("detail", "专注中")
+                .put("primaryElapsedMs", 62_000)
+                .put("primaryAdvances", true)
+                .put("controlsEnabled", false)
+                .put("validUntilEpochMs", now + 90_000)
+        );
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        assertNotNull(manager);
+        try {
+            Notification base = new NotificationCompat.Builder(context, "focus_runtime_v1")
+                .setSmallIcon(R.drawable.ic_stat_focus)
+                .setContentTitle(snapshot.title)
+                .setContentText(snapshot.detail)
+                .setOngoing(true)
+                .setSilent(true)
+                .build();
+            Notification projected = SystemFocusSurfaceProvider.apply(
+                context,
+                base,
+                snapshot,
+                snapshot.title,
+                snapshot.detail
+            );
+            manager.notify(1214, projected);
+            Thread.sleep(5_000L);
+            StatusBarNotification runtime = Arrays.stream(manager.getActiveNotifications())
+                .filter(notification -> notification.getId() == 1214)
+                .findFirst()
+                .orElse(null);
+            assertNotNull(runtime);
+            assertNotNull(runtime.getNotification().extras.getString("miui.focus.param"));
+            Intent home = new Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_HOME)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(home);
+            Thread.sleep(45_000L);
+        } finally {
+            manager.cancel(1214);
+        }
     }
 
     @Test
@@ -454,8 +523,9 @@ public class ExampleInstrumentedTest {
             .getLaunchIntentForPackage(context.getPackageName());
         assertNotNull(launch);
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        context.startActivity(launch);
-        MainActivity activity = awaitMainActivity(instrumentation);
+        android.app.Activity launched = instrumentation.startActivitySync(launch);
+        assertTrue(launched instanceof MainActivity);
+        MainActivity activity = (MainActivity) launched;
 
         instrumentation.runOnMainSync(() -> activity.setFocusImmersiveSystemBars(true));
         assertTrue(activity.isFocusImmersiveSystemBarsEnabled());

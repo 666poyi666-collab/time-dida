@@ -96,10 +96,12 @@ export interface SendLiveFocusCommandInput extends LiveFocusConnectionInput {
   command: LiveFocusCommand;
 }
 
-class DeviceSyncRequestError extends Error {
+export class DeviceSyncRequestError extends Error {
   constructor(
     message: string,
     readonly code: string | null,
+    readonly status: number | null = null,
+    readonly retryAfterMs: number | null = null,
   ) {
     super(message);
     this.name = 'DeviceSyncRequestError';
@@ -162,6 +164,8 @@ export async function pullDeviceSyncPage(input: PullPageInput): Promise<DeviceSy
     throw new DeviceSyncRequestError(
       detail.message || `同步服务返回 HTTP ${response.status}`,
       detail.code,
+      response.status,
+      parseRetryAfterMs(response.headers.get('retry-after')),
     );
   }
 
@@ -602,6 +606,14 @@ async function readErrorResponse(response: Response): Promise<{
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseRetryAfterMs(value: string | null): number | null {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1_000);
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null;
 }
 
 function isText(value: unknown, maxLength: number): value is string {

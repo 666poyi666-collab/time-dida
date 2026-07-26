@@ -48,6 +48,19 @@ final class FocusRuntimeStore {
         }
     }
 
+    static boolean putCloudSnapshotIfNoLocalAuthority(
+        Context context,
+        FocusRuntimeSnapshot snapshot
+    ) {
+        synchronized (LOCK) {
+            FocusRuntimeSnapshot current = getSnapshot(context);
+            if (!FocusRuntimeAuthorityPolicy.canApplyCloudSnapshot(current.localAuthority)) {
+                return false;
+            }
+            return putSnapshot(context, snapshot);
+        }
+    }
+
     static void clearSnapshot(Context context) {
         synchronized (LOCK) {
             preferences(context).edit().remove(KEY_SNAPSHOT).commit();

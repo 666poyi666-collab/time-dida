@@ -88,8 +88,17 @@ describe('mobile live runtime model', () => {
     ).toBe(true);
   });
 
-  it('allows only an explicitly safe offline start and local-session controls', () => {
+  it('allows a local start without a trusted idle cloud snapshot', () => {
     const idle = idleLiveFocusSnapshot();
+    expect(
+      runtimeControlAvailability({
+        snapshot: liveSnapshot('running'),
+        connection: 'offline',
+        pending: false,
+        title: '离线复习',
+        allowOfflineStart: true,
+      }).start,
+    ).toBe(true);
     expect(
       runtimeControlAvailability({
         snapshot: idle,
@@ -112,8 +121,8 @@ describe('mobile live runtime model', () => {
 
   it('uses exact state wording and stable clock slots', () => {
     expect(liveConnectionCopy('offline', true)).toEqual({
-      title: '当前离线 · 控制已锁定',
-      detail: '计时仅按最后确认状态在本机推算，联网后自动校准',
+      title: '当前离线 · 本机专注可用',
+      detail: '云端状态仅供参考；可新建独立本机会话，结束后联网补传',
     });
     expect(formatClockDuration(65_001)).toBe('01:05');
     expect(formatClockDuration(3_661_000)).toBe('01:01:01');

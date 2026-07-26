@@ -35,12 +35,11 @@ describe('Windows installer process policy', () => {
     expect(installerScript).toContain('Kernel32::SetEnvironmentVariable');
     expect(installerScript).toContain('!macro customUninstallRetryExhausted');
     expect(installerScript).toContain('!macro customUnInstallCheck');
-    expect(installerScript).toContain('${if} $R0 == 2');
-    expect(installerScript).toContain('${andIf} $installationDir == $INSTDIR');
-    expect(installerScript).toContain('Pop $R7');
-    expect(installerScript).toContain('${if} $R7 == $installationDir');
-    expect(installerScript).toContain('RMDir /r "$installationDir"');
-    expect(installerScript).toContain('IfFileExists "$installationDir\\*.*"');
+    expect(installerScript).not.toContain('${if} $R0 == 2');
+    expect(installerScript).toContain('${if} $installationDir != ""');
+    expect(installerScript).not.toContain('${andIf} $installationDir == $INSTDIR');
+    expect(installerScript).not.toContain('RMDir /r "$installationDir"');
+    expect(installerScript).toContain('overwrite the registry-derived installation path');
     expect(installerScript).toContain('IfErrors focuslink_uninstall_launch_failed 0');
     expect(installerScript).not.toContain('ReadRegStr $R7 SHELL_CONTEXT');
     expect(installerScript).not.toContain('StrCpy $R7 "$INSTDIR"');

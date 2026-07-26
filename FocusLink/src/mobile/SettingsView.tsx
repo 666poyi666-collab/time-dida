@@ -1,6 +1,7 @@
 import { Cloud, Database, KeyRound, SlidersHorizontal } from 'lucide-react';
 import type { LiveConnectionState } from './runtimeModel';
 import { NativeSystemControls } from './NativeSystemControls';
+import { SyncV2Management } from './SyncV2Management';
 import {
   FOCUS_COLORS,
   FONT_PROFILES,
@@ -14,6 +15,7 @@ interface SettingsViewProps {
   connection: LiveConnectionState;
   endpoint: string;
   hasToken: boolean;
+  token: string;
   taskCount: number;
   taskRevision: number;
   ledgerCount: number;
@@ -26,6 +28,7 @@ export function SettingsView({
   connection,
   endpoint,
   hasToken,
+  token,
   taskCount,
   taskRevision,
   ledgerCount,
@@ -139,6 +142,7 @@ export function SettingsView({
       </section>
 
       <NativeSystemControls />
+      <SyncV2Management endpoint={endpoint} token={token} />
 
       <div className="capability-boundary">
         <strong>桌面端专属操作</strong>

@@ -13,16 +13,23 @@ import {
   clearCachedLiveFocusSnapshot,
   clearMobileCache,
   completeOfflineFocusRuntime,
+  createOfflineFocusRuntime,
+  markPendingDeviceSyncFailure,
+  markPendingDeviceSyncUploading,
   readCachedLiveFocusSnapshot,
   readCachedTaskSnapshot,
   readMobileCache,
   readOfflineFocusRuntime,
+  readLocalSessionSyncMeta,
   readPendingDeviceSyncBundles,
   removePendingDeviceSyncBundle,
+  writeLocalSessionSyncMeta,
   writeOfflineFocusRuntime,
   writeCachedLiveFocusSnapshot,
   writeCachedTaskSnapshot,
   type MobileCacheSnapshot,
+  type LocalSessionSyncMeta,
+  type MobileAuthorityMode,
 } from './cache';
 import {
   finishOfflineFocus,
@@ -73,6 +80,7 @@ import {
 } from './appearance';
 import {
   fetchLiveFocusSnapshot,
+  DeviceSyncRequestError,
   exchangeDeviceSyncPairingCode,
   fetchTaskSnapshot,
   isInvalidDeviceSyncCursorError,
@@ -90,6 +98,8 @@ import {
   shouldApplyLiveSnapshot,
   type LiveSnapshotSource,
 } from './liveSnapshotPolicy';
+import { remoteForkEvidence } from './authorityPolicy';
+import { runMobileSyncV2 } from './v2Sync';
 
 type PullState = 'idle' | 'pulling' | 'confirmed' | 'error';
 
@@ -127,6 +137,7 @@ export function MobileApp() {
   const [activeView, setActiveView] = useState<MobileView>('focus');
   const [liveSnapshotSource, setLiveSnapshotSource] = useState<LiveSnapshotSource>('none');
   const [offlineRuntime, setOfflineRuntime] = useState<OfflineFocusRuntime | null>(null);
+  const [authorityMode, setAuthorityMode] = useState<MobileAuthorityMode>('cloud-live');
   const [pendingUploadCount, setPendingUploadCount] = useState(0);
   const [appearance, setAppearance] = useState<MobileAppearance>(() => loadMobileAppearance());
   const [clearCacheDialogOpen, setClearCacheDialogOpen] = useState(false);
@@ -145,6 +156,7 @@ export function MobileApp() {
   const cacheRef = useRef(cache);
   const liveSnapshotRef = useRef(liveSnapshot);
   const offlineRuntimeRef = useRef<OfflineFocusRuntime | null>(null);
+  const authorityModeRef = useRef<MobileAuthorityMode>('cloud-live');
   const liveConnectionRef = useRef(liveConnection);
   const pendingCommandRef = useRef<MobileFocusCommand | null>(null);
   const ledgerRequest = useRef<AbortController | null>(null);
@@ -232,8 +244,29 @@ export function MobileApp() {
       sourceConnectionKey: string,
     ): Promise<LiveFocusSnapshotLike | null> => {
       if (connectionKeyRef.current !== sourceConnectionKey) return null;
-      if (offlineRuntimeRef.current) return liveSnapshotRef.current;
       const mapped = mapLiveSnapshot(response, Date.now());
+      const localRuntime = offlineRuntimeRef.current;
+      if (localRuntime) {
+        const evidence = remoteForkEvidence(mapped, localRuntime.id);
+        const mode: MobileAuthorityMode = evidence ? 'forked-local' : 'local-offline';
+        authorityModeRef.current = mode;
+        setAuthorityMode(mode);
+        if (evidence) {
+          const existing = await readLocalSessionSyncMeta(localRuntime.id);
+          const meta: LocalSessionSyncMeta = {
+            sessionId: localRuntime.id,
+            authorityMode: 'forked-local',
+            originDeviceId: existing?.originDeviceId ?? deviceId,
+            baseCloudRevision: existing?.baseCloudRevision ?? null,
+            suspectedRemoteSessionId: evidence.sessionId,
+            detectedRemoteRevision: evidence.revision,
+            detectedAt: evidence.detectedAt,
+          };
+          await writeLocalSessionSyncMeta(meta);
+          setCommandNotice('本机离线会话正在运行；其他设备另有云端活动会话，两者将分别入账');
+        }
+        return liveSnapshotRef.current;
+      }
       const current = liveSnapshotRef.current;
       if (!shouldApplyLiveSnapshot(current, mapped)) return current;
       liveSnapshotRef.current = mapped;
@@ -246,7 +279,7 @@ export function MobileApp() {
       }
       return mapped;
     },
-    [],
+    [deviceId],
   );
 
   const refreshTasks = useCallback(async (connection: MobileConnectionPreferences) => {
@@ -286,27 +319,50 @@ export function MobileApp() {
       setPendingUploadCount(pending.length);
       let uploaded = 0;
       for (const record of pending) {
-        const response = await pushPendingDeviceSyncBundle({
-          endpoint: connection.endpoint,
-          token: connection.token,
-          deviceId,
-          signal,
-          mutation: {
-            opId: record.opId,
-            entity: DEVICE_SYNC_ENTITY,
-            entityId: record.entityId,
-            kind: 'put',
-            baseRevision: 0,
-            payload: record.bundle,
-          },
-        });
-        const ack = response.acks[0];
-        if (ack.status !== 'applied' && ack.status !== 'duplicate') {
-          throw new Error(`离线会话补传未确认：${ack.errorCode ?? ack.status}`);
+        if (record.state === 'conflict' || record.state === 'rejected') continue;
+        if (record.nextRetryAt > Date.now()) continue;
+        const uploading = await markPendingDeviceSyncUploading(record);
+        try {
+          const response = await pushPendingDeviceSyncBundle({
+            endpoint: connection.endpoint,
+            token: connection.token,
+            deviceId,
+            signal,
+            mutation: {
+              opId: record.opId,
+              entity: DEVICE_SYNC_ENTITY,
+              entityId: record.entityId,
+              kind: 'put',
+              baseRevision: 0,
+              payload: record.bundle,
+            },
+          });
+          const ack = response.acks[0];
+          if (ack.status === 'conflict' || ack.status === 'rejected') {
+            await markPendingDeviceSyncFailure(
+              record.opId,
+              ack.status,
+              ack.errorCode ?? ack.status,
+              0,
+            );
+            continue;
+          }
+          await removePendingDeviceSyncBundle(record.opId);
+          uploaded += 1;
+          setPendingUploadCount(pending.length - uploaded);
+        } catch (error) {
+          const retryAfterMs =
+            error instanceof DeviceSyncRequestError && error.status === 429
+              ? (error.retryAfterMs ?? 60_000)
+              : pendingRetryDelayMs(uploading.attemptCount);
+          await markPendingDeviceSyncFailure(
+            record.opId,
+            'retry',
+            pendingErrorCode(error),
+            Date.now() + retryAfterMs,
+          );
+          throw error;
         }
-        await removePendingDeviceSyncBundle(record.opId);
-        uploaded += 1;
-        setPendingUploadCount(pending.length - uploaded);
       }
       return uploaded;
     },
@@ -391,6 +447,12 @@ export function MobileApp() {
         if (!fullyPulled) throw new Error('本次拉取页数达到安全上限，请再次拉取以继续');
 
         const snapshot = await readMobileCache();
+        await runMobileSyncV2({
+          endpoint: connection.endpoint,
+          token: connection.token,
+          deviceId,
+          signal: controller.signal,
+        });
         if (!isCurrent()) return;
         cacheRef.current = snapshot;
         setCache(snapshot);
@@ -453,6 +515,11 @@ export function MobileApp() {
         if (savedOfflineRuntime) {
           offlineRuntimeRef.current = savedOfflineRuntime;
           setOfflineRuntime(savedOfflineRuntime);
+          void readLocalSessionSyncMeta(savedOfflineRuntime.id).then((meta) => {
+            const mode = meta?.authorityMode ?? 'local-offline';
+            authorityModeRef.current = mode;
+            setAuthorityMode(mode);
+          });
           setLiveSnapshotSource('local');
         }
         if (restoredLive) {
@@ -533,11 +600,13 @@ export function MobileApp() {
       void enqueueMutation(cacheMutationQueue, clearCachedLiveFocusSnapshot);
       return;
     }
-    if (offlineRuntimeRef.current) {
-      setConnectionState('offline');
-      return;
-    }
     if (!online) {
+      if (offlineRuntimeRef.current) {
+        const offlineMode =
+          authorityModeRef.current === 'forked-local' ? 'forked-local' : 'local-offline';
+        authorityModeRef.current = offlineMode;
+        setAuthorityMode(offlineMode);
+      }
       setConnectionState('offline');
       return;
     }
@@ -555,6 +624,10 @@ export function MobileApp() {
       !controller.signal.aborted;
 
     const run = async () => {
+      if (offlineRuntimeRef.current) {
+        authorityModeRef.current = 'reconnecting';
+        setAuthorityMode('reconnecting');
+      }
       setConnectionState('connecting');
       while (isCurrent()) {
         try {
@@ -575,7 +648,7 @@ export function MobileApp() {
           const mapped = await commitLiveSnapshot(response, connectionKey(preferences));
           if (!isCurrent()) return;
           if (!mapped) return;
-          lastRevision = mapped.revision;
+          lastRevision = response.snapshot.revision;
           setConnectionState('live');
           retryDelay = 750;
         } catch (error) {
@@ -610,10 +683,15 @@ export function MobileApp() {
 
   useEffect(() => {
     const snapshot = liveSnapshot ?? makeIdleSnapshot();
-    void updateNativeFocusSnapshot(snapshot, liveConnection === 'live').catch(() => {
+    void updateNativeFocusSnapshot(
+      snapshot,
+      liveConnection === 'live' && offlineRuntime === null,
+      Date.now(),
+      offlineRuntime !== null,
+    ).catch(() => {
       // Native controls are optional; Web/PWA live sync remains usable if the bridge is absent.
     });
-  }, [liveConnection, liveSnapshot]);
+  }, [liveConnection, liveSnapshot, offlineRuntime]);
 
   const refreshNativeDisplayStatus = useCallback(async () => {
     if (!nativeSystemControls.available) return;
@@ -654,7 +732,13 @@ export function MobileApp() {
   }, [liveSnapshot?.state, nativeSystemControls.immersiveSystemBars]);
 
   const processNativeQueue = useCallback(async () => {
-    if (nativeQueueRunning.current || liveConnectionRef.current !== 'live') return;
+    if (
+      nativeQueueRunning.current ||
+      liveConnectionRef.current !== 'live' ||
+      offlineRuntimeRef.current
+    ) {
+      return;
+    }
     nativeQueueRunning.current = true;
     try {
       const commands = await drainNativeFocusCommands();
@@ -765,12 +849,7 @@ export function MobileApp() {
       const selectedTask =
         taskOverride ?? taskSnapshot?.snapshot?.tasks.find((task) => task.id === selectedTaskId);
       const canStartOffline =
-        action === 'start' &&
-        !offlineRuntimeRef.current &&
-        snapshot.state === 'idle' &&
-        (liveSnapshotSource === 'cache' || liveSnapshotSource === 'server') &&
-        liveConnectionRef.current !== 'live' &&
-        Boolean(connection.endpoint && connection.token);
+        action === 'start' && !offlineRuntimeRef.current && liveConnectionRef.current !== 'live';
       if (offlineRuntimeRef.current || canStartOffline) {
         pendingCommandRef.current = action;
         setPendingCommand(action);
@@ -786,7 +865,18 @@ export function MobileApp() {
               task: selectedTask ?? null,
               now,
             });
-            await writeOfflineFocusRuntime(nextRuntime);
+            const meta: LocalSessionSyncMeta = {
+              sessionId: nextRuntime.id,
+              authorityMode: 'local-offline',
+              originDeviceId: deviceId,
+              baseCloudRevision: snapshot.revision > 0 ? snapshot.revision : null,
+              suspectedRemoteSessionId: snapshot.state === 'idle' ? null : snapshot.sessionId,
+              detectedRemoteRevision: snapshot.state === 'idle' ? null : snapshot.revision,
+              detectedAt: snapshot.state === 'idle' ? null : now,
+            };
+            await createOfflineFocusRuntime(nextRuntime, meta);
+            authorityModeRef.current = 'local-offline';
+            setAuthorityMode('local-offline');
             setTitleDraft('');
             setSelectedTaskId('');
             setCommandNotice('已开始本机离线专注；结束后联网将自动补传');
@@ -802,6 +892,8 @@ export function MobileApp() {
             const bundle = finishOfflineFocus(nextRuntime, now);
             await completeOfflineFocusRuntime(bundle);
             nextRuntime = null;
+            authorityModeRef.current = 'cloud-live';
+            setAuthorityMode('cloud-live');
             setPendingUploadCount((count) => count + 1);
             setCommandNotice('离线会话已安全保存；联网后自动补传');
           } else {
@@ -862,16 +954,7 @@ export function MobileApp() {
         setPendingCommand(null);
       }
     },
-    [
-      commitLiveSnapshot,
-      deviceId,
-      liveSnapshotSource,
-      online,
-      pullLedger,
-      selectedTaskId,
-      taskSnapshot,
-      titleDraft,
-    ],
+    [commitLiveSnapshot, deviceId, online, pullLedger, selectedTaskId, taskSnapshot, titleDraft],
   );
 
   const handleSaveAndConnect = async () => {
@@ -1067,7 +1150,7 @@ export function MobileApp() {
                 <strong>已结束账本</strong>
                 <span>
                   {ledgerNotice}
-                  {pendingUploadCount > 0 ? ` · ${pendingUploadCount} 场待联网补传` : ''}
+                  {pendingUploadCount > 0 ? ` · ${pendingUploadCount} 场待同步或处理` : ''}
                 </span>
               </div>
             </div>
@@ -1109,13 +1192,8 @@ export function MobileApp() {
                 onToggleImmersiveSystemBars={() => void handleToggleImmersiveSystemBars()}
                 onEnterPictureInPicture={() => void handleEnterPictureInPicture()}
                 localOfflineMode={offlineRuntime !== null}
-                allowOfflineStart={
-                  offlineRuntime === null &&
-                  (liveSnapshot?.state ?? 'idle') === 'idle' &&
-                  (liveSnapshotSource === 'cache' || liveSnapshotSource === 'server') &&
-                  liveConnection !== 'live' &&
-                  configured
-                }
+                authorityMode={authorityMode}
+                allowOfflineStart={offlineRuntime === null && liveConnection !== 'live'}
               />
             )}
             {activeView === 'tasks' && (
@@ -1126,11 +1204,9 @@ export function MobileApp() {
                 revision={taskSnapshot?.revision ?? 0}
                 selectedTaskId={selectedTaskId}
                 canStart={
-                  (liveSnapshot?.state ?? 'idle') === 'idle' &&
                   pendingCommand === null &&
-                  (liveConnection === 'live' ||
-                    ((liveSnapshotSource === 'cache' || liveSnapshotSource === 'server') &&
-                      configured))
+                  offlineRuntime === null &&
+                  (liveConnection !== 'live' || (liveSnapshot?.state ?? 'idle') === 'idle')
                 }
                 onSelect={(task) => {
                   setSelectedTaskId(task.id);
@@ -1159,6 +1235,7 @@ export function MobileApp() {
                 connection={liveConnection}
                 endpoint={preferences.endpoint}
                 hasToken={Boolean(preferences.token)}
+                token={preferences.token}
                 taskCount={taskSnapshot?.snapshot?.tasks.length ?? 0}
                 taskRevision={taskSnapshot?.revision ?? 0}
                 ledgerCount={cache.bundles.length}
@@ -1314,9 +1391,22 @@ function abortableDelay(milliseconds: number, signal: AbortSignal): Promise<void
 function connectionTitle(state: LiveConnectionState): string {
   if (state === 'live') return '实时状态已连接';
   if (state === 'connecting') return '正在连接多端状态';
-  if (state === 'offline') return '当前离线 · 控制已锁定';
+  if (state === 'offline') return '当前离线 · 本机专注可用';
   if (state === 'error') return '实时连接中断 · 自动重试中';
   return '尚未配置多端连接';
+}
+
+function pendingRetryDelayMs(attemptCount: number): number {
+  const exponent = Math.max(0, Math.min(8, attemptCount - 1));
+  return Math.min(15 * 60_000, 5_000 * 2 ** exponent);
+}
+
+function pendingErrorCode(error: unknown): string {
+  if (error instanceof DeviceSyncRequestError) {
+    return error.code ?? (error.status === null ? 'request_failed' : `http_${error.status}`);
+  }
+  if (error instanceof DOMException && error.name === 'AbortError') return 'aborted';
+  return navigator.onLine ? 'network_error' : 'offline';
 }
 
 function connectionKey(

@@ -49,7 +49,7 @@ export default [
     },
   },
   {
-    files: ["electron/**/*.ts", "cloud/**/*.ts", "*.config.ts"],
+    files: ["electron/**/*.ts", "cloud/**/*.ts", "cloudflare/**/*.ts", "*.config.ts"],
     languageOptions: {
       parser: tsparser,
       parserOptions: {

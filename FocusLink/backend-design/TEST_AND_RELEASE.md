@@ -53,7 +53,7 @@ PC 账本回收、容器重启持久化和停机恢复；无论成功失败都�
 错误 session、单账号唯一活动会话、running/paused 三时间增长、长轮询变化/超时/断连清理、进程重启恢复，
 以及 finish/abort 与 completed ledger 的原子衔接。浏览器在 360×800 / 412×915 和平板横竖屏下验证首次拉取、
 双客户端实时控制、并发冲突、断网本机推算与缓存、重连、错误 token、移除 token 与清除本机缓存；旧账号 cursor 收到结构化 `invalid_cursor` 后必须只清理本机旧账本并从空 cursor 重建一次；PWA
-离线壳不能依赖已经打开第二次才缓存的 hash 资源，也不得缓存 Bearer 接口响应。移动端离线专注还必须验证：仅最后确认 idle 可开始；重载后活动草稿恢复；暂停/继续/结束三时间正确；结束事务留下一个稳定 pending；断网重试不出队；服务返回 applied/duplicate 后出队并由 PC 拉回；存在 pending 时不能更换连接身份。
+离线壳不能依赖已经打开第二次才缓存的 hash 资源，也不得缓存 Bearer 接口响应。移动端离线专注还必须验证：无连接、陈旧 running/paused 缓存和从未确认云端状态时均可创建新本地 UUID；重载后活动草稿与 authority metadata 恢复；暂停/继续/结束三时间正确；重连不把未结束本机会话升级为 cloud live；不同远端 UUID 进入 `forked-local` 且命令域隔离；结束事务留下一个稳定 pending。IndexedDB 门禁覆盖 v2→v3、旧 opId 保留、遗留 uploading→retry、429/5xx 退避、conflict/rejected 终态、applied/duplicate 原子删除 pending 与 metadata。存在活动态或待处理记录时不能更换连接身份。
 
 正式交付 Android APK 前，安装与工程要求匹配的 Android SDK 后从 `android/` 运行：
 
@@ -78,6 +78,12 @@ PC 账本回收、容器重启持久化和停机恢复；无论成功失败都�
 强制、错误 token 为 401、错误 origin 为 403、限流为 429、`/health` 标记 production、容器重启后活动会话/任务快照/
 完成账本仍存在。`focuslink-cloud-data` 卷必须配置备份并做一次恢复演练；未绑定有效 HTTPS 域名或未挂载持久卷时不得把
 回环测试结果写成云端已上线。
+
+Cloudflare 托管实现还必须先执行 Worker 类型检查和本地协议测试，再用 Wrangler 部署到自定义 HTTPS 域名。公网门禁覆盖 `/health`、错误 token、`opId` applied/duplicate/复用拒绝、旧 revision conflict、cursor 增量、任务快照、`commandId` 幂等与复用拒绝、实时 start/pause/resume/finish；保存第一次运行的状态文件，重新部署同一 Worker 后以 `verify` 模式确认账本、revision、change log、实时 idle 和幂等记录仍在。三端只记录自定义域名，不以 `workers.dev` 在单一网络成功替代生产验收；访问令牌只通过 Wrangler secret 和各平台安全存储传递。
+
+Sync v2 额外覆盖 inventory/manifest/bootstrap、三类 epoch、租约过期恢复、`opId` 幂等、旧 revision 冲突、tagId 合并、tombstone 水位、配对 nonce 重放、scope/撤销/轮换、冲突/回收站标准 mutation、Queue `credential-missing` 诊断和重部署持久性。R2 门禁必须包含真实 object 写入、AES-GCM 篡改检测、maintenance 写拒绝、恢复失败回滚及 generation 切换；账户未启用 R2 时记录 Cloudflare 错误码并判定该门禁未通过。
+
+公网移动端验收必须在 Windows FocusLink 进程停止时，分别由小米手机和华为平板完成开始、暂停、继续、结束，并在 Cloudflare 中各形成一份含 2 个 segment、1 个 pause 的独立账本。随后 Windows 启动并执行同步，两份会话在 SQLite 中各出现一次；再次同步不得增加副本。旧 Node cursor 切到 Cloudflare 时，客户端必须根据结构化 `invalid_cursor` 清空当前连接的缓存并从空 cursor 重建，不得依赖人工清数据。
 
 Android 门禁限定 `:app:`，只测试最终可交付 APK；不要让 Gradle 根任务选择器额外构建 Capacitor
 生成库中没有产品测试源码的 instrumentation APK。

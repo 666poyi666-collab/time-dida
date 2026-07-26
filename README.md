@@ -2,9 +2,9 @@
 
 FocusLink 是一个本地优先的 Windows 桌面专注工具：主进程精确记录专注、暂停与自然跨度，把片段关联到滴答清单任务，并通过彼此独立的队列同步滴答清单与番茄 To-do。
 
-> 当前版本：v0.12.45
+> 当前版本：v0.12.61
 >
-> 版本主题：系统计时表面 · 安全配对 · 任务层级
+> 版本主题：移动端本地优先 · 并发事实域隔离 · Android 系统表面
 
 ## 产品边界
 
@@ -84,9 +84,10 @@ FocusLink 先以稳定 marker 原子写入本地 PCRecord，再通过经过身�
 
 桌面端可把已结束的 Session / Segment / PauseEvent 原子账本上传到独立测试服务，Web/PWA 与
 Capacitor Android 使用同一界面按服务端 cursor 增量拉取，并在 IndexedDB 保留离线缓存。
-同一测试账号还拥有唯一活动会话：Web/Android 可开始、暂停、继续和结束，服务端 revision、幂等
-command id 与有界长轮询负责多设备收敛；断线时只按最后确认状态本机推算并锁定控制。结束命令会
-原子闭合完整账本，不会生成重复 Session。
+同一测试账号仍只有一个云端活动会话；Web/Android 在电脑或服务不可达时也可新建独立 UUID 的
+本机会话并完整暂停、继续和结束。重连发现不同云端活动 UUID 时，本机会话进入 `forked-local`：
+本地与云端分别保持自己的控制域、结束并入账，不互相覆盖或拼接。结束的本机会话先原子写入
+IndexedDB 队列，只有 `applied/duplicate` 才出队；冲突和拒绝保留为可诊断记录。
 
 Android 壳只提供可见前台通知、暂停/继续/结束动作、快捷设置 Tile 与至少一次原生命令队列；业务
 状态机仍在共享协议和 Web 层，陈旧 session/revision 动作不会作用于下一轮。移动端不直接执行 dida
@@ -179,9 +180,11 @@ RELEASE_NOTES.md
 
 | 版本 | 本地安装版 | 版本说明 |
 | --- | --- | --- |
-| 0.12.45 | 待完成正式打包（三端自动配对与同版交付） | 待生成 |
-| 0.12.44 | CI 便携版启动门禁失败，未创建 GitHub Release | [v0.12.44](release-v01244/RELEASE_NOTES.md) |
-| 0.12.43 | CI 测试门禁失败，未创建 GitHub Release | [v0.12.43](release-v01243/RELEASE_NOTES.md) |
+| 0.12.61 | Foxlink 独立 MCP 打包收口；Windows 业务 API 随桌面应用启动 | [v0.12.61](release-v01261/RELEASE_NOTES.md) |
+| 0.12.60 | 本地 Sync v2 候选；Outbox、合并、设备身份、冲突/回收站、Queue 与灾备协议 | [v0.12.60](release-v01260/RELEASE_NOTES.md) |
+| 0.12.53 | 本地验收版本；公网同步、三端验收与原位覆盖安装已完成 | [v0.12.53](release-v01253/RELEASE_NOTES.md) |
+| 0.12.47 | 本地中间版本；发现覆盖安装缺陷，已由 0.12.53 取代 | [v0.12.47](release-v01247/RELEASE_NOTES.md) |
+| 0.12.46 | 本地候选；真机完整门禁未完成 | [v0.12.46](release-v01246/RELEASE_NOTES.md) |
 
 每次版本迭代必须同步更新 `CHANGELOG.md`、本地 `RELEASE_NOTES.md` 和 GitHub Release，并上传安装版、便携版与 SHA256。只推送代码或 tag 不算发布完成。
 
@@ -205,7 +208,7 @@ v0.12.11 因校验表格式被阻断；v0.12.12 的源码、回归和便携版�
 
 ### 当前发布
 
-- v0.12.45 Release 正文将在正式包生成后写入 `release-v01245/RELEASE_NOTES.md`
+- [v0.12.61 Foxlink 独立 MCP 本地版本说明](release-v01261/RELEASE_NOTES.md)
 - [版本历史](CHANGELOG.md)
 
 ## License

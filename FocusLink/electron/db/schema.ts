@@ -86,12 +86,86 @@ CREATE TABLE IF NOT EXISTS app_meta (
   value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sync_outbox (
+  op_id TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  base_revision INTEGER NOT NULL,
+  base_fingerprint TEXT,
+  payload TEXT,
+  device_id TEXT NOT NULL,
+  account_generation INTEGER NOT NULL,
+  state TEXT NOT NULL DEFAULT 'pending',
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_retry_at INTEGER NOT NULL DEFAULT 0,
+  lease_id TEXT,
+  lease_expires_at INTEGER,
+  claimed_at INTEGER,
+  error_code TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sync_entity_state (
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  confirmed_revision INTEGER NOT NULL,
+  confirmed_fingerprint TEXT NOT NULL,
+  base_snapshot TEXT,
+  sync_epoch TEXT NOT NULL,
+  cursor_epoch TEXT NOT NULL,
+  account_generation INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY(entity_type, entity_id)
+);
+
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+  conflict_id TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  base_payload TEXT,
+  local_payload TEXT,
+  remote_payload TEXT,
+  conflict_fields TEXT NOT NULL,
+  source_device_ids TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  resolution_op_id TEXT,
+  created_at INTEGER NOT NULL,
+  resolved_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS sync_operation_history (
+  op_id TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  revision INTEGER,
+  error_code TEXT,
+  completed_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sync_device_identity (
+  device_id TEXT PRIMARY KEY,
+  device_public_id TEXT NOT NULL UNIQUE,
+  account_public_id TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  credential_ref TEXT,
+  scopes TEXT NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_segments_session ON focus_segments(session_id);
 CREATE INDEX IF NOT EXISTS idx_pauses_session ON pause_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_pauses_segment ON pause_events(segment_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_source ON tasks_cache(source);
 CREATE INDEX IF NOT EXISTS idx_sync_status ON sync_queue(status);
 CREATE INDEX IF NOT EXISTS idx_sessions_started ON focus_sessions(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sync_outbox_ready ON sync_outbox(state, next_retry_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_sync_outbox_lease ON sync_outbox(lease_expires_at);
+CREATE INDEX IF NOT EXISTS idx_sync_conflicts_status ON sync_conflicts(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_sync_operation_history_completed ON sync_operation_history(completed_at);
 
 CREATE TRIGGER IF NOT EXISTS trg_segment_time_check
 BEFORE INSERT ON focus_segments

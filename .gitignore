@@ -15,6 +15,8 @@ release/
 *.log
 .env
 .env.local
+.dev.vars
+.dev.vars.*
 focuslink-data/
 /FocusLink/test-data/
 /FocusLink/*-result.json

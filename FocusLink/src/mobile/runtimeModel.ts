@@ -112,9 +112,9 @@ export function runtimeControlAvailability(input: {
   return {
     start:
       !input.pending &&
-      input.snapshot.state === 'idle' &&
       input.title.trim().length > 0 &&
-      (input.connection === 'live' || input.allowOfflineStart === true),
+      ((input.snapshot.state === 'idle' && input.connection === 'live') ||
+        input.allowOfflineStart === true),
     pause: ready && input.snapshot.state === 'running',
     resume: ready && input.snapshot.state === 'paused',
     finish: ready && input.snapshot.state !== 'idle',
@@ -139,18 +139,18 @@ export function liveConnectionCopy(
   }
   if (connection === 'offline') {
     return {
-      title: '当前离线 · 控制已锁定',
+      title: '当前离线 · 本机专注可用',
       detail: hasSnapshot
-        ? '计时仅按最后确认状态在本机推算，联网后自动校准'
-        : '联网后才能读取或控制专注',
+        ? '云端状态仅供参考；可新建独立本机会话，结束后联网补传'
+        : '可立即开始本机专注，结束后联网补传',
     };
   }
   if (connection === 'error') {
     return {
       title: '实时连接中断',
       detail: hasSnapshot
-        ? '保留最后确认状态并本机推算，重连前不会提交控制'
-        : '请检查连接设置后重试',
+        ? '保留最后确认状态；可新建独立本机会话，不会覆盖云端'
+        : '可先使用本机专注，连接恢复后自动补传',
     };
   }
   return { title: '尚未连接同步服务', detail: '配置服务地址与令牌后启用多端控制' };

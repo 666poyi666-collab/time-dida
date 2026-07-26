@@ -1,6 +1,78 @@
 # Changelog
 
+## v0.12.61 - 2026-07-26（Foxlink 独立 MCP 打包收口）
+
+- **独立服务**：Foxlink MCP 以 `PoyiFoxlinkMcp` 原生 Windows 服务监听 `127.0.0.1:8770/mcp`，专属 Secure MCP Tunnel 独立运行，不依赖 PersonalMcpGateway。
+- **桌面业务 API 入包**：修复 v0.12.60 安装包早于 MCP 业务 API 合入的问题；`127.0.0.1:18770` 现在随正式 Windows 应用启动，MCP 不再依赖开发态进程。
+- **ChatGPT 私有验收**：Developer Mode 私有 Foxlink 应用已连接；真实只读、恢复、暂停及相同 `requestId/commandId` 结果重放通过。
+- **版本门禁**：Windows、小米和华为统一升级为 `0.12.61 / 1261`；本版仅本地交付，不推送 `main`、不创建 tag 或 GitHub Release。
+
+## v0.12.60 - 2026-07-26（Sync v2 连续实施）
+
+- **事务同步基础**：桌面 SQLite 与移动 IndexedDB 增加租约 Outbox、entity state、base snapshot、冲突和 30 天操作历史；`applied/duplicate` 原子确认并删除 Outbox。
+- **实体与合并**：已结束会话拆为不可变 `focus_ledger_v2`、可编辑 `focus_metadata_v2` 和追加式 correction；metadata 按 base 三方合并，备注、时间结构和 tagId 删除/重加进入显式冲突。
+- **Bootstrap 与代次**：固定 inventory/manifest/base/v2-active 状态机，并使用 `syncEpoch/cursorEpoch/accountGeneration` 使 stale 设备、日志压缩和恢复后旧 cursor 明确失效。
+- **可信设备**：Cloudflare 账号 Durable Object 支持独立 `fl2_` 设备令牌、HMAC pepper、scope、配对 nonce 防重放、改名、撤销和轮换。
+- **删除与处理中心**：实现 tombstone、水位、stale 设备、graveyard、冲突与回收站 API；解决、恢复和用户层永久删除继续走标准 mutation/revision/opId。
+- **推送与灾备**：Cloudflare Queue 已部署；无厂商凭据时状态固定为 `credential-missing` 且 HTTPS 轮询兜底。R2 AES-256-GCM、maintenance generation 恢复和前后快照代码完成；当前 Cloudflare 账户未启用 R2（API 10042），真实 R2 写入门禁登记为外部阻塞。
+- **双后端与客户端**：Cloudflare SQLite Durable Object 与 Node/Docker 均实现 v2 bootstrap/sync 核心契约；Windows 与 Android 在 v1 可用期间增量启用 v2，不因 v2 暂不可达破坏 v1。
+- **验证**：486 项自动化通过；公网 v2 的 bootstrap、applied/duplicate、revision conflict、cursor、设备配对、nonce 防重放、scope 和 Queue 诊断通过；Docker Linux 构建与集成通过。
+- **迁移复测**：Windows 真实历史首次迁移发现 1 MiB 批次与缺失 base 问题；改为有界批次并按远端相同 fingerprint 建 base 后，158 个实体全部确认、Outbox 清零，原有 79 场会话和 19 项设置保留。
+
 ## 未发布
+
+## v0.12.53 - 2026-07-26（Windows 原位覆盖安装）
+
+- **原位覆盖恢复**：旧卸载器重试耗尽后，不删除旧安装目录，也不要求旧 EXE 已消失；在当前用户进程已被有界关闭的前提下，直接让新安装器覆盖注册表来源的同一安装路径。
+- **完整复测**：从完整 v0.12.47 安装覆盖到 v0.12.53，并执行 v0.12.53 同版本重装；验证退出码、版本、数据哈希和公网同步。
+- **版本与交付**：三端统一为 `0.12.53 / 1253`，按本轮要求仅本地交付。
+
+## v0.12.52 - 2026-07-26（Windows 覆盖安装事实判定）
+
+- **退出码无关恢复**：旧卸载器重试耗尽后不再依赖不稳定的退出码；仅依据注册表来源旧安装目录中的产品 EXE 是否已消失决定是否继续，新 EXE 仍存在时保持失败。
+- **真实复测**：旧卸载器不移除旧 EXE，事实判据仍无法触发，本制品由 v0.12.53 的原位覆盖取代。
+- **版本与交付**：三端统一为 `0.12.52 / 1252`，继承 Cloudflare、公网离线专注、overlay 性能和小米兼容性结论。按本轮要求只做本地交付。
+
+## v0.12.51 - 2026-07-26（Windows 覆盖安装无删除恢复）
+
+- **锁定目录修复**：旧卸载器仍可能占用安装根目录，恢复宏不再递归删除该目录；确认产品 EXE 已不存在后直接让新安装器写回同一路径，避免静默安装卡死。
+- **真实复测**：旧卸载器重试后的实际返回码并非稳定为 2，恢复条件未触发，本制品由 v0.12.52 取代。
+- **版本与交付**：三端统一为 `0.12.51 / 1251`，继承 Cloudflare、公网离线专注、overlay 性能和小米兼容性结论。按本轮要求只做本地交付，不推送 `main`、不创建 tag 或 GitHub Release。
+
+## v0.12.50 - 2026-07-26（Windows 覆盖安装闭环）
+
+- **注册目录恢复**：Electron Builder 从注册表读取旧 `$installationDir` 后，若旧卸载器连续返回 2，仅在该目录内产品 EXE 已不存在时清理残留目录并继续安装；不再依赖升级后已被删除的注册值或路径字符串形式。
+- **真实复测**：从完整 v0.12.47 覆盖时安装器在锁定目录递归删除处超时，本制品由 v0.12.51 取代。
+- **版本与交付**：三端统一为 `0.12.50 / 1250`，继承 v0.12.47 的 Cloudflare、公网离线专注、overlay 性能和小米兼容性结论。按本轮用户要求只完成本地验收，不推送 `main`、不创建 tag 或 GitHub Release。
+
+## v0.12.49 - 2026-07-26（Windows 覆盖安装最终恢复）
+
+- **最终结果分支修复**：在 `customUnInstallCheck` 中处理已知退出码 2；仅当注册卸载器父目录匹配旧安装目录且产品 EXE 已不存在时继续升级，任何路径不匹配、payload 残留、启动失败或其他退出码仍立即失败。
+- **版本门禁**：首轮 v0.12.48 修复未命中 Electron Builder 最终结果处理分支，本候选递增为 `0.12.49 / 1249`；真实覆盖仍失败，因为旧卸载器已删除最终处理器依赖的注册值，本制品由 v0.12.50 取代。
+- **完整继承 v0.12.47**：Cloudflare SQLite Durable Object、公网三端离线专注收敛、悬浮条性能结果和小米 OEM Focus `onAuthFailed` 兼容性结论保持不变。
+
+## v0.12.48 - 2026-07-26（Windows 覆盖安装收口）
+
+- **NSIS 升级恢复修复**：旧卸载器连续返回退出码 2 时，不再要求注册安装目录与新 `$INSTDIR` 的字符串形式完全一致；仍以“注册卸载器父目录等于待删除目录”作为删除边界，允许已移除旧 payload 的升级继续安装。
+- **版本门禁**：因安装器行为改变，Windows、Web/PWA、Android 统一递增为 `0.12.48 / 1248`；真实升级复测仍返回退出码 2，证明恢复逻辑未命中最终结果处理分支，本制品由 v0.12.49 取代。
+- **完整继承 v0.12.47**：Cloudflare SQLite Durable Object、公网三端离线专注收敛、悬浮条性能结果和小米 OEM Focus `onAuthFailed` 兼容性结论保持不变。
+
+## v0.12.47 - 2026-07-26（公网本地优先收敛版）
+
+- **Cloudflare 公网后端**：新增 Worker 与账号级 SQLite Durable Object，兼容 `/health`、`/v1/sync`、`/v1/tasks`、`/v1/live`、`/v1/live/wait`、`/v1/live/command`。实体 revision、opId、change log、任务快照、实时会话与 commandId 均持久化；现有 Node/Docker 服务保持兼容。
+- **公网三端收敛**：自定义域名 `https://focuslink-sync.pyzzgk.dpdns.org` 已部署并通过鉴权、幂等、旧 revision 冲突、cursor 增量、实时生命周期及 Worker 重部署后数据保留。电脑进程停止时，小米与华为分别完成开始、暂停、继续、结束，Windows 恢复后各导入一次完整的 2 段/1 暂停账本。
+- **Windows 覆盖安装**：从 `0.12.46` 覆盖到 `0.12.47` 后数据库、设置和设备身份文件保持；安装态重新保存安全凭据后公网同步上传 63、拉取 76、导入 13，冲突/拒绝为 0，新界面主视图和设置视图完成截图回归。
+- **悬浮条性能门禁**：小米 janky frames 从 14.04% 降至 3.54%，华为从 15.52% 降至 3.43%；两机均无超过 100 ms 帧，拖动后位置连续，满足不高于 5% 且不劣于基线的门禁。
+- **小米超级岛兼容性结论**：`22041216C / HyperOS OS3.0.1.0.VLHCNXM / SystemUI 20240808.0` 能解析协议 3 并记录 `onInflateSuccess/onInflateFinish`，随后以 `onAuthFailed ... app.focuslink.mobile` 拒绝 OEM Focus 授权；桌面和锁屏均无真实岛显示，因此明确标记为该 ROM/签名不兼容，不标记 `visually-verified`，标准通知与悬浮条仍正常。
+- **回归与本地交付**：format、typecheck、lint、68 个 Vitest 文件/475 项测试、Android unit/lint/assemble、Docker 隔离个人云和 Cloudflare 公网协议均通过。版本统一为 `0.12.47 / 1247`；随后发现 NSIS 同版本覆盖安装退出码 2，本制品由 v0.12.48 取代。
+
+## v0.12.46 - 2026-07-25（移动端本地优先基础版）
+
+- **双事实域隔离**：手机和平板在电脑、endpoint 或云端状态不可达时可直接创建独立本机 UUID；恢复连接发现不同云端活动会话时进入 `forked-local`，两边互不发送控制命令、互不覆盖并分别结束入账。Android 原生快照增加 `localAuthority` 门禁，后台云轮询不能覆盖本机通知和悬浮条。
+- **持久补传队列**：IndexedDB 升级到 v3，新增 `sessionSyncMeta`；本机开始和结束分别使用事务保存运行态/元数据及 completed bundle。pending 记录支持 `pending/uploading/retry/conflict/rejected`、尝试次数、退避时间和错误码；崩溃遗留 uploading 恢复为 retry，只有 `applied/duplicate` 同时删除 pending 与元数据。
+- **Android 悬浮条**：点按显示关闭按钮，3 秒无操作收起；关闭后持久禁用且不终止专注或常驻通知，只能回应用重新开启。拖动位置更新按动画帧合并，拖动期间缓存安全区、尺寸和背景 drawable。
+- **系统表面隔离**：标准通知、小米超级岛和华为胶囊拆为独立适配器。小米使用稳定业务 ID 与协议 3 生命周期载荷，能力证据严格区分 `unsupported/protocol-selected/systemui-accepted/visually-verified`，应用不会自动宣称人工视觉验收。
+- **版本与交付边界**：Windows、Web/PWA 与 Android 版本源统一为 `0.12.46`，Android `versionCode=1246`。本版为本地中间版本，不推送 `main`、不创建 tag 或 GitHub Release；真机视觉、拖动性能与三端同版矩阵以最终验收记录为准。
 
 ## v0.12.45 - 2026-07-25（便携版 CI 启动门禁与集中发布节奏）
 

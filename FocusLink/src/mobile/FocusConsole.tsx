@@ -13,6 +13,7 @@ import {
 } from './runtimeModel';
 import type { SyncedTask } from '@shared/sync/taskSnapshotProtocol';
 import type { LiveSnapshotSource } from './liveSnapshotPolicy';
+import type { MobileAuthorityMode } from './cache';
 import { MobileConfirmDialog } from './MobileConfirmDialog';
 import { MobileTemporalRibbon } from './MobileTemporalRibbon';
 import { flattenSyncedTaskTree } from './taskBrowserModel';
@@ -46,6 +47,7 @@ export interface FocusConsoleProps {
   onToggleImmersiveSystemBars: () => void;
   onEnterPictureInPicture: () => void;
   localOfflineMode: boolean;
+  authorityMode: MobileAuthorityMode;
   allowOfflineStart: boolean;
 }
 
@@ -68,12 +70,14 @@ export function FocusConsole({
   onToggleImmersiveSystemBars,
   onEnterPictureInPicture,
   localOfflineMode,
+  authorityMode,
   allowOfflineStart,
 }: FocusConsoleProps) {
   const [now, setNow] = useState(() => Date.now());
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
   const current = snapshot ?? idleLiveFocusSnapshot(0, now);
   const active = current.state !== 'idle';
+  const cachedRemoteOnly = allowOfflineStart && !localOfflineMode;
   const taskEntries = flattenSyncedTaskTree(tasks);
 
   useEffect(() => {
@@ -200,7 +204,7 @@ export function FocusConsole({
               {localOfflineMode
                 ? 'LOCAL · 结束后安全保存，联网自动补传'
                 : showingCachedSnapshot
-                  ? 'LAST CONFIRMED · 等待云端确认，控制已锁定'
+                  ? 'LAST CONFIRMED · 云端状态待确认，可另开独立本机专注'
                   : current.state === 'paused'
                     ? `有效专注 ${formatClockDuration(durations.activeElapsedMs)} 已冻结`
                     : current.state === 'running'
@@ -282,17 +286,21 @@ export function FocusConsole({
           )}
 
           <div className="focus-actions">
-            {current.state === 'idle' && (
+            {(current.state === 'idle' || cachedRemoteOnly) && (
               <button
                 className="focus-action primary"
                 type="button"
                 disabled={!controls.start}
                 onClick={() => onCommand('start')}
               >
-                {pendingCommand === 'start' ? '正在开始…' : '开始专注'}
+                {pendingCommand === 'start'
+                  ? '正在开始…'
+                  : cachedRemoteOnly
+                    ? '开始本机专注'
+                    : '开始专注'}
               </button>
             )}
-            {current.state === 'running' && (
+            {current.state === 'running' && !cachedRemoteOnly && (
               <button
                 className="focus-action pause-action"
                 type="button"
@@ -302,7 +310,7 @@ export function FocusConsole({
                 {pendingCommand === 'pause' ? '正在暂停…' : '暂停'}
               </button>
             )}
-            {current.state === 'paused' && (
+            {current.state === 'paused' && !cachedRemoteOnly && (
               <button
                 className="focus-action primary"
                 type="button"
@@ -312,7 +320,7 @@ export function FocusConsole({
                 {pendingCommand === 'resume' ? '正在继续…' : '继续专注'}
               </button>
             )}
-            {active && (
+            {active && !cachedRemoteOnly && (
               <button
                 className="focus-action finish-action"
                 type="button"
@@ -339,6 +347,15 @@ export function FocusConsole({
               <small>{connectionCopy.detail}</small>
             </div>
           </div>
+          {authorityMode === 'forked-local' && (
+            <div className="connection-callout connection-error" role="status">
+              <span className="network-dot" aria-hidden="true" />
+              <div>
+                <strong>本机离线会话正在运行</strong>
+                <small>其他设备另有云端活动会话；两份会话独立控制、独立入账</small>
+              </div>
+            </div>
+          )}
 
           <dl className="runtime-facts">
             <div>

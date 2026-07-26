@@ -190,6 +190,16 @@ export function getDeviceSyncRuntimeConnection(): DeviceSyncRuntimeConnection | 
   return { endpoint, accessToken, deviceId: getOrCreateDeviceId() };
 }
 
+/** Main-process Sync v2 transport; unlike live control it only requires data sync to be enabled. */
+export function getDeviceSyncDataConnection(): DeviceSyncRuntimeConnection | null {
+  const settings = getSettings().deviceSync;
+  if (!settings.enabled) return null;
+  const endpoint = normalizeDeviceSyncEndpoint(settings.endpoint);
+  const accessToken = getDeviceSyncToken();
+  if (!accessToken) return null;
+  return { endpoint, accessToken, deviceId: getOrCreateDeviceId() };
+}
+
 export function setDeviceSyncLiveTelemetry(
   telemetry: Pick<DeviceSyncStatus, 'liveConnected' | 'liveRevision' | 'liveState'>,
 ): void {
@@ -221,6 +231,13 @@ export async function runAutomaticDeviceSync(): Promise<DeviceSyncRunResult | nu
   const settings = getSettings().deviceSync;
   if (!settings.enabled || !settings.autoSync || !hasDeviceSyncToken()) return null;
   const result = await runDeviceSync();
+  try {
+    await import('./deviceSyncV2Service.js').then(({ runDesktopSyncV2 }) => runDesktopSyncV2());
+  } catch (error) {
+    logger.warn('deviceSyncV2', 'v2 migration sync deferred; v1 remains active', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   await flushPendingTaskSnapshot();
   return result;
 }

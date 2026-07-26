@@ -2,7 +2,7 @@
 
 > 适用版本：v0.12.x
 >
-> 当前实现：v0.12.45
+> 当前实现：v0.12.61
 >
 > 文档责任：Electron 主进程、SQLite、IPC、任务 Provider、同步、测试与发布。
 
@@ -19,7 +19,7 @@
 - [TEST_AND_RELEASE.md](TEST_AND_RELEASE.md)：自动化、真实服务、打包、校验和 GitHub Release 门禁。
 - [INSTALLER_TROUBLESHOOTING.md](INSTALLER_TROUBLESHOOTING.md)：Windows 安装、升级、卸载错误编号与可复现排查命令。
 - [SYNC_TROUBLESHOOTING.md](SYNC_TROUBLESHOOTING.md)：跨设备实时专注、账本同步和本地孤立暂停错误编号与排查命令。
-- v0.12.45 正在执行 Windows、华为平板和小米手机同版门禁；三端任一版本或验收缺失时不进入发布。
+- v0.12.53 已完成移动端本地优先、公网 Cloudflare 同步、Android 悬浮条性能、Windows 覆盖安装修复和三端同版门禁；小米超级岛在指定 HyperOS ROM 上得到明确的 OEM Focus 授权拒绝兼容性结论，标准通知与悬浮条继续可用。
 - [根 CHANGELOG](../../CHANGELOG.md)：跨版本历史的唯一索引；最近三个版本的完整正文保留在根 `release-v*/` 目录。
 
 ### 开发与交接

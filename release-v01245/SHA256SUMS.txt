@@ -1,2 +1,0 @@
-bd717721a17cde24ea2103a467cb0a4a3bd35f3c0e0320ab1808ca898df5a31b  FocusLink-0.12.45-x64.exe
-1eabccd94dd9ea94b3ee2e11527593b4b03eeded2d880e8c9dbb3336d6fb7675  FocusLink-0.12.45-x64-portable.exe
