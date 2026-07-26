@@ -30,11 +30,36 @@ const HOTKEY_LABELS: Record<keyof AppSettings['hotkeys'], string> = {
   toggleMiniWindow: '显示 / 隐藏专注小窗',
 };
 
+/**
+ * 分组按「用户此刻在想什么」划分，而不是按实现模块。
+ *
+ * 旧结构把外观、字体、小窗、快捷键、开机自启、关于全都堆进「界面与体验」，
+ * 同时把滴答清单拆成两半——「怎么连」在连接页、「同步什么」在同步页，
+ * 而这两件事用户是一起想的。
+ */
 const TABS = [
-  { id: 'experience', label: '界面与体验', icon: Icon.Settings },
-  { id: 'connections', label: '连接', icon: Icon.Link },
-  { id: 'sync', label: '同步', icon: Icon.Refresh },
+  { id: 'appearance', label: '外观', icon: Icon.Palette },
+  { id: 'focus', label: '专注', icon: Icon.Timer },
+  { id: 'hotkeys', label: '快捷键', icon: Icon.Keyboard },
+  { id: 'integrations', label: '连接与同步', icon: Icon.Link },
+  { id: 'devices', label: '跨设备', icon: Icon.Cloud },
+  { id: 'system', label: '系统', icon: Icon.Settings },
 ] as const;
+
+type SettingsTabId = (typeof TABS)[number]['id'];
+
+/** 需要实时状态轮询的分组：滴答队列、番茄连接、跨设备状态都在这两页。 */
+const LIVE_STATUS_TABS: ReadonlySet<string> = new Set<SettingsTabId>(['integrations', 'devices']);
+
+type SettingsSection = {
+  id: string;
+  tab: SettingsTabId;
+  title: string;
+  desc?: string;
+  /** 搜索用的额外词条：同义词、英文名、以及分区内具体条目的名字。 */
+  keywords: string;
+  render: () => React.ReactNode;
+};
 
 const FOCUS_COLOR_OPTIONS = [
   { id: 'emerald', label: '翡翠', color: '#0e9f6e' },
@@ -143,7 +168,8 @@ export function SettingsPanel() {
     executablePath: string;
     hasStaleTicktickTemplates: boolean;
   } | null>(null);
-  const [activeTab, setActiveTab] = useState<string>('experience');
+  const [activeTab, setActiveTab] = useState<SettingsTabId>('appearance');
+  const [search, setSearch] = useState('');
   const [hotkeyStatus, setHotkeyStatus] = useState<HotkeyRegistrationStatus | null>(null);
   const [tomatodoPending, setTomatodoPending] = useState<number>(0);
   const [tomatodoPendingError, setTomatodoPendingError] = useState<string | null>(null);
@@ -171,14 +197,17 @@ export function SettingsPanel() {
     refreshDeviceSyncStatus();
   }, []);
 
+  // 搜索会把任意分组的状态条拉到眼前，因此搜索期间也必须保持轮询，
+  // 否则搜出来的「同步队列」「番茄连接」显示的是进入设置页那一刻的旧状态。
+  const needsLiveStatus = LIVE_STATUS_TABS.has(activeTab) || search.trim().length > 0;
   useEffect(() => {
-    if (activeTab !== 'sync') return;
+    if (!needsLiveStatus) return;
     void refreshSyncState();
     const interval = setInterval(() => void refreshSyncState(), 5000);
     return () => clearInterval(interval);
     // refreshSyncState 读取当前渲染闭包；切换 Tab 时重建轮询即可。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  }, [needsLiveStatus]);
 
   useEffect(() => {
     const unsub = window.focuslink.on('hotkey:registered', () => {
@@ -660,11 +689,13 @@ export function SettingsPanel() {
   const appearanceLabel =
     settings.theme === 'light' ? '明亮' : settings.theme === 'dark' ? '深色' : '跟随系统';
 
-  const oauthConnection = (
-    <Section
-      title="TickTick OAuth（备用）"
-      desc="dida CLI 不可用时再使用开发者应用连接；日常使用无需配置。"
-    >
+  // 三态：还没探测完 / 探测到了 / 确认没有。中性色专门留给「还不知道」。
+  const cliDetectTone =
+    cliDetected === null ? 'tone-neutral' : cliDetected.found ? 'tone-success' : 'tone-warning';
+
+  // 分区外框由注册表统一渲染，这里只提供内容。
+  const oauthConnectionBody = (
+    <>
       <Row label="区域">
         <div className="flex gap-2">
           <ChoiceBtn active={region === 'dida365'} onClick={() => setRegion('dida365')}>
@@ -728,7 +759,7 @@ export function SettingsPanel() {
           />
         </div>
       )}
-    </Section>
+    </>
   );
 
   const didaPendingCount = syncQueue.filter((item) => item.status === 'pending').length;
@@ -803,6 +834,970 @@ export function SettingsPanel() {
     return { tone: 'tone-neutral', label: '检测中' };
   })();
 
+  // ---- 分区注册表 ----------------------------------------------------------
+  // 每个分区在这里定义且只定义一次：所属分组、搜索词条、内容渲染函数。
+  // 旧结构把同一个 tab 的内容拆成 5 段 JSX 与别的 tab 交错排布，新增一个分区
+  // 得在五处里挑一处插入，先后顺序也无从判断；注册表让数组顺序就是呈现顺序。
+  const sections: SettingsSection[] = [
+    {
+      id: 'theme',
+      tab: 'appearance',
+      title: '外观',
+      desc: '亮色优先设计；深色沿用同一套结构与状态语义。',
+      keywords: '主题 模式 深色 夜间 黑暗 浅色 明亮 亮色 跟随系统 theme dark light',
+      render: () => (
+        <Row label="外观模式" desc="切换后主窗口与跟随主题的小窗会立即更新">
+          <div className="settings-theme-choices">
+            <ChoiceBtn
+              active={settings.theme === 'light'}
+              onClick={() => update({ theme: 'light' })}
+            >
+              <Icon.Sun size="xs" />
+              明亮
+            </ChoiceBtn>
+            <ChoiceBtn active={settings.theme === 'dark'} onClick={() => update({ theme: 'dark' })}>
+              <Icon.Moon size="xs" />
+              深色
+            </ChoiceBtn>
+            <ChoiceBtn
+              active={settings.theme === 'system'}
+              onClick={() => update({ theme: 'system' })}
+            >
+              <Icon.Monitor size="xs" />
+              跟随系统
+            </ChoiceBtn>
+          </div>
+        </Row>
+      ),
+    },
+    {
+      id: 'visual',
+      tab: 'appearance',
+      title: '界面与读数',
+      desc: '字体、强调色与计时读数各自独立选择；暂停始终使用红色语义。',
+      keywords:
+        '字体 界面字体 文楷 致宋 漫黑 晰黑 得意黑 无衬线 强调色 主题色 配色 翡翠 钴蓝 鸢尾 琥珀 石墨 ' +
+        '计时仪表 读数 样式 翻页 像素 七段 数码 衬线 font accent color timer style',
+      render: () => (
+        <div className="settings-visual-groups">
+          <div className="settings-choice-group settings-choice-group-wide">
+            <div className="settings-choice-heading">
+              <strong>界面字体</strong>
+              <span>应用于正文、任务与设置；计时数字保留各仪表自己的字形。</span>
+            </div>
+            <div className="font-profile-choices" aria-label="界面字体">
+              {FONT_PROFILE_OPTIONS.map((profile) => (
+                <button
+                  key={profile.id}
+                  type="button"
+                  className={`font-profile-choice preview-${profile.id} ${resolveFontProfile(settings.fontProfile) === profile.id ? 'active' : ''}`}
+                  onClick={() => update({ fontProfile: profile.id })}
+                  aria-pressed={resolveFontProfile(settings.fontProfile) === profile.id}
+                >
+                  <span className="fp-name">{profile.label}</span>
+                  <strong className="fp-sample">{profile.sample}</strong>
+                  <span className="fp-note">{profile.note}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="settings-choice-group settings-choice-group-inline">
+            <div className="settings-choice-heading">
+              <strong>全局强调色</strong>
+              <span>同步应用到导航、操作、选中态、统计、专注读数与时间之带。</span>
+            </div>
+            <div className="focus-color-choices" aria-label="专注强调色">
+              {FOCUS_COLOR_OPTIONS.map((color) => (
+                <button
+                  key={color.id}
+                  type="button"
+                  className={`focus-color-swatch ${settings.focusColor === color.id ? 'active' : ''}`}
+                  style={{ backgroundColor: color.color }}
+                  onClick={() => update({ focusColor: color.id })}
+                  aria-label={color.label}
+                  aria-pressed={settings.focusColor === color.id}
+                  title={color.label}
+                />
+              ))}
+              <span className="focus-color-note">
+                当前：{FOCUS_COLOR_OPTIONS.find((c) => c.id === settings.focusColor)?.label}
+              </span>
+            </div>
+          </div>
+
+          <div className="settings-choice-group settings-choice-group-wide">
+            <div className="settings-choice-heading">
+              <strong>计时仪表</strong>
+              <span>只改变主计时读数；每种样式使用固定尺寸的真实预览。</span>
+            </div>
+            <div className="instrument-choices" aria-label="计时仪表样式">
+              {TIMER_STYLE_OPTIONS.map((style) => (
+                <button
+                  key={style.id}
+                  type="button"
+                  className={`instrument-choice ${resolveTimerStyle(settings.timerStyle) === style.id ? 'active' : ''}`}
+                  onClick={() => update({ timerStyle: style.id })}
+                  aria-pressed={resolveTimerStyle(settings.timerStyle) === style.id}
+                >
+                  <span className="ic-name">{style.label}</span>
+                  <span className="ic-preview">
+                    <TimerDial
+                      ms={25 * 60_000 + 16_000}
+                      state="running"
+                      style={style.id}
+                      coreRatio={0.62}
+                    />
+                  </span>
+                  <span className="ic-note">{style.note}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="settings-choice-group settings-choice-group-inline">
+            <div className="settings-choice-heading">
+              <strong>状态语义</strong>
+              <span>操作与专注跟随强调色，暂停始终保持警示红。</span>
+            </div>
+            <div className="settings-state-colors">
+              <span className="interface">操作 · 当前强调色</span>
+              <span className="focus">专注 · 当前强调色</span>
+              <span className="pause">暂停 · 红</span>
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'mini-window',
+      tab: 'focus',
+      title: '专注小窗',
+      desc: '主题、透明度、显示策略和手动收纳控制',
+      keywords:
+        '小窗 悬浮窗 迷你 浮窗 透明度 不透明 自动显示 自动隐藏 托盘 mini window opacity float',
+      render: () => (
+        <>
+          <Row label="跟随主界面主题">
+            <Toggle
+              label="跟随主界面主题"
+              checked={settings.miniWindow.followMainTheme}
+              onChange={(v) =>
+                update({ miniWindow: { ...settings.miniWindow, followMainTheme: v } })
+              }
+            />
+          </Row>
+          {!settings.miniWindow.followMainTheme && (
+            <Row label="小窗主题">
+              <div className="flex gap-2">
+                <ChoiceBtn
+                  active={settings.miniWindow.themeMode === 'system'}
+                  onClick={() =>
+                    update({ miniWindow: { ...settings.miniWindow, themeMode: 'system' } })
+                  }
+                >
+                  跟随系统
+                </ChoiceBtn>
+                <ChoiceBtn
+                  active={settings.miniWindow.themeMode === 'dark'}
+                  onClick={() =>
+                    update({ miniWindow: { ...settings.miniWindow, themeMode: 'dark' } })
+                  }
+                >
+                  深色
+                </ChoiceBtn>
+                <ChoiceBtn
+                  active={settings.miniWindow.themeMode === 'light'}
+                  onClick={() =>
+                    update({ miniWindow: { ...settings.miniWindow, themeMode: 'light' } })
+                  }
+                >
+                  浅色
+                </ChoiceBtn>
+              </div>
+            </Row>
+          )}
+          <Row label={`小窗透明度（${Math.round(settings.miniWindow.opacity * 100)}%）`}>
+            <input
+              type="range"
+              min="0.6"
+              max="1"
+              step="0.02"
+              value={settings.miniWindow.opacity}
+              aria-label="小窗透明度"
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                window.focuslink.mini.setOpacity(v);
+                update({ miniWindow: { ...settings.miniWindow, opacity: v } });
+              }}
+              className="settings-opacity-slider"
+            />
+          </Row>
+          <Row label="主窗口隐藏时自动显示小窗" desc="主窗口最小化或隐藏到托盘时，自动弹出专注小窗">
+            <Toggle
+              label="主窗口隐藏时自动显示小窗"
+              checked={settings.miniWindow.autoShowOnMainHide}
+              onChange={(v) =>
+                update({ miniWindow: { ...settings.miniWindow, autoShowOnMainHide: v } })
+              }
+            />
+          </Row>
+          <Row label="专注开始时自动显示小窗" desc="开始专注时若主窗口不在前台，自动显示小窗">
+            <Toggle
+              label="专注开始时自动显示小窗"
+              checked={settings.miniWindow.autoShowOnFocusStart}
+              onChange={(v) =>
+                update({ miniWindow: { ...settings.miniWindow, autoShowOnFocusStart: v } })
+              }
+            />
+          </Row>
+          <Row label="专注结束后自动隐藏小窗" desc="专注结束时自动隐藏小窗（默认关）">
+            <Toggle
+              label="专注结束后自动隐藏小窗"
+              checked={settings.miniWindow.autoHideOnFocusEnd}
+              onChange={(v) =>
+                update({ miniWindow: { ...settings.miniWindow, autoHideOnFocusEnd: v } })
+              }
+            />
+          </Row>
+        </>
+      ),
+    },
+    {
+      id: 'hotkeys',
+      tab: 'hotkeys',
+      title: '全局快捷键',
+      desc: '点击捕获新组合键；冲突时会提示并保留旧快捷键',
+      keywords:
+        '快捷键 热键 组合键 全局 按键 开始 暂停 继续 结束 关联任务 显示小窗 恢复默认 ' +
+        'hotkey shortcut accelerator keybinding',
+      render: () => (
+        <>
+          {(Object.keys(HOTKEY_LABELS) as HotkeyKey[]).map((key) => {
+            const status = getHotkeyBadgeState(key, settings.hotkeys[key], hotkeyStatus);
+            const activeAccelerator = hotkeyStatus?.registered[key]?.accelerator ?? null;
+            const activeDiffers =
+              !!activeAccelerator && activeAccelerator !== settings.hotkeys[key];
+            return (
+              <Row key={key} label={HOTKEY_LABELS[key]}>
+                <div className="flex min-w-[260px] flex-col items-end gap-1.5">
+                  <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    <button
+                      className={`settings-hotkey-btn ${capturing === key ? 'capturing' : ''}`}
+                      onClick={() => captureKey(key)}
+                      title={settings.hotkeys[key]}
+                    >
+                      {capturing === key ? (
+                        <span className="settings-hotkey-capturing">按下组合键…</span>
+                      ) : (
+                        <kbd>{formatHotkey(settings.hotkeys[key])}</kbd>
+                      )}
+                    </button>
+                    <HotkeyStatusBadge state={status} />
+                  </div>
+                  <p
+                    className={`max-w-[360px] text-right text-[11px] ${
+                      status.tone === 'ok'
+                        ? 'text-fg-subtle'
+                        : status.tone === 'warn'
+                          ? 'text-warning'
+                          : status.tone === 'error'
+                            ? 'text-danger'
+                            : 'text-fg-subtle'
+                    }`}
+                  >
+                    {status.tone === 'ok'
+                      ? `当前生效：${formatHotkey(activeAccelerator ?? settings.hotkeys[key])}`
+                      : activeDiffers
+                        ? `当前实际生效：${formatHotkey(activeAccelerator)}，设置值尚未接管`
+                        : (status.title ?? '当前快捷键尚未注册成功')}
+                  </p>
+                </div>
+              </Row>
+            );
+          })}
+          <div className="pt-1">
+            <button className="btn-ghost text-xs" onClick={resetHotkeys}>
+              恢复默认快捷键
+            </button>
+          </div>
+        </>
+      ),
+    },
+    // 「怎么连滴答」和「往滴答同步什么」是同一件事的两面，用户是一起想的；
+    // 旧结构把它们拆到「连接」和「同步」两个 tab，改动一个得来回跳。
+    {
+      id: 'dida-connection',
+      tab: 'integrations',
+      title: '滴答清单 · 连接方式',
+      desc: '任务固定来自滴答清单；这里只选择连接方式，默认使用本机 CLI。',
+      keywords:
+        '滴答 滴答清单 ticktick dida cli 命令行 探测 检测 自检 可执行文件 路径 模板 超时 ' +
+        '任务来源 provider executable',
+      render: () => (
+        <>
+          <div className="settings-provider-list">
+            <SyncModeChoice
+              active={settings.taskSource !== 'ticktick-oauth'}
+              onClick={() => update({ taskSource: 'ticktick-cli' })}
+              icon={<Icon.Link size="md" />}
+              title="滴答 CLI"
+              badge="推荐"
+              desc="复用本机登录，支持任务与专注云同步"
+            />
+            <SyncModeChoice
+              active={settings.taskSource === 'ticktick-oauth'}
+              onClick={() => update({ taskSource: 'ticktick-oauth' })}
+              icon={<Icon.Cloud size="md" />}
+              title="OAuth"
+              desc="仅在 CLI 不可用时使用开发者应用"
+            />
+          </div>
+
+          {/* 探测返回前 cliDetected 是 null，二元判断会把「还不知道」直接说成「未连接」，
+              每次打开设置页都要先闪一下红字。这里保留「检测中」这个中间态。 */}
+          <div className="settings-provider-status">
+            <div className="settings-provider-status-head">
+              <div className="settings-provider-status-title">
+                <span className={`settings-provider-status-icon ${cliDetectTone}`}>
+                  {cliDetected === null ? (
+                    <Icon.Loader size="sm" spin />
+                  ) : cliDetected.found ? (
+                    <Icon.CheckCircleFilled size="sm" />
+                  ) : (
+                    <Icon.AlertCircle size="sm" />
+                  )}
+                </span>
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-[12.5px] font-semibold text-fg">
+                    滴答 CLI 连接
+                    <span className={`settings-status-badge ${cliDetectTone}`}>
+                      {cliDetected === null ? '检测中' : cliDetected.found ? '已连接' : '未连接'}
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-[11.5px] text-fg-subtle">
+                    {cliDetected === null
+                      ? '正在探测本机可用的 dida 命令'
+                      : cliDetected.found
+                        ? '已就绪，可读取任务与同步专注'
+                        : '尚未探测到可用命令'}
+                  </p>
+                </div>
+              </div>
+              <button
+                className="btn-outline text-[11px]"
+                onClick={detectCli}
+                disabled={cliDetecting}
+              >
+                {cliDetecting ? <Icon.Loader size="xs" spin /> : <Icon.Search size="xs" />}
+                重新探测
+              </button>
+            </div>
+            <details className="settings-provider-advanced">
+              <summary className="motion-press">
+                <span>
+                  高级 CLI 配置
+                  <span className="ml-2 font-normal text-fg-subtle">仅在自动探测失败时调整</span>
+                </span>
+                <Icon.ChevronDown size="xs" tone="subtle" className="settings-provider-chevron" />
+              </summary>
+              <div className="space-y-2 border-t border-border/50 p-3">
+                {providerInfo && (
+                  <div className="settings-diag-block text-diag">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span>CLI 类型</span>
+                      <strong className="font-medium text-success">
+                        {providerInfo.providerType === 'dida'
+                          ? 'dida'
+                          : providerInfo.providerType === 'ticktick'
+                            ? 'ticktick'
+                            : '未知'}
+                      </strong>
+                      <span>·</span>
+                      <code>{providerInfo.executable || '(未配置)'}</code>
+                    </div>
+                    {providerInfo.executablePath && (
+                      <div className="mt-1 truncate">{providerInfo.executablePath}</div>
+                    )}
+                    {providerInfo.hasStaleTicktickTemplates && (
+                      <div className="mt-1.5 rounded bg-danger/10 px-2 py-1 text-danger">
+                        当前模板与 dida 不一致，请应用默认模板。
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <ConfirmButton
+                    label="应用 dida 默认模板"
+                    confirmLabel="确认覆盖模板？"
+                    onConfirm={applyDidaTemplates}
+                  />
+                  <span className="text-[11px] text-fg-subtle">
+                    点击后会覆盖当前命令模板为 dida 标准模板并立即测试
+                  </span>
+                </div>
+                <Row label="可执行文件路径">
+                  <input
+                    className="input min-w-[200px] font-mono text-xs"
+                    value={settings.ticktickCli.executable}
+                    onChange={(e) =>
+                      updateDebounced({
+                        ticktickCli: { ...settings.ticktickCli, executable: e.target.value },
+                      })
+                    }
+                    onBlur={() => void persistDebouncedSettings()}
+                    placeholder="留空则用自动探测结果"
+                  />
+                </Row>
+                <div className="mt-2 space-y-1.5">
+                  <Row label="列出任务命令">
+                    <input
+                      className="input min-w-[200px] font-mono text-xs"
+                      value={settings.ticktickCli.listTasksCommand}
+                      onChange={(e) =>
+                        updateDebounced({
+                          ticktickCli: {
+                            ...settings.ticktickCli,
+                            listTasksCommand: e.target.value,
+                          },
+                        })
+                      }
+                      onBlur={() => void persistDebouncedSettings()}
+                    />
+                  </Row>
+                  <Row label="搜索任务命令">
+                    <input
+                      className="input min-w-[200px] font-mono text-xs"
+                      value={settings.ticktickCli.searchTasksCommand}
+                      onChange={(e) =>
+                        updateDebounced({
+                          ticktickCli: {
+                            ...settings.ticktickCli,
+                            searchTasksCommand: e.target.value,
+                          },
+                        })
+                      }
+                      onBlur={() => void persistDebouncedSettings()}
+                    />
+                  </Row>
+                  <Row label="追加备注命令">
+                    <input
+                      className="input min-w-[200px] font-mono text-xs"
+                      value={settings.ticktickCli.appendNoteCommand}
+                      onChange={(e) =>
+                        updateDebounced({
+                          ticktickCli: {
+                            ...settings.ticktickCli,
+                            appendNoteCommand: e.target.value,
+                          },
+                        })
+                      }
+                      onBlur={() => void persistDebouncedSettings()}
+                    />
+                  </Row>
+                  <Row label="超时（毫秒）">
+                    <input
+                      type="number"
+                      min={1000}
+                      className="input w-24 text-xs"
+                      value={settings.ticktickCli.timeoutMs}
+                      onChange={(e) =>
+                        update({
+                          ticktickCli: {
+                            ...settings.ticktickCli,
+                            timeoutMs: Math.max(1000, Number(e.target.value) || 10000),
+                          },
+                        })
+                      }
+                    />
+                  </Row>
+                </div>
+              </div>
+            </details>
+          </div>
+        </>
+      ),
+    },
+    {
+      id: 'device-sync',
+      tab: 'devices',
+      title: '手机 / 平板同步',
+      desc: '电脑端自动常驻。首次点击开启，之后同一个按钮会自动检查并修复连接。',
+      keywords:
+        '手机 平板 安卓 android 移动端 跨设备 配对 二维码 扫码 短码 令牌 服务地址 endpoint ' +
+        '实时 局域网 device sync pairing token',
+      render: () => (
+        <>
+          <Row
+            label={deviceSyncStatus?.configured ? '同步连接' : '开始同步'}
+            desc="自动生成安全凭据、启动本机服务、检查连接并同步，不需要填写地址或令牌"
+          >
+            <button
+              type="button"
+              className="btn-accent text-[11px]"
+              onClick={() => void handleQuickDeviceSyncSetup()}
+              disabled={deviceSyncSaving}
+            >
+              {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Refresh size="xs" />}
+              {deviceSyncStatus?.configured ? '立即检查并修复' : '一键开启本机同步'}
+            </button>
+          </Row>
+          <Row
+            label="连接手机 / 平板"
+            desc="点一次即可自动开启服务并生成二维码；移动端扫码后会安全保存连接"
+          >
+            <div className="flex min-w-[320px] flex-col items-end gap-2">
+              <button
+                type="button"
+                className="btn-outline text-[11px]"
+                onClick={() => void handleCreatePairingOffer()}
+                disabled={deviceSyncSaving}
+              >
+                <Icon.Link size="xs" />
+                显示连接二维码
+              </button>
+              {deviceSyncPairing && deviceSyncPairing.expiresAt > Date.now() && (
+                <div className="flex items-center gap-3 text-right text-[11px] leading-5 text-fg-muted">
+                  {deviceSyncPairingQr && (
+                    <img
+                      src={deviceSyncPairingQr}
+                      width={88}
+                      height={88}
+                      alt="FocusLink 一次性连接二维码"
+                      className="rounded-md border border-border bg-white p-1"
+                    />
+                  )}
+                  <div>
+                    <strong className="block font-mono text-base tracking-[0.18em] text-fg">
+                      {deviceSyncPairing.shortCode}
+                    </strong>
+                    <span className="block">扫码或在移动端填写短码 · 2 分钟内有效</span>
+                    <span className="block">二维码不包含长期令牌</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </Row>
+          <div
+            className={`settings-status-strip ${
+              deviceSyncStatus?.lastError
+                ? deviceSyncTransportUnavailable || deviceSyncConflictOnly
+                  ? 'tone-warning'
+                  : 'tone-danger'
+                : deviceSyncStatus?.lastSyncAt
+                  ? 'tone-success'
+                  : deviceSyncStatus?.configured
+                    ? 'tone-warning'
+                    : ''
+            }`}
+            aria-live="polite"
+          >
+            <span className="settings-status-strip-icon">
+              {deviceSyncStatus?.lastError &&
+              !deviceSyncTransportUnavailable &&
+              !deviceSyncConflictOnly ? (
+                <Icon.AlertCircle size="sm" />
+              ) : (
+                <Icon.Cloud size="sm" />
+              )}
+            </span>
+            <div className="settings-status-strip-copy">
+              <p className="settings-status-strip-title">
+                {deviceSyncStatus?.lastError
+                  ? deviceSyncConflictOnly
+                    ? '同步已连接，有记录待确认'
+                    : deviceSyncTransportUnavailable
+                      ? '同步服务未连接，配置已保存'
+                      : '跨设备同步失败'
+                  : deviceSyncStatus?.lastSyncAt
+                    ? '账本已完成跨设备同步'
+                    : deviceSyncStatus?.configured
+                      ? '连接已配置，等待首次同步'
+                      : '尚未配置访问令牌'}
+                <span
+                  className={`settings-status-badge ${
+                    deviceSyncStatus?.enabled ? 'tone-success' : 'tone-neutral'
+                  }`}
+                >
+                  {deviceSyncStatus?.enabled ? '已启用' : '未启用'}
+                </span>
+              </p>
+              <p className="settings-status-strip-desc">
+                {deviceSyncConflictOnly
+                  ? `${deviceSyncStatus?.unresolvedConflicts ?? 0} 条记录存在设备间差异，已安全保留，不会自动覆盖`
+                  : deviceSyncStatus?.lastError
+                    ? deviceSyncStatus.lastError
+                    : deviceSyncStatus?.liveControlEnabled
+                      ? deviceSyncStatus.liveConnected
+                        ? `实时连接已确认 · rev ${deviceSyncStatus.liveRevision ?? 0} · ${deviceSyncStatus.liveState}${deviceSyncStatus.lastSyncAt ? ` · 上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}` : ''}`
+                        : `实时连接未确认；${deviceSyncStatus.lastSyncAt ? `上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')} · ` : ''}本机计时仍可使用，第三方凭据与本地路径不会上传`
+                      : deviceSyncStatus?.lastSyncAt
+                        ? `上次同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}`
+                        : '当前只同步已结束会话；第三方凭据与本地路径不会上传'}
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                className="btn-outline text-[11px]"
+                onClick={() => void handleQuickDeviceSyncSetup()}
+                disabled={deviceSyncSaving}
+              >
+                {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Refresh size="xs" />}
+                自动修复
+              </button>
+              <button
+                type="button"
+                className="btn-accent text-[11px]"
+                onClick={handleRunDeviceSync}
+                disabled={
+                  deviceSyncRunning ||
+                  !settings.deviceSync.enabled ||
+                  !deviceSyncStatus?.tokenConfigured
+                }
+              >
+                {deviceSyncRunning ? <Icon.Loader size="xs" spin /> : <Icon.Refresh size="xs" />}
+                立即同步
+              </button>
+            </div>
+          </div>
+          <details className="settings-disclosure mt-2.5">
+            <summary>高级设置</summary>
+            <div className="space-y-3 pt-2">
+              <Row label="启用同步">
+                <Toggle
+                  label="启用同步"
+                  checked={settings.deviceSync.enabled}
+                  onChange={(enabled) =>
+                    update({ deviceSync: { ...settings.deviceSync, enabled } })
+                  }
+                />
+              </Row>
+              <Row label="PC 实时专注">
+                <Toggle
+                  label="PC 实时专注"
+                  checked={settings.deviceSync.liveControlEnabled}
+                  onChange={(liveControlEnabled) =>
+                    update({
+                      deviceSync: { ...settings.deviceSync, liveControlEnabled },
+                    })
+                  }
+                />
+              </Row>
+              <Row label="自动同步">
+                <Toggle
+                  label="自动同步"
+                  checked={settings.deviceSync.autoSync}
+                  onChange={(autoSync) =>
+                    update({ deviceSync: { ...settings.deviceSync, autoSync } })
+                  }
+                />
+              </Row>
+              <Row label="服务地址" desc="远程地址必须使用 HTTPS">
+                <input
+                  className="input min-w-[320px] font-mono text-xs"
+                  value={settings.deviceSync.endpoint}
+                  onChange={(event) =>
+                    updateDebounced({
+                      deviceSync: { ...settings.deviceSync, endpoint: event.target.value },
+                    })
+                  }
+                  onBlur={() => void persistDebouncedSettings()}
+                />
+              </Row>
+              <Row
+                label="访问令牌"
+                desc={
+                  deviceSyncStatus?.tokenConfigured
+                    ? '已由 Windows 安全存储保护；留空保持不变'
+                    : '仅自定义服务需要手动填写'
+                }
+              >
+                <input
+                  className="input min-w-[260px] font-mono text-xs"
+                  type="password"
+                  value={deviceSyncToken}
+                  onChange={(event) => setDeviceSyncToken(event.target.value)}
+                  autoComplete="off"
+                  placeholder={deviceSyncStatus?.tokenConfigured ? '已安全保存' : '输入访问令牌'}
+                />
+              </Row>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className="btn-outline text-[11px]"
+                  onClick={handleSaveDeviceSync}
+                  disabled={deviceSyncSaving}
+                >
+                  <Icon.Check size="xs" />
+                  保存高级设置
+                </button>
+              </div>
+            </div>
+          </details>
+        </>
+      ),
+    },
+    {
+      id: 'dida-sync',
+      tab: 'integrations',
+      title: '滴答清单 · 同步去向',
+      desc: '选择专注结束后的主同步去向；未同步与失败记录保留在本机。',
+      keywords:
+        '同步 去向 队列 未同步 同步失败 重试 云端专注 专注统计 任务评论 备注 仅本机 本地 ' +
+        'sync mode comment focus-record local-only',
+      render: () => (
+        <>
+          <div className="settings-sync-grid">
+            <SyncModeChoice
+              active={settings.syncMode === 'focus-record'}
+              onClick={() => update({ syncMode: 'focus-record' })}
+              icon={<Icon.Cloud size="md" />}
+              title="云端专注"
+              badge="推荐"
+              desc="显示在滴答专注统计中"
+            />
+            <SyncModeChoice
+              active={settings.syncMode === 'comment'}
+              onClick={() => update({ syncMode: 'comment' })}
+              icon={<Icon.FileText size="md" />}
+              title="任务评论"
+              desc="写入关联任务评论，失败时回退正文"
+            />
+            <SyncModeChoice
+              active={settings.syncMode === 'local-only'}
+              onClick={() => update({ syncMode: 'local-only' })}
+              icon={<Icon.HardDrive size="md" />}
+              title="仅保存在本机"
+              desc="关闭滴答云端写入"
+            />
+          </div>
+          {settings.syncMode !== 'local-only' && (
+            <div
+              className={`settings-status-strip ${
+                didaFailedCount > 0
+                  ? 'tone-danger'
+                  : didaPendingCount > 0
+                    ? 'tone-warning'
+                    : 'tone-success'
+              }`}
+            >
+              <span className="settings-status-strip-icon">
+                {didaFailedCount > 0 ? (
+                  <Icon.AlertCircle size="sm" />
+                ) : (
+                  <Icon.CheckCircleFilled size="sm" />
+                )}
+              </span>
+              <div className="settings-status-strip-copy">
+                <p className="settings-status-strip-title">{didaQueueTitle}</p>
+                <p className="settings-status-strip-desc">
+                  {didaNeedsAttention === 0
+                    ? '专注记录已同步到滴答清单'
+                    : '记录保留在本机，不会丢失专注数据'}
+                </p>
+              </div>
+              {didaNeedsAttention > 0 && (
+                <button
+                  type="button"
+                  className="btn-outline shrink-0 text-[11px]"
+                  onClick={handleRunDidaSync}
+                  disabled={didaSyncRunning}
+                >
+                  {didaSyncRunning ? <Icon.Loader size="xs" spin /> : <Icon.Refresh size="xs" />}
+                  立即重试
+                </button>
+              )}
+            </div>
+          )}
+        </>
+      ),
+    },
+    {
+      id: 'dida-oauth',
+      tab: 'integrations',
+      title: 'TickTick OAuth（备用）',
+      desc: 'dida CLI 不可用时再使用开发者应用连接；日常使用无需配置。',
+      keywords:
+        'oauth 开发者应用 client id secret 凭据 区域 海外 国内 回调 登录 断开 ticktick dida365',
+      render: () => oauthConnectionBody,
+    },
+    {
+      id: 'tomatodo',
+      tab: 'integrations',
+      title: '番茄 To-do 同步',
+      desc: '专注结束后先安全写入本地；待上传记录由你按需连接并上传。',
+      keywords:
+        '番茄 tomatodo to-do 待上传 上传 桥接 连接 学科 语文 数学 英语 物理 化学 生物 学习 ' +
+        '数据库 路径 dbPath',
+      render: () => (
+        <>
+          <Row label="启用番茄 To-do 同步" desc="自动匹配六大学科；未识别时固定归入学习">
+            <Toggle
+              label="启用番茄 To-do 同步"
+              checked={settings.tomatodo.enabled}
+              onChange={(v) => update({ tomatodo: { ...settings.tomatodo, enabled: v } })}
+            />
+          </Row>
+          {settings.tomatodo.enabled && (
+            <>
+              <Row
+                label="未识别时归类"
+                desc="语文、数学、英语、物理、化学、生物可在片段明细中直接调整"
+              >
+                <span className="settings-fixed-value">学习</span>
+              </Row>
+              <details className="settings-disclosure mt-2.5">
+                <summary className="motion-press">高级：自定义数据库路径</summary>
+                <div>
+                  <input
+                    className="input w-full font-mono text-xs"
+                    value={settings.tomatodo.dbPath}
+                    onChange={(e) =>
+                      updateDebounced({
+                        tomatodo: { ...settings.tomatodo, dbPath: e.target.value },
+                      })
+                    }
+                    onBlur={() => void persistDebouncedSettings()}
+                    placeholder="自动探测 AppData/Roaming/tomatodo/tomatodo_db.json"
+                  />
+                </div>
+              </details>
+              <div
+                className={`settings-status-strip ${
+                  tomatodoPendingError ||
+                  tomatodoBridge?.state === 'launch-failed' ||
+                  tomatodoBridge?.state === 'launch-timeout'
+                    ? 'tone-danger'
+                    : tomatodoBridge?.state === 'restart-required' || tomatodoPending > 0
+                      ? 'tone-warning'
+                      : tomatodoBridge?.connected
+                        ? 'tone-success'
+                        : ''
+                }`}
+                aria-live="polite"
+              >
+                <span className="settings-status-strip-icon">
+                  {tomatodoPendingError ||
+                  tomatodoBridge?.state === 'launch-failed' ||
+                  tomatodoBridge?.state === 'launch-timeout' ? (
+                    <Icon.AlertCircle size="sm" />
+                  ) : (
+                    <Icon.Upload size="sm" />
+                  )}
+                </span>
+                <div className="settings-status-strip-copy">
+                  <p className="settings-status-strip-title">
+                    {tomatodoPendingError
+                      ? '无法读取待上传记录'
+                      : tomatodoPending > 0
+                        ? `${tomatodoPending} 条待上传`
+                        : '当前无待上传记录'}
+                    <span className={`settings-status-badge ${tomatodoBadge.tone}`}>
+                      {tomatodoBadge.label}
+                    </span>
+                  </p>
+                  <p className="settings-status-strip-desc">
+                    {tomatodoPendingError
+                      ? '检查数据库路径或番茄 To-do 文件权限后重试'
+                      : tomatodoBridgeLabel}
+                  </p>
+                </div>
+                {!tomatodoPendingError && tomatodoPending > 0 && (
+                  <button
+                    type="button"
+                    className="btn-outline shrink-0 text-[11px]"
+                    onClick={handleUploadPending}
+                    disabled={tomatodoActionDisabled}
+                  >
+                    {tomatodoUploading ? (
+                      <Icon.Loader size="xs" spin />
+                    ) : tomatodoBridge?.connected ? (
+                      <Icon.Upload size="xs" />
+                    ) : (
+                      <Icon.Link size="xs" />
+                    )}
+                    {tomatodoUploading
+                      ? tomatodoBridge?.connected
+                        ? '正在上传'
+                        : '正在连接'
+                      : tomatodoActionLabel}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </>
+      ),
+    },
+    {
+      id: 'system',
+      tab: 'system',
+      title: '系统与后台运行',
+      desc: '窗口关闭行为、托盘常驻与开机自启动。',
+      keywords:
+        '托盘 最小化 关闭 后台 常驻 隐藏 开机 自启动 开机启动 登录启动 tray minimize autostart startup',
+      render: () => (
+        <>
+          <Row label="最小化到托盘">
+            <Toggle
+              label="最小化到托盘"
+              checked={settings.minimizeToTray}
+              onChange={(v) => update({ minimizeToTray: v })}
+            />
+          </Row>
+          <Row label="关闭窗口时最小化到托盘">
+            <Toggle
+              label="关闭窗口时最小化到托盘"
+              checked={settings.closeToTray}
+              onChange={(v) => update({ closeToTray: v })}
+            />
+          </Row>
+          <Row label="启动后最小化到托盘" desc="手动启动也隐藏主界面；开机自启动会自动进托盘">
+            <Toggle
+              label="启动后最小化到托盘"
+              checked={settings.startMinimizedToTray}
+              onChange={(v) => update({ startMinimizedToTray: v })}
+            />
+          </Row>
+          <Row label="启动时显示专注小窗">
+            <Toggle
+              label="启动时显示专注小窗"
+              checked={settings.showMiniOnStart}
+              onChange={(v) => update({ showMiniOnStart: v })}
+            />
+          </Row>
+          <Row label="开机自启动" desc="系统登录时带隐藏参数启动，不弹出主界面">
+            <Toggle
+              label="开机自启动"
+              checked={settings.autoStart}
+              onChange={(v) => update({ autoStart: v })}
+            />
+          </Row>
+        </>
+      ),
+    },
+    {
+      id: 'about',
+      tab: 'system',
+      title: '关于 FocusLink',
+      desc: '全局快捷键驱动的专注计时器 + 滴答清单任务关联工具',
+      keywords: '关于 版本 version about 更新',
+      render: () => (
+        <Row label="当前版本">
+          <span className="settings-version-chip text-diag">v{APP_VERSION}</span>
+        </Row>
+      ),
+    },
+  ];
+
+  const query = search.trim().toLowerCase();
+  const searching = query.length > 0;
+  // 搜索横跨全部分组：设置项藏在哪个分组是我们的分类结果，不该要求用户先猜对。
+  const visibleSections = searching
+    ? sections.filter((section) => sectionMatches(section, query))
+    : sections.filter((section) => section.tab === activeTab);
+
   return (
     <div className="settings-page">
       {/* 左侧分组导航（Raycast 式侧栏）：域名切换 + 当前主题诊断 */}
@@ -814,13 +1809,17 @@ export function SettingsPanel() {
         <nav className="settings-nav-list" role="tablist" aria-label="设置分类">
           {TABS.map((tab) => {
             const TabIcon = tab.icon;
-            const isActive = activeTab === tab.id;
+            // 搜索期间结果横跨所有分组，此时高亮任何一个分组都是在说谎。
+            const isActive = !searching && activeTab === tab.id;
             return (
               <button
                 key={tab.id}
                 role="tab"
                 aria-selected={isActive}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  setSearch('');
+                  setActiveTab(tab.id);
+                }}
                 className={`settings-tab ${isActive ? 'active' : ''}`}
               >
                 {isActive ? (
@@ -843,936 +1842,71 @@ export function SettingsPanel() {
       {/* 分组列表内容 */}
       <div className="settings-scroll">
         <div className="settings-container settings-stack">
-          {activeTab === 'experience' && (
-            <>
-              <Section title="外观" desc="亮色优先设计；深色沿用同一套结构与状态语义。">
-                <Row label="外观模式" desc="切换后主窗口与跟随主题的小窗会立即更新">
-                  <div className="settings-theme-choices">
-                    <ChoiceBtn
-                      active={settings.theme === 'light'}
-                      onClick={() => update({ theme: 'light' })}
-                    >
-                      <Icon.Sun size="xs" />
-                      明亮
-                    </ChoiceBtn>
-                    <ChoiceBtn
-                      active={settings.theme === 'dark'}
-                      onClick={() => update({ theme: 'dark' })}
-                    >
-                      <Icon.Moon size="xs" />
-                      深色
-                    </ChoiceBtn>
-                    <ChoiceBtn
-                      active={settings.theme === 'system'}
-                      onClick={() => update({ theme: 'system' })}
-                    >
-                      <Icon.Monitor size="xs" />
-                      跟随系统
-                    </ChoiceBtn>
-                  </div>
-                </Row>
-              </Section>
+          <div className={`settings-search ${searching ? 'active' : ''}`}>
+            <Icon.Search size="sm" tone="subtle" />
+            <input
+              type="search"
+              className="settings-search-input"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setSearch('');
+              }}
+              placeholder="搜索设置…（例如「自启动」「二维码」「字体」）"
+              aria-label="搜索设置"
+            />
+            {searching ? (
+              <>
+                <span className="settings-search-count">{visibleSections.length} 项</span>
+                <button
+                  type="button"
+                  className="settings-search-clear motion-press"
+                  onClick={() => setSearch('')}
+                  aria-label="清除搜索"
+                >
+                  <Icon.X size="xs" />
+                </button>
+              </>
+            ) : null}
+          </div>
 
-              <Section
-                title="界面与读数"
-                desc="字体、强调色与计时读数各自独立选择；暂停始终使用红色语义。"
-              >
-                <div className="settings-visual-groups">
-                  <div className="settings-choice-group settings-choice-group-wide">
-                    <div className="settings-choice-heading">
-                      <strong>界面字体</strong>
-                      <span>应用于正文、任务与设置；计时数字保留各仪表自己的字形。</span>
-                    </div>
-                    <div className="font-profile-choices" aria-label="界面字体">
-                      {FONT_PROFILE_OPTIONS.map((profile) => (
-                        <button
-                          key={profile.id}
-                          type="button"
-                          className={`font-profile-choice preview-${profile.id} ${resolveFontProfile(settings.fontProfile) === profile.id ? 'active' : ''}`}
-                          onClick={() => update({ fontProfile: profile.id })}
-                          aria-pressed={resolveFontProfile(settings.fontProfile) === profile.id}
-                        >
-                          <span className="fp-name">{profile.label}</span>
-                          <strong className="fp-sample">{profile.sample}</strong>
-                          <span className="fp-note">{profile.note}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="settings-choice-group settings-choice-group-inline">
-                    <div className="settings-choice-heading">
-                      <strong>全局强调色</strong>
-                      <span>同步应用到导航、操作、选中态、统计、专注读数与时间之带。</span>
-                    </div>
-                    <div className="focus-color-choices" aria-label="专注强调色">
-                      {FOCUS_COLOR_OPTIONS.map((color) => (
-                        <button
-                          key={color.id}
-                          type="button"
-                          className={`focus-color-swatch ${settings.focusColor === color.id ? 'active' : ''}`}
-                          style={{ backgroundColor: color.color }}
-                          onClick={() => update({ focusColor: color.id })}
-                          aria-label={color.label}
-                          aria-pressed={settings.focusColor === color.id}
-                          title={color.label}
-                        />
-                      ))}
-                      <span className="focus-color-note">
-                        当前：{FOCUS_COLOR_OPTIONS.find((c) => c.id === settings.focusColor)?.label}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="settings-choice-group settings-choice-group-wide">
-                    <div className="settings-choice-heading">
-                      <strong>计时仪表</strong>
-                      <span>只改变主计时读数；每种样式使用固定尺寸的真实预览。</span>
-                    </div>
-                    <div className="instrument-choices" aria-label="计时仪表样式">
-                      {TIMER_STYLE_OPTIONS.map((style) => (
-                        <button
-                          key={style.id}
-                          type="button"
-                          className={`instrument-choice ${resolveTimerStyle(settings.timerStyle) === style.id ? 'active' : ''}`}
-                          onClick={() => update({ timerStyle: style.id })}
-                          aria-pressed={resolveTimerStyle(settings.timerStyle) === style.id}
-                        >
-                          <span className="ic-name">{style.label}</span>
-                          <span className="ic-preview">
-                            <TimerDial
-                              ms={25 * 60_000 + 16_000}
-                              state="running"
-                              style={style.id}
-                              coreRatio={0.62}
-                            />
-                          </span>
-                          <span className="ic-note">{style.note}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="settings-choice-group settings-choice-group-inline">
-                    <div className="settings-choice-heading">
-                      <strong>状态语义</strong>
-                      <span>操作与专注跟随强调色，暂停始终保持警示红。</span>
-                    </div>
-                    <div className="settings-state-colors">
-                      <span className="interface">操作 · 当前强调色</span>
-                      <span className="focus">专注 · 当前强调色</span>
-                      <span className="pause">暂停 · 红</span>
-                    </div>
-                  </div>
-                </div>
-              </Section>
-            </>
-          )}
-
-          {activeTab === 'experience' && (
-            <Section title="专注小窗" desc="主题、透明度、显示策略和手动收纳控制">
-              <Row label="跟随主界面主题">
-                <Toggle
-                  label="跟随主界面主题"
-                  checked={settings.miniWindow.followMainTheme}
-                  onChange={(v) =>
-                    update({ miniWindow: { ...settings.miniWindow, followMainTheme: v } })
-                  }
-                />
-              </Row>
-              {!settings.miniWindow.followMainTheme && (
-                <Row label="小窗主题">
-                  <div className="flex gap-2">
-                    <ChoiceBtn
-                      active={settings.miniWindow.themeMode === 'system'}
-                      onClick={() =>
-                        update({ miniWindow: { ...settings.miniWindow, themeMode: 'system' } })
-                      }
-                    >
-                      跟随系统
-                    </ChoiceBtn>
-                    <ChoiceBtn
-                      active={settings.miniWindow.themeMode === 'dark'}
-                      onClick={() =>
-                        update({ miniWindow: { ...settings.miniWindow, themeMode: 'dark' } })
-                      }
-                    >
-                      深色
-                    </ChoiceBtn>
-                    <ChoiceBtn
-                      active={settings.miniWindow.themeMode === 'light'}
-                      onClick={() =>
-                        update({ miniWindow: { ...settings.miniWindow, themeMode: 'light' } })
-                      }
-                    >
-                      浅色
-                    </ChoiceBtn>
-                  </div>
-                </Row>
-              )}
-              <Row label={`小窗透明度（${Math.round(settings.miniWindow.opacity * 100)}%）`}>
-                <input
-                  type="range"
-                  min="0.6"
-                  max="1"
-                  step="0.02"
-                  value={settings.miniWindow.opacity}
-                  aria-label="小窗透明度"
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    window.focuslink.mini.setOpacity(v);
-                    update({ miniWindow: { ...settings.miniWindow, opacity: v } });
-                  }}
-                  className="settings-opacity-slider"
-                />
-              </Row>
-              <Row
-                label="主窗口隐藏时自动显示小窗"
-                desc="主窗口最小化或隐藏到托盘时，自动弹出专注小窗"
-              >
-                <Toggle
-                  label="主窗口隐藏时自动显示小窗"
-                  checked={settings.miniWindow.autoShowOnMainHide}
-                  onChange={(v) =>
-                    update({ miniWindow: { ...settings.miniWindow, autoShowOnMainHide: v } })
-                  }
-                />
-              </Row>
-              <Row label="专注开始时自动显示小窗" desc="开始专注时若主窗口不在前台，自动显示小窗">
-                <Toggle
-                  label="专注开始时自动显示小窗"
-                  checked={settings.miniWindow.autoShowOnFocusStart}
-                  onChange={(v) =>
-                    update({ miniWindow: { ...settings.miniWindow, autoShowOnFocusStart: v } })
-                  }
-                />
-              </Row>
-              <Row label="专注结束后自动隐藏小窗" desc="专注结束时自动隐藏小窗（默认关）">
-                <Toggle
-                  label="专注结束后自动隐藏小窗"
-                  checked={settings.miniWindow.autoHideOnFocusEnd}
-                  onChange={(v) =>
-                    update({ miniWindow: { ...settings.miniWindow, autoHideOnFocusEnd: v } })
-                  }
-                />
-              </Row>
+          {visibleSections.map((section) => (
+            <Section
+              key={section.id}
+              title={section.title}
+              desc={section.desc}
+              group={searching ? TAB_LABELS[section.tab] : undefined}
+            >
+              {section.render()}
             </Section>
-          )}
+          ))}
 
-          {activeTab === 'experience' && (
-            <>
-              {/* 快捷键 */}
-              <Section title="全局快捷键" desc="点击捕获新组合键；冲突时会提示并保留旧快捷键">
-                {(Object.keys(HOTKEY_LABELS) as HotkeyKey[]).map((key) => {
-                  const status = getHotkeyBadgeState(key, settings.hotkeys[key], hotkeyStatus);
-                  const activeAccelerator = hotkeyStatus?.registered[key]?.accelerator ?? null;
-                  const activeDiffers =
-                    !!activeAccelerator && activeAccelerator !== settings.hotkeys[key];
-                  return (
-                    <Row key={key} label={HOTKEY_LABELS[key]}>
-                      <div className="flex min-w-[260px] flex-col items-end gap-1.5">
-                        <div className="flex flex-wrap items-center justify-end gap-1.5">
-                          <button
-                            className={`settings-hotkey-btn ${capturing === key ? 'capturing' : ''}`}
-                            onClick={() => captureKey(key)}
-                            title={settings.hotkeys[key]}
-                          >
-                            {capturing === key ? (
-                              <span className="settings-hotkey-capturing">按下组合键…</span>
-                            ) : (
-                              <kbd>{formatHotkey(settings.hotkeys[key])}</kbd>
-                            )}
-                          </button>
-                          <HotkeyStatusBadge state={status} />
-                        </div>
-                        <p
-                          className={`max-w-[360px] text-right text-[11px] ${
-                            status.tone === 'ok'
-                              ? 'text-fg-subtle'
-                              : status.tone === 'warn'
-                                ? 'text-warning'
-                                : status.tone === 'error'
-                                  ? 'text-danger'
-                                  : 'text-fg-subtle'
-                          }`}
-                        >
-                          {status.tone === 'ok'
-                            ? `当前生效：${formatHotkey(activeAccelerator ?? settings.hotkeys[key])}`
-                            : activeDiffers
-                              ? `当前实际生效：${formatHotkey(activeAccelerator)}，设置值尚未接管`
-                              : (status.title ?? '当前快捷键尚未注册成功')}
-                        </p>
-                      </div>
-                    </Row>
-                  );
-                })}
-                <div className="pt-1">
-                  <button className="btn-ghost text-xs" onClick={resetHotkeys}>
-                    恢复默认快捷键
-                  </button>
-                </div>
-              </Section>
-            </>
-          )}
-
-          {activeTab === 'connections' && (
-            <>
-              {/* 滴答清单连接方式。任务产品语义保持唯一，CLI/OAuth 只是传输实现。 */}
-              <Section
-                title="滴答连接"
-                desc="任务固定来自滴答清单；这里只选择连接方式，默认使用本机 CLI。"
-              >
-                <div className="settings-provider-list">
-                  <SyncModeChoice
-                    active={settings.taskSource !== 'ticktick-oauth'}
-                    onClick={() => update({ taskSource: 'ticktick-cli' })}
-                    icon={<Icon.Link size="md" />}
-                    title="滴答 CLI"
-                    badge="推荐"
-                    desc="复用本机登录，支持任务与专注云同步"
-                  />
-                  <SyncModeChoice
-                    active={settings.taskSource === 'ticktick-oauth'}
-                    onClick={() => update({ taskSource: 'ticktick-oauth' })}
-                    icon={<Icon.Cloud size="md" />}
-                    title="OAuth"
-                    desc="仅在 CLI 不可用时使用开发者应用"
-                  />
-                </div>
-
-                <div className="settings-provider-status">
-                  <div className="settings-provider-status-head">
-                    <div className="settings-provider-status-title">
-                      <span
-                        className={`settings-provider-status-icon ${
-                          cliDetected?.found ? 'tone-success' : 'tone-warning'
-                        }`}
-                      >
-                        {cliDetected?.found ? (
-                          <Icon.CheckCircleFilled size="sm" />
-                        ) : (
-                          <Icon.AlertCircle size="sm" />
-                        )}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="flex items-center gap-2 text-[12.5px] font-semibold text-fg">
-                          滴答 CLI 连接
-                          <span
-                            className={`settings-status-badge ${
-                              cliDetected?.found ? 'tone-success' : 'tone-warning'
-                            }`}
-                          >
-                            {cliDetected?.found ? '已连接' : '未连接'}
-                          </span>
-                        </p>
-                        <p className="mt-0.5 text-[11.5px] text-fg-subtle">
-                          {cliDetected?.found
-                            ? '已就绪，可读取任务与同步专注'
-                            : '尚未探测到可用命令'}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      className="btn-outline text-[11px]"
-                      onClick={detectCli}
-                      disabled={cliDetecting}
-                    >
-                      {cliDetecting ? <Icon.Loader size="xs" spin /> : <Icon.Search size="xs" />}
-                      重新探测
-                    </button>
-                  </div>
-                  <details className="settings-provider-advanced">
-                    <summary className="motion-press">
-                      <span>
-                        高级 CLI 配置
-                        <span className="ml-2 font-normal text-fg-subtle">
-                          仅在自动探测失败时调整
-                        </span>
-                      </span>
-                      <Icon.ChevronDown
-                        size="xs"
-                        tone="subtle"
-                        className="settings-provider-chevron"
-                      />
-                    </summary>
-                    <div className="space-y-2 border-t border-border/50 p-3">
-                      {providerInfo && (
-                        <div className="settings-diag-block text-diag">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span>CLI 类型</span>
-                            <strong className="font-medium text-success">
-                              {providerInfo.providerType === 'dida'
-                                ? 'dida'
-                                : providerInfo.providerType === 'ticktick'
-                                  ? 'ticktick'
-                                  : '未知'}
-                            </strong>
-                            <span>·</span>
-                            <code>{providerInfo.executable || '(未配置)'}</code>
-                          </div>
-                          {providerInfo.executablePath && (
-                            <div className="mt-1 truncate">{providerInfo.executablePath}</div>
-                          )}
-                          {providerInfo.hasStaleTicktickTemplates && (
-                            <div className="mt-1.5 rounded bg-danger/10 px-2 py-1 text-danger">
-                              当前模板与 dida 不一致，请应用默认模板。
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <ConfirmButton
-                          label="应用 dida 默认模板"
-                          confirmLabel="确认覆盖模板？"
-                          onConfirm={applyDidaTemplates}
-                        />
-                        <span className="text-[11px] text-fg-subtle">
-                          点击后会覆盖当前命令模板为 dida 标准模板并立即测试
-                        </span>
-                      </div>
-                      <Row label="可执行文件路径">
-                        <input
-                          className="input min-w-[200px] font-mono text-xs"
-                          value={settings.ticktickCli.executable}
-                          onChange={(e) =>
-                            updateDebounced({
-                              ticktickCli: { ...settings.ticktickCli, executable: e.target.value },
-                            })
-                          }
-                          onBlur={() => void persistDebouncedSettings()}
-                          placeholder="留空则用自动探测结果"
-                        />
-                      </Row>
-                      <div className="mt-2 space-y-1.5">
-                        <Row label="列出任务命令">
-                          <input
-                            className="input min-w-[200px] font-mono text-xs"
-                            value={settings.ticktickCli.listTasksCommand}
-                            onChange={(e) =>
-                              updateDebounced({
-                                ticktickCli: {
-                                  ...settings.ticktickCli,
-                                  listTasksCommand: e.target.value,
-                                },
-                              })
-                            }
-                            onBlur={() => void persistDebouncedSettings()}
-                          />
-                        </Row>
-                        <Row label="搜索任务命令">
-                          <input
-                            className="input min-w-[200px] font-mono text-xs"
-                            value={settings.ticktickCli.searchTasksCommand}
-                            onChange={(e) =>
-                              updateDebounced({
-                                ticktickCli: {
-                                  ...settings.ticktickCli,
-                                  searchTasksCommand: e.target.value,
-                                },
-                              })
-                            }
-                            onBlur={() => void persistDebouncedSettings()}
-                          />
-                        </Row>
-                        <Row label="追加备注命令">
-                          <input
-                            className="input min-w-[200px] font-mono text-xs"
-                            value={settings.ticktickCli.appendNoteCommand}
-                            onChange={(e) =>
-                              updateDebounced({
-                                ticktickCli: {
-                                  ...settings.ticktickCli,
-                                  appendNoteCommand: e.target.value,
-                                },
-                              })
-                            }
-                            onBlur={() => void persistDebouncedSettings()}
-                          />
-                        </Row>
-                        <Row label="超时（毫秒）">
-                          <input
-                            type="number"
-                            min={1000}
-                            className="input w-24 text-xs"
-                            value={settings.ticktickCli.timeoutMs}
-                            onChange={(e) =>
-                              update({
-                                ticktickCli: {
-                                  ...settings.ticktickCli,
-                                  timeoutMs: Math.max(1000, Number(e.target.value) || 10000),
-                                },
-                              })
-                            }
-                          />
-                        </Row>
-                      </div>
-                    </div>
-                  </details>
-                </div>
-              </Section>
-              {oauthConnection}
-            </>
-          )}
-
-          {activeTab === 'sync' && (
-            <>
-              <Section
-                title="手机 / 平板同步"
-                desc="电脑端自动常驻。首次点击开启，之后同一个按钮会自动检查并修复连接。"
-              >
-                <Row
-                  label={deviceSyncStatus?.configured ? '同步连接' : '开始同步'}
-                  desc="自动生成安全凭据、启动本机服务、检查连接并同步，不需要填写地址或令牌"
-                >
-                  <button
-                    type="button"
-                    className="btn-accent text-[11px]"
-                    onClick={() => void handleQuickDeviceSyncSetup()}
-                    disabled={deviceSyncSaving}
-                  >
-                    {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Refresh size="xs" />}
-                    {deviceSyncStatus?.configured ? '立即检查并修复' : '一键开启本机同步'}
-                  </button>
-                </Row>
-                <Row
-                  label="连接手机 / 平板"
-                  desc="点一次即可自动开启服务并生成二维码；移动端扫码后会安全保存连接"
-                >
-                  <div className="flex min-w-[320px] flex-col items-end gap-2">
-                    <button
-                      type="button"
-                      className="btn-outline text-[11px]"
-                      onClick={() => void handleCreatePairingOffer()}
-                      disabled={deviceSyncSaving}
-                    >
-                      <Icon.Link size="xs" />
-                      显示连接二维码
-                    </button>
-                    {deviceSyncPairing && deviceSyncPairing.expiresAt > Date.now() && (
-                      <div className="flex items-center gap-3 text-right text-[11px] leading-5 text-fg-muted">
-                        {deviceSyncPairingQr && (
-                          <img
-                            src={deviceSyncPairingQr}
-                            width={88}
-                            height={88}
-                            alt="FocusLink 一次性连接二维码"
-                            className="rounded-md border border-border bg-white p-1"
-                          />
-                        )}
-                        <div>
-                          <strong className="block font-mono text-base tracking-[0.18em] text-fg">
-                            {deviceSyncPairing.shortCode}
-                          </strong>
-                          <span className="block">扫码或在移动端填写短码 · 2 分钟内有效</span>
-                          <span className="block">二维码不包含长期令牌</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </Row>
-                <div
-                  className={`settings-status-strip ${
-                    deviceSyncStatus?.lastError
-                      ? deviceSyncTransportUnavailable || deviceSyncConflictOnly
-                        ? 'tone-warning'
-                        : 'tone-danger'
-                      : deviceSyncStatus?.lastSyncAt
-                        ? 'tone-success'
-                        : deviceSyncStatus?.configured
-                          ? 'tone-warning'
-                          : ''
-                  }`}
-                  aria-live="polite"
-                >
-                  <span className="settings-status-strip-icon">
-                    {deviceSyncStatus?.lastError &&
-                    !deviceSyncTransportUnavailable &&
-                    !deviceSyncConflictOnly ? (
-                      <Icon.AlertCircle size="sm" />
-                    ) : (
-                      <Icon.Cloud size="sm" />
-                    )}
-                  </span>
-                  <div className="settings-status-strip-copy">
-                    <p className="settings-status-strip-title">
-                      {deviceSyncStatus?.lastError
-                        ? deviceSyncConflictOnly
-                          ? '同步已连接，有记录待确认'
-                          : deviceSyncTransportUnavailable
-                            ? '同步服务未连接，配置已保存'
-                            : '跨设备同步失败'
-                        : deviceSyncStatus?.lastSyncAt
-                          ? '账本已完成跨设备同步'
-                          : deviceSyncStatus?.configured
-                            ? '连接已配置，等待首次同步'
-                            : '尚未配置访问令牌'}
-                      <span
-                        className={`settings-status-badge ${
-                          deviceSyncStatus?.enabled ? 'tone-success' : 'tone-neutral'
-                        }`}
-                      >
-                        {deviceSyncStatus?.enabled ? '已启用' : '未启用'}
-                      </span>
-                    </p>
-                    <p className="settings-status-strip-desc">
-                      {deviceSyncConflictOnly
-                        ? `${deviceSyncStatus?.unresolvedConflicts ?? 0} 条记录存在设备间差异，已安全保留，不会自动覆盖`
-                        : deviceSyncStatus?.lastError
-                          ? deviceSyncStatus.lastError
-                          : deviceSyncStatus?.liveControlEnabled
-                            ? deviceSyncStatus.liveConnected
-                              ? `实时连接已确认 · rev ${deviceSyncStatus.liveRevision ?? 0} · ${deviceSyncStatus.liveState}${deviceSyncStatus.lastSyncAt ? ` · 上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}` : ''}`
-                              : `实时连接未确认；${deviceSyncStatus.lastSyncAt ? `上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')} · ` : ''}本机计时仍可使用，第三方凭据与本地路径不会上传`
-                            : deviceSyncStatus?.lastSyncAt
-                              ? `上次同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}`
-                              : '当前只同步已结束会话；第三方凭据与本地路径不会上传'}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <button
-                      type="button"
-                      className="btn-outline text-[11px]"
-                      onClick={() => void handleQuickDeviceSyncSetup()}
-                      disabled={deviceSyncSaving}
-                    >
-                      {deviceSyncSaving ? (
-                        <Icon.Loader size="xs" spin />
-                      ) : (
-                        <Icon.Refresh size="xs" />
-                      )}
-                      自动修复
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-accent text-[11px]"
-                      onClick={handleRunDeviceSync}
-                      disabled={
-                        deviceSyncRunning ||
-                        !settings.deviceSync.enabled ||
-                        !deviceSyncStatus?.tokenConfigured
-                      }
-                    >
-                      {deviceSyncRunning ? (
-                        <Icon.Loader size="xs" spin />
-                      ) : (
-                        <Icon.Refresh size="xs" />
-                      )}
-                      立即同步
-                    </button>
-                  </div>
-                </div>
-                <details className="settings-disclosure mt-2.5">
-                  <summary>高级设置</summary>
-                  <div className="space-y-3 pt-2">
-                    <Row label="启用同步">
-                      <Toggle
-                        label="启用同步"
-                        checked={settings.deviceSync.enabled}
-                        onChange={(enabled) =>
-                          update({ deviceSync: { ...settings.deviceSync, enabled } })
-                        }
-                      />
-                    </Row>
-                    <Row label="PC 实时专注">
-                      <Toggle
-                        label="PC 实时专注"
-                        checked={settings.deviceSync.liveControlEnabled}
-                        onChange={(liveControlEnabled) =>
-                          update({
-                            deviceSync: { ...settings.deviceSync, liveControlEnabled },
-                          })
-                        }
-                      />
-                    </Row>
-                    <Row label="自动同步">
-                      <Toggle
-                        label="自动同步"
-                        checked={settings.deviceSync.autoSync}
-                        onChange={(autoSync) =>
-                          update({ deviceSync: { ...settings.deviceSync, autoSync } })
-                        }
-                      />
-                    </Row>
-                    <Row label="服务地址" desc="远程地址必须使用 HTTPS">
-                      <input
-                        className="input min-w-[320px] font-mono text-xs"
-                        value={settings.deviceSync.endpoint}
-                        onChange={(event) =>
-                          updateDebounced({
-                            deviceSync: { ...settings.deviceSync, endpoint: event.target.value },
-                          })
-                        }
-                        onBlur={() => void persistDebouncedSettings()}
-                      />
-                    </Row>
-                    <Row
-                      label="访问令牌"
-                      desc={
-                        deviceSyncStatus?.tokenConfigured
-                          ? '已由 Windows 安全存储保护；留空保持不变'
-                          : '仅自定义服务需要手动填写'
-                      }
-                    >
-                      <input
-                        className="input min-w-[260px] font-mono text-xs"
-                        type="password"
-                        value={deviceSyncToken}
-                        onChange={(event) => setDeviceSyncToken(event.target.value)}
-                        autoComplete="off"
-                        placeholder={
-                          deviceSyncStatus?.tokenConfigured ? '已安全保存' : '输入访问令牌'
-                        }
-                      />
-                    </Row>
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        className="btn-outline text-[11px]"
-                        onClick={handleSaveDeviceSync}
-                        disabled={deviceSyncSaving}
-                      >
-                        <Icon.Check size="xs" />
-                        保存高级设置
-                      </button>
-                    </div>
-                  </div>
-                </details>
-              </Section>
-
-              <Section
-                title="同步到滴答清单"
-                desc="选择专注结束后的主同步去向；未同步与失败记录保留在本机。"
-              >
-                <div className="settings-sync-grid">
-                  <SyncModeChoice
-                    active={settings.syncMode === 'focus-record'}
-                    onClick={() => update({ syncMode: 'focus-record' })}
-                    icon={<Icon.Cloud size="md" />}
-                    title="云端专注"
-                    badge="推荐"
-                    desc="显示在滴答专注统计中"
-                  />
-                  <SyncModeChoice
-                    active={settings.syncMode === 'comment'}
-                    onClick={() => update({ syncMode: 'comment' })}
-                    icon={<Icon.FileText size="md" />}
-                    title="任务评论"
-                    desc="写入关联任务评论，失败时回退正文"
-                  />
-                  <SyncModeChoice
-                    active={settings.syncMode === 'local-only'}
-                    onClick={() => update({ syncMode: 'local-only' })}
-                    icon={<Icon.HardDrive size="md" />}
-                    title="仅保存在本机"
-                    desc="关闭滴答云端写入"
-                  />
-                </div>
-                {settings.syncMode !== 'local-only' && (
-                  <div
-                    className={`settings-status-strip ${
-                      didaFailedCount > 0
-                        ? 'tone-danger'
-                        : didaPendingCount > 0
-                          ? 'tone-warning'
-                          : 'tone-success'
-                    }`}
-                  >
-                    <span className="settings-status-strip-icon">
-                      {didaFailedCount > 0 ? (
-                        <Icon.AlertCircle size="sm" />
-                      ) : (
-                        <Icon.CheckCircleFilled size="sm" />
-                      )}
-                    </span>
-                    <div className="settings-status-strip-copy">
-                      <p className="settings-status-strip-title">{didaQueueTitle}</p>
-                      <p className="settings-status-strip-desc">
-                        {didaNeedsAttention === 0
-                          ? '专注记录已同步到滴答清单'
-                          : '记录保留在本机，不会丢失专注数据'}
-                      </p>
-                    </div>
-                    {didaNeedsAttention > 0 && (
-                      <button
-                        type="button"
-                        className="btn-outline shrink-0 text-[11px]"
-                        onClick={handleRunDidaSync}
-                        disabled={didaSyncRunning}
-                      >
-                        {didaSyncRunning ? (
-                          <Icon.Loader size="xs" spin />
-                        ) : (
-                          <Icon.Refresh size="xs" />
-                        )}
-                        立即重试
-                      </button>
-                    )}
-                  </div>
-                )}
-              </Section>
-
-              <Section
-                title="番茄 To-do 同步"
-                desc="专注结束后先安全写入本地；待上传记录由你按需连接并上传。"
-              >
-                <Row label="启用番茄 To-do 同步" desc="自动匹配六大学科；未识别时固定归入学习">
-                  <Toggle
-                    label="启用番茄 To-do 同步"
-                    checked={settings.tomatodo.enabled}
-                    onChange={(v) => update({ tomatodo: { ...settings.tomatodo, enabled: v } })}
-                  />
-                </Row>
-                {settings.tomatodo.enabled && (
-                  <>
-                    <Row
-                      label="未识别时归类"
-                      desc="语文、数学、英语、物理、化学、生物可在片段明细中直接调整"
-                    >
-                      <span className="settings-fixed-value">学习</span>
-                    </Row>
-                    <details className="settings-disclosure mt-2.5">
-                      <summary className="motion-press">高级：自定义数据库路径</summary>
-                      <div>
-                        <input
-                          className="input w-full font-mono text-xs"
-                          value={settings.tomatodo.dbPath}
-                          onChange={(e) =>
-                            updateDebounced({
-                              tomatodo: { ...settings.tomatodo, dbPath: e.target.value },
-                            })
-                          }
-                          onBlur={() => void persistDebouncedSettings()}
-                          placeholder="自动探测 AppData/Roaming/tomatodo/tomatodo_db.json"
-                        />
-                      </div>
-                    </details>
-                    <div
-                      className={`settings-status-strip ${
-                        tomatodoPendingError ||
-                        tomatodoBridge?.state === 'launch-failed' ||
-                        tomatodoBridge?.state === 'launch-timeout'
-                          ? 'tone-danger'
-                          : tomatodoBridge?.state === 'restart-required' || tomatodoPending > 0
-                            ? 'tone-warning'
-                            : tomatodoBridge?.connected
-                              ? 'tone-success'
-                              : ''
-                      }`}
-                      aria-live="polite"
-                    >
-                      <span className="settings-status-strip-icon">
-                        {tomatodoPendingError ||
-                        tomatodoBridge?.state === 'launch-failed' ||
-                        tomatodoBridge?.state === 'launch-timeout' ? (
-                          <Icon.AlertCircle size="sm" />
-                        ) : (
-                          <Icon.Upload size="sm" />
-                        )}
-                      </span>
-                      <div className="settings-status-strip-copy">
-                        <p className="settings-status-strip-title">
-                          {tomatodoPendingError
-                            ? '无法读取待上传记录'
-                            : tomatodoPending > 0
-                              ? `${tomatodoPending} 条待上传`
-                              : '当前无待上传记录'}
-                          <span className={`settings-status-badge ${tomatodoBadge.tone}`}>
-                            {tomatodoBadge.label}
-                          </span>
-                        </p>
-                        <p className="settings-status-strip-desc">
-                          {tomatodoPendingError
-                            ? '检查数据库路径或番茄 To-do 文件权限后重试'
-                            : tomatodoBridgeLabel}
-                        </p>
-                      </div>
-                      {!tomatodoPendingError && tomatodoPending > 0 && (
-                        <button
-                          type="button"
-                          className="btn-outline shrink-0 text-[11px]"
-                          onClick={handleUploadPending}
-                          disabled={tomatodoActionDisabled}
-                        >
-                          {tomatodoUploading ? (
-                            <Icon.Loader size="xs" spin />
-                          ) : tomatodoBridge?.connected ? (
-                            <Icon.Upload size="xs" />
-                          ) : (
-                            <Icon.Link size="xs" />
-                          )}
-                          {tomatodoUploading
-                            ? tomatodoBridge?.connected
-                              ? '正在上传'
-                              : '正在连接'
-                            : tomatodoActionLabel}
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </Section>
-            </>
-          )}
-
-          {activeTab === 'experience' && (
-            <>
-              {/* 系统与后台运行 */}
-              <Section title="系统与后台运行">
-                <Row label="最小化到托盘">
-                  <Toggle
-                    label="最小化到托盘"
-                    checked={settings.minimizeToTray}
-                    onChange={(v) => update({ minimizeToTray: v })}
-                  />
-                </Row>
-                <Row label="关闭窗口时最小化到托盘">
-                  <Toggle
-                    label="关闭窗口时最小化到托盘"
-                    checked={settings.closeToTray}
-                    onChange={(v) => update({ closeToTray: v })}
-                  />
-                </Row>
-                <Row label="启动后最小化到托盘" desc="手动启动也隐藏主界面；开机自启动会自动进托盘">
-                  <Toggle
-                    label="启动后最小化到托盘"
-                    checked={settings.startMinimizedToTray}
-                    onChange={(v) => update({ startMinimizedToTray: v })}
-                  />
-                </Row>
-                <Row label="启动时显示专注小窗">
-                  <Toggle
-                    label="启动时显示专注小窗"
-                    checked={settings.showMiniOnStart}
-                    onChange={(v) => update({ showMiniOnStart: v })}
-                  />
-                </Row>
-                <Row label="开机自启动" desc="系统登录时带隐藏参数启动，不弹出主界面">
-                  <Toggle
-                    label="开机自启动"
-                    checked={settings.autoStart}
-                    onChange={(v) => update({ autoStart: v })}
-                  />
-                </Row>
-              </Section>
-            </>
-          )}
-
-          {activeTab === 'experience' && (
-            <>
-              <Section
-                title="关于 FocusLink"
-                desc="全局快捷键驱动的专注计时器 + 滴答清单任务关联工具"
-              >
-                <Row label="当前版本">
-                  <span className="settings-version-chip text-diag">v{APP_VERSION}</span>
-                </Row>
-              </Section>
-            </>
-          )}
+          {searching && visibleSections.length === 0 ? (
+            <div className="settings-empty">
+              <Icon.Search size="md" tone="subtle" />
+              <p className="settings-empty-title">没有匹配「{search.trim()}」的设置</p>
+              <p className="settings-empty-desc">换一个更短的词，或直接在左侧分组里翻找。</p>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
   );
+}
+
+const TAB_LABELS = Object.fromEntries(TABS.map((tab) => [tab.id, tab.label])) as Record<
+  SettingsTabId,
+  string
+>;
+
+/**
+ * 多个词按「全部命中」处理：逐字缩小结果比逐字扩大更符合搜索直觉。
+ * 匹配范围包含 keywords，因此「自启动」能搜到标题里没有这三个字的「系统与后台运行」。
+ */
+function sectionMatches(section: SettingsSection, query: string): boolean {
+  const haystack =
+    `${section.title} ${section.desc ?? ''} ${section.keywords} ${TAB_LABELS[section.tab]}`.toLowerCase();
+  return query.split(/\s+/).every((term) => haystack.includes(term));
 }
 
 function getHotkeyBadgeState(
@@ -1823,16 +1957,22 @@ function HotkeyStatusBadge({ state }: { state: HotkeyBadgeState }) {
 function Section({
   title,
   desc,
+  group,
   children,
 }: {
   title: string;
   desc?: string;
+  /** 搜索结果里标出该分区平时住在哪个分组，方便下次直接去那里找。 */
+  group?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="settings-section">
       <div className="settings-section-heading">
-        <h3>{title}</h3>
+        <h3>
+          {title}
+          {group ? <span className="settings-section-group">{group}</span> : null}
+        </h3>
         {desc ? <p>{desc}</p> : null}
       </div>
       <div className="settings-section-content">{children}</div>

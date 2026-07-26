@@ -1,4 +1,5 @@
 import { Cloud, Database, KeyRound, SlidersHorizontal } from 'lucide-react';
+import { APP_COMMIT, APP_VERSION } from '@shared/version';
 import type { LiveConnectionState } from './runtimeModel';
 import { NativeSystemControls } from './NativeSystemControls';
 import { SyncV2Management } from './SyncV2Management';
@@ -143,6 +144,21 @@ export function SettingsView({
 
       <NativeSystemControls />
       <SyncV2Management endpoint={endpoint} token={token} />
+
+      {/* 版本与构建号从产品标题栏移到这里：排查时找得到，日常不占主界面。 */}
+      <section className="settings-card">
+        <header>
+          <SlidersHorizontal aria-hidden="true" />
+          <div>
+            <h3>关于</h3>
+            <p>版本与构建标识，反馈问题时附上这两项。</p>
+          </div>
+        </header>
+        <div className="settings-status-grid">
+          <StatusLine icon={Cloud} label="版本" value={`v${APP_VERSION}`} />
+          <StatusLine icon={Database} label="构建" value={APP_COMMIT} />
+        </div>
+      </section>
 
       <div className="capability-boundary">
         <strong>桌面端专属操作</strong>

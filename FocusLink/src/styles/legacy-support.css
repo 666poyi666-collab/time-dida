@@ -267,6 +267,28 @@
   background: rgb(var(--app-danger));
 }
 
+/* 尚未确认连接：中性灰 + 呼吸，明确区别于「已确认可用」的绿点。 */
+.task-navigation-status > span.pending {
+  background: rgb(var(--app-subtle));
+  animation: task-status-probing 1.6s var(--ease-standard) infinite;
+}
+
+@keyframes task-status-probing {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-navigation-status > span.pending {
+    animation: none;
+  }
+}
+
 .task-navigation-status strong,
 .task-navigation-status small {
   display: block;

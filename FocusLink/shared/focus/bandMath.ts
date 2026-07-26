@@ -24,6 +24,47 @@ export const BAND_PAUSE_MOTION_MS = 1000;
  */
 export const FINISHED_PRESENTATION_HOLD_MS = 3_000;
 
+/** 总览尺度下限：约 10 小时的会话仍能完整落在一屏内。 */
+export const BAND_SCALE_OVERVIEW_MIN = 0.02;
+
+/**
+ * 总览尺度：让整段会话恰好铺满指针左侧的「过去」区域。
+ *
+ * 固定的 30 分钟窗口会让一段 40 秒的会话在结束后缩成十几个像素，
+ * 整条带子看上去就是一根空管子——这正是总览最没用的时候。
+ * 上限取秒级近景，避免极短会话被放大到失真。
+ */
+export function overviewScaleForSpan(spanSec: number, availableWidthPx: number): number {
+  if (!(spanSec > 0) || !(availableWidthPx > 0)) return BAND_SCALE_FAR;
+  return clampRange(availableWidthPx / spanSec, BAND_SCALE_OVERVIEW_MIN, BAND_SCALE_NEAR);
+}
+
+const OVERVIEW_TICK_LADDER_SEC = [10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400];
+
+/**
+ * 总览刻度步长：梯子上第一个让屏幕间距 ≥ minPx 的档位。
+ * 尺度既然随会话长度变化，刻度就不能再写死 5 分钟，否则不是挤成一团就是一根不剩。
+ */
+export function overviewTickStepSec(scalePxPerSec: number, minPx = 74): number {
+  for (const step of OVERVIEW_TICK_LADDER_SEC) {
+    if (step * scalePxPerSec >= minPx) return step;
+  }
+  return OVERVIEW_TICK_LADDER_SEC[OVERVIEW_TICK_LADDER_SEC.length - 1];
+}
+
+/**
+ * 主刻步长：梯子上第一个「不小于 4 倍次刻、且能被次刻整除」的档位。
+ *
+ * 直接用 5×次刻会算出「1 大格 = 50 分钟」这种不在任何人时间直觉里的刻度。
+ * 落回梯子后主刻永远是 1/2/5/10/30 分钟或整数小时，读数才对得上心里的时钟。
+ */
+export function overviewMajorStepSec(stepSec: number): number {
+  for (const candidate of OVERVIEW_TICK_LADDER_SEC) {
+    if (candidate >= stepSec * 4 && candidate % stepSec === 0) return candidate;
+  }
+  return stepSec * 4;
+}
+
 /** 活跃态保持秒级近景，确保暂停损耗粒子不会在最需要提醒时被拉远。 */
 export function bandScaleForState(state: TimerState | string): number {
   return state === 'running' || state === 'paused' ? BAND_SCALE_NEAR : BAND_SCALE_FAR;
@@ -602,8 +643,9 @@ export function pauseFrontierDissolveParticles(
         kind: index % 9 === 0 ? 'spark' : index % 5 === 0 ? 'flake' : 'grain',
         originOffsetX: hash01(seed + 1.2) * sourceWidth,
         originRatioY: 0.27 + hash01(seed + 5.4) * 0.46,
-        travelX: -(4 + hash01(seed + 7.8) * 17) * progress,
-        travelY: (hash01(seed + 9.6) - 0.62) * 23 * progress,
+        travelX: -(4 + hash01(seed + 7.8) * 12) * progress,
+        // 静态帧同样表现为“正在升起”，与动态方向保持一致。
+        travelY: -(8 + hash01(seed + 9.6) * 26) * progress,
         size: (0.75 + hash01(seed + 12.1) * 1.8) * Math.max(0.2, remaining),
         rotation: (hash01(seed + 15.2) - 0.5) * 1.8,
         alpha: (0.38 + hash01(seed + 19.4) * 0.3) * remaining,
@@ -649,7 +691,13 @@ export function pauseFrontierDissolveParticles(
       // smoothstep 把位移均匀铺满生命周期，避免粒子前半程猛跳、后半程
       // 只剩几颗几乎静止的淡点。
       const eased = progress * progress * (3 - 2 * progress);
-      const verticalBias = hash01(seed + 8.7) - 0.56;
+      const sway = hash01(seed + 8.7) - 0.5;
+      // 消散的主方向是「向上离开轨道」：这段时间从带子里蒸发掉了。
+      // 之前的横向漂移会把红色粒子抹到左边已经挣到的绿色实体上，看起来像脏点而不是流逝。
+      // 升幅足以越过轨道上沿，粒子在离开画面前就已褪成灰烬。
+      const rise = 26 + hash01(seed + 16.8) * 40;
+      // 横向只留很小的向左分量，让升起的余烬偏向「已经过去」的一侧。
+      const drift = 6 + hash01(seed + 10.2) * 16;
       const turbulenceX = Math.sin(seed + progress * 11) * 2.6 * progress;
       const turbulenceY = Math.cos(seed * 0.63 + progress * 9) * 2.2 * progress;
       const baseSize =
@@ -669,12 +717,12 @@ export function pauseFrontierDissolveParticles(
         kind,
         originOffsetX: Math.pow(hash01(seed + 2.7), 1.8) * sourceWidth,
         originRatioY: 0.27 + hash01(seed + 6.3) * 0.46,
-        travelX: -eased * (8 + hash01(seed + 10.2) * 24) + turbulenceX,
-        travelY: eased * verticalBias * (18 + hash01(seed + 16.8) * 18) - eased * 5 + turbulenceY,
+        travelX: -eased * drift + turbulenceX,
+        travelY: -eased * rise + turbulenceY,
         size: baseSize * sizeScale,
         rotation:
           kind === 'spark'
-            ? -Math.PI / 2 + verticalBias * 0.45
+            ? -Math.PI / 2 + sway * 0.45
             : (hash01(seed + 21.5) - 0.5) * 0.8 + eased * (kind === 'flake' ? 2.2 : 0.8),
         alpha: (0.8 + hash01(seed + 25.9) * 0.2) * visibility * entryEnvelope,
         progress,

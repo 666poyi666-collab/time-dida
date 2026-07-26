@@ -1664,6 +1664,98 @@
   margin: 0 auto;
   padding: 32px 0 72px;
 }
+
+/* 设置搜索：分组是我们的分类结果，不该要求用户先猜对分组才能找到一个开关。
+   粘顶让长结果里也能随时改词；实心底色保证下方内容滚过时仍然读得清。 */
+.settings-search {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  margin-bottom: 20px;
+  padding: 0 12px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 4px;
+  background: rgb(var(--app-elevated));
+  transition: border-color 150ms var(--ease-standard);
+}
+.settings-search:focus-within,
+.settings-search.active {
+  border-color: rgb(var(--app-accent) / 0.55);
+}
+.settings-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  border: 0;
+  background: transparent;
+  color: rgb(var(--app-text));
+  font-size: 12.5px;
+  outline: none;
+}
+.settings-search-input::placeholder {
+  color: rgb(var(--app-muted) / 0.85);
+}
+/* 浏览器自带的 search 清除叉与我们的清除按钮重复，且样式无法统一。 */
+.settings-search-input::-webkit-search-cancel-button {
+  appearance: none;
+}
+.settings-search-count {
+  flex-shrink: 0;
+  color: rgb(var(--app-muted));
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.settings-search-clear {
+  display: grid;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: rgb(var(--app-muted));
+}
+.settings-search-clear:hover {
+  background: rgb(var(--app-surface-2) / 0.8);
+  color: rgb(var(--app-text));
+}
+
+/* 搜索结果里标出该分区平时住在哪个分组，下次可以直接去那里找。 */
+.settings-section-group {
+  margin-left: 9px;
+  padding: 2px 7px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 3px;
+  color: rgb(var(--app-muted));
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  vertical-align: 1px;
+}
+
+.settings-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 56px 0 64px;
+  text-align: center;
+}
+.settings-empty-title {
+  margin: 4px 0 0;
+  color: rgb(var(--app-text));
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.settings-empty-desc {
+  margin: 0;
+  color: rgb(var(--app-muted));
+  font-size: 11.5px;
+}
 .settings-tab,
 .settings-row,
 .choice-btn,
@@ -2609,6 +2701,342 @@
 }
 .settings-state-colors .interface {
   border-left-color: rgb(var(--app-accent));
+}
+
+/* 任务选择器里的子任务计数与进入箭头同样没有规则：计数是一串裸数字，
+   箭头和标题一样黑，看不出哪个是内容、哪个是可操作的提示。 */
+.task-child-count {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgb(var(--app-surface-2) / 0.9);
+  color: rgb(var(--app-muted));
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.task-select-arrow {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  color: rgb(var(--app-subtle));
+  transition: transform 150ms var(--ease-standard);
+}
+.task-row-linear:hover .task-select-arrow,
+.task-row-linear:focus-within .task-select-arrow {
+  color: rgb(var(--app-muted));
+  transform: translateX(2px);
+}
+
+/* ─── 设置页缺失样式补全 ─────────────────────────────────────
+   下面这些类名一直被 SettingsPanel 引用，但从未有过任何规则：CLI 状态卡、
+   高级折叠面板、诊断块、快捷键按钮、透明度滑块等等，全部按浏览器默认盒子
+   渲染——图标独占一行、按钮左对齐堆叠、details 露出原生三角。这是设置页看
+   起来散架的直接原因，不是布局参数没调好。 */
+
+.settings-section-content {
+  display: grid;
+}
+/* 分区末行不再画分隔线：那条线本来是分隔两行，收尾时只会变成一条悬空的横线。 */
+.settings-section-content > .settings-row:last-child {
+  border-bottom: 0;
+}
+.settings-row-label {
+  min-width: 0;
+}
+
+/* 连接方式 / 同步去向：同一种单选卡片，两处必须长得一样。 */
+.settings-provider-list,
+.settings-sync-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(258px, 1fr));
+}
+.settings-provider-radio {
+  display: grid;
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  border: 1.5px solid rgb(var(--app-border-strong));
+  border-radius: 50%;
+}
+.settings-provider-radio i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgb(var(--app-accent));
+  transform: scale(0);
+  transition: transform 160ms var(--ease-out-expo);
+}
+.settings-provider-choice.active .settings-provider-radio {
+  border-color: rgb(var(--app-accent));
+}
+.settings-provider-choice.active .settings-provider-radio i {
+  transform: scale(1);
+}
+.settings-provider-icon {
+  display: grid;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 3px;
+  background: rgb(var(--app-surface-2) / 0.75);
+  color: rgb(var(--app-muted));
+}
+.settings-provider-choice.active .settings-provider-icon {
+  background: rgb(var(--app-accent) / 0.13);
+  color: rgb(var(--app-accent));
+}
+.settings-provider-badge {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: rgb(var(--app-accent) / 0.12);
+  color: rgb(var(--app-accent));
+  font-size: 10px;
+  font-weight: 600;
+}
+.settings-provider-arrow {
+  flex-shrink: 0;
+  color: rgb(var(--app-subtle));
+  transition: transform 160ms var(--ease-standard);
+}
+.settings-provider-choice:hover .settings-provider-arrow {
+  transform: translateX(2px);
+}
+
+/* CLI 连接状态卡：标题行必须是「图标 + 文案 ｜ 操作」的一行，
+   缺样式时这三块会各占一行，读起来像三条互不相干的信息。 */
+.settings-provider-status {
+  overflow: hidden;
+  margin-top: 10px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 4px;
+  background: rgb(var(--app-surface) / 0.6);
+}
+.settings-provider-status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 13px;
+}
+.settings-provider-status-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.settings-provider-status-icon {
+  display: grid;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 3px;
+  background: rgb(var(--app-surface-2));
+  color: rgb(var(--app-muted));
+}
+.settings-provider-status-icon.tone-success {
+  background: rgb(var(--app-success) / 0.13);
+  color: rgb(var(--app-success));
+}
+.settings-provider-status-icon.tone-warning {
+  background: rgb(var(--app-warning) / 0.15);
+  color: rgb(var(--app-warning));
+}
+.settings-provider-advanced {
+  border-top: 1px solid rgb(var(--app-border));
+}
+.settings-provider-advanced > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 13px;
+  color: rgb(var(--app-text));
+  font-size: 11.5px;
+  font-weight: 620;
+  cursor: pointer;
+  list-style: none;
+}
+.settings-provider-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+.settings-provider-advanced > summary:hover {
+  background: rgb(var(--app-surface-2) / 0.5);
+}
+.settings-provider-advanced[open] > summary {
+  border-bottom: 1px solid rgb(var(--app-border));
+}
+.settings-provider-chevron {
+  flex-shrink: 0;
+  transition: transform 180ms var(--ease-standard);
+}
+.settings-provider-advanced[open] .settings-provider-chevron {
+  transform: rotate(180deg);
+}
+
+/* 通用折叠块：原生 details 的三角与本设计语言不搭，换成自绘箭头。 */
+.settings-disclosure {
+  overflow: hidden;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 4px;
+  background: rgb(var(--app-surface) / 0.55);
+}
+.settings-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  padding: 0 12px;
+  color: rgb(var(--app-muted));
+  font-size: 11.5px;
+  font-weight: 620;
+  cursor: pointer;
+  list-style: none;
+}
+.settings-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.settings-disclosure > summary::before {
+  width: 5px;
+  height: 5px;
+  border-right: 1.4px solid currentColor;
+  border-bottom: 1.4px solid currentColor;
+  content: '';
+  transform: rotate(-45deg);
+  transition: transform 180ms var(--ease-standard);
+}
+.settings-disclosure > summary:hover {
+  color: rgb(var(--app-text));
+}
+.settings-disclosure[open] > summary {
+  border-bottom: 1px solid rgb(var(--app-border));
+  color: rgb(var(--app-text));
+}
+.settings-disclosure[open] > summary::before {
+  transform: rotate(45deg);
+}
+.settings-disclosure > *:not(summary) {
+  padding: 12px;
+}
+
+.settings-diag-block {
+  padding: 8px 10px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 3px;
+  background: rgb(var(--app-surface-2) / 0.6);
+  font-family: var(--font-mono);
+}
+.settings-diag-block code {
+  color: rgb(var(--app-text));
+}
+
+/* 状态徽标一直只有基础规则，tone-success / tone-warning / tone-danger 三个变体
+   从未定义——「已连接」「需重启」「连接失败」渲染出来是同一个灰色，状态等于没说。 */
+.settings-status-badge {
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: rgb(var(--app-surface-2) / 0.85);
+  font-weight: 600;
+}
+.settings-status-badge.tone-success {
+  background: rgb(var(--app-success) / 0.13);
+  color: rgb(var(--app-success));
+}
+.settings-status-badge.tone-warning {
+  background: rgb(var(--app-warning) / 0.15);
+  color: rgb(var(--app-warning));
+}
+.settings-status-badge.tone-danger {
+  background: rgb(var(--app-danger) / 0.13);
+  color: rgb(var(--app-danger));
+}
+.settings-status-badge.tone-neutral {
+  background: rgb(var(--app-surface-2) / 0.9);
+  color: rgb(var(--app-muted));
+}
+
+.settings-status-strip-icon {
+  display: grid;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  color: rgb(var(--app-muted));
+}
+.settings-status-strip.tone-success .settings-status-strip-icon {
+  color: rgb(var(--app-success));
+}
+.settings-status-strip.tone-warning .settings-status-strip-icon {
+  color: rgb(var(--app-warning));
+}
+.settings-status-strip.tone-danger .settings-status-strip-icon {
+  color: rgb(var(--app-danger));
+}
+
+/* 快捷键：读数用等宽，捕获态必须一眼可辨——此刻键盘输入会被整个吃掉。 */
+.settings-hotkey-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  min-width: 118px;
+  padding: 0 11px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 4px;
+  background: rgb(var(--app-elevated) / 0.7);
+}
+.settings-hotkey-btn:hover {
+  border-color: rgb(var(--app-border-strong));
+}
+.settings-hotkey-btn kbd {
+  color: rgb(var(--app-text));
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.settings-hotkey-btn.capturing {
+  border-color: rgb(var(--app-accent));
+  background: rgb(var(--app-accent) / 0.08);
+}
+.settings-hotkey-capturing {
+  color: rgb(var(--app-accent));
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.settings-fixed-value {
+  padding: 4px 10px;
+  border: 1px dashed rgb(var(--app-border-strong));
+  border-radius: 3px;
+  color: rgb(var(--app-muted));
+  font-size: 11.5px;
+}
+.settings-version-chip {
+  padding: 3px 9px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 3px;
+  font-family: var(--font-mono);
+}
+
+.settings-opacity-slider {
+  width: 190px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(var(--app-border-strong));
+  appearance: none;
+}
+.settings-opacity-slider::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgb(var(--app-elevated));
+  border-radius: 50%;
+  background: rgb(var(--app-accent));
+  box-shadow: var(--shadow-slider-thumb);
+  appearance: none;
+}
+.settings-opacity-slider:hover::-webkit-slider-thumb {
+  box-shadow: var(--shadow-slider-thumb-hover);
 }
 
 /* ─── 响应式 ────────────────────────────────────────────── */

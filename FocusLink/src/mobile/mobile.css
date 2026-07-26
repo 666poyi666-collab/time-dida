@@ -1324,7 +1324,9 @@ code {
   padding: 4px max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom)
     max(8px, env(safe-area-inset-left));
   border-top: 1px solid var(--border);
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  /* 必须完全不透明：这条导航是 fixed，滚动内容会从它下面经过。96% 的底色
+     会让下方的按钮文字透出来，和导航标签叠在一起。 */
+  background: var(--surface);
 }
 
 .app-navigation button {
@@ -3763,5 +3765,108 @@ code {
 @media (max-width: 400px) {
   .daily-heatmap {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+/* ─── 手机版式（≤620px）────────────────────────────────────────────────
+   平板有 640dp 的高度可以把「选任务 → 读数 → 时间之带 → 三时间 → 操作」
+   一路铺开；手机只有 393dp 宽、约 780dp 可用高，同样的顺序会把「开始专注」
+   挤到第六块、掉出首屏——核心动作在主界面上看不见。
+
+   手机上按「先看时间、再决定做什么、动作永远在手边」重排：
+   读数升为主角，操作条粘在拇指区，任务与标题收成紧凑的一段。 */
+@media (max-width: 620px) {
+  .focus-instrument {
+    display: flex;
+    flex-direction: column;
+    /* 给粘底操作条 + 底部导航一起让出空间，最后一块内容不会被压在下面。 */
+    padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .primary-readout {
+    order: 1;
+    min-height: 0;
+    padding: 4px 0 18px;
+  }
+  .focus-start-fields {
+    order: 2;
+  }
+  .active-title-block {
+    order: 2;
+  }
+  .mobile-temporal-ribbon {
+    order: 3;
+  }
+  .runtime-metrics {
+    order: 4;
+  }
+  .focus-system-tools {
+    order: 5;
+  }
+  .inline-connection-action {
+    order: 6;
+  }
+
+  /* 主操作粘在底部导航之上：无论内容多长，开始/暂停/结束永远在拇指够得到的位置。
+     底部导航是 fixed 且高 60px+安全区，滚动区一直延伸到它下面；bottom:0 会让
+     操作条停在导航背后，按钮文字从导航缝隙里透出来。偏移量必须等于导航实际高度。 */
+  .focus-actions {
+    position: sticky;
+    z-index: 3;
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+    order: 7;
+    margin: 0 calc(-1 * clamp(20px, 4.5vw, 42px));
+    padding: 12px clamp(20px, 4.5vw, 42px);
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  /* 读数是手机上的主角，给足字号。 */
+  .primary-readout > strong {
+    font-size: clamp(56px, 17vw, 76px);
+  }
+
+  /* 说明性小字在窄屏上占的是内容的位置，收一收字号与行距。 */
+  .focus-title-field small,
+  .primary-readout > small {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  /* ── 压缩首屏头部 ──────────────────────────────────────────
+     进内容前原本要先穿过三层：品牌栏（64px）+ 同步状态条（96px）+
+     「LIVE FOCUS / 当前专注」区头（76px），一共 ~236px——首屏四分之一
+     花在了自我介绍上。手机上：品牌栏收薄、状态条压成一行、区头整个去掉
+     （它的状态徽标与读数上方的「准备开始/有效专注/本次暂停」完全重复）。 */
+  .mobile-topbar {
+    min-height: 52px;
+    padding-block: 8px;
+  }
+  .mobile-topbar .brand-lockup svg {
+    width: 30px;
+    height: 30px;
+  }
+  /* 设置入口底部导航里已有一份，顶栏的重复按钮只占宽度。 */
+  .mobile-topbar .icon-button {
+    display: none;
+  }
+
+  .sync-strip {
+    min-height: 48px;
+    padding-block: 7px;
+    gap: 10px;
+  }
+  .sync-copy strong {
+    font-size: 11px;
+  }
+  .sync-copy span {
+    overflow: hidden;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .focus-console-header {
+    display: none;
   }
 }

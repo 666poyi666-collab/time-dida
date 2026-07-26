@@ -7,7 +7,6 @@ import { DEVICE_SYNC_ENTITY, normalizeDeviceSyncEndpoint } from '@shared/sync/de
 import { parseDeviceSyncPairingUrl } from '@shared/sync/pairingProtocol';
 import type { LiveFocusCommand, LiveFocusSnapshotResponse } from '@shared/sync/liveFocusProtocol';
 import type { SyncedTask, TaskSnapshotResponse } from '@shared/sync/taskSnapshotProtocol';
-import { APP_COMMIT, APP_VERSION } from '@shared/version';
 import {
   applyDeviceSyncChanges,
   clearCachedLiveFocusSnapshot,
@@ -1113,17 +1112,12 @@ export function MobileApp() {
       <header className="mobile-topbar">
         <div className="brand-lockup">
           <BrandMark />
+          {/* 版本号与 commit 是排查问题时才需要的信息，不该常驻在产品标题旁边。
+              已移到设置页的「关于」里，那里才是找它的地方。 */}
           <div>
             <p className="eyebrow">FOCUSLINK</p>
             <div className="brand-title-line">
               <h1>多端专注</h1>
-              <span
-                className="build-identity"
-                aria-label={`应用版本 ${APP_VERSION}，构建 ${APP_COMMIT}`}
-                title={`FocusLink ${APP_VERSION} · ${APP_COMMIT}`}
-              >
-                v{APP_VERSION} · {formatBuildIdentity(APP_COMMIT)}
-              </span>
             </div>
           </div>
         </div>
@@ -1431,11 +1425,6 @@ function BrandMark() {
       <path className="brand-mark-cross" d="M12 11h3" />
     </svg>
   );
-}
-
-function formatBuildIdentity(commit: string): string {
-  const clean = commit.replace(/-dirty$/, '');
-  return `${clean.slice(0, 8)}${commit.endsWith('-dirty') ? '*' : ''}`;
 }
 
 function SettingsIcon() {

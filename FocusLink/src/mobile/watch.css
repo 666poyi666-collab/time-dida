@@ -1,0 +1,185 @@
+/* 手表壳层（189×248 dp）：一屏放下「状态 · 读数 · 任务 · 操作」，零滚动。
+   颜色与状态语义沿用 temporal-foundation 的同一套令牌——专注 = 强调色、
+   暂停 = 红，与桌面/手机/平板完全一致；只有排版是手表自己的。 */
+.watch-runtime,
+.watch-runtime body {
+  overflow: hidden;
+  background: rgb(var(--app-bg));
+}
+
+/* mobile.css 给 html/body/#root 定了 320px 下限——那是手机版式的保护线，
+   在 189px 的手表上它本身就是横向溢出的来源。 */
+.watch-runtime,
+.watch-runtime body,
+.watch-runtime #root {
+  min-width: 0;
+}
+
+.watch-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100vw;
+  height: 100vh;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  color: rgb(var(--app-text));
+  font-family: var(--font-ui);
+  text-align: center;
+}
+
+.watch-state-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  color: rgb(var(--app-muted));
+  font-size: 11px;
+}
+
+.watch-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(var(--app-subtle));
+}
+.watch-dot.conn-live {
+  background: rgb(var(--app-success));
+}
+.watch-dot.conn-error {
+  background: rgb(var(--app-danger));
+}
+.watch-state-running .watch-dot.conn-live {
+  background: rgb(var(--app-accent));
+}
+.watch-state-paused .watch-dot.conn-live {
+  background: rgb(var(--app-pause));
+}
+
+.watch-clock {
+  margin: 0;
+  font-family: var(--font-number);
+  font-size: 44px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+.watch-state-running .watch-clock {
+  color: rgb(var(--app-accent));
+}
+.watch-state-paused .watch-clock {
+  color: rgb(var(--app-pause));
+}
+
+/* 任务行本身就是「选任务」的入口：idle 可点，进行中只作标题展示。 */
+.watch-task-line {
+  overflow: hidden;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 999px;
+  background: rgb(var(--app-surface));
+  color: rgb(var(--app-muted));
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.watch-task-line:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: rgb(var(--app-text));
+}
+
+.watch-hint,
+.watch-notice {
+  margin: 0;
+  color: rgb(var(--app-muted));
+  font-size: 10px;
+  line-height: 1.5;
+}
+.watch-notice {
+  color: rgb(var(--app-danger));
+}
+
+.watch-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.watch-actions button {
+  flex: 1;
+  min-height: 40px;
+  border: 1px solid rgb(var(--app-border-strong));
+  border-radius: 999px;
+  background: rgb(var(--app-surface));
+  color: rgb(var(--app-text));
+  font-size: 13px;
+  font-weight: 600;
+}
+.watch-actions .watch-primary {
+  border-color: transparent;
+  background: rgb(var(--app-accent));
+  color: rgb(var(--app-accent-fg));
+}
+.watch-actions .watch-finish {
+  border-color: rgb(var(--app-pause) / 0.5);
+  color: rgb(var(--app-pause));
+}
+.watch-actions button:disabled {
+  opacity: 0.45;
+}
+
+/* ── 任务选择页：整屏可滚列表 ─────────────────────────────── */
+.watch-tasks-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 12px;
+  font-weight: 600;
+}
+.watch-tasks-header button {
+  padding: 4px 10px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 999px;
+  background: rgb(var(--app-surface));
+  color: rgb(var(--app-muted));
+  font-size: 11px;
+}
+
+.watch-task-list {
+  display: flex;
+  overflow: hidden auto;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding-bottom: 6px;
+}
+.watch-task-list > button {
+  overflow: hidden;
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: 8px;
+  background: rgb(var(--app-surface));
+  color: rgb(var(--app-text));
+  font-size: 11.5px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.watch-task-list > button.is-selected {
+  border-color: rgb(var(--app-accent));
+  background: rgb(var(--app-accent) / 0.1);
+  color: rgb(var(--app-accent));
+}
+.watch-task-empty {
+  margin: 12px 0 0;
+  color: rgb(var(--app-muted));
+  font-size: 10.5px;
+}

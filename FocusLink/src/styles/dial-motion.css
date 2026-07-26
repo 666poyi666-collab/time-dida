@@ -162,23 +162,33 @@
   position: relative;
 }
 
+/* 光带本身走 transform：background-position 每帧都会重绘整块表盘，
+ * 是进位时最明显的一次掉帧来源；位移交给合成器后这 360ms 不再触发重绘。 */
 .timer-dial .dial-sweep {
   position: absolute;
   inset: 0;
-  background: linear-gradient(105deg, transparent 42%, currentColor 50%, transparent 58%);
-  background-repeat: no-repeat;
-  background-size: 220% 100%;
+  overflow: hidden;
   opacity: 0.14;
-  animation: dial-sweep-slide 360ms var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) both;
   pointer-events: none;
+  /* 不加 size：该层靠 inset 撑满表盘，尺寸必须继续由包含块决定。 */
+  contain: layout paint;
+}
+
+.timer-dial .dial-sweep::before {
+  content: '';
+  position: absolute;
+  inset: 0 -60%;
+  background: linear-gradient(105deg, transparent 42%, currentColor 50%, transparent 58%);
+  animation: dial-sweep-slide 360ms var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  will-change: transform;
 }
 
 @keyframes dial-sweep-slide {
   from {
-    background-position: -120% 0;
+    transform: translate3d(-72%, 0, 0);
   }
   to {
-    background-position: 220% 0;
+    transform: translate3d(72%, 0, 0);
   }
 }
 

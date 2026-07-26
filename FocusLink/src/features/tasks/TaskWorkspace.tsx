@@ -335,11 +335,22 @@ export function TaskWorkspace() {
             ))}
           </div>
 
+          {/* 「连接正常」是一句断言，只有真的成功读到过任务才能说。首次加载完成前
+              既没有 loadError 也没有 lastRefresh，旧写法会在这段时间亮着绿点说
+              连接正常，下面一行却写着「正在连接」——CLI 根本不存在时也一样。 */}
           <div className="task-navigation-status">
-            <span className={loadError ? 'error' : 'ready'} />
+            <span className={loadError ? 'error' : lastRefresh ? 'ready' : 'pending'} />
             <div>
-              <strong>{loadError ? '连接需要检查' : '滴答连接正常'}</strong>
-              <small>{lastRefresh ? `${formatRefreshTime(lastRefresh)} 更新` : '正在连接'}</small>
+              <strong>
+                {loadError ? '连接需要检查' : lastRefresh ? '滴答连接正常' : '正在连接滴答'}
+              </strong>
+              <small>
+                {loadError
+                  ? '任务读取失败，可在设置里重新探测'
+                  : lastRefresh
+                    ? `${formatRefreshTime(lastRefresh)} 更新`
+                    : '正在读取任务清单'}
+              </small>
             </div>
           </div>
         </aside>

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { FocusSegment, TaskCache } from '../shared/types';
+import type { FocusSegment, Task, TaskCache } from '../shared/types';
 
 const cliSettingsState = vi.hoisted(() => ({ executable: '', timeoutMs: 10_000 }));
 const cliDbState = vi.hoisted(() => ({
@@ -703,6 +703,80 @@ describe('dida workspace task refresh', () => {
     expect(normalizeCompletedDays(Number.NaN)).toBe(30);
     expect(normalizeCompletedDays(0)).toBe(1);
     expect(normalizeCompletedDays(50_000)).toBe(3650);
+  });
+});
+
+describe('dida standalone subtask nesting', () => {
+  async function listWithRawTasks(rawTasks: unknown[]): Promise<Task[]> {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'focuslink-subtask-nesting-'));
+    const fakeCliPath = path.join(tempDir, 'fake-dida.mjs');
+    fs.writeFileSync(
+      fakeCliPath,
+      [`process.stdout.write(${JSON.stringify(JSON.stringify(rawTasks))});`].join('\n'),
+      'utf8',
+    );
+    cliSettingsState.executable = `"${process.execPath}" "${fakeCliPath}"`;
+    cliDbState.taskCache = [];
+    cliDbState.batchWrites = [];
+    try {
+      return await new TickTickCliProvider().listWorkspaceTasks('project-1');
+    } finally {
+      cliSettingsState.executable = '';
+      cliDbState.taskCache = [];
+      cliDbState.batchWrites = [];
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  it('re-nests parentId subtasks that the list endpoint returns alongside their parent', async () => {
+    // 生物清单的子任务是带 parentId 的独立任务，与父任务平级返回；数学清单的子任务
+    // 是任务内嵌的 checklist items。两种形态都必须成为可折叠的 children。
+    const tasks = await listWithRawTasks([
+      { id: 'bio-parent', projectId: 'project-1', title: '生物：细胞呼吸', status: 0 },
+      {
+        id: 'bio-child-1',
+        projectId: 'project-1',
+        title: '看课本 P32',
+        status: 0,
+        parentId: 'bio-parent',
+      },
+      {
+        id: 'bio-child-2',
+        projectId: 'project-1',
+        title: '做题',
+        status: 0,
+        parentId: 'bio-parent',
+      },
+      {
+        id: 'math-parent',
+        projectId: 'project-1',
+        title: '数学：导数',
+        status: 0,
+        items: [{ id: 'math-item', title: '例题 3', status: 0 }],
+      },
+    ]);
+
+    // 子任务不再与主任务并排出现在清单顶层。
+    expect(tasks.map((task) => task.id)).toEqual(['bio-parent', 'math-parent']);
+    const bioParent = tasks.find((task) => task.id === 'bio-parent');
+    expect(bioParent?.children?.map((child) => child.id)).toEqual(['bio-child-1', 'bio-child-2']);
+    expect(bioParent?.children?.[0].parentId).toBe('bio-parent');
+    expect(tasks.find((task) => task.id === 'math-parent')?.children?.map((c) => c.id)).toEqual([
+      'math-item',
+    ]);
+  });
+
+  it('keeps subtasks visible when the parent is outside the result, and survives cyclic parentId', async () => {
+    const tasks = await listWithRawTasks([
+      // 父任务在别的清单/已归档：子任务必须保持顶层可见，不能凭空消失。
+      { id: 'orphan', projectId: 'project-1', title: '孤儿子任务', status: 0, parentId: 'missing' },
+      // 服务端脏数据：互相指向的 parentId 不能构造出无限递归的 children。
+      { id: 'cycle-a', projectId: 'project-1', title: '环 A', status: 0, parentId: 'cycle-b' },
+      { id: 'cycle-b', projectId: 'project-1', title: '环 B', status: 0, parentId: 'cycle-a' },
+    ]);
+
+    expect(tasks.map((task) => task.id).sort()).toEqual(['cycle-a', 'cycle-b', 'orphan']);
+    for (const task of tasks) expect(task.children).toBeUndefined();
   });
 });
 

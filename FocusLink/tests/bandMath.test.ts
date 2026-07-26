@@ -28,6 +28,10 @@ import {
   particleGridCrossfade,
   particleToneColor,
   particleTraceFade,
+  overviewScaleForSpan,
+  overviewMajorStepSec,
+  overviewTickStepSec,
+  BAND_SCALE_OVERVIEW_MIN,
   pauseFrontierDissolveParticles,
   pauseDissolveParticles,
   pointerBreathPulse,
@@ -53,6 +57,55 @@ describe('bandMath', () => {
       expect(half).toBeLessThan(to);
       // log-midpoint: ratio to from should equal to / half
       expect(half / from).toBeCloseTo(to / half, 1);
+    });
+
+    it('fits the whole session into the overview instead of a fixed 30-minute window', () => {
+      const available = 1000;
+
+      // 40 秒的短会话在固定 30 分钟窗口下只有约 9px；总览必须把它撑开到可读宽度。
+      const short = overviewScaleForSpan(40, available);
+      expect(40 * short).toBeGreaterThan(300);
+      expect(short).toBeLessThanOrEqual(BAND_SCALE_NEAR);
+
+      // 中长会话正好铺满可用宽度。
+      const session = overviewScaleForSpan(2_700, available);
+      expect(2_700 * session).toBeCloseTo(available, 0);
+
+      // 超长会话被下限兜住，但仍远比固定远景更紧凑。
+      const marathon = overviewScaleForSpan(40_000, available);
+      expect(marathon).toBeGreaterThanOrEqual(BAND_SCALE_OVERVIEW_MIN);
+      expect(40_000 * marathon).toBeLessThanOrEqual(available + 1);
+
+      // 没有任何记录时退回固定远景，不产生除零或无穷尺度。
+      expect(overviewScaleForSpan(0, available)).toBe(BAND_SCALE_FAR);
+      expect(overviewScaleForSpan(100, 0)).toBe(BAND_SCALE_FAR);
+    });
+
+    it('picks an overview tick step that keeps labels legible at any fitted scale', () => {
+      for (const spanSec of [40, 300, 2_700, 10_800, 40_000]) {
+        const scale = overviewScaleForSpan(spanSec, 1000);
+        const step = overviewTickStepSec(scale);
+        // 刻度间距既不能挤成一团，也不能稀疏到整屏一根都没有。
+        expect(step * scale).toBeGreaterThanOrEqual(74);
+        expect(step * scale).toBeLessThan(1000);
+      }
+    });
+
+    it('keeps the major tick on a readable unit instead of a raw multiple', () => {
+      // 5 倍次刻会得到「50 分钟」这种没人这样读时间的刻度。
+      expect(overviewMajorStepSec(600)).toBe(3_600);
+      expect(overviewMajorStepSec(300)).toBe(1_800);
+      expect(overviewMajorStepSec(60)).toBe(300);
+      expect(overviewMajorStepSec(10)).toBe(60);
+
+      for (const step of [10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600]) {
+        const major = overviewMajorStepSec(step);
+        // 主刻必须是次刻的整数倍，否则两套刻度会互相错开。
+        expect(major % step).toBe(0);
+        expect(major / step).toBeGreaterThanOrEqual(4);
+        // 且必须落在整分钟或整小时上。
+        expect(major < 3_600 ? major % 60 : major % 3_600).toBe(0);
+      }
     });
 
     it('detail mix reaches 1 at near scale and 0 at far scale', () => {
@@ -243,6 +296,25 @@ describe('bandMath', () => {
       expect(
         particles.filter((particle) => particle.travelX < 0).length / particles.length,
       ).toBeGreaterThan(0.85);
+    });
+
+    it('carries loss upward out of the track rather than sideways across earned focus', () => {
+      const particles = pauseFrontierDissolveParticles(5_000, 0, null, 8, false);
+      const moving = particles.filter((particle) => particle.progress > 0.25);
+      expect(moving.length).toBeGreaterThan(20);
+
+      // 上升必须是主运动：否则红色粒子会横向抹到左侧已经挣到的绿色实体上。
+      expect(
+        moving.filter((particle) => particle.travelY < 0).length / moving.length,
+      ).toBeGreaterThan(0.9);
+      const meanRise = -moving.reduce((sum, p) => sum + p.travelY, 0) / moving.length;
+      const meanDrift = -moving.reduce((sum, p) => sum + p.travelX, 0) / moving.length;
+      expect(meanRise).toBeGreaterThan(meanDrift * 2);
+
+      // 寿命末段要真正离开轨道高度（主带材料区约 60px），而不是原地淡出。
+      const oldest = particles.filter((particle) => particle.progress > 0.8);
+      expect(oldest.length).toBeGreaterThan(0);
+      expect(Math.max(...oldest.map((particle) => -particle.travelY))).toBeGreaterThan(40);
     });
 
     it('forms a dense mixed erosion stream instead of a sparse field of dots', () => {

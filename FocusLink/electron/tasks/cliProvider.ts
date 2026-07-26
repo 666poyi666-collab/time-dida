@@ -2269,6 +2269,10 @@ function normalizeTasks(raw: unknown[], parentId?: string): Task[] {
     }
     // sortOrder：dida 排序字段
     const sortOrder = typeof obj.sortOrder === 'number' ? obj.sortOrder : null;
+    // 独立子任务把父任务写在自己的 parentId 上，且与父任务平级返回。丢掉这个字段
+    // 会让它既失去折叠能力，又和主任务并列出现在清单里。
+    const rawParentId =
+      obj.parentId != null && String(obj.parentId).length > 0 ? String(obj.parentId) : null;
     // 递归处理子任务（dida 的 items 数组）→ children 树
     let children: Task[] | undefined;
     if (Array.isArray(obj.items) && obj.items.length > 0) {
@@ -2300,11 +2304,70 @@ function normalizeTasks(raw: unknown[], parentId?: string): Task[] {
           : obj.desc
             ? String(obj.desc)
             : null,
-      parentId: parentId ?? null,
+      // checklist 归属由调用方按结构传入，优先于载荷里的 parentId。
+      parentId: parentId ?? rawParentId,
       children,
     });
   }
-  return out;
+  // 只有顶层调用需要重挂载；normalizeTasks(obj.items, id) 的结果已经是某个父任务的子集。
+  return parentId === undefined ? nestTasksByParentId(out) : out;
+}
+
+/**
+ * 把带 parentId 的独立子任务收回父任务的 children。
+ *
+ * 滴答的“子任务”有两种形态：任务内嵌的 checklist items（列表接口里已经是嵌套的），
+ * 以及带 parentId 的独立任务（列表接口里与父任务平级返回）。只处理前者时，后者会以
+ * 平铺条目混在主任务之间——既没有折叠箭头，又把子任务重复列了一遍。
+ *
+ * 父任务不在本次结果内（跨清单、已归档、被筛选条件排除）的子任务保持顶层可见，
+ * 否则任务会凭空消失。
+ */
+function nestTasksByParentId(tasks: Task[]): Task[] {
+  if (tasks.length < 2) return tasks;
+
+  const byId = new Map<string, Task>();
+  for (const task of tasks) byId.set(task.id, task);
+  // externalId 只在不与既有 id 冲突时补充，避免把同名的另一条任务错当成父任务。
+  for (const task of tasks) {
+    if (task.externalId && !byId.has(task.externalId)) byId.set(task.externalId, task);
+  }
+
+  const resolveParent = (task: Task): Task | null => {
+    if (!task.parentId) return null;
+    const parent = byId.get(task.parentId);
+    if (!parent || parent === task) return null;
+    // 服务端脏数据可能出现环形 parentId；沿父链回溯撞见自己就按顶层任务处理，
+    // 否则重挂载会构造出互相引用的 children 并让渲染无限递归。
+    let cursor: Task | undefined = parent;
+    for (let depth = 0; cursor && depth <= tasks.length; depth += 1) {
+      if (cursor === task) return null;
+      cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined;
+    }
+    return parent;
+  };
+
+  const roots: Task[] = [];
+  const adopted = new Map<Task, Task[]>();
+  for (const task of tasks) {
+    const parent = resolveParent(task);
+    if (!parent) {
+      roots.push(task);
+      continue;
+    }
+    const siblings = adopted.get(parent);
+    if (siblings) siblings.push(task);
+    else adopted.set(parent, [task]);
+  }
+  if (adopted.size === 0) return tasks;
+
+  // 父任务自带的 checklist items 保持在前，独立子任务接在其后。
+  const attach = (task: Task): Task => {
+    const extra = adopted.get(task);
+    if (!extra) return task;
+    return { ...task, children: [...(task.children ?? []), ...extra.map(attach)] };
+  };
+  return roots.map(attach);
 }
 
 function cacheToTask(c: TaskCache): Task {
