@@ -73,11 +73,14 @@ Keep state labels precise:
 - After a native drag is released near a display work-area edge, snap first and then auto-collapse. Never steal the pointer during drag.
 - Expand toward the inside of the current display and clamp to its work area; cover multi-display and DPI behavior in layout tests and smoke tests.
 
-## Three-Device Version Gate
+## Three-Device Install Gate (硬性死命令, user directive 2026-07-26)
 
 - Every cross-device UI or behavior candidate must increment the patch version. Do not reuse an APK or Windows build number for another iteration.
-- Windows, the designated Huawei tablet, and the designated Xiaomi phone must receive the same version before the iteration is marked complete, packaged, tagged, or released.
-- Read back the installed version on all three devices and record the Windows / Xiaomi / Huawei verification matrix. A missing, stale, or mismatched endpoint is a failed gate.
+- Every iteration ends by ACTUALLY INSTALLING the new build, not just packaging it:
+  - Windows: silent overwrite install (`installer /S`) on this PC, then read back the uninstall-registry DisplayVersion and the installed `FocusLink.exe` file version, and relaunch the app.
+  - The designated Xiaomi phone and the designated Huawei tablet: `adb install -r` the same-version APK and read back `versionName/versionCode`.
+- The OPPO watch (OWW221) is a fourth mandatory install target for any iteration that touches mobile or watch code; it receives the same APK.
+- Windows, Xiaomi and Huawei must run the same version before the iteration is marked complete, packaged, tagged, or released. Record the install matrix; a missing, stale, or unreachable endpoint is a failed gate and must be reported as such — never claim an install that did not happen.
 - Preserve the two-state Windows mini window, the active Huawei capsule layout module, and the Xiaomi system-surface path unless the current change explicitly replaces them and re-runs their acceptance tests.
 
 ## Verification Before Release
@@ -113,8 +116,9 @@ For dida sync changes, also run a real temporary dida task test:
 ## Release Rules
 
 - Follow `FocusLink/backend-design/TEST_AND_RELEASE.md`; its gates are mandatory.
-- Upload to GitHub only on five-version checkpoints: patch numbers ending in `0` or `5`. Intermediate patch versions must remain local and must not push `main`, create a public tag, or create a GitHub Release.
-- Every intermediate patch still requires a completed CHANGELOG entry, the three-device version matrix, a four-file local release directory, and a backed-up Android APK. The next checkpoint release includes the accumulated changes.
+- Push every change and every version to GitHub `main` as it lands. The former five-version (`0`/`5`) checkpoint cadence is removed (user directive, 2026-07-26); do not hold source back locally.
+- Every patch still requires a completed CHANGELOG entry, the device install matrix, a four-file local release directory, and a backed-up Android APK.
+- Formal GitHub Releases (public tag + uploaded executables) are created when the user explicitly asks for one; the remaining rules in this section govern that flow.
 - Bump `FocusLink/package.json`, `FocusLink/package-lock.json`, `FocusLink/shared/version.ts`, `FocusLink/electron-builder.yml`, root README, root CHANGELOG, both design-spec versions, and release notes together.
 - Use release directories like `release-v029` for `0.2.9` and `release-v0210` for `0.2.10`.
 - Keep only the latest three release directories in the repo.
