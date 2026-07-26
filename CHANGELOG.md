@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.12.62 - 2026-07-26（手表接入、手机优先布局与跨层样式契约）
+
+- **手表层（OPPO OWW221）**：新增 189×248dp 专用 WatchApp 外壳，可选任务、开始、暂停/继续、结束，并复用 `focuslink://pair` 深链配对；按视口在 `main.tsx` 门禁挂载。
+- **Chrome 83 WebView 一等同步客户端**：修复配对链接在 Chromium <85 非特殊 scheme 解析下的主机名判定、deviceSyncServer 全局 CORP 阻断跨源预检、`crypto.randomUUID` 缺失与 flex gap 不支持；Vite target 降至 chrome83，CSP 允许 `font-src data:`。
+- **手机优先布局（≤620px）**：读数优先、操作钮固定在导航之上、紧凑头部堆叠；导航背景不透明，构建身份移入设置页。
+- **桌面同步改进**：TemporalRibbon 概览改为整场会话取景并保留可读暂停缺口；滴答独立子任务按 `parentId` 重新嵌套；设置页改为 6 个意图分组 + 全局搜索的注册表式 IA；补齐 6 个未定义 CSS 变量与 23 个未样式化设置类，`styleContract` 测试锁定。
+- **字体瘦身**：本地 TTF 转 woff2，包体 44MB → 23MB，视口测试断言 7 个字族全部加载。
+- **簿记说明**：本条目为 3单会话补记。上一会话在版本源齐平前中断：`package.json`/`versionCode` 已到 0.12.62/1262，但 `shared/version.ts` 与 `electron-builder.yml` 仍为 0.12.61，0.12.62 安装包曾误输出到 `release-v01261/`（已移至 `release-v01262/`）；三端版本矩阵未记录。版本源在 v0.12.63 统一齐平。
+
 ## v0.12.61 - 2026-07-26（Foxlink 独立 MCP 打包收口）
 
 - **独立服务**：Foxlink MCP 以 `PoyiFoxlinkMcp` 原生 Windows 服务监听 `127.0.0.1:8770/mcp`，专属 Secure MCP Tunnel 独立运行，不依赖 PersonalMcpGateway。
