@@ -2042,13 +2042,38 @@
 .history-segment-actions button {
   border-radius: 3px;
 }
-/* ─── 设置页骨架与新增控件 ────────────────────────────────── */
+/* ─── 设置页（3单重构）：工位横幅 + 分组导航｜编号规格表 ────── */
 .settings-page {
   display: grid;
-  grid-template-columns: 208px minmax(0, 1fr);
+  /* 覆盖 legacy 的双列模板：横幅在上，分栏由 .settings-body 承担 */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   overflow: hidden;
   padding: 0;
+}
+.settings-console {
+  grid-column: 1 / -1;
+}
+.settings-console-word {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-console-count {
+  flex-shrink: 0;
+  color: rgb(var(--app-subtle));
+  font-size: 11px;
+}
+.settings-console-diag {
+  white-space: nowrap;
+}
+.settings-body {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: 208px minmax(0, 1fr);
 }
 .settings-nav {
   display: flex;
@@ -2056,7 +2081,7 @@
   gap: 0;
   min-height: 0;
   margin-top: 0;
-  padding: 32px 20px 20px;
+  padding: 18px 14px;
   border: 0;
   border-right: 1px solid rgb(var(--app-border));
   border-radius: 0;
@@ -2070,22 +2095,20 @@
   background: transparent;
 }
 .settings-container {
-  width: min(1080px, calc(100% - 64px));
+  width: min(1120px, calc(100% - 64px));
   margin: 0 auto;
-  padding: 32px 0 72px;
+  padding: 26px 0 72px;
 }
 
-/* 设置搜索：分组是我们的分类结果，不该要求用户先猜对分组才能找到一个开关。
-   粘顶让长结果里也能随时改词；实心底色保证下方内容滚过时仍然读得清。 */
+/* 设置搜索：住在工位横幅中央，是设置视图的主仪器。
+   分组是我们的分类结果，不该要求用户先猜对分组才能找到一个开关。 */
 .settings-search {
-  position: sticky;
-  top: 0;
-  z-index: 4;
   display: flex;
+  width: min(100%, 520px);
   align-items: center;
   gap: 9px;
-  min-height: 40px;
-  margin-bottom: 20px;
+  min-height: 36px;
+  margin: 0 auto;
   padding: 0 12px;
   border: 1px solid rgb(var(--app-border));
   border-radius: 4px;
@@ -2133,6 +2156,36 @@
 .settings-search-clear:hover {
   background: rgb(var(--app-surface-2) / 0.8);
   color: rgb(var(--app-text));
+}
+
+/* 分区规格表：左列 = 序号 + 标题 + 说明，右列 = 设置行；窄屏回落纵排 */
+.settings-section {
+  margin-bottom: 24px;
+  padding-top: 16px;
+  border-top: 1px solid rgb(var(--app-border-strong));
+}
+.settings-stack > .settings-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.settings-section-index {
+  display: block;
+  margin-bottom: 4px;
+  color: rgb(var(--app-subtle) / 0.6);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+@media (min-width: 1100px) {
+  .settings-section {
+    display: grid;
+    grid-template-columns: 216px minmax(0, 1fr);
+    gap: 0 36px;
+  }
+  .settings-section-heading {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
 }
 
 /* 搜索结果里标出该分区平时住在哪个分组，下次可以直接去那里找。 */
@@ -3567,7 +3620,7 @@
     justify-self: start;
   }
   .task-workspace-shell,
-  .settings-page {
+  .settings-body {
     grid-template-columns: 190px minmax(0, 1fr);
   }
 }

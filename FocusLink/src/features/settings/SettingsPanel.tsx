@@ -1800,48 +1800,16 @@ export function SettingsPanel() {
 
   return (
     <div className="settings-page">
-      {/* 左侧分组导航（Raycast 式侧栏）：域名切换 + 当前主题诊断 */}
-      <aside className="settings-nav">
-        <div className="settings-nav-head">
-          <h2 className="text-page-title">设置</h2>
-          <p className="text-diag">v{APP_VERSION}</p>
+      {/* 工位横幅：当前分组身份 → 全局搜索（视图的主仪器） → 版本与外观诊断 */}
+      <header className="settings-console view-console">
+        <div className="console-identity">
+          <span className="console-kicker">设置 · 控制面板</span>
+          <span className="settings-console-word">
+            {searching ? `搜索「${search.trim()}」` : TAB_LABELS[activeTab]}
+          </span>
+          <span className="settings-console-count">{visibleSections.length} 个分区</span>
         </div>
-        <nav className="settings-nav-list" role="tablist" aria-label="设置分类">
-          {TABS.map((tab) => {
-            const TabIcon = tab.icon;
-            // 搜索期间结果横跨所有分组，此时高亮任何一个分组都是在说谎。
-            const isActive = !searching && activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => {
-                  setSearch('');
-                  setActiveTab(tab.id);
-                }}
-                className={`settings-tab ${isActive ? 'active' : ''}`}
-              >
-                {isActive ? (
-                  <motion.span
-                    layoutId="settings-tab-indicator"
-                    className="settings-tab-indicator"
-                    aria-hidden="true"
-                    transition={{ duration: 0.24, ease: [0.4, 0, 0.2, 1] }}
-                  />
-                ) : null}
-                <TabIcon size="sm" />
-                {tab.label}
-              </button>
-            );
-          })}
-        </nav>
-        <div className="settings-nav-foot text-diag">FocusLink · {appearanceLabel}</div>
-      </aside>
-
-      {/* 分组列表内容 */}
-      <div className="settings-scroll">
-        <div className="settings-container settings-stack">
+        <div className="console-readout">
           <div className={`settings-search ${searching ? 'active' : ''}`}>
             <Icon.Search size="sm" tone="subtle" />
             <input
@@ -1869,25 +1837,72 @@ export function SettingsPanel() {
               </>
             ) : null}
           </div>
+        </div>
+        <div className="console-actions">
+          <span className="settings-console-diag text-diag">
+            v{APP_VERSION} · {appearanceLabel}
+          </span>
+        </div>
+      </header>
 
-          {visibleSections.map((section) => (
-            <Section
-              key={section.id}
-              title={section.title}
-              desc={section.desc}
-              group={searching ? TAB_LABELS[section.tab] : undefined}
-            >
-              {section.render()}
-            </Section>
-          ))}
+      <div className="settings-body">
+        {/* 左侧分组导航：域名切换 */}
+        <aside className="settings-nav">
+          <nav className="settings-nav-list" role="tablist" aria-label="设置分类">
+            {TABS.map((tab) => {
+              const TabIcon = tab.icon;
+              // 搜索期间结果横跨所有分组，此时高亮任何一个分组都是在说谎。
+              const isActive = !searching && activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => {
+                    setSearch('');
+                    setActiveTab(tab.id);
+                  }}
+                  className={`settings-tab ${isActive ? 'active' : ''}`}
+                >
+                  {isActive ? (
+                    <motion.span
+                      layoutId="settings-tab-indicator"
+                      className="settings-tab-indicator"
+                      aria-hidden="true"
+                      transition={{ duration: 0.24, ease: [0.4, 0, 0.2, 1] }}
+                    />
+                  ) : null}
+                  <TabIcon size="sm" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
 
-          {searching && visibleSections.length === 0 ? (
-            <div className="settings-empty">
-              <Icon.Search size="md" tone="subtle" />
-              <p className="settings-empty-title">没有匹配「{search.trim()}」的设置</p>
-              <p className="settings-empty-desc">换一个更短的词，或直接在左侧分组里翻找。</p>
-            </div>
-          ) : null}
+        {/* 分区规格表：编号分区，标题栏在左、内容在右 */}
+        <div className="settings-scroll">
+          <div className="settings-container settings-stack">
+            {visibleSections.map((section, index) => (
+              <Section
+                key={section.id}
+                index={index}
+                title={section.title}
+                desc={section.desc}
+                group={searching ? TAB_LABELS[section.tab] : undefined}
+              >
+                {section.render()}
+              </Section>
+            ))}
+
+            {searching && visibleSections.length === 0 ? (
+              <div className="settings-empty">
+                <Icon.Search size="md" tone="subtle" />
+                <p className="settings-empty-title">没有匹配「{search.trim()}」的设置</p>
+                <p className="settings-empty-desc">换一个更短的词，或直接在左侧分组里翻找。</p>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -1955,11 +1970,14 @@ function HotkeyStatusBadge({ state }: { state: HotkeyBadgeState }) {
 }
 
 function Section({
+  index,
   title,
   desc,
   group,
   children,
 }: {
+  /** 分区在当前视图中的序号：规格表编号（01/02/…），随分组或搜索结果重排。 */
+  index: number;
   title: string;
   desc?: string;
   /** 搜索结果里标出该分区平时住在哪个分组，方便下次直接去那里找。 */
@@ -1969,6 +1987,9 @@ function Section({
   return (
     <section className="settings-section">
       <div className="settings-section-heading">
+        <span className="settings-section-index timer-digit" aria-hidden="true">
+          {String(index + 1).padStart(2, '0')}
+        </span>
         <h3>
           {title}
           {group ? <span className="settings-section-group">{group}</span> : null}
