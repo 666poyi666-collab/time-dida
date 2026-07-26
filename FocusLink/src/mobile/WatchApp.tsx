@@ -91,12 +91,14 @@ export function WatchApp() {
   snapshotRef.current = snapshot;
   const consumedNoncesRef = useRef(new Set<string>());
 
-  // 秒针：活跃时逐秒外推读数；idle 时停表省电。
+  // 秒针：活跃且停留在主视图时才逐秒外推读数；idle 或任务选择页停表省电，
+  // 也避免整份任务列表跟着秒针每秒重渲染。回到主视图先立即校准一次。
   useEffect(() => {
-    if (!snapshot || snapshot.state === 'idle') return;
+    if (!snapshot || snapshot.state === 'idle' || view !== 'main') return;
+    setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
-  }, [snapshot]);
+  }, [snapshot, view]);
 
   // 长轮询实时状态：断线退避重试，不弹任何全屏面板。
   useEffect(() => {
@@ -257,7 +259,7 @@ export function WatchApp() {
   if (view === 'tasks') {
     const entries = flattenSyncedTaskTree(tasks);
     return (
-      <div className="watch-shell">
+      <div className="watch-shell watch-tasks">
         <header className="watch-tasks-header">
           <button type="button" onClick={() => setView('main')}>
             返回
@@ -296,7 +298,7 @@ export function WatchApp() {
   }
 
   return (
-    <div className={`watch-shell watch-state-${state}`}>
+    <div className={`watch-shell watch-main watch-state-${state}`}>
       <p className="watch-state-line">
         <i className={`watch-dot conn-${connection}`} aria-hidden="true" />
         {connection === 'unconfigured'
@@ -306,7 +308,15 @@ export function WatchApp() {
             : liveStateLabel(state)}
       </p>
 
-      <strong className="watch-clock">{formatClockDuration(readoutMs)}</strong>
+      <div className="watch-clock-cell">
+        <strong className="watch-clock">{formatClockDuration(readoutMs)}</strong>
+        {state !== 'idle' && (
+          <p className="watch-subline">
+            专注 <b>{formatClockDuration(durations.activeElapsedMs)}</b> · 暂停{' '}
+            <em>{formatClockDuration(durations.pauseElapsedMs)}</em>
+          </p>
+        )}
+      </div>
 
       {connection === 'unconfigured' ? (
         <p className="watch-hint">在电脑端生成配对码后推送到本表即可连接</p>

@@ -1,8 +1,13 @@
-// 计时仪表：同一主时间的五种真实不同的机械/排版表现。
+// 计时仪表：同一主时间的九种真实不同的机械/排版表现。
 // - standard 标准等宽：JetBrains Mono，沉稳的仪器读数
 // - flip     翻页机械：Oswald + 上下分片翻牌，中央转轴
 // - pixel    像素点阵：7×9 整数网格数字 + 随累计专注点亮的专注核心
 // - thin     高反差编辑：Bodoni Moda 衬线字，排版感
+// - segment  七段数码：自绘真实段码
+// - counter  滚筒计数器：里程表式数字滚筒，逐位垂直进位
+// - analog   指针表圈：60 刻度表圈 + 秒针分针擒纵步进 + 中央数字读数
+// - vernier  游标标尺：固定游标线下的滑动秒刻度带，线性擒纵
+// - draft    制图描线：描边空心数字 + 制图网格与尺寸标注
 // 状态色语义统一：running=专注强调色，paused=暂停红，其余=墨色。
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { FlipDigits } from '../../ui/FlipDigits';
@@ -21,7 +26,8 @@ import {
   updateFlipMachine,
 } from '@shared/timerInstruments';
 
-export type TimerStyleName = 'standard' | 'flip' | 'pixel' | 'thin' | 'segment';
+export type TimerStyleName =
+  'standard' | 'flip' | 'pixel' | 'thin' | 'segment' | 'counter' | 'analog' | 'vernier' | 'draft';
 
 function useReducedMotionPreference(): boolean {
   const [reduced, setReduced] = useState(
@@ -81,6 +87,10 @@ export function TimerDial({
   if (style === 'pixel') return <PixelDial text={text} state={state} coreRatio={coreRatio ?? 0} />;
   if (style === 'segment') return <SegmentDial text={text} state={state} />;
   if (style === 'thin') return <ThinDial text={text} state={state} />;
+  if (style === 'counter') return <CounterDial text={text} state={state} />;
+  if (style === 'analog') return <AnalogDial text={text} ms={ms} state={state} />;
+  if (style === 'vernier') return <VernierDial text={text} ms={ms} state={state} />;
+  if (style === 'draft') return <DraftDial text={text} state={state} />;
   return (
     <div className={`timer-dial dial-standard state-${state}`} aria-label={text}>
       <span className="instrument-chrome-label" key={`label-${state}`}>
@@ -327,6 +337,202 @@ const PixelCore = memo(function PixelCore({ lit, percent }: { lit: number; perce
     </div>
   );
 });
+
+/* ─── 滚筒计数器 / 游标标尺共用的进位滚筒 ────────────────────
+ * value 在 [0, period) 内循环；period-1 → 0 的回绕经由复制位（index=period）
+ * 正向滚动到达后静默吸附回 0，避免倒转整个滚筒。 */
+function useDrumIndex(
+  value: number,
+  period: number,
+  animate: boolean,
+): { index: number; snapping: boolean; handleEnd: () => void } {
+  const [index, setIndex] = useState(value);
+  const [snapping, setSnapping] = useState(false);
+  const prevRef = useRef(value);
+  useEffect(() => {
+    const prev = prevRef.current;
+    prevRef.current = value;
+    if (value === prev) return;
+    if (!animate) {
+      setSnapping(true);
+      setIndex(value);
+      return;
+    }
+    if (prev === period - 1 && value === 0) {
+      setSnapping(false);
+      setIndex(period);
+    } else {
+      setSnapping(false);
+      setIndex(value);
+    }
+  }, [animate, period, value]);
+  useEffect(() => {
+    if (!snapping) return;
+    const frame = requestAnimationFrame(() => setSnapping(false));
+    return () => cancelAnimationFrame(frame);
+  }, [snapping]);
+  const handleEnd = () => {
+    if (index === period) {
+      setSnapping(true);
+      setIndex(0);
+    }
+  };
+  return { index, snapping, handleEnd };
+}
+
+/* ─── 滚筒计数器：里程表式逐位垂直进位 ───────────────────────── */
+
+const COUNTER_STRIP_DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
+
+const CounterChar = memo(function CounterChar({
+  char,
+  animate,
+}: {
+  char: string;
+  animate: boolean;
+}) {
+  const digit = char >= '0' && char <= '9' ? Number(char) : null;
+  const { index, snapping, handleEnd } = useDrumIndex(digit ?? 0, 10, animate && digit !== null);
+  if (digit === null) return <span className="counter-colon">{char}</span>;
+  return (
+    <span className="counter-cell">
+      <span
+        className={`counter-strip ${snapping ? 'no-anim' : ''}`}
+        style={{ transform: `translateY(${-index}em)` }}
+        onTransitionEnd={handleEnd}
+      >
+        {COUNTER_STRIP_DIGITS.map((d, i) => (
+          <span key={i}>{d}</span>
+        ))}
+      </span>
+    </span>
+  );
+});
+
+function CounterDial({ text, state }: { text: string; state: string }) {
+  const reducedMotion = useReducedMotionPreference();
+  const animate = !reducedMotion && (state === 'running' || state === 'paused');
+  return (
+    <div className={`timer-dial dial-counter state-${state}`} aria-label={text}>
+      {Array.from(text).map((ch, i) => (
+        <CounterChar char={ch} animate={animate} key={`${i}`} />
+      ))}
+      <span className="counter-unit" aria-hidden="true">
+        MIN · SEC
+      </span>
+    </div>
+  );
+}
+
+/* ─── 指针表圈：60 刻度 + 秒针擒纵步进 + 中央数字读数 ────────── */
+
+const ANALOG_TICKS = Array.from({ length: 60 }, (_, i) => i);
+
+function AnalogDial({ text, ms, state }: { text: string; ms: number; state: string }) {
+  const reducedMotion = useReducedMotionPreference();
+  const totalSeconds = Math.floor(ms / 1000);
+  // 秒针角度按累计秒单调增长：59→0 的换分不回摆，直接继续正向走针。
+  const secondAngle = totalSeconds * 6;
+  const minuteAngle = (ms / 3_600_000) * 360;
+  // 读数重置（新一轮开始）时角度会向回跳变，此帧关闭过渡避免倒转长动画。
+  const prevAngleRef = useRef(secondAngle);
+  const jumped = Math.abs(secondAngle - prevAngleRef.current) > 30;
+  useEffect(() => {
+    prevAngleRef.current = secondAngle;
+  }, [secondAngle]);
+  const animate = !reducedMotion && !jumped && (state === 'running' || state === 'paused');
+  return (
+    <div className={`timer-dial dial-analog state-${state}`} aria-label={text}>
+      <span className="analog-face">
+        <svg viewBox="0 0 200 200" aria-hidden="true">
+          {ANALOG_TICKS.map((tick) => (
+            <line
+              key={tick}
+              className={tick % 5 === 0 ? 'analog-tick-major' : 'analog-tick'}
+              x1="100"
+              y1={tick % 5 === 0 ? 10 : 13}
+              x2="100"
+              y2={tick % 5 === 0 ? 20 : 17}
+              transform={`rotate(${tick * 6} 100 100)`}
+            />
+          ))}
+          <g
+            className={`analog-hand-minute ${animate ? '' : 'no-anim'}`}
+            style={{ transform: `rotate(${minuteAngle}deg)` }}
+          >
+            <line x1="100" y1="100" x2="100" y2="52" />
+          </g>
+          <g
+            className={`analog-hand-second ${animate ? '' : 'no-anim'}`}
+            style={{ transform: `rotate(${secondAngle}deg)` }}
+          >
+            <line x1="100" y1="112" x2="100" y2="24" />
+          </g>
+          <circle className="analog-hub" cx="100" cy="100" r="4.5" />
+        </svg>
+        <span className="analog-readout timer-digit">{text}</span>
+      </span>
+    </div>
+  );
+}
+
+/* ─── 游标标尺：固定游标线下滑动的秒刻度带 ───────────────────── */
+
+/** 两个完整分钟周期的刻度：滚筒经复制周期回绕，不倒带。 */
+const VERNIER_TICKS = Array.from({ length: 121 }, (_, i) => i);
+const VERNIER_STEP = 13;
+
+function VernierDial({ text, ms, state }: { text: string; ms: number; state: string }) {
+  const reducedMotion = useReducedMotionPreference();
+  const seconds = Math.floor(ms / 1000) % 60;
+  const animate = !reducedMotion && (state === 'running' || state === 'paused');
+  const { index, snapping, handleEnd } = useDrumIndex(seconds, 60, animate);
+  return (
+    <div className={`timer-dial dial-vernier state-${state}`} aria-label={text}>
+      <span className="vernier-readout">
+        <FlipDigits value={text} />
+      </span>
+      <span className="vernier-window" aria-hidden="true">
+        <span
+          className={`vernier-strip ${snapping ? 'no-anim' : ''}`}
+          style={{ transform: `translateX(${-index * VERNIER_STEP}px)` }}
+          onTransitionEnd={handleEnd}
+        >
+          {VERNIER_TICKS.map((tick) => (
+            <i
+              key={tick}
+              className={tick % 10 === 0 ? 'vt-label' : tick % 5 === 0 ? 'vt-major' : 'vt-minor'}
+              data-sec={tick % 10 === 0 ? String(tick % 60).padStart(2, '0') : undefined}
+            />
+          ))}
+        </span>
+        <i className="vernier-cursor" />
+      </span>
+    </div>
+  );
+}
+
+/* ─── 制图描线：描边空心数字 + 网格与尺寸标注 ────────────────── */
+
+function DraftDial({ text, state }: { text: string; state: string }) {
+  const reducedMotion = useReducedMotionPreference();
+  const carry = useCarryPulse(text, !reducedMotion && state === 'running');
+  return (
+    <div className={`timer-dial dial-draft state-${state}`} aria-label={text}>
+      <i className="draft-mark draft-mark-tl" aria-hidden="true" />
+      <i className="draft-mark draft-mark-br" aria-hidden="true" />
+      <span className="draft-digits">
+        <FlipDigits value={text} />
+      </span>
+      <span className="draft-dim" aria-hidden="true">
+        <i />
+        <b>ELAPSED {text}</b>
+        <i />
+      </span>
+      <DialSweep pulse={carry} />
+    </div>
+  );
+}
 
 function PixelDial({ text, state, coreRatio }: { text: string; state: string; coreRatio: number }) {
   const chars = useMemo(() => Array.from(text), [text]);

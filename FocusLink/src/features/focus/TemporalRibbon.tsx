@@ -25,6 +25,7 @@ import {
   overviewScaleForSpan,
   overviewTickStepSec,
   particleAshColor,
+  particleCellHash,
   pauseFrontierDissolveParticles,
   pointerBreathPulse,
   secondTickAlpha,
@@ -553,6 +554,7 @@ function renderBand(
     });
   }
 
+  const toWorldSec = (x: number) => (x - pointerX) / scale + cameraSeconds;
   for (const moment of focusMoments) {
     const endMs = moment.endedAt ?? input.nowMs;
     drawFocusMaterial(ctx, geometry, colors, {
@@ -562,6 +564,7 @@ function renderBand(
       motionSeconds,
       isOngoing: moment.endedAt === null,
       reducedMotion: input.reducedMotion,
+      toWorldSec,
     });
   }
 
@@ -657,6 +660,8 @@ function drawFocusMaterial(
     motionSeconds: number;
     isOngoing: boolean;
     reducedMotion: boolean;
+    /** 屏幕 x → 世界墙钟秒：羽化与颗粒以世界时间为键，历史材料像素稳定。 */
+    toWorldSec: (x: number) => number;
   },
 ): void {
   const left = Math.max(-4, input.x0);
@@ -667,25 +672,72 @@ function drawFocusMaterial(
   const fullHeight = geo.materialBottom - geo.materialTop;
   // 新材料在 0.68s 内从 74% 厚度稳定到满厚度：能看见它在「凝结」，但没有抖动。
   const bodyHeight = fullHeight * pose.thicknessScale;
+  // 羽化预留：核心实体从轮廓内收，破碎边缘在预留带里生长，总高度不变。
+  const feather = clamp(bodyHeight * 0.16, 2.5, 6);
   const top = geo.materialTop + (fullHeight - bodyHeight) / 2;
   const bottom = top + bodyHeight;
+  const coreTop = top + feather;
+  const coreBottom = bottom - feather;
 
   const highlight = mixRgb(colors.accent, colors.light, colors.isDark ? 0.3 : 0.24);
   const deep = mixRgb(colors.accentDeep, colors.ink, colors.isDark ? 0.12 : 0.2);
 
-  const body = ctx.createLinearGradient(0, top, 0, bottom);
+  const body = ctx.createLinearGradient(0, coreTop, 0, coreBottom);
   body.addColorStop(0, rgba(highlight, 0.97));
   body.addColorStop(0.3, rgba(colors.accent, 1));
   body.addColorStop(0.82, rgba(colors.accent, 0.97));
   body.addColorStop(1, rgba(deep, 0.98));
   ctx.fillStyle = body;
-  ctx.fillRect(left, top, right - left, bottom - top);
+  ctx.fillRect(left, coreTop, right - left, coreBottom - coreTop);
+
+  // 破碎轮廓与内部颗粒：以 0.5s 世界格为键的确定性采样。列在屏幕上每 3px 取一次，
+  // 上下轮廓各自伸出高低不一的齿，齿端再溢散 1px 亚像素浮尘；材料内部按同一
+  // hash 布置亮斑与暗粒。相机静止时逐帧像素不变（idle/finished 可冻结），
+  // 运行态相机连续滑动使齿列缓慢换代——正是「内部与边缘保持低幅共同流动」。
+  const COLUMN_PX = 3;
+  const startColumn = Math.ceil(left / COLUMN_PX);
+  const endColumn = Math.floor(right / COLUMN_PX);
+  for (let column = startColumn; column <= endColumn; column += 1) {
+    const x = column * COLUMN_PX;
+    const key = Math.floor(input.toWorldSec(x) * 2);
+    const topReach = particleCellHash(key, 3) * feather;
+    const bottomReach = particleCellHash(key, 9) * feather;
+    const columnWidth = Math.min(COLUMN_PX, right - x);
+    if (columnWidth <= 0) continue;
+
+    // 齿身：接近实体的不透明度，读作材料本体的破碎轮廓而不是辉光。
+    ctx.fillStyle = rgba(colors.accent, 0.82);
+    if (topReach > 0.4) ctx.fillRect(x, coreTop - topReach, columnWidth, topReach + 0.5);
+    ctx.fillStyle = rgba(deep, 0.8);
+    if (bottomReach > 0.4) ctx.fillRect(x, coreBottom - 0.5, columnWidth, bottomReach + 0.5);
+
+    // 齿端浮尘：更小、更淡，向外多溢出 1~2px。
+    const dustSeed = particleCellHash(key, 17);
+    if (dustSeed > 0.42) {
+      ctx.fillStyle = rgba(colors.accent, 0.3 + dustSeed * 0.2);
+      ctx.fillRect(x + dustSeed * 2, coreTop - topReach - 1.6, 1.1, 1.1);
+    }
+    const dustSeedBottom = particleCellHash(key, 23);
+    if (dustSeedBottom > 0.48) {
+      ctx.fillStyle = rgba(deep, 0.26 + dustSeedBottom * 0.18);
+      ctx.fillRect(x + dustSeedBottom * 2, coreBottom + bottomReach + 0.6, 1.1, 1.1);
+    }
+
+    // 内部颗粒：稀疏的亮斑/暗粒让实体有「压实的时间材料」质感。
+    const grainSeed = particleCellHash(key, 31);
+    if (grainSeed > 0.72 && coreBottom - coreTop > 8) {
+      const grainY = coreTop + 2 + particleCellHash(key, 41) * (coreBottom - coreTop - 5);
+      ctx.fillStyle =
+        grainSeed > 0.87 ? rgba(colors.light, 0.24) : rgba(colors.ink, colors.isDark ? 0.2 : 0.12);
+      ctx.fillRect(x + 0.6, grainY, 1.3, 1.3);
+    }
+  }
 
   // 顶沿高光：极低幅度的 sheen 呼吸让实体保持「活着」，但不产生可察觉的位移。
   ctx.fillStyle = rgba(colors.light, 0.34 + pose.sheen * 0.08);
-  ctx.fillRect(left, top, right - left, 1);
+  ctx.fillRect(left, coreTop, right - left, 1);
   ctx.fillStyle = rgba(colors.ink, 0.14);
-  ctx.fillRect(left, bottom - 1, right - left, 1);
+  ctx.fillRect(left, coreBottom - 1, right - left, 1);
 
   // 生长端：一个明亮的切面，指出材料正在从这里长出来。
   if (input.isOngoing && right > left + 1) {
@@ -693,9 +745,14 @@ function drawFocusMaterial(
     cap.addColorStop(0, rgba(highlight, 0));
     cap.addColorStop(1, rgba(highlight, 0.6));
     ctx.fillStyle = cap;
-    ctx.fillRect(Math.max(left, right - 14), top, Math.min(14, right - left), bottom - top);
+    ctx.fillRect(
+      Math.max(left, right - 14),
+      coreTop,
+      Math.min(14, right - left),
+      coreBottom - coreTop,
+    );
     ctx.fillStyle = rgba(colors.light, 0.82);
-    ctx.fillRect(right - 1.2, top, 1.2, bottom - top);
+    ctx.fillRect(right - 1.2, coreTop, 1.2, coreBottom - coreTop);
   }
 }
 

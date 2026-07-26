@@ -775,7 +775,17 @@ async function main() {
   await delay(240);
   // 计时仪表：切换五种样式，验证根类、预览数量与独立构形。
   results.instrumentFonts = {};
-  for (const style of ['standard', 'flip', 'pixel', 'thin', 'segment']) {
+  for (const style of [
+    'standard',
+    'flip',
+    'pixel',
+    'thin',
+    'segment',
+    'counter',
+    'analog',
+    'vernier',
+    'draft',
+  ]) {
     await evaluate(`window.focuslink.settings.set({ timerStyle: '${style}' })`);
     await delay(220);
     results.instrumentFonts[style] = await evaluate(`(() => {
@@ -790,6 +800,13 @@ async function main() {
         pixel: pick('.dial-pixel'),
         thin: pick('.dial-thin'),
         segment: Boolean(document.querySelector('.dial-segment .segment-on')),
+        counter: document.querySelectorAll('.dial-counter .counter-strip').length,
+        analog: Boolean(document.querySelector('.dial-analog .analog-hand-second')),
+        vernier: Boolean(
+          document.querySelector('.dial-vernier .vernier-strip') &&
+            document.querySelector('.dial-vernier .vernier-cursor'),
+        ),
+        draft: Boolean(document.querySelector('.dial-draft .draft-digits')),
         previewCount: document.querySelectorAll('.instrument-choice .timer-dial').length,
       };
     })()`);
@@ -1075,8 +1092,22 @@ async function main() {
       'settings toggle can restore its original state',
     ],
     [
-      results.instrumentFonts.standard?.previewCount === 5,
-      'settings renders live previews for all five timer instruments',
+      results.instrumentFonts.standard?.previewCount === 9,
+      'settings renders live previews for all nine timer instruments',
+    ],
+    [
+      results.instrumentFonts.standard?.counter > 0 &&
+        results.instrumentFonts.standard?.analog &&
+        results.instrumentFonts.standard?.vernier &&
+        results.instrumentFonts.standard?.draft,
+      'the four new instruments expose their real mechanical structure',
+    ],
+    [
+      results.instrumentFonts.counter?.rootTimerClass === 'timer-style-counter' &&
+        results.instrumentFonts.analog?.rootTimerClass === 'timer-style-analog' &&
+        results.instrumentFonts.vernier?.rootTimerClass === 'timer-style-vernier' &&
+        results.instrumentFonts.draft?.rootTimerClass === 'timer-style-draft',
+      'the four new instrument styles apply their root classes',
     ],
     [
       results.instrumentFonts.standard?.standard?.includes('JetBrains Mono') &&

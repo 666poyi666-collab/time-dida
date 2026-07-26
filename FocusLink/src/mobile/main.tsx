@@ -14,7 +14,10 @@ const isWatchViewport = Math.max(window.innerWidth, window.innerHeight) <= 460;
 
 document.documentElement.dataset.runtime = isWatchViewport ? 'watch-focus' : 'mobile-focus';
 if (isWatchViewport) document.documentElement.classList.add('watch-runtime');
-applyMobileAppearance(loadMobileAppearance());
+// AMOLED 防烧屏：手表一律深色运行（watch.css 再把画布压到纯黑），
+// 存储的浅色偏好只对手机/平板生效。
+const appearance = loadMobileAppearance();
+applyMobileAppearance(isWatchViewport ? { ...appearance, theme: 'dark' } : appearance);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   isWatchViewport ? <WatchApp /> : <MobileApp />,

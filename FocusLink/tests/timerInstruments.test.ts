@@ -23,7 +23,17 @@ describe('计时仪表样式解析与旧值迁移', () => {
     for (const style of TIMER_STYLES) {
       expect(resolveTimerStyle(style)).toBe(style);
     }
-    expect(TIMER_STYLES).toEqual(['standard', 'flip', 'pixel', 'thin', 'segment']);
+    expect(TIMER_STYLES).toEqual([
+      'standard',
+      'flip',
+      'pixel',
+      'thin',
+      'segment',
+      'counter',
+      'analog',
+      'vernier',
+      'draft',
+    ]);
   });
 
   it('旧 editorial/digital/mono 映射到新体系', () => {

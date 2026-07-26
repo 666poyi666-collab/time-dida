@@ -1,8 +1,29 @@
-/* 手表壳层：同一块表在不同启动条件下报告过 189×248 @2x 与 320×420 @1.18x
-   两种 CSS 视口——尺寸一律用视口单位或上限收敛，两种读数都必须成立。
+/* 手表壳层（OPPO OWW221）：同一块表在不同启动条件下报告过 189×248 @2x 与
+   320×420 @1.18x 两种 CSS 视口——尺寸一律用视口单位或上限收敛，两种读数都必须成立。
    一屏放下「状态 · 读数 · 任务 · 操作」，零滚动。
-   颜色与状态语义沿用 temporal-foundation 的同一套令牌——专注 = 强调色、
-   暂停 = 红，与桌面/手机/平板完全一致；只有排版是手表自己的。 */
+
+   v0.12.64 手表专项：
+   - AMOLED 防烧屏：手表一律深色，画布纯黑（#000 像素不发光），静态元素低亮度，
+     整个壳层以 4 分钟周期做 1px 步进位移，避免高亮像素长驻同一物理位置。
+   - 比例：main 视图按「状态 / 读数(1fr) / 任务 / 操作」四行铺满整屏，
+     不再中央聚簇留出大片空白；读数尺寸同时受 vw 与 vh 约束。
+   - 性能：界面字体改用系统字族，不再为手表拉起数 MB 的中文 Web 字体；
+     数字仍用 JetBrains Mono 保证 tabular 对齐。
+   注意：mobile.css（含 token 源）在打包顺序上晚于本文件加载，
+   令牌覆盖必须用 html.watch-runtime 提高特异性。 */
+
+html.watch-runtime {
+  /* AMOLED：纯黑画布 + 近黑表面；边界压暗，靠亮度层次而不是大面积底色。 */
+  --app-bg: 0 0 0;
+  --app-surface: 14 15 17;
+  --app-surface-2: 22 23 26;
+  --app-elevated: 26 28 31;
+  --app-border: 46 48 52;
+  --app-border-strong: 64 67 72;
+  /* 手表不加载 Web 中文字体：系统字族省下数 MB 内存与首屏解码时间。 */
+  --font-ui: system-ui, 'Microsoft YaHei UI', 'Noto Sans CJK SC', sans-serif;
+}
+
 .watch-runtime,
 .watch-runtime body {
   overflow: hidden;
@@ -10,25 +31,55 @@
 }
 
 /* mobile.css 给 html/body/#root 定了 320px 下限——那是手机版式的保护线，
-   在 189px 的手表上它本身就是横向溢出的来源。 */
+   在手表上它本身就是横向溢出的来源。 */
 .watch-runtime,
 .watch-runtime body,
 .watch-runtime #root {
   min-width: 0;
 }
 
+@keyframes watch-burnin-shift {
+  0%,
+  24% {
+    transform: translate(0, 0);
+  }
+  25%,
+  49% {
+    transform: translate(1px, 0);
+  }
+  50%,
+  74% {
+    transform: translate(1px, 1px);
+  }
+  75%,
+  100% {
+    transform: translate(0, 1px);
+  }
+}
+
 .watch-shell {
   /* Chrome 83 没有 flex gap（84 起）；grid 的 gap 从 66 就有，手表壳层全用 grid。 */
   display: grid;
-  align-content: center;
+  align-items: center;
   justify-items: center;
-  gap: min(12px, 3.2vw);
+  gap: min(10px, 2.4vh);
   width: 100vw;
   height: 100vh;
-  padding: 4vw 5vw calc(4vw + env(safe-area-inset-bottom, 0px));
+  padding: max(8px, 2.6vh) 4vw calc(max(8px, 2.2vh) + env(safe-area-inset-bottom, 0px));
   color: rgb(var(--app-text));
   font-family: var(--font-ui);
   text-align: center;
+  animation: watch-burnin-shift 240s steps(1, end) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .watch-shell {
+    animation: none;
+  }
+}
+
+/* 主视图四行铺满：状态 / 读数(伸展) / 任务 / 操作 */
+.watch-main {
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
 
 .watch-state-line {
@@ -38,12 +89,13 @@
   grid-auto-flow: column;
   margin: 0;
   color: rgb(var(--app-muted));
-  font-size: min(14px, 4vw);
+  font-size: min(13px, 3.8vw);
+  letter-spacing: 0.06em;
 }
 
 .watch-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: rgb(var(--app-subtle));
 }
@@ -60,14 +112,26 @@
   background: rgb(var(--app-pause));
 }
 
+.watch-clock-cell {
+  display: grid;
+  gap: min(8px, 1.8vh);
+  justify-items: center;
+  align-self: center;
+}
+
 .watch-clock {
   margin: 0;
   font-family: var(--font-number);
-  font-size: min(76px, 22vw);
+  font-size: min(84px, 23vw, 26vh);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   line-height: 1;
+}
+/* 待机读数压暗：防烧屏——静止的高亮大数字是 AMOLED 最大的风险源。 */
+.watch-state-idle .watch-clock,
+.watch-state-finished .watch-clock {
+  color: rgb(var(--app-muted));
 }
 .watch-state-running .watch-clock {
   color: rgb(var(--app-accent));
@@ -76,11 +140,28 @@
   color: rgb(var(--app-pause));
 }
 
+.watch-subline {
+  margin: 0;
+  color: rgb(var(--app-muted));
+  font-family: var(--font-number);
+  font-size: min(12px, 3.4vw);
+  font-variant-numeric: tabular-nums;
+}
+.watch-subline b {
+  color: rgb(var(--app-success));
+  font-weight: 600;
+}
+.watch-subline em {
+  color: rgb(var(--app-pause));
+  font-style: normal;
+  font-weight: 600;
+}
+
 /* 任务行本身就是「选任务」的入口：idle 可点，进行中只作标题展示。 */
 .watch-task-line {
   overflow: hidden;
-  max-width: 100%;
-  padding: 6px 14px;
+  max-width: 92vw;
+  padding: min(7px, 1.6vh) 14px;
   border: 1px solid rgb(var(--app-border));
   border-radius: 999px;
   background: rgb(var(--app-surface));
@@ -93,6 +174,7 @@
   border-color: transparent;
   background: transparent;
   color: rgb(var(--app-text));
+  opacity: 1;
 }
 
 .watch-hint,
@@ -108,13 +190,13 @@
 
 .watch-actions {
   display: grid;
-  gap: 10px;
+  gap: min(10px, 2.4vw);
   grid-auto-columns: minmax(0, 1fr);
   grid-auto-flow: column;
   width: 100%;
 }
 .watch-actions button {
-  min-height: min(52px, 13vw);
+  min-height: min(52px, 12vh);
   border: 1px solid rgb(var(--app-border-strong));
   border-radius: 999px;
   background: rgb(var(--app-surface));
@@ -128,14 +210,18 @@
   color: rgb(var(--app-accent-fg));
 }
 .watch-actions .watch-finish {
-  border-color: rgb(var(--app-pause) / 0.5);
+  border-color: rgb(var(--app-pause) / 0.55);
   color: rgb(var(--app-pause));
 }
 .watch-actions button:disabled {
   opacity: 0.45;
 }
 
-/* ── 任务选择页：整屏可滚列表 ─────────────────────────────── */
+/* ── 任务选择页：头部 + 整屏可滚列表 ─────────────────────── */
+.watch-tasks {
+  grid-template-rows: auto minmax(0, 1fr);
+  align-items: start;
+}
 .watch-tasks-header {
   display: grid;
   align-items: center;
@@ -160,12 +246,12 @@
   align-content: start;
   gap: 4px;
   width: 100%;
-  max-height: calc(100vh - 22vw);
+  height: 100%;
   padding-bottom: 6px;
 }
 .watch-task-list > button {
   overflow: hidden;
-  min-height: min(46px, 12vw);
+  min-height: min(46px, 11vh);
   padding: 6px 12px;
   border: 1px solid rgb(var(--app-border));
   border-radius: 8px;
@@ -178,7 +264,7 @@
 }
 .watch-task-list > button.is-selected {
   border-color: rgb(var(--app-accent));
-  background: rgb(var(--app-accent) / 0.1);
+  background: rgb(var(--app-accent) / 0.14);
   color: rgb(var(--app-accent));
 }
 .watch-task-empty {

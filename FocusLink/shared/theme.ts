@@ -19,6 +19,10 @@ export const TIMER_STYLES = [
   'pixel',
   'thin',
   'segment',
+  'counter',
+  'analog',
+  'vernier',
+  'draft',
 ] as const satisfies readonly AppSettings['timerStyle'][];
 
 /** 旧计时样式值：仅用于清理遗留根类与设置迁移，不再是可选项。 */

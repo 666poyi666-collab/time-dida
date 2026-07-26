@@ -119,6 +119,10 @@ const TIMER_STYLE_OPTIONS = [
   { id: 'pixel', label: '像素点阵', note: '实体格点 · 专注核心充能' },
   { id: 'thin', label: '高反差编辑', note: 'Bodoni 衬线 · 纤细排版' },
   { id: 'segment', label: '七段数码', note: '真实段码 · 工业仪表' },
+  { id: 'counter', label: '滚筒计数器', note: '里程表滚筒 · 逐位垂直进位' },
+  { id: 'analog', label: '指针表圈', note: '60 刻度表圈 · 秒针擒纵步进' },
+  { id: 'vernier', label: '游标标尺', note: '滑动秒刻度带 · 线性擒纵' },
+  { id: 'draft', label: '制图描线', note: '描边空心数字 · 网格与尺寸标注' },
 ] as const satisfies ReadonlyArray<{
   id: AppSettings['timerStyle'];
   label: string;
