@@ -1,0 +1,87 @@
+{
+  "standardVersion": 1,
+  "id": "focuslink",
+  "name": "FocusLink",
+  "runtimeProject": true,
+  "dataPolicy": "sensitive_cloud_allowed",
+  "dataInventory": [
+    {
+      "id": "focus-ledger",
+      "classification": "sensitive",
+      "dataPlane": "cloud_primary",
+      "mcpExposure": "resource",
+      "coverage": "partial",
+      "reason": "The current cloud V2 feed is plaintext and is being replaced by encrypted SyncEnvelopeV1."
+    },
+    {
+      "id": "credentials-and-dida-state",
+      "classification": "secret",
+      "dataPlane": "local_only",
+      "mcpExposure": "none",
+      "coverage": "complete",
+      "reason": "OAuth credentials, device credentials and third-party task-provider state remain local."
+    }
+  ],
+  "mcp": {
+    "status": "partial",
+    "dataPlane": "derived_projection",
+    "cloudBaseUrl": "https://foxlink-mcp.focuslink-poyi-6465e9.workers.dev",
+    "projection": {
+      "mode": "sync_on_read",
+      "requiredDiagnostics": [
+        "epoch",
+        "lag",
+        "degraded"
+      ]
+    },
+    "routes": {
+      "mcp": "/mcp",
+      "health": "/healthz",
+      "ready": "/readyz",
+      "oauthResourceMetadata": "/.well-known/oauth-protected-resource/mcp"
+    }
+  },
+  "sync": {
+    "status": "partial",
+    "dataPlane": "cloud_primary",
+    "authority": "cloud",
+    "cloudBaseUrl": "https://foxlink-mcp.focuslink-poyi-6465e9.workers.dev",
+    "contractId": "sync-envelope-v1",
+    "envelopeVersion": 1,
+    "routes": {
+      "exchange": "/sync/v2/exchange",
+      "status": "/sync/v2/status",
+      "pairOffers": "/sync/v1/pair/offers",
+      "pairExchange": "/sync/v1/pair/exchange"
+    },
+    "supportsPcOff": false,
+    "supportsBidirectionalDelta": false,
+    "pairing": {
+      "status": "closed_pending_as_binding_and_joint_e2e",
+      "offers": {
+        "access": "internal_service_binding_only",
+        "ownerAuthorization": "as_owner_session_plus_csrf",
+        "serviceCredential": "aud_action_bound_non_oauth",
+        "publicOAuthStatus": 403,
+        "publicDeviceTokenStatus": 403,
+        "credentialReturnedToBrowser": false
+      },
+      "exchange": {
+        "authorization": "high_entropy_one_time_nonce",
+        "acceptsBearer": false,
+        "acceptsCallerDeviceId": false,
+        "serverAssignedDeviceId": true,
+        "requiresAtomicConsume": true,
+        "requiresRateLimit": true
+      }
+    }
+  },
+  "credentialBoundary": {
+    "mcp": "oauth",
+    "sync": "device_token",
+    "shared": false
+  },
+  "knownGaps": [
+    "Encrypted authority storage, credential binding and staged PC-off acceptance are pending."
+  ]
+}
