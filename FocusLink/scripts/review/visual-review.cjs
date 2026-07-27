@@ -416,16 +416,13 @@ async function captureRibbonStates(session) {
   const resumed = await inspectRibbonFrame(session);
   await session.shot('ribbon-resumed-settled');
 
-  // A high-density particle body can form short accidental pixel joins. Keep the
-  // ceiling well below one second (8px) times five while still rejecting a drawn line.
-  const maximumRedHorizontalRun = 36;
   const minimumEarlyTraceSpan = 14;
   const minimumTraceGrowth = 120;
   const checks = [
     [running.present && running.changed, 'running material remains alive between frames'],
     [running.motion === 'continuous-material', 'running ribbon declares continuous material'],
-    [running.greenMaterialPixels > 600, 'running near view contains a dense green particle body'],
-    [running.greenMaterialSpan > 70, 'green particles visibly record the full focused interval'],
+    [running.greenMaterialPixels > 600, 'running near view contains a readable green material'],
+    [running.greenMaterialSpan > 70, 'green material visibly records the full focused interval'],
     [pausedEarly.present && pausedEarly.changed, 'early pause loss particles move between frames'],
     [pausedLate.present && pausedLate.changed, 'late pause loss particles move between frames'],
     [pausedEarly.scale === 'seconds' && pausedLate.scale === 'seconds', 'pause stays in near view'],
@@ -434,8 +431,8 @@ async function captureRibbonStates(session) {
       'paused ribbon declares pause dissolve motion',
     ],
     [
-      pausedEarly.dissolve === 'interval-trace' && pausedLate.dissolve === 'interval-trace',
-      'paused ribbon declares a wall-clock particle interval trace',
+      pausedEarly.dissolve === 'frontier-ash' && pausedLate.dissolve === 'frontier-ash',
+      'paused ribbon declares the frontier ash contract',
     ],
     [
       pausedEarly.redParticleSpan > minimumEarlyTraceSpan &&
@@ -452,9 +449,10 @@ async function captureRibbonStates(session) {
       'longer pause contains proportionally more visible trace particles',
     ],
     [
-      pausedEarly.maxRedHorizontalRun < maximumRedHorizontalRun &&
-        pausedLate.maxRedHorizontalRun < maximumRedHorizontalRun,
-      'pause loss contains no persistent horizontal red segment',
+      pausedEarly.maxRedHorizontalRun > pausedEarly.redParticleSpan * 0.55 &&
+        pausedLate.maxRedHorizontalRun > pausedLate.redParticleSpan * 0.8 &&
+        pausedLate.maxRedHorizontalRun <= pausedLate.redParticleSpan + 2,
+      'pause loss preserves the existing bounded bottom scar',
     ],
     [
       resumed.greenMaterialPixels > pausedLate.greenMaterialPixels,
@@ -475,7 +473,6 @@ async function captureRibbonStates(session) {
       pausedEarly,
       pausedLate,
       resumed,
-      maximumRedHorizontalRun,
       minimumEarlyTraceSpan,
       minimumTraceGrowth,
     })}\n`,
