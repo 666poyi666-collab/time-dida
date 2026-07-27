@@ -1,7 +1,7 @@
 // 时间之带：一条真实墙钟刻度轨道，用「材料」表达时间的去向。
 //
-//  · 专注 = 强调色的连续实体。它平稳生长、完整覆盖整个时段，没有颗粒噪点，
-//    也没有逐秒跳格——镜头随墙钟连续滑动，所以线是连续的、稳的。
+//  · 专注 = 强调色的半透明磨砂带。运行态使用平直玻璃边缘与柔和内雾，
+//    不生成逐列锯齿或外溢浮尘；镜头随墙钟连续滑动，所以轮廓始终干净、稳定。
 //  · 暂停 = 红色粒子从前沿持续剥离、上浮、缩小、熄灭。粒子最终会全部消散，
 //    只在轨道底部留下一道疤痕：那段时间确实发生过，但什么都没留下。
 //
@@ -563,6 +563,7 @@ function renderBand(
       ageSec: (endMs - moment.startedAt) / 1000,
       motionSeconds,
       isOngoing: moment.endedAt === null,
+      frostedRunningStyle: input.state === 'running',
       reducedMotion: input.reducedMotion,
       toWorldSec,
     });
@@ -659,6 +660,7 @@ function drawFocusMaterial(
     ageSec: number;
     motionSeconds: number;
     isOngoing: boolean;
+    frostedRunningStyle: boolean;
     reducedMotion: boolean;
     /** 屏幕 x → 世界墙钟秒：羽化与颗粒以世界时间为键，历史材料像素稳定。 */
     toWorldSec: (x: number) => number;
@@ -667,6 +669,11 @@ function drawFocusMaterial(
   const left = Math.max(-4, input.x0);
   const right = Math.min(geo.width + 4, input.x1);
   if (right - left < 0.4) return;
+
+  if (input.frostedRunningStyle) {
+    drawFrostedFocusRibbon(ctx, geo, colors, input, left, right);
+    return;
+  }
 
   const pose = focusMaterialPose(input.ageSec, 0.5, input.motionSeconds, input.reducedMotion);
   const fullHeight = geo.materialBottom - geo.materialTop;
@@ -753,6 +760,104 @@ function drawFocusMaterial(
     );
     ctx.fillStyle = rgba(colors.light, 0.82);
     ctx.fillRect(right - 1.2, coreTop, 1.2, coreBottom - coreTop);
+  }
+}
+
+/**
+ * 专注中的材料使用连续磨砂玻璃语言：半透明底色、柔和内雾和极细高光边，
+ * 不使用颗粒、毛边或分节纹理。暂停态不调用此路径，保留原有视觉表现。
+ */
+function drawFrostedFocusRibbon(
+  ctx: CanvasRenderingContext2D,
+  geo: BandGeometry,
+  colors: BandColors,
+  input: {
+    x0: number;
+    ageSec: number;
+    motionSeconds: number;
+    isOngoing: boolean;
+    reducedMotion: boolean;
+    toWorldSec: (x: number) => number;
+  },
+  left: number,
+  right: number,
+): void {
+  const pose = focusMaterialPose(input.ageSec, 0.5, input.motionSeconds, input.reducedMotion);
+  // 运行态玻璃直接贴合轨道内沿，不再使用材料 inset 或出生收束留下上下缝隙。
+  const top = geo.channelTop + 1;
+  const bodyHeight = geo.channelBottom - geo.channelTop - 2;
+  const bottom = top + bodyHeight;
+  const width = right - left;
+
+  const highlight = mixRgb(colors.accent, colors.light, colors.isDark ? 0.42 : 0.5);
+  const mist = mixRgb(colors.accent, colors.light, colors.isDark ? 0.25 : 0.38);
+  const deep = mixRgb(colors.accentDeep, colors.ink, colors.isDark ? 0.08 : 0.12);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(left, top, width, bodyHeight);
+  ctx.clip();
+
+  // 玻璃底色保留轨道明暗透出；上沿略亮、下沿略深，避免读成实心色块。
+  const body = ctx.createLinearGradient(0, top, 0, bottom);
+  body.addColorStop(0, rgba(highlight, colors.isDark ? 0.62 : 0.68));
+  body.addColorStop(0.08, rgba(mist, colors.isDark ? 0.5 : 0.58));
+  body.addColorStop(0.48, rgba(colors.accent, colors.isDark ? 0.5 : 0.54));
+  body.addColorStop(0.78, rgba(colors.accentDeep, colors.isDark ? 0.46 : 0.5));
+  body.addColorStop(1, rgba(deep, colors.isDark ? 0.58 : 0.64));
+  ctx.fillStyle = body;
+  ctx.fillRect(left, top, width, bodyHeight);
+
+  // 两层大尺度散射雾经过模糊后自然叠合，不出现可数的斑点或重复节拍。
+  ctx.save();
+  ctx.filter = `blur(${Math.max(5, bodyHeight * 0.11)}px)`;
+  const upperFog = ctx.createLinearGradient(left, 0, right, 0);
+  upperFog.addColorStop(0, rgba(colors.light, 0.02));
+  upperFog.addColorStop(0.28, rgba(colors.light, 0.2 + pose.sheen * 0.025));
+  upperFog.addColorStop(0.62, rgba(colors.light, 0.08));
+  upperFog.addColorStop(1, rgba(colors.light, 0.17));
+  ctx.fillStyle = upperFog;
+  ctx.fillRect(left - 8, top + bodyHeight * 0.08, width + 16, bodyHeight * 0.48);
+
+  const lowerFog = ctx.createLinearGradient(left, 0, right, 0);
+  lowerFog.addColorStop(0, rgba(mist, 0.12));
+  lowerFog.addColorStop(0.5, rgba(colors.light, 0.04));
+  lowerFog.addColorStop(0.76, rgba(mist, 0.18));
+  lowerFog.addColorStop(1, rgba(colors.light, 0.06));
+  ctx.fillStyle = lowerFog;
+  ctx.fillRect(left - 8, top + bodyHeight * 0.44, width + 16, bodyHeight * 0.45);
+  ctx.restore();
+
+  // 一道宽而弱的漫反射把材质定为磨砂，而不是透明塑料。
+  const frost = ctx.createLinearGradient(0, top, 0, bottom);
+  frost.addColorStop(0, rgba(colors.light, 0.14));
+  frost.addColorStop(0.34, rgba(colors.light, 0.08));
+  frost.addColorStop(0.58, rgba(colors.light, 0.02));
+  frost.addColorStop(1, rgba(colors.light, 0.07));
+  ctx.fillStyle = frost;
+  ctx.fillRect(left, top, width, bodyHeight);
+
+  if (input.isOngoing && right > left + 1) {
+    const cap = ctx.createLinearGradient(right - 18, 0, right, 0);
+    cap.addColorStop(0, rgba(highlight, 0));
+    cap.addColorStop(1, rgba(highlight, 0.48));
+    ctx.fillStyle = cap;
+    ctx.fillRect(Math.max(left, right - 18), top, Math.min(18, width), bodyHeight);
+  }
+  ctx.restore();
+
+  // 玻璃包边统一在裁剪之外收口，保持上下沿完全平直。
+  ctx.fillStyle = rgba(colors.light, colors.isDark ? 0.58 : 0.82);
+  ctx.fillRect(left, top, width, 1);
+  ctx.fillStyle = rgba(deep, colors.isDark ? 0.62 : 0.72);
+  ctx.fillRect(left, bottom - 1, width, 1);
+  if (input.x0 >= 0) {
+    ctx.fillStyle = rgba(deep, 0.74);
+    ctx.fillRect(left, top, 1, bodyHeight);
+  }
+  if (input.isOngoing && right > left + 1) {
+    ctx.fillStyle = rgba(colors.light, 0.88);
+    ctx.fillRect(right - 1.2, top, 1.2, bodyHeight);
   }
 }
 
