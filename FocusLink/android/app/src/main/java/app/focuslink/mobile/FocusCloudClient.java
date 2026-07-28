@@ -13,6 +13,8 @@ import org.json.JSONObject;
 /** Small, injectable HTTP boundary used by the foreground runtime service. */
 final class FocusCloudClient {
     private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
+    private static final String LIVE_SNAPSHOT_PATH = "/sync/v2/live";
+    private static final String LIVE_COMMAND_PATH = "/sync/v2/live/command";
 
     interface Transport {
         Response execute(
@@ -58,7 +60,7 @@ final class FocusCloudClient {
         throws CloudException {
         return executeJson(
             "GET",
-            connection.endpoint + "/v1/live",
+            connection.endpoint + LIVE_SNAPSHOT_PATH,
             connection.accessToken,
             null,
             "cloud focus refresh"
@@ -71,7 +73,7 @@ final class FocusCloudClient {
     ) throws CloudException {
         JSONObject response = executeJson(
             "POST",
-            connection.endpoint + "/v1/live/command",
+            connection.endpoint + LIVE_COMMAND_PATH,
             connection.accessToken,
             command.toCloudRequest(connection.deviceId).toString().getBytes(StandardCharsets.UTF_8),
             "cloud focus command"

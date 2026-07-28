@@ -33,7 +33,7 @@ public class FocusCloudClientTest {
             assertEquals(status, response.getJSONObject("ack").getString("status"));
             assertEquals("POST", transport.method);
             assertEquals(
-                "https://sync.example.test/v1/live/command",
+                "https://sync.example.test/sync/v2/live/command",
                 transport.url
             );
             JSONObject request = new JSONObject(
@@ -84,7 +84,7 @@ public class FocusCloudClientTest {
 
         assertEquals(9, response.getInt("revision"));
         assertEquals("GET", transport.method);
-        assertEquals("https://sync.example.test/v1/live", transport.url);
+        assertEquals("https://sync.example.test/sync/v2/live", transport.url);
         assertEquals("test-token", transport.accessToken);
     }
 

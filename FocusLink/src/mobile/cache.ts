@@ -241,19 +241,10 @@ export async function completeOfflineFocusRuntime(
     [PENDING_STORE, META_STORE, V2_OUTBOX_STORE, V2_ENTITY_STATE_STORE],
     'readwrite',
   );
+  const completion = transactionDone(transaction);
   try {
-    const metaStore = transaction.objectStore(META_STORE);
-    const checkpointRecord = await requestValue<MetaRecord | undefined>(
-      metaStore.get('syncV2.bootstrap'),
-    );
-    const binding = canonicalMobileBinding(checkpointRecord?.value);
-    if (binding) {
-      record.syncDeviceId = binding.deviceId;
-      await enqueueCanonicalBundleInTransaction(transaction, bundle, binding, now);
-    }
-    transaction.objectStore(PENDING_STORE).put(record);
-    metaStore.delete(OFFLINE_FOCUS_KEY);
-    await transactionDone(transaction);
+    await completeOfflineBundleInTransaction(transaction, bundle, record, now);
+    await completion;
     return record;
   } catch (error) {
     try {
@@ -261,6 +252,7 @@ export async function completeOfflineFocusRuntime(
     } catch {
       // A failed IndexedDB request may already have aborted the transaction.
     }
+    await completion.catch(() => undefined);
     throw error;
   } finally {
     database.close();
@@ -640,61 +632,147 @@ function canonicalMobileBinding(value: unknown): CanonicalMobileBinding | null {
   return { deviceId: value.boundDeviceId, accountGeneration: Number(value.accountGeneration) };
 }
 
-async function enqueueCanonicalBundleInTransaction(
+/**
+ * Keeps every read/write transition inside IndexedDB request callbacks. Some
+ * Android WebViews mark readwrite transactions inactive before an awaited
+ * Promise continuation runs, even though modern desktop engines tolerate it.
+ */
+function completeOfflineBundleInTransaction(
   transaction: IDBTransaction,
   bundle: DeviceSyncSessionBundle,
-  binding: CanonicalMobileBinding,
+  record: PendingDeviceSyncBundle,
   now: number,
 ): Promise<void> {
-  const split = splitBundleForSyncV2(bundle, binding.deviceId);
-  const entities: Array<{
-    entityType: SyncV2EntityType;
-    entityId: string;
-    payload: SyncV2Payload;
-  }> = [
-    { entityType: 'focus_ledger_v2', entityId: bundle.session.id, payload: split.ledger },
-    { entityType: 'focus_metadata_v2', entityId: bundle.session.id, payload: split.metadata },
-  ];
-  const stateStore = transaction.objectStore(V2_ENTITY_STATE_STORE);
-  const outboxStore = transaction.objectStore(V2_OUTBOX_STORE);
-  for (const entity of entities) {
-    const state = await requestValue<
-      { confirmedRevision?: unknown; confirmedFingerprint?: unknown } | undefined
-    >(stateStore.get([entity.entityType, entity.entityId]));
-    const baseRevision = Number.isSafeInteger(state?.confirmedRevision)
-      ? Number(state?.confirmedRevision)
-      : 0;
-    const baseFingerprint =
-      typeof state?.confirmedFingerprint === 'string' ? state.confirmedFingerprint : null;
-    const opId = `v2-${fingerprintDeviceSyncValue({
-      entity,
-      baseRevision,
-      deviceId: binding.deviceId,
-    })}`;
-    const item: SyncV2OutboxItem = {
-      ...entity,
-      opId,
-      kind: 'put',
-      baseRevision,
-      baseFingerprint,
-      deviceId: binding.deviceId,
-      accountGeneration: binding.accountGeneration,
-      state: 'pending',
-      attemptCount: 0,
-      nextRetryAt: 0,
-      leaseId: null,
-      leaseExpiresAt: null,
-      claimedAt: null,
-      errorCode: null,
-      createdAt: now,
-      updatedAt: now,
+  return new Promise((resolve, reject) => {
+    const metaStore = transaction.objectStore(META_STORE);
+    const pendingStore = transaction.objectStore(PENDING_STORE);
+    const checkpointRequest = metaStore.get('syncV2.bootstrap') as IDBRequest<
+      MetaRecord | undefined
+    >;
+    let settled = false;
+    const fail = (error: DOMException | null) => {
+      if (settled) return;
+      settled = true;
+      reject(error ?? new Error('读取本地缓存失败'));
     };
-    const existing = await requestValue<SyncV2OutboxItem | undefined>(outboxStore.get(opId));
-    if (existing && !sameCanonicalOutboxMutation(existing, item)) {
-      throw new Error('同一 Sync v2 opId 对应了不同 payload');
-    }
-    if (!existing) outboxStore.add(item);
-  }
+    const finish = () => {
+      if (settled) return;
+      pendingStore.put(record);
+      metaStore.delete(OFFLINE_FOCUS_KEY);
+      settled = true;
+      resolve();
+    };
+    checkpointRequest.onerror = () => fail(checkpointRequest.error);
+    checkpointRequest.onsuccess = () => {
+      try {
+        const binding = canonicalMobileBinding(checkpointRequest.result?.value);
+        if (!binding) {
+          finish();
+          return;
+        }
+        record.syncDeviceId = binding.deviceId;
+        const split = splitBundleForSyncV2(bundle, binding.deviceId);
+        const entities: Array<{
+          entityType: SyncV2EntityType;
+          entityId: string;
+          payload: SyncV2Payload;
+        }> = [
+          { entityType: 'focus_ledger_v2', entityId: bundle.session.id, payload: split.ledger },
+          {
+            entityType: 'focus_metadata_v2',
+            entityId: bundle.session.id,
+            payload: split.metadata,
+          },
+        ];
+        const stateStore = transaction.objectStore(V2_ENTITY_STATE_STORE);
+        const stateRequests = entities.map((entity) =>
+          stateStore.get([entity.entityType, entity.entityId]),
+        );
+        const states: Array<
+          { confirmedRevision?: unknown; confirmedFingerprint?: unknown } | undefined
+        > = [];
+        let statesRemaining = stateRequests.length;
+        const afterStates = () => {
+          statesRemaining -= 1;
+          if (statesRemaining !== 0 || settled) return;
+          try {
+            const items = entities.map((entity, index): SyncV2OutboxItem => {
+              const state = states[index];
+              const baseRevision = Number.isSafeInteger(state?.confirmedRevision)
+                ? Number(state?.confirmedRevision)
+                : 0;
+              const baseFingerprint =
+                typeof state?.confirmedFingerprint === 'string' ? state.confirmedFingerprint : null;
+              return {
+                ...entity,
+                opId: `v2-${fingerprintDeviceSyncValue({
+                  entity,
+                  baseRevision,
+                  deviceId: binding.deviceId,
+                })}`,
+                kind: 'put',
+                baseRevision,
+                baseFingerprint,
+                deviceId: binding.deviceId,
+                accountGeneration: binding.accountGeneration,
+                state: 'pending',
+                attemptCount: 0,
+                nextRetryAt: 0,
+                leaseId: null,
+                leaseExpiresAt: null,
+                claimedAt: null,
+                errorCode: null,
+                createdAt: now,
+                updatedAt: now,
+              };
+            });
+            const outboxStore = transaction.objectStore(V2_OUTBOX_STORE);
+            const existingRequests = items.map((item) => outboxStore.get(item.opId));
+            const existingItems: Array<SyncV2OutboxItem | undefined> = [];
+            let existingRemaining = existingRequests.length;
+            const afterExisting = () => {
+              existingRemaining -= 1;
+              if (existingRemaining !== 0 || settled) return;
+              try {
+                items.forEach((item, index) => {
+                  const existing = existingItems[index];
+                  if (existing && !sameCanonicalOutboxMutation(existing, item)) {
+                    throw new Error('同一 Sync v2 opId 对应了不同 payload');
+                  }
+                  if (!existing) outboxStore.add(item);
+                });
+                finish();
+              } catch (error) {
+                settled = true;
+                reject(error);
+              }
+            };
+            existingRequests.forEach((request, index) => {
+              request.onsuccess = () => {
+                existingItems[index] = request.result as SyncV2OutboxItem | undefined;
+                afterExisting();
+              };
+              request.onerror = () => fail(request.error);
+            });
+          } catch (error) {
+            settled = true;
+            reject(error);
+          }
+        };
+        stateRequests.forEach((request, index) => {
+          request.onsuccess = () => {
+            states[index] = request.result as
+              { confirmedRevision?: unknown; confirmedFingerprint?: unknown } | undefined;
+            afterStates();
+          };
+          request.onerror = () => fail(request.error);
+        });
+      } catch (error) {
+        settled = true;
+        reject(error);
+      }
+    };
+  });
 }
 
 function sameCanonicalOutboxMutation(left: SyncV2OutboxItem, right: SyncV2OutboxItem): boolean {

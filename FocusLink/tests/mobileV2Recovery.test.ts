@@ -9,7 +9,7 @@ import {
   readMobileV2Status,
   writeMobileV2Bootstrap,
 } from '../src/mobile/v2Cache';
-import { runMobileSyncV2 } from '../src/mobile/v2Sync';
+import { runMobileSyncV2, validateMobileSyncV2ExchangeRequest } from '../src/mobile/v2Sync';
 
 const DATABASE_NAME = 'focuslink-mobile-preview';
 const OLD_DEVICE_ID = 'device-olddev1';
@@ -148,6 +148,57 @@ describe('mobile canonical Sync v2 recovery', () => {
     expect(error).toMatchObject({ code: 'sync_failed' });
     expect(await readMobileV2Status(NEW_DEVICE_ID)).toMatchObject({
       lastErrorCode: 'sync_failed',
+    });
+  });
+
+  it('reports invalid exchange requests using field names without values', async () => {
+    const fields = validateMobileSyncV2ExchangeRequest(
+      {
+        protocolVersion: 2,
+        deviceId: NEW_DEVICE_ID,
+        cursor: null,
+        mutations: [],
+        pullLimit: 100,
+        syncEpoch: 'sync-epoch-1',
+        cursorEpoch: 'cursor-epoch-1',
+        accountGeneration: 1,
+        accessToken: NEW_TOKEN,
+      },
+      NEW_DEVICE_ID,
+    );
+    expect(fields).toEqual(['accessToken']);
+    expect(JSON.stringify(fields)).not.toContain(NEW_TOKEN);
+  });
+
+  it('redacts an upstream invalid_exchange_request body and identifies contract drift', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const parsed = new URL(String(url));
+        if (parsed.pathname === '/sync/v2/status') return json(status(0));
+        return json(
+          {
+            error: {
+              code: 'invalid_exchange_request',
+              message: `hostile ${NEW_TOKEN}`,
+            },
+          },
+          400,
+        );
+      }),
+    );
+    const error = await runMobileSyncV2({
+      endpoint: 'https://sync.example.test',
+      token: NEW_TOKEN,
+      deviceId: 'ignored',
+    }).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({
+      code: 'invalid_exchange_request',
+      fields: ['server_contract_drift'],
+    });
+    expect(String(error)).not.toContain(NEW_TOKEN);
+    expect(await readMobileV2Status(NEW_DEVICE_ID)).toMatchObject({
+      lastErrorCode: 'invalid_exchange_request',
     });
   });
 });

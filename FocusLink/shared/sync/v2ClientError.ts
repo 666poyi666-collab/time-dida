@@ -4,6 +4,7 @@ export type SyncV2ClientErrorCode =
   | 'authorization_failed'
   | 'contract_error'
   | 'cursor_ahead'
+  | 'invalid_exchange_request'
   | 'network_error'
   | 'response_too_large'
   | 'sync_failed'
@@ -11,11 +12,20 @@ export type SyncV2ClientErrorCode =
 
 export class SyncV2ClientError extends Error {
   readonly code: SyncV2ClientErrorCode;
+  /** Allowlisted field paths only; never response bodies, values, or headers. */
+  readonly fields: readonly string[];
 
-  constructor(code: SyncV2ClientErrorCode, message?: string) {
-    super(message ?? `canonical Sync v2 failed (${code})`);
+  constructor(code: SyncV2ClientErrorCode, message?: string, fields: readonly string[] = []) {
+    const safeFields = [
+      ...new Set(fields.filter((field) => /^[a-zA-Z0-9_.[\]-]{1,80}$/.test(field))),
+    ].slice(0, 32);
+    super(
+      message ??
+        `canonical Sync v2 failed (${code})${safeFields.length > 0 ? ` fields=${safeFields.join(',')}` : ''}`,
+    );
     this.name = 'SyncV2ClientError';
     this.code = code;
+    this.fields = safeFields;
   }
 }
 

@@ -4,6 +4,7 @@ import {
 } from '@shared/sync/deviceProtocol';
 import {
   SYNC_V2_MAX_RESPONSE_BYTES,
+  SYNC_V2_MAX_PUSH,
   SYNC_V2_MAX_PULL,
   SYNC_V2_PROTOCOL_VERSION,
   parseDeviceToken,
@@ -12,6 +13,7 @@ import {
   type SyncV2Change,
   type SyncV2Epoch,
   type SyncV2Mutation,
+  type SyncV2Request,
   type SyncV2Response,
 } from '@shared/sync/v2Protocol';
 import { readDeviceSyncJsonResponse } from '@shared/sync/httpTransport';
@@ -177,7 +179,7 @@ async function drain(
       syncEpoch: checkpoint.syncEpoch,
       cursorEpoch: checkpoint.cursorEpoch,
       accountGeneration: checkpoint.accountGeneration,
-    };
+    } satisfies SyncV2Request;
     let response: SyncV2Response;
     try {
       response = await exchange(connection, request);
@@ -320,6 +322,12 @@ async function exchange(
   input: { endpoint: string; token: string; signal?: AbortSignal },
   body: unknown,
 ): Promise<SyncV2Response> {
+  const routed = parseDeviceToken(input.token.trim());
+  const expectedDeviceId = routed ? `device-${routed.devicePublicId}` : null;
+  const invalidFields = validateMobileSyncV2ExchangeRequest(body, expectedDeviceId);
+  if (invalidFields.length > 0) {
+    throw new SyncV2ClientError('invalid_exchange_request', undefined, invalidFields);
+  }
   return (await requestJson(input, '/sync/v2/exchange', 'POST', body)) as SyncV2Response;
 }
 
@@ -361,6 +369,16 @@ async function requestJson(
     if (!response.ok) {
       if (response.status === 401) throw new SyncV2ClientError('authentication_failed');
       if (response.status === 403) throw new SyncV2ClientError('authorization_failed');
+      if (response.status === 400 && readServerErrorCode(value) === 'invalid_exchange_request') {
+        const routed = parseDeviceToken(input.token.trim());
+        const expectedDeviceId = routed ? `device-${routed.devicePublicId}` : null;
+        const fields = validateMobileSyncV2ExchangeRequest(body, expectedDeviceId);
+        throw new SyncV2ClientError(
+          'invalid_exchange_request',
+          undefined,
+          fields.length > 0 ? fields : ['server_contract_drift'],
+        );
+      }
       throw new SyncV2ClientError('contract_error');
     }
     return value;
@@ -372,6 +390,136 @@ async function requestJson(
     window.clearTimeout(timer);
     input.signal?.removeEventListener('abort', abort);
   }
+}
+
+/**
+ * Mirrors the public exchange envelope without returning any field values.
+ * This is diagnostic-only and intentionally does not relax server validation.
+ */
+export function validateMobileSyncV2ExchangeRequest(
+  value: unknown,
+  expectedDeviceId: string | null,
+): string[] {
+  const issues: string[] = [];
+  const exactKeys = (record: Record<string, unknown>, expected: readonly string[], prefix = '') => {
+    const actual = Object.keys(record);
+    for (const key of expected) {
+      if (!Object.prototype.hasOwnProperty.call(record, key)) issues.push(`${prefix}${key}`);
+    }
+    for (const key of actual) {
+      if (!expected.includes(key)) issues.push(`${prefix}${key}`);
+    }
+  };
+  if (!isRecord(value)) return ['request'];
+  exactKeys(value, [
+    'protocolVersion',
+    'deviceId',
+    'cursor',
+    'mutations',
+    'pullLimit',
+    'syncEpoch',
+    'cursorEpoch',
+    'accountGeneration',
+  ]);
+  if (value.protocolVersion !== SYNC_V2_PROTOCOL_VERSION) issues.push('protocolVersion');
+  if (!isId(value.deviceId) || (expectedDeviceId !== null && value.deviceId !== expectedDeviceId)) {
+    issues.push('deviceId');
+  }
+  if (value.cursor !== null) {
+    try {
+      if (typeof value.cursor !== 'string') throw new Error('invalid');
+      parseCursor(value.cursor);
+    } catch {
+      issues.push('cursor');
+    }
+  }
+  if (!Array.isArray(value.mutations) || value.mutations.length > SYNC_V2_MAX_PUSH) {
+    issues.push('mutations');
+  } else {
+    value.mutations.forEach((candidate, index) => {
+      const prefix = `mutations[${index}].`;
+      if (!isRecord(candidate)) {
+        issues.push(`mutations[${index}]`);
+        return;
+      }
+      exactKeys(
+        candidate,
+        [
+          'opId',
+          'entityType',
+          'entityId',
+          'kind',
+          'baseRevision',
+          'baseFingerprint',
+          'payload',
+          'deviceId',
+          'accountGeneration',
+        ],
+        prefix,
+      );
+      if (!isId(candidate.opId)) issues.push(`${prefix}opId`);
+      if (!isEntityType(candidate.entityType)) issues.push(`${prefix}entityType`);
+      if (!isId(candidate.entityId)) issues.push(`${prefix}entityId`);
+      if (!['put', 'delete', 'restore', 'purge'].includes(String(candidate.kind))) {
+        issues.push(`${prefix}kind`);
+      }
+      if (!Number.isSafeInteger(candidate.baseRevision) || Number(candidate.baseRevision) < 0) {
+        issues.push(`${prefix}baseRevision`);
+      }
+      if (candidate.baseFingerprint !== null && !isFingerprint(candidate.baseFingerprint)) {
+        issues.push(`${prefix}baseFingerprint`);
+      }
+      if (
+        !isId(candidate.deviceId) ||
+        candidate.deviceId !== value.deviceId ||
+        (expectedDeviceId !== null && candidate.deviceId !== expectedDeviceId)
+      ) {
+        issues.push(`${prefix}deviceId`);
+      }
+      if (
+        !Number.isSafeInteger(candidate.accountGeneration) ||
+        candidate.accountGeneration !== value.accountGeneration
+      ) {
+        issues.push(`${prefix}accountGeneration`);
+      }
+      const deletes = candidate.kind === 'delete' || candidate.kind === 'purge';
+      if ((deletes && candidate.payload !== null) || (!deletes && !isRecord(candidate.payload))) {
+        issues.push(`${prefix}payload`);
+      }
+    });
+  }
+  if (
+    !Number.isSafeInteger(value.pullLimit) ||
+    Number(value.pullLimit) < 1 ||
+    Number(value.pullLimit) > SYNC_V2_MAX_PULL
+  ) {
+    issues.push('pullLimit');
+  }
+  if (
+    typeof value.syncEpoch !== 'string' ||
+    value.syncEpoch.length < 1 ||
+    value.syncEpoch.length > 128
+  ) {
+    issues.push('syncEpoch');
+  }
+  if (
+    typeof value.cursorEpoch !== 'string' ||
+    value.cursorEpoch.length < 1 ||
+    value.cursorEpoch.length > 128
+  ) {
+    issues.push('cursorEpoch');
+  }
+  if (!Number.isSafeInteger(value.accountGeneration) || Number(value.accountGeneration) < 1) {
+    issues.push('accountGeneration');
+  }
+  return [...new Set(issues)];
+}
+
+function readServerErrorCode(value: unknown): string | null {
+  if (!isRecord(value) || !isRecord(value.error)) return null;
+  return typeof value.error.code === 'string' && /^[a-z0-9_]{1,80}$/.test(value.error.code)
+    ? value.error.code
+    : null;
 }
 
 function assertResponse(
