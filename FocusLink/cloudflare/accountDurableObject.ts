@@ -80,6 +80,8 @@ export interface WorkerEnv {
   FOCUSLINK_PUSH_QUEUE?: Queue;
   /** Dedicated credential used only by the cloud MCP service binding. */
   FOCUSLINK_MCP_SERVICE_TOKEN?: string;
+  /** Dedicated credential used only to mint one-time pair offers through a service binding. */
+  FOCUSLINK_PAIR_AUTHORITY_TOKEN?: string;
 }
 
 interface EntityRow extends Record<string, SqlStorageValue> {

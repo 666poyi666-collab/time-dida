@@ -48,7 +48,9 @@ export default {
           env.FOCUSLINK_SYNC_TOKEN,
           env.FOCUSLINK_DEVICE_PEPPER,
           env.FOCUSLINK_MCP_SERVICE_TOKEN,
+          env.FOCUSLINK_PAIR_AUTHORITY_TOKEN,
         ])
+        || !isPairAuthorityToken(env.FOCUSLINK_PAIR_AUTHORITY_TOKEN)
       ) {
         return errorJson(503, 'not_configured', 'worker account binding is incomplete');
       }
@@ -117,18 +119,27 @@ export default {
     const originError = validateOrigin(request, env);
     if (originError) return originError;
     const authorization = request.headers.get('authorization');
+    const pairOffer = url.pathname === '/sync/v1/pair/offers';
     const pairingExchange = url.pathname === '/sync/v1/pair/exchange';
+    const presentedPairAuthority = request.headers.get('x-focuslink-pair-authority');
+    const pairAuthority =
+      pairOffer &&
+      isPairAuthorityToken(presentedPairAuthority) &&
+      isPairAuthorityToken(env.FOCUSLINK_PAIR_AUTHORITY_TOKEN) &&
+      constantTimeEqual(presentedPairAuthority, env.FOCUSLINK_PAIR_AUTHORITY_TOKEN);
     const isDevice =
       /^Bearer fl2_[A-Za-z0-9-]{6,80}_[A-Za-z0-9-]{6,80}_[A-Za-z0-9_-]{32,160}$/.test(
         authorization ?? '',
       );
-    // Pair-offer creation reaches this private Worker only after the public
-    // foxlink-cloud-mcp adapter validates owner session + CSRF. The supplied
-    // fl2 credential is still checked by the Account DO for devices:manage;
-    // merely matching the token shape here is never sufficient.
-    // Other sync routes likewise accept only device credentials. OAuth tokens
-    // and the Worker owner credential are intentionally not sync credentials.
-    if (!pairingExchange && !isDevice) {
+    // Pair-offer creation is the sole route that accepts the dedicated second-hop
+    // authority credential. The public Gateway first validates owner session +
+    // CSRF and its own audience-bound service credential; this private Worker then
+    // translates the distinct fla_* credential into the DO owner identity. Neither
+    // credential is a device token or accepted by any data route.
+    if (
+      (presentedPairAuthority !== null && !pairOffer) ||
+      (pairOffer ? !pairAuthority : !pairingExchange && !isDevice)
+    ) {
       return withCors(
         request,
         env,
@@ -155,7 +166,11 @@ export default {
     const stub = env.FOCUSLINK_ACCOUNT.get(id);
     const headers = new Headers(request.headers);
     if (isDevice) headers.set('x-focuslink-authorization', authorization!);
+    if (pairAuthority) {
+      headers.set('x-focuslink-authorization', `Bearer ${env.FOCUSLINK_SYNC_TOKEN}`);
+    }
     headers.delete('authorization');
+    headers.delete('x-focuslink-pair-authority');
     headers.set('x-focuslink-account', env.FOCUSLINK_ACCOUNT_ID);
     const authorityUrl = new URL(request.url);
     authorityUrl.pathname = authorityPath;
@@ -191,6 +206,21 @@ function isRetiredPublicRoute(pathname: string): boolean {
 
 function validServiceSecret(value: string | undefined): value is string {
   return typeof value === 'string' && value.length >= 32;
+}
+
+function isPairAuthorityToken(value: string | null | undefined): value is string {
+  return typeof value === 'string' && /^fla_[A-Za-z0-9_-]{43,160}$/.test(value);
+}
+
+function constantTimeEqual(left: string, right: string): boolean {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  const size = Math.max(leftBytes.length, rightBytes.length);
+  let difference = leftBytes.length ^ rightBytes.length;
+  for (let index = 0; index < size; index += 1) {
+    difference |= (leftBytes[index] ?? 0) ^ (rightBytes[index] ?? 0);
+  }
+  return difference === 0;
 }
 
 function validDistinctServiceSecrets(values: Array<string | undefined>): values is string[] {

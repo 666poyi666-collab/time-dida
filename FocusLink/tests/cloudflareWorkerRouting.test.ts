@@ -20,6 +20,7 @@ interface ForwardedCall {
   forwardedAuthorization: string | null;
   mcpService: string | null;
   internalService: string | null;
+  pairAuthority: string | null;
   account: string | null;
 }
 
@@ -32,6 +33,7 @@ function makeEnv(forwarded: ForwardedCall[]): WorkerEnv {
         forwardedAuthorization: request.headers.get('x-focuslink-authorization'),
         mcpService: request.headers.get('x-focuslink-mcp-service'),
         internalService: request.headers.get('x-focuslink-internal'),
+        pairAuthority: request.headers.get('x-focuslink-pair-authority'),
         account: request.headers.get('x-focuslink-account'),
       });
       const ready = new URL(request.url).pathname === '/internal/readyz';
@@ -57,6 +59,7 @@ function makeEnv(forwarded: ForwardedCall[]): WorkerEnv {
     FOCUSLINK_SYNC_TOKEN: 'owner-internal-token-with-at-least-32-characters',
     FOCUSLINK_DEVICE_PEPPER: 'device-pepper-with-at-least-32-characters',
     FOCUSLINK_MCP_SERVICE_TOKEN: 'mcp-service-token-which-is-not-a-device-token',
+    FOCUSLINK_PAIR_AUTHORITY_TOKEN: `fla_${'p'.repeat(48)}`,
     FOCUSLINK_ALLOWED_ORIGINS: ALLOWED_ORIGIN,
   } as unknown as WorkerEnv;
 }
@@ -68,11 +71,13 @@ function call(
     authorization,
     origin,
     mcpService,
+    pairAuthority,
   }: {
     method?: string;
     authorization?: string;
     origin?: string;
     mcpService?: string;
+    pairAuthority?: string;
   } = {},
   env: WorkerEnv = makeEnv([]),
 ): Promise<Response> {
@@ -80,6 +85,7 @@ function call(
   if (authorization) headers.set('authorization', authorization);
   if (origin) headers.set('origin', origin);
   if (mcpService) headers.set('x-focuslink-mcp-service', mcpService);
+  if (pairAuthority) headers.set('x-focuslink-pair-authority', pairAuthority);
   const request = new Request(`https://foxlink-cloud-mcp.example${path}`, { method, headers });
   return worker.fetch(request, env);
 }
@@ -118,14 +124,14 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
     expect(response.status).toBe(401);
   });
 
-  it('forwards canonical pair offers so the DO can enforce devices:manage', async () => {
+  it('forwards canonical pair offers only through the dedicated private authority', async () => {
     const forwarded: ForwardedCall[] = [];
     const env = makeEnv(forwarded);
     const response = await call(
       '/sync/v1/pair/offers',
       {
         method: 'POST',
-        authorization: `Bearer ${VALID_DEVICE_TOKEN}`,
+        pairAuthority: `fla_${'p'.repeat(48)}`,
       },
       env,
     );
@@ -133,16 +139,38 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
     expect(forwarded).toHaveLength(1);
     expect(forwarded[0]).toMatchObject({
       authorization: null,
-      forwardedAuthorization: `Bearer ${VALID_DEVICE_TOKEN}`,
+      forwardedAuthorization: 'Bearer owner-internal-token-with-at-least-32-characters',
+      pairAuthority: null,
       account: 'account-public',
     });
     expect(forwarded[0].url).toContain('/v2/pair/offers');
   });
 
-  it('rejects pair-offer creation without a device credential before the DO', async () => {
+  it('rejects missing, malformed and incorrect pair authority before the DO', async () => {
     const forwarded: ForwardedCall[] = [];
-    const response = await call('/sync/v1/pair/offers', { method: 'POST' }, makeEnv(forwarded));
-    expect(response.status).toBe(401);
+    for (const pairAuthority of [undefined, `fla_${'p'.repeat(42)}`, `fla_${'x'.repeat(48)}`]) {
+      const response = await call(
+        '/sync/v1/pair/offers',
+        { method: 'POST', pairAuthority },
+        makeEnv(forwarded),
+      );
+      expect(response.status).toBe(401);
+    }
+    expect(forwarded).toHaveLength(0);
+  });
+
+  it('never accepts the pair authority on sync, live, exchange or MCP routes', async () => {
+    const forwarded: ForwardedCall[] = [];
+    const env = makeEnv(forwarded);
+    const pairAuthority = `fla_${'p'.repeat(48)}`;
+    for (const [path, method] of [
+      ['/sync/v2/exchange', 'POST'],
+      ['/sync/v2/live', 'GET'],
+      ['/sync/v1/pair/exchange', 'POST'],
+    ] as const) {
+      const response = await call(path, { method, pairAuthority }, env);
+      expect(response.status).toBe(401);
+    }
     expect(forwarded).toHaveLength(0);
   });
 
@@ -233,6 +261,10 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
     delete missingSecret.FOCUSLINK_MCP_SERVICE_TOKEN;
     expect((await call('/readyz', {}, missingSecret)).status).toBe(503);
 
+    const missingPairAuthority = makeEnv([]);
+    delete missingPairAuthority.FOCUSLINK_PAIR_AUTHORITY_TOKEN;
+    expect((await call('/readyz', {}, missingPairAuthority)).status).toBe(503);
+
     const failedProbe = makeEnv([]);
     failedProbe.FOCUSLINK_ACCOUNT = {
       idFromName: () => ({ name: 'account' }),
@@ -258,6 +290,10 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
 
     reused.FOCUSLINK_MCP_SERVICE_TOKEN = 'mcp-service-token-which-is-not-a-device-token';
     reused.FOCUSLINK_DEVICE_PEPPER = reused.FOCUSLINK_SYNC_TOKEN;
+    expect((await call('/readyz', {}, reused)).status).toBe(503);
+
+    reused.FOCUSLINK_DEVICE_PEPPER = 'device-pepper-with-at-least-32-characters';
+    reused.FOCUSLINK_PAIR_AUTHORITY_TOKEN = reused.FOCUSLINK_MCP_SERVICE_TOKEN;
     expect((await call('/readyz', {}, reused)).status).toBe(503);
   });
 

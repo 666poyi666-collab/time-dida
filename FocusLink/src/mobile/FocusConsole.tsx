@@ -294,6 +294,15 @@ export function FocusConsole({
           )}
 
           <div className="focus-actions">
+            {connection !== 'live' && current.state === 'idle' && (
+              <button
+                className="focus-action connection-action"
+                type="button"
+                onClick={onOpenConnection}
+              >
+                连接云端
+              </button>
+            )}
             {(current.state === 'idle' || cachedRemoteOnly) && (
               <button
                 className="focus-action primary"
@@ -339,12 +348,6 @@ export function FocusConsole({
               </button>
             )}
           </div>
-
-          {connection !== 'live' && current.state === 'idle' && (
-            <button className="inline-connection-action" type="button" onClick={onOpenConnection}>
-              配置多端连接
-            </button>
-          )}
         </div>
 
         <aside className="live-context" aria-label="多端状态">

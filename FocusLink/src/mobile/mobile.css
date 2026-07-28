@@ -56,6 +56,7 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   overflow: auto;
+  overflow-x: hidden;
   background: var(--canvas);
   color: var(--text);
   -webkit-tap-highlight-color: transparent;
@@ -896,7 +897,7 @@ code {
   box-shadow: 0 -18px 60px rgb(0 0 0 / 0.18);
 }
 
-@media (min-width: 760px) {
+@media (min-width: 620px) {
   .sheet-backdrop {
     align-items: center;
     padding: 24px;
@@ -1120,6 +1121,19 @@ code {
 
   .detail-metric {
     padding: 10px;
+  }
+}
+
+/* Portrait DBY-W09: after the 64px rail and 260px context column the task
+   picker has ~250px of content width. Stack its secondary action so the task
+   name remains readable instead of being clipped by the native select arrow. */
+@media (min-width: 620px) and (max-width: 759px) {
+  .focus-task-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .focus-task-picker button:last-child {
+    min-height: 44px;
   }
 }
 
@@ -2590,7 +2604,7 @@ code {
   }
 }
 
-@media (min-width: 760px) {
+@media (min-width: 620px) {
   .app-frame {
     display: grid;
     grid-template-columns: 64px minmax(0, 1fr);
@@ -3090,8 +3104,7 @@ code {
   grid-column: 1 / -1;
 }
 
-.focus-action,
-.inline-connection-action {
+.focus-action {
   min-height: 48px;
   border: 1px solid var(--border-strong);
   border-radius: 3px;
@@ -3117,15 +3130,13 @@ code {
   color: var(--danger);
 }
 
-.focus-action:disabled,
-.inline-connection-action:disabled {
-  opacity: 0.45;
+.focus-action.connection-action {
+  border-color: color-mix(in srgb, var(--focus) 62%, var(--border-strong));
+  color: var(--focus);
 }
 
-.inline-connection-action {
-  width: 100%;
-  margin-top: 10px;
-  color: var(--focus);
+.focus-action:disabled {
+  opacity: 0.45;
 }
 
 .live-context {
@@ -3490,9 +3501,22 @@ code {
   }
 }
 
-@media (min-width: 760px) {
+@media (min-width: 620px) {
   .mobile-temporal-ribbon canvas {
     height: clamp(176px, 20vw, 260px);
+  }
+
+  /* The 640px portrait / 1024px landscape tablet has no bottom navigation.
+     Keep the primary controls in reach while its dense focus canvas scrolls. */
+  .focus-actions {
+    position: sticky;
+    z-index: 3;
+    bottom: 0;
+    margin-right: calc(-1 * clamp(20px, 4.5vw, 42px));
+    margin-left: calc(-1 * clamp(20px, 4.5vw, 42px));
+    padding: 12px clamp(20px, 4.5vw, 42px);
+    border-top: 1px solid var(--border);
+    background: var(--surface);
   }
 
   .focus-console-body {
@@ -3667,7 +3691,6 @@ code {
 
 /* Button press feedback: 140ms */
 .focus-action,
-.inline-connection-action,
 .primary-button,
 .sync-button,
 .icon-button,
@@ -3685,7 +3708,6 @@ code {
 }
 
 .focus-action:active:not(:disabled),
-.inline-connection-action:active:not(:disabled),
 .primary-button:active:not(:disabled),
 .sync-button:active:not(:disabled),
 .icon-button:active:not(:disabled),
@@ -3803,7 +3825,7 @@ code {
 
    手机上按「先看时间、再决定做什么、动作永远在手边」重排：
    读数升为主角，操作条粘在拇指区，任务与标题收成紧凑的一段。 */
-@media (max-width: 620px) {
+@media (max-width: 619px) {
   .focus-system-tools {
     display: none;
   }
@@ -3835,10 +3857,6 @@ code {
   .focus-system-tools {
     order: 5;
   }
-  .inline-connection-action {
-    order: 6;
-  }
-
   /* 主操作粘在底部导航之上：无论内容多长，开始/暂停/结束永远在拇指够得到的位置。
      底部导航是 fixed 且高 60px+安全区，滚动区一直延伸到它下面；bottom:0 会让
      操作条停在导航背后，按钮文字从导航缝隙里透出来。偏移量必须等于导航实际高度。 */

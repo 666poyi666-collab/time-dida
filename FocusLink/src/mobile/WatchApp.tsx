@@ -377,8 +377,12 @@ export function WatchApp() {
         )}
       </div>
 
-      {connection === 'unconfigured' ? (
-        <p className="watch-hint">在电脑端生成配对码后推送到本表即可连接</p>
+      {notice ? (
+        <p className="watch-notice" role="status" aria-live="polite">
+          {notice}
+        </p>
+      ) : connection === 'unconfigured' ? (
+        <p className="watch-hint">等待扫码或 ADB 打开一次性配对链接</p>
       ) : (
         <button
           type="button"
@@ -394,8 +398,6 @@ export function WatchApp() {
           {activeTitle}
         </button>
       )}
-
-      {notice && <p className="watch-notice">{notice}</p>}
 
       {configured && (
         <div className="watch-actions">

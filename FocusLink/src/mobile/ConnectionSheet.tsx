@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
 import type { MobileConnectionPreferences } from './preferences';
 import { exchangeDeviceSyncPairingCode } from './syncClient';
+import { normalizePairingCodeInput } from './pairingInput';
 
 export interface ConnectionSheetProps {
   value: MobileConnectionPreferences;
@@ -156,12 +157,12 @@ export function ConnectionSheet({
             id="sync-pairing-code"
             type="text"
             inputMode="text"
-            autoCapitalize="characters"
+            autoCapitalize="none"
             autoCorrect="off"
             maxLength={128}
             placeholder="粘贴完整一次性配对码"
             value={pairingCode}
-            onChange={(event) => setPairingCode(event.target.value.trim().toUpperCase())}
+            onChange={(event) => setPairingCode(normalizePairingCodeInput(event.target.value))}
           />
           <small>在电脑端“同步”设置中生成；成功换取令牌后立即失效。</small>
           <button

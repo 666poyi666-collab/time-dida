@@ -29,6 +29,7 @@ describe('FocusLink authority deployment containment', () => {
       'FOCUSLINK_SYNC_TOKEN',
       'FOCUSLINK_DEVICE_PEPPER',
       'FOCUSLINK_MCP_SERVICE_TOKEN',
+      'FOCUSLINK_PAIR_AUTHORITY_TOKEN',
     ]) {
       expect(source).toContain(secret);
       expect(vars).not.toHaveProperty(secret);

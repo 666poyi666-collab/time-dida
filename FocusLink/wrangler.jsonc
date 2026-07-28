@@ -14,7 +14,8 @@
   },
   // Required deploy-time secrets (never vars or repository values):
   // FOCUSLINK_SYNC_TOKEN, FOCUSLINK_DEVICE_PEPPER,
-  // FOCUSLINK_MCP_SERVICE_TOKEN. FOCUSLINK_DEVICE_PEPPER_PREVIOUS is optional
+  // FOCUSLINK_MCP_SERVICE_TOKEN, FOCUSLINK_PAIR_AUTHORITY_TOKEN.
+  // FOCUSLINK_DEVICE_PEPPER_PREVIOUS is optional
   // only during an intentional pepper rotation.
   "durable_objects": {
     "bindings": [

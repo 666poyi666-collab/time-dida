@@ -113,7 +113,10 @@ export function MobileApp() {
   const [draft, setDraft] = useState(initialPreferences);
   const [cache, setCache] = useState<MobileCacheSnapshot>(EMPTY_CACHE);
   const [cacheReady, setCacheReady] = useState(false);
-  const [configOpen, setConfigOpen] = useState(() => !initialPreferences.endpoint);
+  // Android ships with a loopback endpoint default, so endpoint presence alone
+  // does not mean the device is paired. Keep the first-run pairing entry
+  // reachable whenever either half of the credential is missing.
+  const [configOpen, setConfigOpen] = useState(() => !initialConnectionConfigured);
   const [pendingPairingCode, setPendingPairingCode] = useState('');
   const [online, setOnline] = useState(() => navigator.onLine);
   const [pullState, setPullState] = useState<PullState>('idle');

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   TABLET_FOCUS_MIN_WIDTH,
   focusDeviceLabel,
+  isWatchFocusViewport,
   isTabletFocusViewport,
 } from '../src/mobile/viewportPolicy';
 
@@ -12,10 +13,20 @@ describe('mobile FocusLink viewport policy', () => {
   });
 
   it('enables the tablet module at the Huawei CSS viewport boundary', () => {
-    expect(TABLET_FOCUS_MIN_WIDTH).toBe(760);
-    expect(isTabletFocusViewport(759)).toBe(false);
-    expect(isTabletFocusViewport(760)).toBe(true);
+    expect(TABLET_FOCUS_MIN_WIDTH).toBe(620);
+    expect(isTabletFocusViewport(619)).toBe(false);
+    expect(isTabletFocusViewport(620)).toBe(true);
+    expect(isTabletFocusViewport(640)).toBe(true);
     expect(isTabletFocusViewport(800)).toBe(true);
+  });
+
+  it('routes both observed OWW221 WebView sizes to the watch without hijacking web previews', () => {
+    expect(isWatchFocusViewport(189, 248)).toBe(true);
+    expect(isWatchFocusViewport(320, 420)).toBe(true);
+    expect(isWatchFocusViewport(378, 496, { native: true, pixelRatio: 1 })).toBe(true);
+    expect(isWatchFocusViewport(360, 480)).toBe(false);
+    expect(isWatchFocusViewport(392, 894, { native: true, pixelRatio: 2.75 })).toBe(false);
+    expect(isWatchFocusViewport(640, 992, { native: true, pixelRatio: 2.5 })).toBe(false);
   });
 
   it('shows full authority device identity on tablets while keeping phones compact', () => {
