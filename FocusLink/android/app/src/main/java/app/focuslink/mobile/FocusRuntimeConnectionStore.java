@@ -78,9 +78,28 @@ final class FocusRuntimeConnectionStore {
                     .commit();
                 if (!committed) throw new IllegalStateException("unable to migrate cloud endpoint");
             }
-            return new Connection(normalizedEndpoint, decrypt(encryptedToken), deviceId);
+            String token;
+            if (encryptedToken.indexOf('.') < 0 && encryptedToken.length() > 0
+                    && encryptedToken.length() <= 4096) {
+                // Pre-Keystore builds stored the bearer directly.  Migrate in
+                // place only after the encrypted replacement is durably
+                // committed; never erase the sole copy on a failed migration.
+                token = encryptedToken;
+                boolean committed = preferences.edit()
+                    .putString(KEY_TOKEN, encrypt(token))
+                    .commit();
+                if (!committed) throw new IllegalStateException("unable to migrate cloud credential");
+            } else {
+                token = decrypt(encryptedToken);
+            }
+            if (token.length() == 0 || token.length() > 4096) {
+                throw new IllegalStateException("cloud credential is invalid");
+            }
+            return new Connection(normalizedEndpoint, token, deviceId);
         } catch (RuntimeException exception) {
-            clear(context);
+            // Keep the unreadable record for explicit recovery/forensics.  A
+            // transient Keystore failure must not silently delete endpoint,
+            // device identity and the only wrapped token.
             return null;
         }
     }
@@ -140,6 +159,9 @@ final class FocusRuntimeConnectionStore {
             if (parts.length != 2) throw new IllegalArgumentException("invalid credential");
             byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
             byte[] encrypted = Base64.decode(parts[1], Base64.NO_WRAP);
+            if (iv.length != 12 || encrypted.length < 16) {
+                throw new IllegalArgumentException("invalid credential envelope");
+            }
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), new GCMParameterSpec(GCM_TAG_BITS, iv));
             return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8);

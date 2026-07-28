@@ -43,6 +43,7 @@ import {
   SYNC_V2_MAX_PULL,
   SYNC_V2_MAX_PUSH,
   SYNC_V2_PROTOCOL_VERSION,
+  isEncryptedFocusGuardEnvelopeV1,
   type SyncV2Ack,
   type SyncV2BootstrapEntitiesRequest,
   type SyncV2BootstrapEntitiesResponse,
@@ -150,7 +151,7 @@ interface StoredLiveSession {
   pauses: LiveFocusTimelinePause[];
 }
 
-interface V2Identity {
+export interface V2Identity {
   deviceId: string;
   scopes: string[];
   owner: boolean;
@@ -163,6 +164,40 @@ class ProtocolError extends Error {
     message: string,
   ) {
     super(message);
+  }
+}
+
+/**
+ * Binds a V2 request to its authenticated device identity.
+ *
+ * The device token proves *which* device is calling; the request body must not
+ * be able to claim a different device. Without this, a holder of device A's
+ * token could write change-feed rows and advance watermarks as device B, which
+ * corrupts sourceDeviceId provenance and the watermark set that gates physical
+ * purge. The internal owner-migration credential is exempt because it legitimately
+ * replays historical device ids during account backfill.
+ */
+export function assertV2DeviceBinding(
+  identity: V2Identity,
+  requestDeviceId: string,
+  mutations: ReadonlyArray<{ deviceId: string }> = [],
+): void {
+  if (identity.owner) return;
+  if (requestDeviceId !== identity.deviceId) {
+    throw new ProtocolError(
+      403,
+      'device_identity_mismatch',
+      'request deviceId does not match the authenticated device',
+    );
+  }
+  for (const mutation of mutations) {
+    if (mutation.deviceId !== identity.deviceId) {
+      throw new ProtocolError(
+        403,
+        'device_identity_mismatch',
+        'mutation deviceId does not match the authenticated device',
+      );
+    }
   }
 }
 
@@ -194,27 +229,43 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         return json(this.sync(accountId, body));
       }
       if (url.pathname === '/v2/bootstrap/inventory' && request.method === 'POST') {
-        await this.authorizeV2(request, 'sync:write');
+        const identity = await this.authorizeV2(request, 'sync:write');
         const body = (await readJson(
           request,
           DEVICE_SYNC_MAX_BODY_BYTES,
         )) as SyncV2BootstrapInventoryRequest;
         validateV2Inventory(body);
+        assertV2DeviceBinding(identity, body.deviceId);
         return json(this.bootstrapV2Inventory(accountId, body));
       }
       if (url.pathname === '/v2/bootstrap/entities' && request.method === 'POST') {
-        await this.authorizeV2(request, 'sync:write');
+        const identity = await this.authorizeV2(request, 'sync:write');
         const body = (await readJson(
           request,
           DEVICE_SYNC_MAX_BODY_BYTES,
         )) as SyncV2BootstrapEntitiesRequest;
         validateV2BootstrapEntities(body);
+        assertV2DeviceBinding(identity, body.deviceId, body.entities);
         return json(this.bootstrapV2Entities(accountId, body));
       }
+      if (url.pathname === '/v2/sync/epoch' && request.method === 'GET') {
+        await this.authorizeV2(request, 'sync:read');
+        rejectUnexpectedQuery(url);
+        return json({
+          protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+          ...this.v2Epoch(),
+          changeSeq: this.v2ChangeSeq(),
+          serverTime: Date.now(),
+        });
+      }
       if (url.pathname === '/v2/sync' && request.method === 'POST') {
-        await this.authorizeV2(request, request.clone().body ? 'sync:write' : 'sync:read');
         const body = (await readJson(request, DEVICE_SYNC_MAX_BODY_BYTES)) as SyncV2Request;
         validateV2SyncRequest(body);
+        const identity = await this.authorizeV2(
+          request,
+          body.mutations.length > 0 ? 'sync:write' : 'sync:read',
+        );
+        assertV2DeviceBinding(identity, body.deviceId, body.mutations);
         return json(this.syncV2(accountId, body));
       }
       if (url.pathname === '/v2/pair/offers' && request.method === 'POST') {
@@ -833,6 +884,21 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         Date.now(),
       );
       return result;
+    }
+    if (
+      row &&
+      !row.deleted &&
+      mutation.entityType === 'focus_ledger_v2' &&
+      (mutation.kind === 'put' || mutation.kind === 'restore')
+    ) {
+      return this.storeV2Ack(
+        operationFingerprint,
+        mutation,
+        'rejected',
+        row.revision,
+        row.fingerprint,
+        'immutable_ledger_requires_correction',
+      );
     }
     const deleted = mutation.kind === 'delete' || mutation.kind === 'purge';
     const revision = (row?.revision ?? 0) + 1;
@@ -1932,6 +1998,14 @@ function validateV2Mutation(mutation: SyncV2Mutation): string | null {
     return 'payload_required';
   if ((mutation.kind === 'delete' || mutation.kind === 'purge') && mutation.payload !== null)
     return 'delete_payload_forbidden';
+  if (
+    mutation.entityType.startsWith('focus_guard_') &&
+    mutation.kind !== 'delete' &&
+    mutation.kind !== 'purge' &&
+    !isEncryptedFocusGuardEnvelopeV1(mutation.payload, mutation.entityType)
+  ) {
+    return 'invalid_encrypted_focus_guard_envelope';
+  }
   if (mutation.entityType === 'focus_ledger_correction_v2' && mutation.kind !== 'delete') {
     const payload = mutation.payload as Partial<{ reason: string }> | null;
     if (!payload || typeof payload.reason !== 'string' || payload.reason.trim().length === 0)
@@ -1971,10 +2045,12 @@ function v2Ack(
 }
 
 function encodeV2Cursor(accountId: string, epoch: SyncV2Epoch, sequence: number): string {
-  return btoa(JSON.stringify({ accountId, ...epoch, sequence }))
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/, '');
+  // The Account DO and authenticated epoch already bind the cursor to one account.
+  // Keep the wire token deliberately strict and monotonic instead of embedding
+  // account/epoch JSON that clients could accidentally accept across generations.
+  void accountId;
+  void epoch;
+  return `c${sequence.toString(36)}`;
 }
 
 function decodeV2Cursor(
@@ -1985,19 +2061,13 @@ function decodeV2Cursor(
 ): number {
   if (cursor === null) return 0;
   try {
-    const normalized = cursor.replaceAll('-', '+').replaceAll('_', '/');
-    const payload = JSON.parse(
-      atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')),
-    ) as SyncV2Epoch & { accountId: string; sequence: number };
-    if (payload.accountId !== accountId) throw new Error('account');
-    assertV2Epoch(payload, epoch);
-    if (
-      !Number.isSafeInteger(payload.sequence) ||
-      payload.sequence < 0 ||
-      payload.sequence > maximum
-    )
+    void accountId;
+    void epoch;
+    if (!/^c[0-9a-z]+$/.test(cursor)) throw new Error('format');
+    const sequence = Number.parseInt(cursor.slice(1), 36);
+    if (!Number.isSafeInteger(sequence) || sequence < 0 || sequence > maximum)
       throw new Error('sequence');
-    return payload.sequence;
+    return sequence;
   } catch (error) {
     if (error instanceof ProtocolError) throw error;
     throw new ProtocolError(409, 'invalid_cursor', 'v2 cursor is invalid');
@@ -2008,7 +2078,11 @@ function isV2EntityType(value: unknown): value is SyncV2EntityType {
   return (
     value === 'focus_ledger_v2' ||
     value === 'focus_metadata_v2' ||
-    value === 'focus_ledger_correction_v2'
+    value === 'focus_ledger_correction_v2' ||
+    value === 'focus_guard_rule_v1' ||
+    value === 'focus_guard_state_v1' ||
+    value === 'focus_guard_completion_v1' ||
+    value === 'focus_guard_config_v1'
   );
 }
 

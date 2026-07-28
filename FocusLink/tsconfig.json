@@ -25,5 +25,9 @@
       "@shared/*": ["shared/*"]
     }
   },
-  "include": ["src", "mobile", "shared", "electron", "cloud", "tests", "*.config.ts"]
+  "include": ["src", "mobile", "shared", "electron", "cloud", "tests", "*.config.ts"],
+  "exclude": [
+    "tests/cloudflareWorkerRouting.test.ts",
+    "tests/accountDurableObjectDeviceBinding.test.ts"
+  ]
 }

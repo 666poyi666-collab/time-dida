@@ -4,30 +4,17 @@ import { FocusLinkAccount, type WorkerEnv } from './accountDurableObject';
 
 export { FocusLinkAccount };
 
-const ROUTES = new Set([
-  '/v1/sync',
-  '/v1/tasks',
-  '/v1/live',
-  '/v1/live/wait',
-  '/v1/live/command',
-  '/v2/bootstrap/inventory',
-  '/v2/bootstrap/entities',
-  '/v2/sync',
-  '/v2/pair/offers',
-  '/v2/pair/exchange',
-  '/v2/devices',
-  '/v2/conflicts',
-  '/v2/trash',
-  '/v2/push/register',
-  '/v2/backups',
-  '/v2/backups/preview',
-  '/v2/backups/restore',
+const PUBLIC_ROUTES = new Map([
+  ['/sync/v2/status', '/v2/sync/epoch'],
+  ['/sync/v2/exchange', '/v2/sync'],
+  ['/sync/v1/pair/offers', '/v2/pair/offers'],
+  ['/sync/v1/pair/exchange', '/v2/pair/exchange'],
 ]);
 
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === '/health') {
+    if (url.pathname === '/healthz') {
       if (request.method !== 'GET')
         return errorJson(405, 'method_not_allowed', 'method not allowed');
       return withCors(
@@ -43,19 +30,38 @@ export default {
         }),
       );
     }
-    if (!isRoute(url.pathname)) return errorJson(404, 'not_found', 'route not found');
+    if (url.pathname === '/readyz') {
+      if (request.method !== 'GET')
+        return errorJson(405, 'method_not_allowed', 'method not allowed');
+      if (!env.FOCUSLINK_ACCOUNT_ID || !env.FOCUSLINK_SYNC_TOKEN) {
+        return errorJson(503, 'not_configured', 'worker account binding is incomplete');
+      }
+      return withCors(request, env, json({ ok: true, ready: true, service: 'foxlink-cloud-mcp' }));
+    }
+    if (isRetiredPublicRoute(url.pathname)) {
+      return errorJson(410, 'legacy_route_retired', 'use /sync/v2/exchange or /sync/v2/status');
+    }
+    const authorityPath = PUBLIC_ROUTES.get(url.pathname);
+    if (!authorityPath) return errorJson(404, 'not_found', 'route not found');
     if (request.method === 'OPTIONS') return preflight(request, env);
 
     const originError = validateOrigin(request, env);
     if (originError) return originError;
     const authorization = request.headers.get('authorization');
-    const pairingExchange = url.pathname === '/v2/pair/exchange';
-    const isOwner = authorization === `Bearer ${env.FOCUSLINK_SYNC_TOKEN}`;
+    const pairingExchange = url.pathname === '/sync/v1/pair/exchange';
+    const pairingOffer = url.pathname === '/sync/v1/pair/offers';
     const isDevice =
       /^Bearer fl2_[A-Za-z0-9-]{6,80}_[A-Za-z0-9-]{6,80}_[A-Za-z0-9_-]{32,160}$/.test(
         authorization ?? '',
       );
-    if (!pairingExchange && !isOwner && !isDevice) {
+    // Offer creation is owner-session + CSRF work performed through an internal
+    // service binding. A public OAuth or device bearer must not mint a device.
+    if (pairingOffer) {
+      return errorJson(403, 'pair_offers_internal_only', 'pair offers require the owner service binding');
+    }
+    // Sync accepts only the device token form. OAuth tokens and the Worker
+    // owner credential are intentionally not valid sync credentials.
+    if (!pairingExchange && !isDevice) {
       return withCors(
         request,
         env,
@@ -81,10 +87,16 @@ export default {
     const id = env.FOCUSLINK_ACCOUNT.idFromName(env.FOCUSLINK_ACCOUNT_ID);
     const stub = env.FOCUSLINK_ACCOUNT.get(id);
     const headers = new Headers(request.headers);
-    if (authorization) headers.set('x-focuslink-authorization', authorization);
+    if (isDevice) headers.set('x-focuslink-authorization', authorization!);
     headers.delete('authorization');
     headers.set('x-focuslink-account', env.FOCUSLINK_ACCOUNT_ID);
-    const forwarded = new Request(request, { headers });
+    const authorityUrl = new URL(request.url);
+    authorityUrl.pathname = authorityPath;
+    const forwarded = new Request(authorityUrl.toString(), {
+      method: request.method,
+      headers,
+      body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
+    });
     return withCors(request, env, await stub.fetch(forwarded));
   },
   async scheduled(_controller: ScheduledController, env: WorkerEnv): Promise<void> {
@@ -106,13 +118,8 @@ export default {
   },
 } satisfies ExportedHandler<WorkerEnv>;
 
-function isRoute(pathname: string): boolean {
-  return (
-    ROUTES.has(pathname) ||
-    /^\/v2\/(?:devices|conflicts|trash)\/[A-Za-z0-9._:-]+(?:\/(?:revoke|rotate|resolve|restore))?$/.test(
-      pathname,
-    )
-  );
+function isRetiredPublicRoute(pathname: string): boolean {
+  return pathname === '/sync/push' || pathname.startsWith('/v1/') || pathname.startsWith('/v2/');
 }
 
 function allowedOrigins(env: WorkerEnv): Set<string> {

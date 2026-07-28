@@ -169,6 +169,20 @@ export class SyncV2Store {
     };
   }
 
+  status(accountId: string): SyncV2Epoch & {
+    protocolVersion: typeof SYNC_V2_PROTOCOL_VERSION;
+    changeSeq: number;
+    serverTime: number;
+  } {
+    const account = this.account(accountId);
+    return {
+      protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+      ...account.epoch,
+      changeSeq: account.changeSeq,
+      serverTime: this.now(),
+    };
+  }
+
   private account(accountId: string): V2Account {
     return this.accounts.get(accountId) ?? emptyAccount();
   }
@@ -224,6 +238,22 @@ function applyMutation(account: V2Account, mutation: SyncV2Mutation, now: number
       current?.revision ?? null,
       current?.fingerprint ?? null,
       'revision_conflict',
+    );
+  }
+  if (
+    current &&
+    !current.deleted &&
+    mutation.entityType === 'focus_ledger_v2' &&
+    (mutation.kind === 'put' || mutation.kind === 'restore')
+  ) {
+    return storeAck(
+      account,
+      opFingerprint,
+      mutation,
+      'rejected',
+      current.revision,
+      current.fingerprint,
+      'immutable_ledger_requires_correction',
     );
   }
   const deleted = mutation.kind === 'delete' || mutation.kind === 'purge';
@@ -330,9 +360,9 @@ function hydrate(value: PersistedAccount): V2Account {
   };
 }
 function encodeCursor(accountId: string, epoch: SyncV2Epoch, sequence: number): string {
-  return Buffer.from(JSON.stringify({ accountId, ...epoch, sequence }), 'utf8').toString(
-    'base64url',
-  );
+  void accountId;
+  void epoch;
+  return `c${sequence.toString(36)}`;
 }
 function decodeCursor(
   accountId: string,
@@ -342,14 +372,12 @@ function decodeCursor(
 ): number {
   if (cursor === null) return 0;
   try {
-    const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as SyncV2Epoch & {
-      accountId: string;
-      sequence: number;
-    };
-    if (value.accountId !== accountId || value.sequence < 0 || value.sequence > max)
-      throw new Error();
-    assertEpoch(value, epoch);
-    return value.sequence;
+    void accountId;
+    void epoch;
+    if (!/^c[0-9a-z]+$/.test(cursor)) throw new Error();
+    const sequence = Number.parseInt(cursor.slice(1), 36);
+    if (!Number.isSafeInteger(sequence) || sequence < 0 || sequence > max) throw new Error();
+    return sequence;
   } catch (error) {
     if (error instanceof SyncV2StoreError) throw error;
     throw new SyncV2StoreError('invalid_cursor', 'invalid v2 cursor');

@@ -20,8 +20,8 @@ describe('mobile sync client request recovery', () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          protocolVersion: 1,
           accessToken: 'received-long-lived-token',
+          deviceId: 'device-assigned-by-authority',
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),
@@ -31,16 +31,22 @@ describe('mobile sync client request recovery', () => {
     await expect(
       exchangeDeviceSyncPairingCode({
         endpoint: 'http://127.0.0.1:18787',
-        code: 'A1B2C3D4',
-        deviceId: 'android-test-device',
+        code: 'A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6',
+        device: { platform: 'android', appVersion: 'test', displayName: 'Test device' },
       }),
-    ).resolves.toBe('received-long-lived-token');
+    ).resolves.toEqual({
+      accessToken: 'received-long-lived-token',
+      deviceId: 'device-assigned-by-authority',
+    });
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:18787/v1/pair',
+      'http://127.0.0.1:18787/sync/v1/pair/exchange',
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nonce: 'A1B2C3D4', deviceId: 'android-test-device' }),
+        body: JSON.stringify({
+          nonce: 'A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6',
+          device: { platform: 'android', appVersion: 'test', displayName: 'Test device' },
+        }),
       }),
     );
   });
@@ -58,8 +64,8 @@ describe('mobile sync client request recovery', () => {
     await expect(
       exchangeDeviceSyncPairingCode({
         endpoint: 'https://sync.example.test',
-        code: 'A1B2C3D4',
-        deviceId: 'android-test-device',
+        code: 'A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6',
+        device: { platform: 'android', appVersion: 'test' },
       }),
     ).rejects.toThrow('pairing code expired');
   });

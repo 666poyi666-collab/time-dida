@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
+import { Capacitor } from '@capacitor/core';
 import type { MobileConnectionPreferences } from './preferences';
 import { exchangeDeviceSyncPairingCode } from './syncClient';
 
@@ -7,9 +8,9 @@ export interface ConnectionSheetProps {
   value: MobileConnectionPreferences;
   syncing: boolean;
   hasSavedToken: boolean;
-  deviceId: string;
   initialPairingCode?: string;
   onChange: (value: MobileConnectionPreferences) => void;
+  onPairedDeviceId: (deviceId: string) => void;
   onClose: () => void;
   onSave: () => void;
   onForgetToken: () => void;
@@ -20,9 +21,9 @@ export function ConnectionSheet({
   value,
   syncing,
   hasSavedToken,
-  deviceId,
   initialPairingCode,
   onChange,
+  onPairedDeviceId,
   onClose,
   onSave,
   onForgetToken,
@@ -158,7 +159,7 @@ export function ConnectionSheet({
             autoCapitalize="characters"
             autoCorrect="off"
             maxLength={128}
-            placeholder="例如 A1B2C3D4"
+            placeholder="粘贴完整一次性配对码"
             value={pairingCode}
             onChange={(event) => setPairingCode(event.target.value.trim().toUpperCase())}
           />
@@ -166,17 +167,22 @@ export function ConnectionSheet({
           <button
             className="field-quick-action"
             type="button"
-            disabled={pairingBusy || pairingCode.length < 8}
+            disabled={pairingBusy || pairingCode.length < 32}
             onClick={() => {
               setPairingBusy(true);
               setPairingNotice(null);
               void exchangeDeviceSyncPairingCode({
                 endpoint: value.endpoint,
                 code: pairingCode,
-                deviceId,
+                device: {
+                  platform: Capacitor.isNativePlatform() ? 'android' : 'web',
+                  appVersion: 'focuslink-mobile-v2',
+                  displayName: 'FocusLink Mobile',
+                },
               })
-                .then((token) => {
-                  onChange({ ...value, token });
+                .then((paired) => {
+                  onChange({ ...value, token: paired.accessToken });
+                  onPairedDeviceId(paired.deviceId);
                   setPairingCode('');
                   setPairingNotice('配对成功；请点击“保存并连接”完成设置。');
                 })

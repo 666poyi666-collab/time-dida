@@ -48,18 +48,20 @@ export interface PushPendingBundleInput {
 export async function exchangeDeviceSyncPairingCode(input: {
   endpoint: string;
   code: string;
-  deviceId: string;
+  device: { platform: 'android' | 'web'; appVersion: string; displayName?: string };
   signal?: AbortSignal;
-}): Promise<string> {
+}): Promise<{ accessToken: string; deviceId: string }> {
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
   const code = input.code.trim();
-  if (!/^[A-Za-z0-9_-]{8,128}$/.test(code)) throw new Error('请输入有效的 8 位一次性配对码');
+  if (!/^[A-Za-z0-9_-]{32,160}$/.test(code)) {
+    throw new Error('请输入有效的一次性配对码');
+  }
   const response = await fetchWithTimeout(
-    `${endpoint}/v1/pair`,
+    `${endpoint}/sync/v1/pair/exchange`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nonce: code, deviceId: input.deviceId }),
+      body: JSON.stringify({ nonce: code, device: input.device }),
     },
     input.signal,
     10_000,
@@ -71,13 +73,13 @@ export async function exchangeDeviceSyncPairingCode(input: {
   }
   if (
     !isRecord(payload) ||
-    payload.protocolVersion !== DEVICE_SYNC_PROTOCOL_VERSION ||
     typeof payload.accessToken !== 'string' ||
-    payload.accessToken.length < 16
+    payload.accessToken.length < 16 ||
+    !isNonEmptyText(payload.deviceId, 200)
   ) {
     throw new Error('配对响应无效');
   }
-  return payload.accessToken;
+  return { accessToken: payload.accessToken, deviceId: payload.deviceId };
 }
 
 export interface LiveFocusConnectionInput {

@@ -32,6 +32,7 @@ import {
   type TaskSnapshotPublishRequest,
   type TaskSnapshotResponse,
 } from '@shared/sync/taskSnapshotProtocol';
+import { parseDeviceToken } from '@shared/sync/v2Protocol';
 import {
   getSession,
   getMeta,
@@ -49,6 +50,7 @@ import {
   setDeviceSyncToken,
 } from './deviceSyncCredentials.js';
 import { makeDeviceSyncConnectionScope, packDeviceSyncMutations } from './deviceSyncPolicy.js';
+import { readDesktopV2Status } from './v2OutboxStore.js';
 
 const META_DEVICE_ID = 'deviceSync.deviceIdV1';
 const META_CHECKPOINT_PREFIX = 'deviceSync.checkpointV2';
@@ -111,6 +113,7 @@ export interface DeviceSyncRuntimeConnection {
   endpoint: string;
   accessToken: string;
   deviceId: string;
+  scope: string;
 }
 
 let liveTelemetry: Pick<DeviceSyncStatus, 'liveConnected' | 'liveRevision' | 'liveState'> = {
@@ -137,8 +140,14 @@ export function getDeviceSyncStatus(): DeviceSyncStatus {
   const settings = getSettings().deviceSync;
   const connection = resolveDeviceSyncConnection(settings.endpoint);
   const tokenConfigured = hasDeviceSyncToken();
-  const checkpoint = connection ? readCheckpoint(connection.scope) : emptyCheckpoint();
-  const unresolvedConflicts = Object.keys(checkpoint.conflicts).length;
+  const checkpoint = connection ? readCanonicalCheckpoint(connection.scope) : null;
+  let unresolvedConflicts = 0;
+  try {
+    unresolvedConflicts = connection ? readDesktopV2Status(connection.scope).conflicts : 0;
+  } catch {
+    // Database initialization owns the first status call during startup.  A
+    // later refresh reports the persisted canonical v2 state.
+  }
   const storedError = connection ? getMeta(lastErrorMetaKey(connection.scope)) || null : null;
   return {
     enabled: settings.enabled,
@@ -149,7 +158,7 @@ export function getDeviceSyncStatus(): DeviceSyncStatus {
     configured: connection !== null,
     tokenConfigured,
     deviceId: getOrCreateDeviceId(),
-    cursor: checkpoint.cursor,
+    cursor: checkpoint?.cursor ?? null,
     running: Boolean(connection && inFlight?.scope === connection.scope),
     lastSyncAt: connection
       ? parseOptionalNumber(getMeta(lastSyncAtMetaKey(connection.scope)))
@@ -187,7 +196,12 @@ export function getDeviceSyncRuntimeConnection(): DeviceSyncRuntimeConnection | 
   const endpoint = normalizeDeviceSyncEndpoint(settings.endpoint);
   const accessToken = getDeviceSyncToken();
   if (!accessToken) return null;
-  return { endpoint, accessToken, deviceId: getOrCreateDeviceId() };
+  return {
+    endpoint,
+    accessToken,
+    deviceId: getOrCreateDeviceId(),
+    scope: makeDeviceSyncConnectionScope(endpoint, accessToken),
+  };
 }
 
 /** Main-process Sync v2 transport; unlike live control it only requires data sync to be enabled. */
@@ -197,7 +211,17 @@ export function getDeviceSyncDataConnection(): DeviceSyncRuntimeConnection | nul
   const endpoint = normalizeDeviceSyncEndpoint(settings.endpoint);
   const accessToken = getDeviceSyncToken();
   if (!accessToken) return null;
-  return { endpoint, accessToken, deviceId: getOrCreateDeviceId() };
+  const routed = parseDeviceToken(accessToken);
+  const loopback = ['localhost', '127.0.0.1'].includes(new URL(endpoint).hostname);
+  if (!routed && !loopback) {
+    throw new Error('canonical Sync v2 只接受通过设备配对签发的 fl2 凭据');
+  }
+  return {
+    endpoint,
+    accessToken,
+    deviceId: routed ? `device-${routed.devicePublicId}` : getOrCreateDeviceId(),
+    scope: makeDeviceSyncConnectionScope(endpoint, accessToken),
+  };
 }
 
 export function setDeviceSyncLiveTelemetry(
@@ -213,7 +237,12 @@ export function runDeviceSync(): Promise<DeviceSyncRunResult> {
     if (inFlight.scope === requestedScope) return inFlight.promise;
     return Promise.reject(new Error('同步连接已变更，请等待当前连接同步结束后重试'));
   }
-  const operation = runDeviceSyncInternal()
+  const operation = import('./deviceSyncV2Service.js')
+    .then(async ({ runDesktopSyncV2 }) => {
+      const result = await runDesktopSyncV2();
+      if (!result) throw new Error('请先启用并配置 canonical Sync v2');
+      return result;
+    })
     .catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       logger.warn('deviceSync', 'sync failed', { error: message });
@@ -231,13 +260,6 @@ export async function runAutomaticDeviceSync(): Promise<DeviceSyncRunResult | nu
   const settings = getSettings().deviceSync;
   if (!settings.enabled || !settings.autoSync || !hasDeviceSyncToken()) return null;
   const result = await runDeviceSync();
-  try {
-    await import('./deviceSyncV2Service.js').then(({ runDesktopSyncV2 }) => runDesktopSyncV2());
-  } catch (error) {
-    logger.warn('deviceSyncV2', 'v2 migration sync deferred; v1 remains active', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
   await flushPendingTaskSnapshot();
   return result;
 }
@@ -375,6 +397,14 @@ async function runDeviceSyncInternal(): Promise<DeviceSyncRunResult> {
     throw error;
   }
 }
+
+/**
+ * Explicit contract-test shim for the retired v1 bundle protocol.  Production
+ * startup, manual sync and automatic sync never call this path; keeping the
+ * parser briefly available lets migration fixtures prove old responses are
+ * rejected without reintroducing a fallback.
+ */
+export const runLegacyDeviceSyncForContractTest = runDeviceSyncInternal;
 
 async function runDeviceSyncAttempt(
   connection: DeviceSyncConnection,
@@ -815,6 +845,22 @@ function lastSyncAtMetaKey(scope: string): string {
 
 function lastErrorMetaKey(scope: string): string {
   return `${META_LAST_ERROR_PREFIX}.${scope}`;
+}
+
+function readCanonicalCheckpoint(scope: string): { cursor: string | null } | null {
+  const raw = getMeta(`syncV2.desktop.checkpointV2.${scope}`);
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (!isRecord(value)) return null;
+    if (value.cursor === null) return { cursor: null };
+    if (typeof value.cursor === 'string' && /^c[0-9a-z]+$/.test(value.cursor)) {
+      return { cursor: value.cursor };
+    }
+  } catch {
+    // The canonical client will rebuild a malformed scoped checkpoint from c0.
+  }
+  return null;
 }
 
 function emptyCheckpoint(): DeviceSyncCheckpoint {

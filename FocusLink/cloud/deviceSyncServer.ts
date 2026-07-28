@@ -69,6 +69,14 @@ export interface DeviceSyncCloudServerOptions {
   /** Optional one-time credential exchange, used by the loopback embedded service only. */
   pairingExchange?: (nonce: string, deviceId: string) => { accessToken: string } | null;
   v2Store?: SyncV2Store;
+  /**
+   * Whether this node may accept authoritative v2 writes (mutations / base establish).
+   * The Cloudflare Account Durable Object is the single write authority; a personal-cloud
+   * node is a derived / emergency backend and must not silently become a second authority.
+   * Defaults to true for the test profile (regression needs it) and false for personal-cloud
+   * unless an operator explicitly opts into emergency writes.
+   */
+  allowV2AuthoritativeWrites?: boolean;
 }
 
 export interface DeviceSyncCloudServerAddress {
@@ -101,6 +109,8 @@ export function createDeviceSyncCloudServer(
   const requireForwardedHttps = options.requireForwardedHttps ?? false;
   const limiter = createRateLimiter(options.maxRequestsPerMinute ?? 0);
   const pairingExchange = options.pairingExchange;
+  const allowV2AuthoritativeWrites =
+    profile !== 'personal-cloud' || options.allowV2AuthoritativeWrites === true;
 
   const httpServer = http.createServer((request, response) => {
     applySecurityHeaders(response);
@@ -118,6 +128,7 @@ export function createDeviceSyncCloudServer(
       allowedOrigins,
       profile,
       requireForwardedHttps,
+      allowV2AuthoritativeWrites,
       pairingExchange,
     ).catch((error) => {
       if (!response.headersSent) {
@@ -183,6 +194,7 @@ async function handleRequest(
   allowedOrigins: ReadonlySet<string>,
   profile: 'test' | 'personal-cloud',
   requireForwardedHttps: boolean,
+  allowV2AuthoritativeWrites: boolean,
   pairingExchange?: (nonce: string, deviceId: string) => { accessToken: string } | null,
 ): Promise<void> {
   const requestUrl = new URL(request.url ?? '/', 'http://focuslink.test');
@@ -220,6 +232,9 @@ async function handleRequest(
           : 'focuslink-device-sync-test',
       production: profile === 'personal-cloud',
       protocolVersion: DEVICE_SYNC_PROTOCOL_VERSION,
+      v2WriteAuthority: allowV2AuthoritativeWrites
+        ? 'emergency-enabled'
+        : 'disabled-cloudflare-do-authoritative',
     });
     return;
   }
@@ -260,6 +275,60 @@ async function handleRequest(
     sendJson(response, 200, {
       protocolVersion: DEVICE_SYNC_PROTOCOL_VERSION,
       accessToken: exchanged.accessToken,
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === '/sync/v1/pair/exchange') {
+    if (!pairingExchange) {
+      sendError(response, 404, 'not_found', 'pairing is not available');
+      return;
+    }
+    if (request.method !== 'POST') {
+      response.setHeader('Allow', 'POST, OPTIONS');
+      sendError(response, 405, 'method_not_allowed', 'method not allowed');
+      return;
+    }
+    if (!hasJsonContentType(request)) {
+      sendError(response, 415, 'unsupported_media_type', 'application/json required');
+      return;
+    }
+    let pairBody: unknown;
+    try {
+      pairBody = JSON.parse(await readRequestBody(request, 16 * 1024)) as unknown;
+    } catch {
+      sendError(response, 400, 'invalid_request', 'invalid pairing request');
+      return;
+    }
+    const record = pairBody as Record<string, unknown>;
+    const nonce = typeof record?.nonce === 'string' ? record.nonce : '';
+    const device = record?.device as Record<string, unknown> | undefined;
+    if (
+      !/^[A-Za-z0-9_-]{32,160}$/.test(nonce) ||
+      !device ||
+      !['android', 'web'].includes(String(device.platform)) ||
+      typeof device.appVersion !== 'string' ||
+      device.appVersion.length < 1 ||
+      device.appVersion.length > 50 ||
+      (device.displayName !== undefined &&
+        (typeof device.displayName !== 'string' || device.displayName.length > 100))
+    ) {
+      sendError(response, 400, 'invalid_request', 'invalid pairing fields');
+      return;
+    }
+    // Test/local server remains an adapter, never a caller-selected identity:
+    // each high-entropy one-time nonce yields one deterministic server identity.
+    const deviceId = `device-local-${nonce.slice(0, 32)}`;
+    const exchanged = pairingExchange(nonce, deviceId);
+    if (!exchanged) {
+      sendError(response, 410, 'pairing_expired', 'pairing code expired or was already used');
+      return;
+    }
+    sendJson(response, 200, {
+      deviceId,
+      accessToken: exchanged.accessToken,
+      scopes: ['sync:read', 'sync:write'],
+      expiresAt: Date.now() + 24 * 60 * 60 * 1_000,
     });
     return;
   }
@@ -306,6 +375,15 @@ async function handleRequest(
       return;
     }
     sendJson(response, 200, store.getTaskSnapshot(accountId));
+    return;
+  }
+
+  if (requestUrl.pathname === '/sync/v2/status') {
+    if ([...requestUrl.searchParams].length > 0) {
+      sendError(response, 400, 'invalid_query', 'status route does not accept query fields');
+      return;
+    }
+    sendJson(response, 200, v2Store.status(accountId));
     return;
   }
 
@@ -379,6 +457,16 @@ async function handleRequest(
     return;
   }
 
+  if (!allowV2AuthoritativeWrites && isAuthoritativeV2Write(requestUrl.pathname, parsed)) {
+    sendError(
+      response,
+      409,
+      'v2_authority_is_cloudflare_do',
+      'this node is not the v2 write authority; route writes through the Cloudflare account authority',
+    );
+    return;
+  }
+
   if (requestUrl.pathname.startsWith('/v2/')) {
     try {
       if (requestUrl.pathname === '/v2/bootstrap/inventory') {
@@ -408,6 +496,20 @@ async function handleRequest(
       }
       throw error;
     }
+  }
+
+
+  if (requestUrl.pathname === '/sync/v2/exchange') {
+    try {
+      sendJson(response, 200, v2Store.sync(accountId, parsed as SyncV2Request));
+    } catch (error) {
+      if (error instanceof SyncV2StoreError) {
+        sendError(response, 409, error.code, error.message);
+        return;
+      }
+      throw error;
+    }
+    return;
   }
 
   if (requestUrl.pathname === TASK_SNAPSHOT_PATH) {
@@ -446,6 +548,9 @@ async function handleRequest(
 }
 
 function routeMethod(pathname: string): 'GET' | 'POST' | null {
+  if (pathname === '/sync/v2/status') return 'GET';
+  if (pathname === '/sync/v2/exchange') return 'POST';
+  if (pathname === '/sync/v1/pair/exchange') return 'POST';
   if (
     pathname === '/v2/bootstrap/inventory' ||
     pathname === '/v2/bootstrap/entities' ||
@@ -535,6 +640,14 @@ function sendStoreError(response: http.ServerResponse, error: unknown): boolean 
   const status = error.code === 'invalid_live_revision' ? 409 : 400;
   sendError(response, status, error.code, error.message);
   return true;
+}
+
+function isAuthoritativeV2Write(pathname: string, parsed: unknown): boolean {
+  if (pathname === '/v2/bootstrap/entities') return true;
+  if (pathname === '/v2/sync' || pathname === '/sync/v2/exchange') {
+    return isRecord(parsed) && Array.isArray(parsed.mutations) && parsed.mutations.length > 0;
+  }
+  return false;
 }
 
 function parseSyncRequest(value: unknown): DeviceSyncRequest {

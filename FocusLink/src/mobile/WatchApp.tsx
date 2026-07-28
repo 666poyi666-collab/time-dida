@@ -9,6 +9,7 @@
 // 这块屏幕上物理上不可用。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as CapacitorApp, type URLOpenListenerEvent } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { parseDeviceSyncPairingUrl } from '@shared/sync/pairingProtocol';
 import type { LiveFocusCommand } from '@shared/sync/liveFocusProtocol';
 import type { SyncedTask } from '@shared/sync/taskSnapshotProtocol';
@@ -22,6 +23,7 @@ import {
 import {
   getOrCreateDeviceId,
   loadConnectionPreferences,
+  rememberAssignedDeviceId,
   saveConnectionPreferences,
   type MobileConnectionPreferences,
 } from './preferences';
@@ -69,7 +71,7 @@ function mapSnapshot(
 }
 
 export function WatchApp() {
-  const deviceId = useRef(getOrCreateDeviceId()).current;
+  const [deviceId, setDeviceId] = useState(() => getOrCreateDeviceId());
   const [preferences, setPreferences] = useState<MobileConnectionPreferences>(() =>
     loadConnectionPreferences(),
   );
@@ -170,11 +172,17 @@ export function WatchApp() {
       void exchangeDeviceSyncPairingCode({
         endpoint: pairing.endpoint,
         code: pairing.nonce,
-        deviceId,
+        device: {
+          platform: Capacitor.isNativePlatform() ? 'android' : 'web',
+          appVersion: 'focuslink-watch-v2',
+          displayName: 'FocusLink Watch',
+        },
       })
-        .then((token) => {
-          const next = { endpoint: pairing.endpoint, token, rememberToken: true };
+        .then((paired) => {
+          const next = { endpoint: pairing.endpoint, token: paired.accessToken, rememberToken: true };
           saveConnectionPreferences(next);
+          rememberAssignedDeviceId(paired.deviceId);
+          setDeviceId(paired.deviceId);
           setPreferences(next);
           setConnection('connecting');
           setNotice(null);

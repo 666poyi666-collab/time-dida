@@ -97,6 +97,12 @@ export interface NativeFocusStatus {
   snapshot?: NativeFocusDisplaySnapshot;
 }
 
+export interface NativeFocusConnection {
+  endpoint: string;
+  accessToken: string;
+  deviceId: string;
+}
+
 interface FocusRuntimePlugin {
   updateSnapshot(options: { snapshot: NativeFocusDisplaySnapshot }): Promise<void>;
   drainPendingCommands(): Promise<{ commands: NativeFocusCommand[] }>;
@@ -114,6 +120,12 @@ interface FocusRuntimePlugin {
     deviceId: string;
   }): Promise<void>;
   clearConnection(): Promise<void>;
+  getConnection(): Promise<{
+    configured: boolean;
+    endpoint?: string;
+    accessToken?: string;
+    deviceId?: string;
+  }>;
   openBackgroundSettings(): Promise<{ opened?: boolean }>;
   openAutoStartSettings(): Promise<{ opened?: boolean }>;
   openOverlayPermissionSettings(): Promise<{ opened?: boolean; granted?: boolean }>;
@@ -207,6 +219,31 @@ export async function configureNativeFocusConnection(
 export async function clearNativeFocusConnection(): Promise<void> {
   if (!isNativeFocusRuntimeAvailable()) return;
   await FocusRuntime.clearConnection();
+}
+
+/**
+ * Restores the Keystore-protected credential into renderer memory only.  The
+ * caller must never write accessToken to Web Storage or IndexedDB.
+ */
+export async function readNativeFocusConnection(): Promise<NativeFocusConnection | null> {
+  if (!isNativeFocusRuntimeAvailable()) return null;
+  const value = await FocusRuntime.getConnection();
+  if (
+    value.configured !== true ||
+    typeof value.endpoint !== 'string' ||
+    typeof value.accessToken !== 'string' ||
+    typeof value.deviceId !== 'string' ||
+    !value.endpoint ||
+    !value.accessToken ||
+    !value.deviceId
+  ) {
+    return null;
+  }
+  return {
+    endpoint: value.endpoint,
+    accessToken: value.accessToken,
+    deviceId: value.deviceId,
+  };
 }
 
 export async function openNativeBackgroundSettings(): Promise<boolean> {

@@ -3,10 +3,13 @@ import 'fake-indexeddb/auto';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { fingerprintDeviceSyncValue } from '../shared/sync/deviceProtocol';
-import type { FocusMetadataV2, SyncV2Mutation } from '../shared/sync/v2Protocol';
+import type { FocusMetadataV2, SyncV2Change, SyncV2Mutation } from '../shared/sync/v2Protocol';
 import {
+  applyMobileV2ChangesAndCheckpoint,
   claimMobileV2Outbox,
   enqueueMobileV2Mutation,
+  readMobileV2EntityState,
+  readMobileV2Status,
   readMobileV2Bootstrap,
   retryMobileV2Lease,
   settleMobileV2Ack,
@@ -82,6 +85,63 @@ describe('mobile Sync v2 persistence', () => {
       state: 'manifest-received',
       bootstrapId: 'boot-1',
     });
+  });
+
+  it('does not delete an accepted outbox item before the response page and cursor materialize', async () => {
+    const atomicMutation: SyncV2Mutation = {
+      ...mutation,
+      opId: 'mobile-atomic-op',
+      entityId: 'mobile-atomic',
+      payload: { ...payload, sessionId: 'mobile-atomic' },
+    };
+    await enqueueMobileV2Mutation(atomicMutation, 100);
+    const claimed = await claimMobileV2Outbox(1, 100);
+    const checkpoint = {
+      key: 'syncV2.bootstrap' as const,
+      state: 'v2-active' as const,
+      bootstrapId: null,
+      cursor: 'c1',
+      syncEpoch: 's-atomic',
+      cursorEpoch: 'c-atomic',
+      accountGeneration: 1,
+      updatedAt: 101,
+    };
+    const invalidLedger: SyncV2Change = {
+      changeSeq: 1,
+      entityType: 'focus_ledger_v2',
+      entityId: 'mobile-atomic',
+      revision: 1,
+      fingerprint: 'a'.repeat(64),
+      deleted: false,
+      payload: {} as SyncV2Change['payload'],
+      sourceDeviceId: 'remote-device',
+    };
+
+    await expect(
+      applyMobileV2ChangesAndCheckpoint({
+        changes: [invalidLedger],
+        checkpoint,
+        serverTime: 102,
+        deviceId: atomicMutation.deviceId,
+        leaseId: claimed.leaseId,
+        acks: [
+          {
+            opId: atomicMutation.opId,
+            entityType: atomicMutation.entityType,
+            entityId: atomicMutation.entityId,
+            status: 'applied',
+            revision: 1,
+            fingerprint: fingerprintDeviceSyncValue(atomicMutation.payload),
+            errorCode: null,
+          },
+        ],
+      }),
+    ).rejects.toThrow('远端 v2 会话无法物化');
+
+    expect(await readMobileV2EntityState('focus_metadata_v2', 'mobile-atomic')).toBeNull();
+    expect(await readMobileV2Status()).toMatchObject({ pending: 1 });
+    expect((await claimMobileV2Outbox(1, 100 + 30_001)).items).toHaveLength(1);
+    expect((await readMobileV2Bootstrap())?.cursor).not.toBe('c1');
   });
 });
 

@@ -156,6 +156,78 @@ CREATE TABLE IF NOT EXISTS sync_device_identity (
   created_at INTEGER NOT NULL
 );
 
+-- Canonical Sync v2 state is connection-scoped.  The earlier provisional
+-- tables above are intentionally retained as a read-only migration source;
+-- their primary keys could not safely represent two accounts/endpoints.
+CREATE TABLE IF NOT EXISTS sync_v2_outbox (
+  connection_scope TEXT NOT NULL,
+  op_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  base_revision INTEGER NOT NULL,
+  base_fingerprint TEXT,
+  payload TEXT,
+  device_id TEXT NOT NULL,
+  account_generation INTEGER NOT NULL,
+  state TEXT NOT NULL DEFAULT 'pending',
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_retry_at INTEGER NOT NULL DEFAULT 0,
+  lease_id TEXT,
+  lease_expires_at INTEGER,
+  claimed_at INTEGER,
+  error_code TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY(connection_scope, op_id)
+);
+
+CREATE TABLE IF NOT EXISTS sync_v2_entity_state (
+  connection_scope TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  confirmed_revision INTEGER NOT NULL,
+  confirmed_fingerprint TEXT NOT NULL,
+  base_snapshot TEXT,
+  deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN (0, 1)),
+  change_seq INTEGER,
+  source_device_id TEXT,
+  sync_epoch TEXT NOT NULL,
+  cursor_epoch TEXT NOT NULL,
+  account_generation INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY(connection_scope, entity_type, entity_id)
+);
+
+CREATE TABLE IF NOT EXISTS sync_v2_conflicts (
+  connection_scope TEXT NOT NULL,
+  conflict_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  base_payload TEXT,
+  local_payload TEXT,
+  remote_payload TEXT,
+  conflict_fields TEXT NOT NULL,
+  source_device_ids TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  resolution_op_id TEXT,
+  created_at INTEGER NOT NULL,
+  resolved_at INTEGER,
+  PRIMARY KEY(connection_scope, conflict_id)
+);
+
+CREATE TABLE IF NOT EXISTS sync_v2_operation_history (
+  connection_scope TEXT NOT NULL,
+  op_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  revision INTEGER,
+  error_code TEXT,
+  completed_at INTEGER NOT NULL,
+  PRIMARY KEY(connection_scope, op_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_segments_session ON focus_segments(session_id);
 CREATE INDEX IF NOT EXISTS idx_pauses_session ON pause_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_pauses_segment ON pause_events(segment_id);
@@ -166,6 +238,14 @@ CREATE INDEX IF NOT EXISTS idx_sync_outbox_ready ON sync_outbox(state, next_retr
 CREATE INDEX IF NOT EXISTS idx_sync_outbox_lease ON sync_outbox(lease_expires_at);
 CREATE INDEX IF NOT EXISTS idx_sync_conflicts_status ON sync_conflicts(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_sync_operation_history_completed ON sync_operation_history(completed_at);
+CREATE INDEX IF NOT EXISTS idx_sync_v2_outbox_ready
+  ON sync_v2_outbox(connection_scope, state, next_retry_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_sync_v2_outbox_lease
+  ON sync_v2_outbox(connection_scope, lease_expires_at);
+CREATE INDEX IF NOT EXISTS idx_sync_v2_conflicts_status
+  ON sync_v2_conflicts(connection_scope, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_sync_v2_history_completed
+  ON sync_v2_operation_history(connection_scope, completed_at);
 
 CREATE TRIGGER IF NOT EXISTS trg_segment_time_check
 BEFORE INSERT ON focus_segments

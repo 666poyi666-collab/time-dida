@@ -6,7 +6,13 @@ export const SYNC_V2_MAX_PULL = 500;
 export const SYNC_V2_DEFAULT_LEASE_MS = 30_000;
 
 export type SyncV2EntityType =
-  'focus_ledger_v2' | 'focus_metadata_v2' | 'focus_ledger_correction_v2';
+  | 'focus_ledger_v2'
+  | 'focus_metadata_v2'
+  | 'focus_ledger_correction_v2'
+  | 'focus_guard_rule_v1'
+  | 'focus_guard_state_v1'
+  | 'focus_guard_completion_v1'
+  | 'focus_guard_config_v1';
 export type SyncV2MutationKind = 'put' | 'delete' | 'restore' | 'purge';
 export type SyncV2AckStatus = 'applied' | 'duplicate' | 'conflict' | 'rejected';
 export type SyncV2BootstrapState =
@@ -63,7 +69,28 @@ export interface FocusLedgerCorrectionV2 {
   createdByDeviceId: string;
 }
 
-export type SyncV2Payload = FocusLedgerV2 | FocusMetadataV2 | FocusLedgerCorrectionV2;
+/**
+ * Opaque application state for 不做手机控. The authority can validate routing,
+ * revision and integrity metadata but never receives a root key or plaintext.
+ */
+export interface EncryptedFocusGuardEnvelopeV1 {
+  version: 1;
+  algorithm: 'A256GCM';
+  product: 'focus-guard';
+  entityKind: 'rule' | 'state' | 'completion' | 'config';
+  nonce: string;
+  ciphertext: string;
+  aadHash: string;
+  aadBaseRevision: number;
+  operation: 'put' | 'restore';
+  createdAt: number;
+}
+
+export type SyncV2Payload =
+  | FocusLedgerV2
+  | FocusMetadataV2
+  | FocusLedgerCorrectionV2
+  | EncryptedFocusGuardEnvelopeV1;
 
 export interface SyncV2Epoch {
   syncEpoch: string;
@@ -298,6 +325,43 @@ export function parseDeviceToken(token: string): {
   return match
     ? { accountPublicId: match[1], devicePublicId: match[2], randomSecret: match[3] }
     : null;
+}
+
+export function isEncryptedFocusGuardEnvelopeV1(
+  value: unknown,
+  entityType?: SyncV2EntityType,
+): value is EncryptedFocusGuardEnvelopeV1 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const expectedKind =
+    entityType === 'focus_guard_rule_v1'
+      ? 'rule'
+      : entityType === 'focus_guard_state_v1'
+        ? 'state'
+        : entityType === 'focus_guard_completion_v1'
+          ? 'completion'
+          : entityType === 'focus_guard_config_v1'
+            ? 'config'
+            : null;
+  return (
+    record.version === 1 &&
+    record.algorithm === 'A256GCM' &&
+    record.product === 'focus-guard' &&
+    typeof record.entityKind === 'string' &&
+    (expectedKind === null || record.entityKind === expectedKind) &&
+    typeof record.nonce === 'string' &&
+    /^[A-Za-z0-9_-]{16,64}$/.test(record.nonce) &&
+    typeof record.ciphertext === 'string' &&
+    /^[A-Za-z0-9_-]{16,700000}$/.test(record.ciphertext) &&
+    typeof record.aadHash === 'string' &&
+    /^[a-f0-9]{64}$/i.test(record.aadHash) &&
+    Number.isSafeInteger(record.aadBaseRevision) &&
+    Number(record.aadBaseRevision) >= 0 &&
+    (record.operation === 'put' || record.operation === 'restore') &&
+    typeof record.createdAt === 'number' &&
+    Number.isSafeInteger(record.createdAt) &&
+    record.createdAt >= 0
+  );
 }
 
 export function shouldForceBootstrap(

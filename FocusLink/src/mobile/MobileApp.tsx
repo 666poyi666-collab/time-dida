@@ -1,27 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { App as CapacitorApp, type URLOpenListenerEvent } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 
 import { AppNavigation, type MobileView } from './AppNavigation';
-import { DEVICE_SYNC_ENTITY, normalizeDeviceSyncEndpoint } from '@shared/sync/deviceProtocol';
+import { normalizeDeviceSyncEndpoint } from '@shared/sync/deviceProtocol';
 import { parseDeviceSyncPairingUrl } from '@shared/sync/pairingProtocol';
 import type { LiveFocusCommand, LiveFocusSnapshotResponse } from '@shared/sync/liveFocusProtocol';
 import type { SyncedTask, TaskSnapshotResponse } from '@shared/sync/taskSnapshotProtocol';
 import {
-  applyDeviceSyncChanges,
   clearCachedLiveFocusSnapshot,
   clearMobileCache,
   completeOfflineFocusRuntime,
   createOfflineFocusRuntime,
-  markPendingDeviceSyncFailure,
-  markPendingDeviceSyncUploading,
   readCachedLiveFocusSnapshot,
   readCachedTaskSnapshot,
   readMobileCache,
   readOfflineFocusRuntime,
   readLocalSessionSyncMeta,
   readPendingDeviceSyncBundles,
-  removePendingDeviceSyncBundle,
   writeLocalSessionSyncMeta,
   writeOfflineFocusRuntime,
   writeCachedLiveFocusSnapshot,
@@ -52,6 +49,7 @@ import {
   drainNativeFocusCommands,
   enterNativePictureInPicture,
   isNativeFocusRuntimeAvailable,
+  readNativeFocusConnection,
   readNativeFocusStatus,
   setNativeImmersiveSystemBars,
   subscribeToNativeFocusCommands,
@@ -62,6 +60,7 @@ import {
   clearSavedToken,
   getOrCreateDeviceId,
   loadConnectionPreferences,
+  rememberAssignedDeviceId,
   saveConnectionPreferences,
   type MobileConnectionPreferences,
 } from './preferences';
@@ -79,12 +78,8 @@ import {
 } from './appearance';
 import {
   fetchLiveFocusSnapshot,
-  DeviceSyncRequestError,
   exchangeDeviceSyncPairingCode,
   fetchTaskSnapshot,
-  isInvalidDeviceSyncCursorError,
-  pullDeviceSyncPage,
-  pushPendingDeviceSyncBundle,
   sendLiveFocusCommand,
   waitForLiveFocusSnapshot,
 } from './syncClient';
@@ -150,7 +145,7 @@ export function MobileApp() {
     }),
   );
 
-  const deviceId = useRef(getOrCreateDeviceId()).current;
+  const [deviceId, setDeviceId] = useState(() => getOrCreateDeviceId());
   const preferencesRef = useRef(preferences);
   const cacheRef = useRef(cache);
   const liveSnapshotRef = useRef(liveSnapshot);
@@ -176,6 +171,40 @@ export function MobileApp() {
   }, [appearance]);
 
   useEffect(() => {
+    if (!isNativeFocusRuntimeAvailable() || preferencesRef.current.token) return;
+    let disposed = false;
+    void readNativeFocusConnection()
+      .then((connection) => {
+        if (disposed || !connection) return;
+        const next: MobileConnectionPreferences = {
+          endpoint: normalizeDeviceSyncEndpoint(connection.endpoint),
+          token: connection.accessToken,
+          rememberToken: true,
+        };
+        // Keep the token only in React memory. saveConnectionPreferences on a
+        // native build persists endpoint/flags and actively removes browser
+        // token remnants; the durable copy remains in Android Keystore.
+        saveConnectionPreferences(next);
+        if (connection.deviceId.startsWith('device-')) {
+          rememberAssignedDeviceId(connection.deviceId);
+        }
+        setDeviceId(connection.deviceId);
+        preferencesRef.current = next;
+        connectionKeyRef.current = connectionKey(next);
+        setPreferences(next);
+        setDraft(next);
+        setConfigOpen(false);
+        setConnectionEpoch((value) => value + 1);
+      })
+      .catch((error) => {
+        if (!disposed) setCommandNotice(`Android 安全凭据恢复失败：${errorMessage(error)}`);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  useEffect(() => {
     let disposed = false;
     let removeListener: (() => Promise<void>) | undefined;
     const acceptPairingUrl = (rawUrl: string) => {
@@ -190,16 +219,22 @@ export function MobileApp() {
       void exchangeDeviceSyncPairingCode({
         endpoint: pairing.endpoint,
         code: pairing.nonce,
-        deviceId,
+        device: {
+          platform: Capacitor.isNativePlatform() ? 'android' : 'web',
+          appVersion: 'focuslink-mobile-v2',
+          displayName: 'FocusLink Mobile',
+        },
       })
-        .then(async (token) => {
+        .then(async (paired) => {
           const next: MobileConnectionPreferences = {
             endpoint: pairing.endpoint,
-            token,
+            token: paired.accessToken,
             rememberToken: true,
           };
           saveConnectionPreferences(next);
-          await configureNativeFocusConnection(next.endpoint, next.token, deviceId);
+          rememberAssignedDeviceId(paired.deviceId);
+          setDeviceId(paired.deviceId);
+          await configureNativeFocusConnection(next.endpoint, next.token, paired.deviceId);
           preferencesRef.current = next;
           connectionKeyRef.current = connectionKey(next);
           setPreferences(next);
@@ -312,64 +347,8 @@ export function MobileApp() {
     }
   }, []);
 
-  const flushPendingUploads = useCallback(
-    async (connection: MobileConnectionPreferences, signal?: AbortSignal): Promise<number> => {
-      const pending = await readPendingDeviceSyncBundles();
-      setPendingUploadCount(pending.length);
-      let uploaded = 0;
-      for (const record of pending) {
-        if (record.state === 'conflict' || record.state === 'rejected') continue;
-        if (record.nextRetryAt > Date.now()) continue;
-        const uploading = await markPendingDeviceSyncUploading(record);
-        try {
-          const response = await pushPendingDeviceSyncBundle({
-            endpoint: connection.endpoint,
-            token: connection.token,
-            deviceId,
-            signal,
-            mutation: {
-              opId: record.opId,
-              entity: DEVICE_SYNC_ENTITY,
-              entityId: record.entityId,
-              kind: 'put',
-              baseRevision: 0,
-              payload: record.bundle,
-            },
-          });
-          const ack = response.acks[0];
-          if (ack.status === 'conflict' || ack.status === 'rejected') {
-            await markPendingDeviceSyncFailure(
-              record.opId,
-              ack.status,
-              ack.errorCode ?? ack.status,
-              0,
-            );
-            continue;
-          }
-          await removePendingDeviceSyncBundle(record.opId);
-          uploaded += 1;
-          setPendingUploadCount(pending.length - uploaded);
-        } catch (error) {
-          const retryAfterMs =
-            error instanceof DeviceSyncRequestError && error.status === 429
-              ? (error.retryAfterMs ?? 60_000)
-              : pendingRetryDelayMs(uploading.attemptCount);
-          await markPendingDeviceSyncFailure(
-            record.opId,
-            'retry',
-            pendingErrorCode(error),
-            Date.now() + retryAfterMs,
-          );
-          throw error;
-        }
-      }
-      return uploaded;
-    },
-    [deviceId],
-  );
-
   const pullLedger = useCallback(
-    async (connection: MobileConnectionPreferences, startCursor: string | null) => {
+    async (connection: MobileConnectionPreferences, _startCursor: string | null) => {
       ledgerRequest.current?.abort();
       const controller = new AbortController();
       const generation = ledgerGeneration.current + 1;
@@ -383,83 +362,24 @@ export function MobileApp() {
         ledgerRequest.current === controller &&
         !controller.signal.aborted;
 
-      let cursor = startCursor;
-      let pages = 0;
-      let changeCount = 0;
-      let fullyPulled = false;
-      let cursorReset = false;
-
       try {
-        const uploaded = await flushPendingUploads(connection, controller.signal);
-        if (uploaded > 0 && isCurrent()) {
-          setLedgerNotice(`已补传 ${uploaded} 场离线会话，正在拉取完整账本…`);
-        }
-        while (pages < 50) {
-          let response;
-          try {
-            response = await pullDeviceSyncPage({
-              endpoint: connection.endpoint,
-              token: connection.token,
-              deviceId,
-              cursor,
-              signal: controller.signal,
-            });
-          } catch (error) {
-            if (
-              !cursorReset &&
-              pages === 0 &&
-              cursor !== null &&
-              isInvalidDeviceSyncCursorError(error)
-            ) {
-              await enqueueMutation(cacheMutationQueue, clearMobileCache);
-              if (!isCurrent()) return;
-              cursorReset = true;
-              cursor = null;
-              cacheRef.current = EMPTY_CACHE;
-              setCache(EMPTY_CACHE);
-              setLedgerNotice('检测到同步身份变化，正在重建本机账本…');
-              continue;
-            }
-            throw error;
-          }
-          if (!isCurrent()) return;
-          if (response.hasMore && response.nextCursor === cursor) {
-            throw new Error('同步服务声明仍有数据，但游标没有前进');
-          }
-          await enqueueMutation(cacheMutationQueue, async () => {
-            if (!isCurrent()) return;
-            await applyDeviceSyncChanges(
-              response.changes,
-              response.nextCursor,
-              response.serverTime,
-            );
-          });
-          if (!isCurrent()) return;
-          cursor = response.nextCursor;
-          pages += 1;
-          changeCount += response.changes.length;
-          if (!response.hasMore) {
-            fullyPulled = true;
-            break;
-          }
-        }
-        if (!fullyPulled) throw new Error('本次拉取页数达到安全上限，请再次拉取以继续');
-
-        const snapshot = await readMobileCache();
-        await runMobileSyncV2({
+        const synced = await runMobileSyncV2({
           endpoint: connection.endpoint,
           token: connection.token,
           deviceId,
           signal: controller.signal,
         });
         if (!isCurrent()) return;
+        const snapshot = await readMobileCache();
+        const pending = await readPendingDeviceSyncBundles();
+        setPendingUploadCount(pending.length + synced.unresolvedConflicts);
         cacheRef.current = snapshot;
         setCache(snapshot);
         setPullState('confirmed');
         setLedgerNotice(
-          changeCount > 0
-            ? `账本拉取已确认：处理 ${changeCount} 条变更，现有 ${snapshot.bundles.length} 场会话`
-            : `账本拉取已确认：没有新变更，保留 ${snapshot.bundles.length} 场会话`,
+          synced.downloaded > 0 || synced.uploaded > 0
+            ? `账本同步已确认：补传 ${synced.uploaded}，处理 ${synced.downloaded} 条变更，现有 ${snapshot.bundles.length} 场会话`
+            : `账本同步已确认：没有新变更，保留 ${snapshot.bundles.length} 场会话`,
         );
       } catch (error) {
         if (!isCurrent() || isAbortError(error)) return;
@@ -473,7 +393,7 @@ export function MobileApp() {
         if (ledgerRequest.current === controller) ledgerRequest.current = null;
       }
     },
-    [deviceId, flushPendingUploads],
+    [deviceId],
   );
 
   useEffect(() => {
@@ -1248,9 +1168,12 @@ export function MobileApp() {
             value={draft}
             syncing={pullState === 'pulling' || liveConnection === 'connecting'}
             hasSavedToken={Boolean(preferences.token)}
-            deviceId={deviceId}
             initialPairingCode={pendingPairingCode}
             onChange={setDraft}
+            onPairedDeviceId={(assignedDeviceId) => {
+              rememberAssignedDeviceId(assignedDeviceId);
+              setDeviceId(assignedDeviceId);
+            }}
             onClose={() => {
               setPendingPairingCode('');
               setConfigOpen(false);
@@ -1388,19 +1311,6 @@ function connectionTitle(state: LiveConnectionState): string {
   if (state === 'offline') return '当前离线 · 本机专注可用';
   if (state === 'error') return '实时连接中断 · 自动重试中';
   return '尚未配置多端连接';
-}
-
-function pendingRetryDelayMs(attemptCount: number): number {
-  const exponent = Math.max(0, Math.min(8, attemptCount - 1));
-  return Math.min(15 * 60_000, 5_000 * 2 ** exponent);
-}
-
-function pendingErrorCode(error: unknown): string {
-  if (error instanceof DeviceSyncRequestError) {
-    return error.code ?? (error.status === null ? 'request_failed' : `http_${error.status}`);
-  }
-  if (error instanceof DOMException && error.name === 'AbortError') return 'aborted';
-  return navigator.onLine ? 'network_error' : 'offline';
 }
 
 function connectionKey(

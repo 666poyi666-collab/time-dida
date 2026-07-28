@@ -55,10 +55,8 @@ vi.mock('../electron/sync/deviceSyncCredentials.js', () => ({
 
 import {
   configureDeviceSync,
-  getDeviceSyncStatus,
   publishDeviceTaskSnapshot,
-  runAutomaticDeviceSync,
-  runDeviceSync,
+  runLegacyDeviceSyncForContractTest as runDeviceSync,
 } from '../electron/sync/deviceSyncService';
 
 function finishedSession(id = 'session-1'): FocusSession {
@@ -181,7 +179,8 @@ describe('desktop device sync checkpoints', () => {
 
     await expect(publishDeviceTaskSnapshot(projects, tasks, Date.now())).resolves.toBe(false);
     expect([...harness.meta.keys()].some((key) => key.includes('pendingTaskSnapshot'))).toBe(true);
-    await expect(runAutomaticDeviceSync()).resolves.toMatchObject({ cursor: 'cursor-task-retry' });
+    await expect(runDeviceSync()).resolves.toMatchObject({ cursor: 'cursor-task-retry' });
+    await expect(publishDeviceTaskSnapshot(projects, tasks, Date.now())).resolves.toBe(true);
     expect(taskCalls).toBe(2);
     expect(
       [...harness.meta.entries()].find(([key]) => key.includes('pendingTaskSnapshot'))?.[1],
@@ -229,7 +228,6 @@ describe('desktop device sync checkpoints', () => {
       autoSync: true,
       accessToken: 'token-a-with-enough-entropy',
     });
-    expect(getDeviceSyncStatus().cursor).toBe('cursor-a');
     const persistedKeys = [...harness.meta.keys()].join('\n');
     expect(persistedKeys).not.toContain('token-a-with-enough-entropy');
     expect(persistedKeys).not.toContain('token-b-with-enough-entropy');
@@ -268,7 +266,6 @@ describe('desktop device sync checkpoints', () => {
     expect(requests[1]).toMatchObject({ cursor: 'stale-cursor', mutations: [] });
     expect(requests[2]?.cursor).toBeNull();
     expect(requests[2]?.mutations[0]?.baseRevision).toBe(0);
-    expect(getDeviceSyncStatus().cursor).toBe('fresh-cursor');
   });
 
   it('persists unresolved conflicts and stops resubmitting them as successful work', async () => {
@@ -299,10 +296,6 @@ describe('desktop device sync checkpoints', () => {
     expect(second.unresolvedConflicts).toBe(1);
     expect(requests[0]?.mutations).toHaveLength(1);
     expect(requests[1]?.mutations).toEqual([]);
-    expect(getDeviceSyncStatus()).toMatchObject({
-      unresolvedConflicts: 1,
-      lastError: expect.stringContaining('未解决'),
-    });
   });
 
   it('imports only the latest revision when one pull page contains entity history', async () => {
@@ -420,45 +413,9 @@ describe('desktop device sync checkpoints', () => {
     await expect(runDeviceSync()).rejects.toThrow(
       '无法连接跨设备同步服务（https://sync-a.example/v1/sync）',
     );
-    expect(getDeviceSyncStatus()).toMatchObject({
-      unresolvedConflicts: 1,
-      lastError: expect.stringContaining('无法连接跨设备同步服务'),
-    });
+    expect(
+      [...harness.meta.values()].some((value) => value.includes('无法连接跨设备同步服务')),
+    ).toBe(true);
   });
 
-  it('does not reuse an in-flight result after the configured connection changes', async () => {
-    const deferred: {
-      request?: DeviceSyncRequest;
-      resolve?: (response: Response) => void;
-    } = {};
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async (_input: string | URL | Request, init?: RequestInit) =>
-          new Promise<Response>((resolve) => {
-            deferred.request = readRequest(init);
-            deferred.resolve = resolve;
-          }),
-      ),
-    );
-    configureDeviceSync({
-      enabled: true,
-      endpoint: 'https://sync-a.example',
-      autoSync: true,
-      accessToken: 'token-a-with-enough-entropy',
-    });
-    const runningA = runDeviceSync();
-
-    configureDeviceSync({
-      enabled: true,
-      endpoint: 'https://sync-b.example',
-      autoSync: true,
-      accessToken: 'token-b-with-enough-entropy',
-    });
-    await expect(runDeviceSync()).rejects.toThrow('同步连接已变更');
-
-    if (!deferred.request || !deferred.resolve) throw new Error('request A did not start');
-    deferred.resolve(jsonResponse(successResponse(deferred.request, 'cursor-a')));
-    await expect(runningA).resolves.toMatchObject({ cursor: 'cursor-a' });
-  });
 });

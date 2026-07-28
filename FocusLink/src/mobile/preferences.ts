@@ -16,6 +16,15 @@ export interface MobileConnectionPreferences {
 }
 
 export function loadConnectionPreferences(): MobileConnectionPreferences {
+  const native = Capacitor.isNativePlatform();
+  if (native) {
+    // v0.12.x briefly allowed a persistent WebView token.  Android now owns
+    // the durable credential in Keystore; remove both browser copies before
+    // any renderer code can reuse them.  MobileApp restores it into memory
+    // through the narrow native bridge after startup.
+    sessionStorage.removeItem(TOKEN_SESSION_KEY);
+    localStorage.removeItem(TOKEN_LOCAL_KEY);
+  }
   const rememberToken = localStorage.getItem(REMEMBER_TOKEN_KEY) === 'true';
   const storedEndpoint = localStorage.getItem(ENDPOINT_KEY);
   const migrationPending = localStorage.getItem(LOOPBACK_MIGRATION_KEY) !== 'true';
@@ -40,7 +49,9 @@ export function loadConnectionPreferences(): MobileConnectionPreferences {
   }
   return {
     endpoint,
-    token: rememberToken
+    token: native
+      ? ''
+      : rememberToken
       ? (localStorage.getItem(TOKEN_LOCAL_KEY) ?? '')
       : (sessionStorage.getItem(TOKEN_SESSION_KEY) ?? ''),
     rememberToken,
@@ -70,6 +81,12 @@ export function migrateLegacyMobileSyncEndpoint(endpoint: string): string {
 
 export function saveConnectionPreferences(value: MobileConnectionPreferences): void {
   localStorage.setItem(ENDPOINT_KEY, value.endpoint);
+  if (Capacitor.isNativePlatform()) {
+    localStorage.setItem(REMEMBER_TOKEN_KEY, 'true');
+    sessionStorage.removeItem(TOKEN_SESSION_KEY);
+    localStorage.removeItem(TOKEN_LOCAL_KEY);
+    return;
+  }
   localStorage.setItem(REMEMBER_TOKEN_KEY, String(value.rememberToken));
 
   if (value.rememberToken) {
@@ -93,4 +110,12 @@ export function getOrCreateDeviceId(): string {
   const created = `web_${crypto.randomUUID()}`;
   localStorage.setItem(DEVICE_ID_KEY, created);
   return created;
+}
+
+/** The authority, never the renderer, assigns a paired device identity. */
+export function rememberAssignedDeviceId(deviceId: string): void {
+  if (!/^device-[A-Za-z0-9._:-]{1,190}$/.test(deviceId)) {
+    throw new Error('同步服务返回的设备标识无效');
+  }
+  localStorage.setItem(DEVICE_ID_KEY, deviceId);
 }

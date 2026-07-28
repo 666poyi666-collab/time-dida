@@ -16,6 +16,11 @@ import {
   type DeviceSyncSessionBundle,
 } from '@shared/sync/deviceProtocol';
 import {
+  splitBundleForSyncV2,
+  type SyncV2Mutation,
+  type SyncV2Response,
+} from '@shared/sync/v2Protocol';
+import {
   DEVICE_SYNC_TEST_BODY_LIMIT_BYTES,
   createDeviceSyncCloudServer,
   createDeviceSyncCloudStore,
@@ -180,6 +185,71 @@ describe('device sync test cloud server', () => {
     const allowed = await postSync(syncRequest(), TOKEN_A, ALLOWED_ORIGIN);
     expect(allowed.status).toBe(200);
     expect(allowed.headers.get('access-control-allow-origin')).toBe(ALLOWED_ORIGIN);
+  });
+
+  it('serves the canonical status/exchange surface with strict cursors and immutable ledgers', async () => {
+    const statusResponse = await fetch(`${baseUrl}/sync/v2/status`, {
+      headers: { Authorization: `Bearer ${TOKEN_A}` },
+    });
+    expect(statusResponse.status).toBe(200);
+    const status = (await statusResponse.json()) as {
+      syncEpoch: string;
+      cursorEpoch: string;
+      accountGeneration: number;
+    };
+    const deviceId = 'desktop-v2-device';
+    const split = splitBundleForSyncV2(makeBundle('canonical-v2'), deviceId);
+    const ledger: SyncV2Mutation = {
+      opId: 'canonical-ledger-create',
+      entityType: 'focus_ledger_v2',
+      entityId: 'canonical-v2',
+      kind: 'put',
+      baseRevision: 0,
+      baseFingerprint: null,
+      payload: split.ledger,
+      deviceId,
+      accountGeneration: status.accountGeneration,
+    };
+    const exchange = async (mutations: SyncV2Mutation[], cursor: string | null) => {
+      const response = await fetch(`${baseUrl}/sync/v2/exchange`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${TOKEN_A}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          protocolVersion: 2,
+          deviceId,
+          cursor,
+          mutations,
+          pullLimit: 100,
+          syncEpoch: status.syncEpoch,
+          cursorEpoch: status.cursorEpoch,
+          accountGeneration: status.accountGeneration,
+        }),
+      });
+      expect(response.status).toBe(200);
+      return (await response.json()) as SyncV2Response;
+    };
+
+    const created = await exchange([ledger], null);
+    expect(created.acks[0]).toMatchObject({ status: 'applied', revision: 1 });
+    expect(created.nextCursor).toMatch(/^c[0-9a-z]+$/);
+    const overwritten = await exchange(
+      [
+        {
+          ...ledger,
+          opId: 'canonical-ledger-overwrite',
+          baseRevision: 1,
+          payload: { ...split.ledger, activeElapsedMs: split.ledger.activeElapsedMs + 1 },
+        },
+      ],
+      created.nextCursor,
+    );
+    expect(overwritten.acks[0]).toMatchObject({
+      status: 'rejected',
+      errorCode: 'immutable_ledger_requires_correction',
+    });
   });
 
   it('keeps pairing unavailable unless an exchange is configured', async () => {

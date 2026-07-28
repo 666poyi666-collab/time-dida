@@ -126,6 +126,26 @@ public final class FocusRuntimePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void getConnection(PluginCall call) {
+        FocusRuntimeConnectionStore.Connection connection = FocusRuntimeConnectionStore.get(
+            getContext()
+        );
+        JSObject value = new JSObject();
+        if (connection == null) {
+            call.resolve(value.put("configured", false));
+            return;
+        }
+        // The token crosses into trusted renderer memory for foreground HTTPS
+        // calls, but is never persisted by the WebView.  Its at-rest copy stays
+        // exclusively under Android Keystore.
+        value.put("configured", true);
+        value.put("endpoint", connection.endpoint);
+        value.put("accessToken", connection.accessToken);
+        value.put("deviceId", connection.deviceId);
+        call.resolve(value);
+    }
+
+    @PluginMethod
     public void openBackgroundSettings(PluginCall call) {
         List<Intent> candidates = new ArrayList<>();
         candidates.add(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
