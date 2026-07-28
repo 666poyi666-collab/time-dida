@@ -6,14 +6,24 @@ import {
   pushPendingDeviceSyncBundle,
 } from '../src/mobile/syncClient';
 import {
+  defaultNativeEndpointForMode,
   loadConnectionPreferences,
   migrateLegacyMobileSyncEndpoint,
+  STAGING_FOCUSLINK_ENDPOINT,
 } from '../src/mobile/preferences';
 
 describe('mobile sync client request recovery', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('pins the non-production staging build to the staging FocusLink authority', () => {
+    expect(defaultNativeEndpointForMode('staging')).toBe(STAGING_FOCUSLINK_ENDPOINT);
+    expect(STAGING_FOCUSLINK_ENDPOINT).toBe(
+      'https://foxlink-mcp-staging.focuslink-poyi-6465e9.workers.dev',
+    );
+    expect(defaultNativeEndpointForMode('production')).toBe('http://127.0.0.1:18787');
   });
 
   it('exchanges a one-time pairing code and sends no existing bearer credential', async () => {

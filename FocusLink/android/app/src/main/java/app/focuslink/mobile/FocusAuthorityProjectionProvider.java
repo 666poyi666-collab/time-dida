@@ -13,8 +13,9 @@ import org.json.JSONObject;
 
 /** Read-only, same-signature bridge. It never returns a token, deviceId, cursor or envelope. */
 public final class FocusAuthorityProjectionProvider extends ContentProvider {
-    static final String AUTHORITY = "app.focuslink.mobile.authority.projection";
-    static final String READ_PERMISSION = "app.focuslink.mobile.permission.READ_AUTHORITY_PROJECTION";
+    static final String AUTHORITY = BuildConfig.APPLICATION_ID + ".authority.projection";
+    static final String READ_PERMISSION =
+        BuildConfig.APPLICATION_ID + ".permission.READ_AUTHORITY_PROJECTION";
     static final String METHOD_GET_V1 = "getProjectionV1";
     static final String RESULT_PROJECTION = "projection";
 

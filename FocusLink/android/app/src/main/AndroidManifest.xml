@@ -13,7 +13,7 @@
         android:required="false" />
 
     <permission
-        android:name="app.focuslink.mobile.permission.READ_AUTHORITY_PROJECTION"
+        android:name="${applicationId}.permission.READ_AUTHORITY_PROJECTION"
         android:protectionLevel="signature" />
 
     <application
@@ -47,7 +47,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="focuslink"
+                    android:scheme="${pairScheme}"
                     android:host="pair" />
             </intent-filter>
 
@@ -65,10 +65,10 @@
 
         <provider
             android:name=".FocusAuthorityProjectionProvider"
-            android:authorities="app.focuslink.mobile.authority.projection"
+            android:authorities="${applicationId}.authority.projection"
             android:exported="true"
-            android:readPermission="app.focuslink.mobile.permission.READ_AUTHORITY_PROJECTION"
-            android:writePermission="app.focuslink.mobile.permission.READ_AUTHORITY_PROJECTION" />
+            android:readPermission="${applicationId}.permission.READ_AUTHORITY_PROJECTION"
+            android:writePermission="${applicationId}.permission.READ_AUTHORITY_PROJECTION" />
 
         <service
             android:name=".FocusNotificationService"

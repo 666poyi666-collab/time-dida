@@ -7,7 +7,13 @@ const REMEMBER_TOKEN_KEY = 'focuslink.mobile.remember-token';
 const DEVICE_ID_KEY = 'focuslink.mobile.device-id';
 const LOOPBACK_MIGRATION_KEY = 'focuslink.mobile.migration.loopback-18787';
 const CURRENT_LOOPBACK_ENDPOINT = 'http://127.0.0.1:18787';
+export const STAGING_FOCUSLINK_ENDPOINT =
+  'https://foxlink-mcp-staging.focuslink-poyi-6465e9.workers.dev';
 const LEGACY_LOOPBACK_PORT = '8787';
+
+export function defaultNativeEndpointForMode(mode: string): string {
+  return mode === 'staging' ? STAGING_FOCUSLINK_ENDPOINT : CURRENT_LOOPBACK_ENDPOINT;
+}
 
 export interface MobileConnectionPreferences {
   endpoint: string;
@@ -20,7 +26,8 @@ export function loadConnectionPreferences(): MobileConnectionPreferences {
   const storedEndpoint = localStorage.getItem(ENDPOINT_KEY);
   const migrationPending = localStorage.getItem(LOOPBACK_MIGRATION_KEY) !== 'true';
   const endpointBeforeMigration =
-    storedEndpoint ?? (Capacitor.isNativePlatform() ? CURRENT_LOOPBACK_ENDPOINT : '');
+    storedEndpoint ??
+    (Capacitor.isNativePlatform() ? defaultNativeEndpointForMode(import.meta.env.MODE) : '');
   const endpoint = migrationPending
     ? migrateLegacyMobileSyncEndpoint(endpointBeforeMigration)
     : endpointBeforeMigration;

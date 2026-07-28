@@ -69,11 +69,11 @@ public class FocusAuthorityProjectionV1Test {
     @Test
     public void providerContractUsesTheVersionedSameSignatureConstants() {
         assertEquals(
-            "app.focuslink.mobile.authority.projection",
+            BuildConfig.APPLICATION_ID + ".authority.projection",
             FocusAuthorityProjectionProvider.AUTHORITY
         );
         assertEquals(
-            "app.focuslink.mobile.permission.READ_AUTHORITY_PROJECTION",
+            BuildConfig.APPLICATION_ID + ".permission.READ_AUTHORITY_PROJECTION",
             FocusAuthorityProjectionProvider.READ_PERMISSION
         );
         assertEquals("getProjectionV1", FocusAuthorityProjectionProvider.METHOD_GET_V1);
