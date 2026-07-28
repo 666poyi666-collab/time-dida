@@ -179,8 +179,9 @@ public final class FocusNotificationService extends Service {
                 try {
                     pollCloudSnapshot();
                 } catch (Throwable throwable) {
-                    recordPollFailure(throwable.getClass().getSimpleName() + ": " + safeMessage(throwable));
-                    Log.e(TAG, "Background cloud focus poll terminated unexpectedly", throwable);
+                    String errorCode = pollErrorCode(throwable);
+                    recordPollFailure(errorCode);
+                    Log.e(TAG, "Background cloud focus poll terminated unexpectedly [" + errorCode + "]");
                 } finally {
                     handler.post(() -> {
                         cloudPollInFlight = false;
@@ -192,7 +193,7 @@ public final class FocusNotificationService extends Service {
             });
         } catch (RuntimeException exception) {
             cloudPollInFlight = false;
-            recordPollFailure(exception.getClass().getSimpleName() + ": " + safeMessage(exception));
+            recordPollFailure(pollErrorCode(exception));
             if (cloudPolling) handler.postDelayed(cloudPollRunnable, CLOUD_POLL_INTERVAL_MS);
         }
     }
@@ -218,8 +219,9 @@ public final class FocusNotificationService extends Service {
             Log.i(TAG, "Background cloud focus snapshot confirmed at revision " + snapshot.stateRevision);
             handler.post(() -> applyCloudSnapshot(snapshot));
         } catch (Throwable exception) {
-            recordPollFailure(exception.getClass().getSimpleName() + ": " + safeMessage(exception));
-            Log.w(TAG, "Unable to refresh focus state in background", exception);
+            String errorCode = pollErrorCode(exception);
+            recordPollFailure(errorCode);
+            Log.w(TAG, "Unable to refresh focus state in background [" + errorCode + "]");
         }
     }
 
@@ -235,8 +237,9 @@ public final class FocusNotificationService extends Service {
             FocusRuntimeStore.completeCommand(this, command.id);
             handler.post(() -> applyCloudSnapshot(snapshot));
         } catch (Throwable exception) {
-            recordPollFailure("command " + exception.getClass().getSimpleName() + ": " + safeMessage(exception));
-            Log.w(TAG, "Unable to upload pending native focus command", exception);
+            String errorCode = pollErrorCode(exception);
+            recordPollFailure(errorCode);
+            Log.w(TAG, "Unable to upload pending native focus command [" + errorCode + "]");
         }
     }
 
@@ -251,7 +254,8 @@ public final class FocusNotificationService extends Service {
                 .put("lastAttemptAtEpochMs", preferences.getLong("lastAttemptAtEpochMs", 0L))
                 .put("lastSuccessAtEpochMs", preferences.getLong("lastSuccessAtEpochMs", 0L))
                 .put("lastRevision", preferences.getLong("lastRevision", -1L))
-                .put("lastError", preferences.getString("lastError", ""));
+                .put("lastError", preferences.getString("lastError", ""))
+                .put("lastErrorCode", preferences.getString("lastError", ""));
         } catch (JSONException exception) {
             return new JSONObject();
         }
@@ -285,10 +289,27 @@ public final class FocusNotificationService extends Service {
             .apply();
     }
 
-    private static String safeMessage(Throwable throwable) {
-        String message = throwable.getMessage();
-        if (message == null || message.isEmpty()) return "unknown";
-        return message.length() <= 240 ? message : message.substring(0, 240);
+    static String pollErrorCode(Throwable throwable) {
+        Throwable current = throwable;
+        for (int depth = 0; current != null && depth < 8; depth += 1) {
+            String type = current.getClass().getSimpleName();
+            String message = current.getMessage();
+            if (message != null && message.contains("HTTP 401")) return "authentication_failed";
+            if (message != null && message.contains("HTTP 403")) return "authorization_failed";
+            if (type.contains("Timeout")) return "timeout";
+            if (
+                type.contains("UnknownHost") ||
+                type.contains("Connect") ||
+                type.contains("Socket") ||
+                type.contains("IOException")
+            ) {
+                return "network_error";
+            }
+            if (type.contains("JSONException")) return "contract_error";
+            if (type.contains("SecurityException")) return "authorization_failed";
+            current = current.getCause();
+        }
+        return "sync_failed";
     }
 
     private void applyCloudSnapshot(FocusRuntimeSnapshot snapshot) {

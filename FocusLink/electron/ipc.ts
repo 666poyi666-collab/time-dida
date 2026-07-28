@@ -60,6 +60,7 @@ import {
 } from './sync/embeddedDeviceSyncServer.js';
 import { hasDeviceSyncToken } from './sync/deviceSyncCredentials.js';
 import { coordinateAndroidSyncDevices } from './sync/androidSyncCoordinator.js';
+import { deleteDesktopSessionWithV2Tombstone } from './sync/deviceSyncV2Service.js';
 import {
   listSessions,
   listSessionsInRange,
@@ -69,7 +70,6 @@ import {
   listPauses,
   listPausesInSessionRange,
   getSegment,
-  deleteSession,
   deleteSegment,
   deleteSyncQueueForSegments,
 } from './db/index.js';
@@ -453,7 +453,7 @@ export function registerIpc(
       }
 
       // 所有外部删除都确认完成后，才允许删除本地事实来源。
-      deleteSession(id);
+      deleteDesktopSessionWithV2Tombstone(id);
       timer.resetIfSession(id);
       // 若计时器卡在 finished 状态（1.5s 自动重置窗口内），立即重置为 idle，
       // 避免用户回到计时界面看到 finished 状态的 UI 空洞

@@ -33,6 +33,7 @@ import {
   type TaskSnapshotResponse,
 } from '@shared/sync/taskSnapshotProtocol';
 import { parseDeviceToken } from '@shared/sync/v2Protocol';
+import { classifySyncV2Error } from '@shared/sync/v2ClientError';
 import {
   getSession,
   getMeta,
@@ -244,8 +245,7 @@ export function runDeviceSync(): Promise<DeviceSyncRunResult> {
       return result;
     })
     .catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.warn('deviceSync', 'sync failed', { error: message });
+      logger.warn('deviceSync', 'sync failed', { errorCode: classifySyncV2Error(error) });
       throw error;
     })
     .finally(() => {

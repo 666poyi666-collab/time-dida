@@ -7,6 +7,7 @@ import {
 import type { DeviceSyncRunResult } from '@shared/ipc/api';
 import {
   SYNC_V2_MAX_PULL,
+  SYNC_V2_MAX_RESPONSE_BYTES,
   SYNC_V2_PROTOCOL_VERSION,
   splitBundleForSyncV2,
   type FocusLedgerCorrectionV2,
@@ -21,10 +22,17 @@ import {
   type SyncV2Request,
   type SyncV2Response,
 } from '@shared/sync/v2Protocol';
+import { readDeviceSyncJsonResponse } from '@shared/sync/httpTransport';
+import {
+  SyncV2ClientError,
+  classifySyncV2Error,
+  safeSyncV2Error,
+} from '@shared/sync/v2ClientError';
 import {
   getDb,
   getMeta,
   getSession,
+  deleteSession,
   insertDeviceSyncBundleIfMissing,
   listFinishedSessionsForDeviceSync,
   listPauses,
@@ -62,6 +70,7 @@ interface Checkpoint extends SyncV2Epoch {
   version: 2;
   state: 'uninitialized' | 'v2-active';
   cursor: string | null;
+  boundDeviceId: string;
   lastChangeSeq: number;
   updatedAt: number;
 }
@@ -82,16 +91,29 @@ interface LocalEntity {
 export async function runDesktopSyncV2(): Promise<DeviceSyncRunResult | null> {
   const connection = getDeviceSyncDataConnection();
   if (!connection) return null;
+  try {
+    return await runDesktopSyncV2WithConnection(connection);
+  } catch (error) {
+    const safe = safeSyncV2Error(error);
+    setMeta(`${LAST_ERROR_PREFIX}.${connection.scope}`, safe.code);
+    throw safe;
+  }
+}
+
+async function runDesktopSyncV2WithConnection(
+  connection: DeviceSyncRuntimeConnection,
+): Promise<DeviceSyncRunResult> {
   migrateLegacyV2State(connection.scope);
 
   let checkpoint = readCheckpoint(connection.scope);
   const status = await getEpochStatus(connection);
-  if (!sameEpoch(checkpoint, status)) {
+  if (!sameEpoch(checkpoint, status) || checkpoint.boundDeviceId !== connection.deviceId) {
     requeueStaleGenerationV2Outbox(connection.scope, status.accountGeneration);
     checkpoint = {
       version: 2,
       state: 'uninitialized',
       cursor: null,
+      boundDeviceId: connection.deviceId,
       syncEpoch: status.syncEpoch,
       cursorEpoch: status.cursorEpoch,
       accountGeneration: status.accountGeneration,
@@ -99,6 +121,8 @@ export async function runDesktopSyncV2(): Promise<DeviceSyncRunResult | null> {
       updatedAt: Date.now(),
     };
     writeCheckpoint(connection.scope, checkpoint);
+  } else if (checkpoint.cursor !== null && parseCursor(checkpoint.cursor) > status.changeSeq) {
+    throw new SyncV2ClientError('cursor_ahead');
   }
 
   const result: DeviceSyncRunResult = {
@@ -122,7 +146,7 @@ export async function runDesktopSyncV2(): Promise<DeviceSyncRunResult | null> {
       writeCheckpoint(connection.scope, checkpoint);
     }
 
-    enqueueChangedEntities(connection, checkpoint.accountGeneration);
+    getDb().transaction(() => enqueueChangedEntities(connection, checkpoint.accountGeneration))();
     checkpoint = await drainPages(connection, checkpoint, result, true);
     const localStatus = readDesktopV2Status(connection.scope);
     result.unresolvedConflicts = localStatus.conflicts;
@@ -130,18 +154,16 @@ export async function runDesktopSyncV2(): Promise<DeviceSyncRunResult | null> {
     setMeta(
       `${LAST_ERROR_PREFIX}.${connection.scope}`,
       localStatus.conflicts > 0
-        ? `存在 ${localStatus.conflicts} 个未解决的跨设备冲突`
+        ? 'conflict_present'
         : localStatus.rejected > 0
-          ? `存在 ${localStatus.rejected} 个被权威拒绝的同步操作`
+          ? 'rejected_operation'
           : '',
     );
     return result;
   } catch (error) {
-    setMeta(
-      `${LAST_ERROR_PREFIX}.${connection.scope}`,
-      (error instanceof Error ? error.message : String(error)).slice(0, 1_000),
-    );
-    throw error;
+    const safe = safeSyncV2Error(error);
+    setMeta(`${LAST_ERROR_PREFIX}.${connection.scope}`, safe.code);
+    throw safe;
   }
 }
 
@@ -151,6 +173,49 @@ export function readDesktopSyncV2Checkpoint(scope: string): {
 } {
   const checkpoint = readCheckpoint(scope);
   return { cursor: checkpoint.cursor, lastChangeSeq: checkpoint.lastChangeSeq };
+}
+
+/**
+ * The history UI's local deletion boundary. Known authority entities receive
+ * stable tombstones in the same SQLite transaction as projection deletion;
+ * an unsynced local-only session can simply disappear.
+ */
+export function deleteDesktopSessionWithV2Tombstone(entityId: string): void {
+  const connection = getDeviceSyncDataConnection();
+  if (!connection) {
+    deleteSession(entityId);
+    return;
+  }
+  const checkpoint = readCheckpoint(connection.scope);
+  const db = getDb();
+  db.transaction(() => {
+    for (const entityType of ['focus_ledger_v2', 'focus_metadata_v2'] as const) {
+      const state = readV2EntityState(connection.scope, entityType, entityId);
+      if (!state || state.deleted) continue;
+      if (hasOpenV2Conflict(connection.scope, entityType, entityId)) {
+        throw new Error('存在未解决的 Sync v2 冲突，不能静默删除会话');
+      }
+      enqueueV2Mutation(connection.scope, {
+        opId: `v2-${fingerprintDeviceSyncValue({
+          connection: connection.scope,
+          entityType,
+          entityId,
+          kind: 'delete',
+          baseRevision: state.confirmedRevision,
+          baseFingerprint: state.confirmedFingerprint,
+        })}`,
+        entityType,
+        entityId,
+        kind: 'delete',
+        baseRevision: state.confirmedRevision,
+        baseFingerprint: state.confirmedFingerprint,
+        payload: null,
+        deviceId: connection.deviceId,
+        accountGeneration: checkpoint.accountGeneration,
+      });
+    }
+    deleteSession(entityId);
+  })();
 }
 
 async function drainPages(
@@ -186,7 +251,12 @@ async function drainPages(
       );
     } catch (error) {
       if (claimed.items.length > 0) {
-        retryV2Lease(connection.scope, claimed.leaseId, errorCode(error), Date.now() + 30_000);
+        retryV2Lease(
+          connection.scope,
+          claimed.leaseId,
+          classifySyncV2Error(error),
+          Date.now() + 30_000,
+        );
       }
       throw error;
     }
@@ -221,13 +291,20 @@ function applyPageAtomically(
       result.pulled += 1;
       if (outcome === 'imported') result.imported += 1;
       if (outcome === 'conflict') result.conflicts += 1;
-      recordRemoteV2History(connection.scope, change);
+      recordRemoteV2History(
+        connection.scope,
+        change,
+        Date.now(),
+        outcome === 'conflict' ? 'conflict' : 'remote',
+        outcome === 'conflict' ? 'remote_conflict' : null,
+      );
     }
 
     const next: Checkpoint = {
       version: 2,
       state: previous.state,
       cursor: response.nextCursor,
+      boundDeviceId: connection.deviceId,
       syncEpoch: response.syncEpoch,
       cursorEpoch: response.cursorEpoch,
       accountGeneration: response.accountGeneration,
@@ -246,10 +323,45 @@ function applyRemoteChange(
   epoch: SyncV2Epoch,
 ): 'stored' | 'imported' | 'conflict' {
   const existing = readV2EntityState(connection.scope, change.entityType, change.entityId);
-  if (existing && change.revision <= existing.confirmedRevision) return 'stored';
-
   const local = collectLocalEntity(connection.deviceId, change.entityType, change.entityId);
   const pending = hasPendingV2Mutation(connection.scope, change.entityType, change.entityId);
+  if (existing && change.revision < existing.confirmedRevision) {
+    writeRemoteV2Conflict(
+      connection.scope,
+      change,
+      local?.payload ?? pending?.payload ?? existing.baseSnapshot,
+      existing.baseSnapshot,
+      Date.now(),
+      ['revision_rollback'],
+    );
+    return 'conflict';
+  }
+  if (existing && change.revision === existing.confirmedRevision) {
+    if (change.fingerprint !== existing.confirmedFingerprint) {
+      writeRemoteV2Conflict(
+        connection.scope,
+        change,
+        local?.payload ?? pending?.payload ?? existing.baseSnapshot,
+        existing.baseSnapshot,
+        Date.now(),
+        ['same_revision_fingerprint_mismatch'],
+      );
+      return 'conflict';
+    }
+    if (change.deleted && local !== null) {
+      writeRemoteV2Conflict(
+        connection.scope,
+        change,
+        local.payload,
+        existing.baseSnapshot,
+        Date.now(),
+        ['tombstone_revival'],
+      );
+      return 'conflict';
+    }
+    return 'stored';
+  }
+
   const localFingerprint = local
     ? fingerprintDeviceSyncValue({ deleted: false, payload: local.payload })
     : null;
@@ -262,7 +374,7 @@ function applyRemoteChange(
     fingerprintDeviceSyncValue({ deleted: pending.payload === null, payload: pending.payload }) !==
       change.fingerprint;
 
-  if ((change.deleted && local !== null) || localChangedFromBase || conflictsWithPending) {
+  if (localChangedFromBase || conflictsWithPending) {
     writeRemoteV2Conflict(
       connection.scope,
       change,
@@ -284,7 +396,10 @@ function applyRemoteChange(
     epoch,
   });
 
-  if (change.deleted) return 'stored';
+  if (change.deleted) {
+    if (local !== null) deleteSession(change.entityId);
+    return 'stored';
+  }
   if (change.entityType === 'focus_metadata_v2' && local !== null && !localChangedFromBase) {
     applyRemoteMetadata(change.payload as FocusMetadataV2);
   }
@@ -489,20 +604,18 @@ async function requestJson(
     });
     const contentType = response.headers.get('content-type') ?? '';
     if (!contentType.toLowerCase().startsWith('application/json')) {
-      throw new Error(`canonical Sync v2 ${path} 返回非 JSON 响应`);
+      throw new SyncV2ClientError('contract_error');
     }
-    const value = (await response.json()) as unknown;
+    const value = await readDeviceSyncJsonResponse(response, SYNC_V2_MAX_RESPONSE_BYTES);
     if (!response.ok) {
-      const code =
-        isRecord(value) && isRecord(value.error) && typeof value.error.code === 'string'
-          ? value.error.code.slice(0, 120)
-          : `http_${response.status}`;
-      throw new Error(`canonical Sync v2 ${path} failed: ${response.status} ${code}`);
+      if (response.status === 401) throw new SyncV2ClientError('authentication_failed');
+      if (response.status === 403) throw new SyncV2ClientError('authorization_failed');
+      throw new SyncV2ClientError('contract_error');
     }
     return value;
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`canonical Sync v2 ${path} 请求超时`);
+      throw new SyncV2ClientError('timeout');
     }
     throw error;
   } finally {
@@ -616,6 +729,7 @@ function readCheckpoint(scope: string): Checkpoint {
         isRecord(value) &&
         value.version === 2 &&
         (value.state === 'uninitialized' || value.state === 'v2-active') &&
+        isId(value.boundDeviceId) &&
         (value.cursor === null ||
           (typeof value.cursor === 'string' && parseCursor(value.cursor) >= 0)) &&
         isEpoch(value) &&
@@ -634,6 +748,7 @@ function readCheckpoint(scope: string): Checkpoint {
     version: 2,
     state: 'uninitialized',
     cursor: null,
+    boundDeviceId: '',
     syncEpoch: '',
     cursorEpoch: '',
     accountGeneration: 1,
@@ -698,8 +813,4 @@ function isTimestamp(value: unknown): value is number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function errorCode(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).slice(0, 240);
 }

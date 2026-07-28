@@ -9,6 +9,7 @@ import type {
   SyncV2Payload,
 } from '@shared/sync/v2Protocol';
 import { SYNC_V2_DEFAULT_LEASE_MS } from '@shared/sync/v2Protocol';
+import { fingerprintDeviceSyncValue } from '@shared/sync/deviceProtocol';
 import { getDb, getMeta, setMeta } from '../db/index.js';
 
 interface OutboxRow {
@@ -53,7 +54,13 @@ export interface DesktopV2Status {
 
 export function migrateLegacyV2State(connectionScope: string, now = Date.now()): void {
   const marker = `syncV2.desktop.legacyMigrated.${connectionScope}`;
-  if (getMeta(marker) === '1') return;
+  const ownerKey = 'syncV2.desktop.legacyMigrationOwnerScope';
+  const migrationOwner = getMeta(ownerKey);
+  if (migrationOwner && migrationOwner !== connectionScope) return;
+  if (getMeta(marker) === '1') {
+    if (!migrationOwner) setMeta(ownerKey, connectionScope);
+    return;
+  }
   const db = getDb();
   db.transaction(() => {
     db.prepare(
@@ -99,6 +106,7 @@ export function migrateLegacyV2State(connectionScope: string, now = Date.now()):
        SELECT ?, op_id, entity_type, entity_id, status, revision, error_code,
          completed_at FROM sync_operation_history`,
     ).run(connectionScope);
+    setMeta(ownerKey, connectionScope);
     setMeta(marker, '1');
   })();
 }
@@ -108,14 +116,23 @@ export function enqueueV2Mutation(
   mutation: SyncV2Mutation,
   now = Date.now(),
 ): void {
-  getDb()
-    .prepare(
+  const db = getDb();
+  db.transaction(() => {
+    const existing = db
+      .prepare('SELECT * FROM sync_v2_outbox WHERE connection_scope = ? AND op_id = ?')
+      .get(connectionScope, mutation.opId) as OutboxRow | undefined;
+    if (existing) {
+      if (!sameMutation(rowToItem(existing), mutation)) {
+        throw new Error('同一 Sync v2 opId 对应了不同 payload');
+      }
+      return;
+    }
+    db.prepare(
       `INSERT INTO sync_v2_outbox (
          connection_scope, op_id, entity_type, entity_id, kind, base_revision,
          base_fingerprint, payload, device_id, account_generation, state,
          attempt_count, next_retry_at, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, ?, ?)
-       ON CONFLICT(connection_scope, op_id) DO NOTHING`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, ?, ?)`,
     )
     .run(
       connectionScope,
@@ -131,6 +148,7 @@ export function enqueueV2Mutation(
       now,
       now,
     );
+  })();
 }
 
 export function claimV2Outbox(
@@ -189,16 +207,24 @@ export function settleV2Ack(
   now = Date.now(),
 ): boolean {
   const db = getDb();
-  const item = db
-    .prepare(
+  return db.transaction(() => {
+    const item = db
+      .prepare(
       `SELECT * FROM sync_v2_outbox
        WHERE connection_scope = ? AND op_id = ? AND lease_id = ?`,
-    )
-    .get(connectionScope, ack.opId, leaseId) as OutboxRow | undefined;
-  if (!item) return false;
-  if (ack.status === 'applied' || ack.status === 'duplicate') {
-    if (ack.revision === null || ack.fingerprint === null) return false;
-    writeV2EntityState(connectionScope, {
+      )
+      .get(connectionScope, ack.opId, leaseId) as OutboxRow | undefined;
+    if (
+      !item ||
+      item.entity_type !== ack.entityType ||
+      item.entity_id !== ack.entityId ||
+      item.account_generation !== epoch.accountGeneration
+    ) {
+      return false;
+    }
+    if (ack.status === 'applied' || ack.status === 'duplicate') {
+      if (ack.revision === null || ack.fingerprint === null) return false;
+      writeV2EntityState(connectionScope, {
       entityType: ack.entityType,
       entityId: ack.entityId,
       revision: ack.revision,
@@ -210,18 +236,18 @@ export function settleV2Ack(
       epoch,
       now,
     });
-    db.prepare(
+      db.prepare(
       `DELETE FROM sync_v2_outbox
        WHERE connection_scope = ? AND op_id = ? AND lease_id = ?`,
-    ).run(connectionScope, ack.opId, leaseId);
-  } else {
-    db.prepare(
+      ).run(connectionScope, ack.opId, leaseId);
+    } else {
+      db.prepare(
       `UPDATE sync_v2_outbox SET state = ?, error_code = ?, lease_id = NULL,
        lease_expires_at = NULL, claimed_at = NULL, updated_at = ?
        WHERE connection_scope = ? AND op_id = ? AND lease_id = ?`,
-    ).run(ack.status, ack.errorCode, now, connectionScope, ack.opId, leaseId);
-    if (ack.status === 'conflict') {
-      writeV2Conflict(connectionScope, {
+      ).run(ack.status, ack.errorCode, now, connectionScope, ack.opId, leaseId);
+      if (ack.status === 'conflict') {
+        writeV2Conflict(connectionScope, {
         conflictId: `ack-${ack.opId}`,
         entityType: ack.entityType,
         entityId: ack.entityId,
@@ -232,15 +258,15 @@ export function settleV2Ack(
         fields: ['revision'],
         sourceDeviceIds: [item.device_id],
         now,
-      });
+        });
+      }
     }
-  }
-  db.prepare(
+    db.prepare(
     `INSERT OR REPLACE INTO sync_v2_operation_history (
        connection_scope, op_id, entity_type, entity_id, status, revision,
        error_code, completed_at
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
+    ).run(
     connectionScope,
     ack.opId,
     ack.entityType,
@@ -249,8 +275,9 @@ export function settleV2Ack(
     ack.revision,
     ack.errorCode,
     now,
-  );
-  return true;
+    );
+    return true;
+  })();
 }
 
 export function retryV2Lease(
@@ -434,6 +461,7 @@ export function writeRemoteV2Conflict(
   localPayload: SyncV2Payload | null,
   basePayload: SyncV2Payload | null,
   now = Date.now(),
+  fields: string[] = [change.deleted ? 'deleted' : 'payload'],
 ): void {
   writeV2Conflict(connectionScope, {
     conflictId: `remote-${change.changeSeq}-${change.entityType}-${change.entityId}`,
@@ -442,7 +470,7 @@ export function writeRemoteV2Conflict(
     base: basePayload,
     local: localPayload,
     remote: change.payload,
-    fields: [change.deleted ? 'deleted' : 'payload'],
+    fields,
     sourceDeviceIds: [change.sourceDeviceId],
     now,
   });
@@ -452,19 +480,23 @@ export function recordRemoteV2History(
   connectionScope: string,
   change: SyncV2Change,
   now = Date.now(),
+  status = 'remote',
+  errorCode: string | null = null,
 ): void {
   getDb()
     .prepare(
       `INSERT OR IGNORE INTO sync_v2_operation_history (
        connection_scope, op_id, entity_type, entity_id, status, revision,
-       error_code, completed_at) VALUES (?, ?, ?, ?, 'remote', ?, NULL, ?)`,
+       error_code, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       connectionScope,
       `remote-${change.changeSeq}`,
       change.entityType,
       change.entityId,
+      status,
       change.revision,
+      errorCode,
       now,
     );
 }
@@ -587,4 +619,18 @@ function rowToItem(row: OutboxRow): SyncV2OutboxItem {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function sameMutation(left: SyncV2Mutation, right: SyncV2Mutation): boolean {
+  return (
+    left.opId === right.opId &&
+    left.entityType === right.entityType &&
+    left.entityId === right.entityId &&
+    left.kind === right.kind &&
+    left.baseRevision === right.baseRevision &&
+    left.baseFingerprint === right.baseFingerprint &&
+    left.deviceId === right.deviceId &&
+    left.accountGeneration === right.accountGeneration &&
+    fingerprintDeviceSyncValue(left.payload) === fingerprintDeviceSyncValue(right.payload)
+  );
 }

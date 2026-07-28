@@ -12,6 +12,10 @@
         android:name="android.software.picture_in_picture"
         android:required="false" />
 
+    <permission
+        android:name="app.focuslink.mobile.permission.READ_AUTHORITY_PROJECTION"
+        android:protectionLevel="signature" />
+
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -58,6 +62,13 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <provider
+            android:name=".FocusAuthorityProjectionProvider"
+            android:authorities="app.focuslink.mobile.authority.projection"
+            android:exported="true"
+            android:readPermission="app.focuslink.mobile.permission.READ_AUTHORITY_PROJECTION"
+            android:writePermission="app.focuslink.mobile.permission.READ_AUTHORITY_PROJECTION" />
 
         <service
             android:name=".FocusNotificationService"

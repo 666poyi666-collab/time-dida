@@ -3,17 +3,23 @@ import {
   normalizeDeviceSyncEndpoint,
 } from '@shared/sync/deviceProtocol';
 import {
+  SYNC_V2_MAX_RESPONSE_BYTES,
   SYNC_V2_MAX_PULL,
   SYNC_V2_PROTOCOL_VERSION,
   parseDeviceToken,
   splitBundleForSyncV2,
-  type FocusLedgerCorrectionV2,
   type SyncV2Ack,
   type SyncV2Change,
   type SyncV2Epoch,
   type SyncV2Mutation,
   type SyncV2Response,
 } from '@shared/sync/v2Protocol';
+import { readDeviceSyncJsonResponse } from '@shared/sync/httpTransport';
+import {
+  SyncV2ClientError,
+  classifySyncV2Error,
+  safeSyncV2Error,
+} from '@shared/sync/v2ClientError';
 import {
   readMobileCache,
   readPendingDeviceSyncBundles,
@@ -29,6 +35,7 @@ import {
   readMobileV2Status,
   resetMobileV2Epoch,
   retryMobileV2Lease,
+  writeMobileV2SyncFailure,
   writeMobileV2Bootstrap,
   type MobileV2BootstrapCheckpoint,
 } from './v2Cache';
@@ -36,18 +43,14 @@ import {
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_PAGES_PER_RUN = 500;
 
-interface EpochStatus extends SyncV2Epoch {
-  protocolVersion: typeof SYNC_V2_PROTOCOL_VERSION;
-  changeSeq: number;
-  serverTime: number;
-}
-
-export async function runMobileSyncV2(input: {
+interface MobileSyncV2Input {
   endpoint: string;
   token: string;
   deviceId: string;
   signal?: AbortSignal;
-}): Promise<{
+}
+
+interface MobileSyncV2Result {
   uploaded: number;
   downloaded: number;
   imported: number;
@@ -55,7 +58,30 @@ export async function runMobileSyncV2(input: {
   rejected: number;
   cursor: string;
   unresolvedConflicts: number;
-}> {
+}
+
+interface EpochStatus extends SyncV2Epoch {
+  protocolVersion: typeof SYNC_V2_PROTOCOL_VERSION;
+  changeSeq: number;
+  serverTime: number;
+}
+
+export async function runMobileSyncV2(input: MobileSyncV2Input): Promise<MobileSyncV2Result> {
+  const routedForStatus = parseDeviceToken(input.token.trim());
+  const statusDeviceId = routedForStatus
+    ? `device-${routedForStatus.devicePublicId}`
+    : input.deviceId;
+  try {
+    return await runMobileSyncV2Internal(input);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    const safe = safeSyncV2Error(error);
+    await writeMobileV2SyncFailure(statusDeviceId, safe.code);
+    throw safe;
+  }
+}
+
+async function runMobileSyncV2Internal(input: MobileSyncV2Input): Promise<MobileSyncV2Result> {
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
   const routed = parseDeviceToken(input.token.trim());
   const loopback = ['localhost', '127.0.0.1'].includes(new URL(endpoint).hostname);
@@ -70,18 +96,25 @@ export async function runMobileSyncV2(input: {
   };
   const status = await getEpochStatus(connection);
   let checkpoint = normalizeCheckpoint(await readMobileV2Bootstrap());
-  if (!checkpoint || !sameEpoch(checkpoint, status)) {
+  if (
+    !checkpoint ||
+    !sameEpoch(checkpoint, status) ||
+    checkpoint.boundDeviceId !== connection.deviceId
+  ) {
     checkpoint = {
       key: 'syncV2.bootstrap',
       state: 'uninitialized',
       bootstrapId: null,
       cursor: null,
+      boundDeviceId: connection.deviceId,
       syncEpoch: status.syncEpoch,
       cursorEpoch: status.cursorEpoch,
       accountGeneration: status.accountGeneration,
       updatedAt: Date.now(),
     };
     await resetMobileV2Epoch(checkpoint);
+  } else if (checkpoint.cursor !== null && parseCursor(checkpoint.cursor) > status.changeSeq) {
+    throw new SyncV2ClientError('cursor_ahead');
   }
 
   const result = {
@@ -106,7 +139,7 @@ export async function runMobileSyncV2(input: {
   await enqueueChangedCachedEntities(connection.deviceId, checkpoint.accountGeneration);
   checkpoint = await drain(connection, checkpoint, result, true);
   await removeConfirmedLegacyPending(connection.deviceId);
-  const localStatus = await readMobileV2Status();
+  const localStatus = await readMobileV2Status(connection.deviceId);
   result.unresolvedConflicts = localStatus.conflicts;
   result.rejected = Math.max(result.rejected, localStatus.rejected);
   return result;
@@ -132,7 +165,9 @@ async function drain(
 ): Promise<MobileV2BootstrapCheckpoint> {
   let checkpoint = initial;
   for (let page = 0; page < MAX_PAGES_PER_RUN; page += 1) {
-    const claimed = allowPush ? await claimMobileV2Outbox(1) : { leaseId: '', items: [] };
+    const claimed = allowPush
+      ? await claimMobileV2Outbox(connection.deviceId, 1)
+      : { leaseId: '', items: [] };
     const request = {
       protocolVersion: SYNC_V2_PROTOCOL_VERSION,
       deviceId: connection.deviceId,
@@ -175,7 +210,7 @@ async function drain(
       if (claimed.items.length > 0) {
         await retryMobileV2Lease(
           claimed.leaseId,
-          (error instanceof Error ? error.message : String(error)).slice(0, 240),
+          classifySyncV2Error(error),
           Date.now() + 30_000,
         );
       }
@@ -189,6 +224,7 @@ async function drain(
 async function enqueueLegacyPendingBundles(deviceId: string, generation: number): Promise<void> {
   for (const record of await readPendingDeviceSyncBundles()) {
     if (record.state === 'conflict' || record.state === 'rejected') continue;
+    if (record.syncDeviceId !== null && record.syncDeviceId !== deviceId) continue;
     const split = splitBundleForSyncV2(record.bundle, deviceId);
     for (const entity of [
       { entityType: 'focus_ledger_v2' as const, entityId: record.entityId, payload: split.ledger },
@@ -201,11 +237,12 @@ async function enqueueLegacyPendingBundles(deviceId: string, generation: number)
       const state = await readMobileV2EntityState(entity.entityType, entity.entityId);
       const fingerprint = fingerprintDeviceSyncValue({ deleted: false, payload: entity.payload });
       if (state?.confirmedFingerprint === fingerprint) continue;
+      const baseRevision = state?.confirmedRevision ?? 0;
       await enqueueIgnoringDuplicate({
         ...entity,
-        opId: `v2-${fingerprintDeviceSyncValue({ entity, base: state?.confirmedRevision ?? 0 })}`,
+        opId: `v2-${fingerprintDeviceSyncValue({ entity, baseRevision, deviceId })}`,
         kind: 'put',
-        baseRevision: state?.confirmedRevision ?? 0,
+        baseRevision,
         baseFingerprint: state?.confirmedFingerprint ?? null,
         deviceId,
         accountGeneration: generation,
@@ -226,43 +263,15 @@ async function enqueueChangedCachedEntities(deviceId: string, generation: number
       },
     ]) {
       const state = await readMobileV2EntityState(entity.entityType, entity.entityId);
-      const fingerprint = fingerprintDeviceSyncValue({ deleted: false, payload: entity.payload });
-      if (state?.confirmedFingerprint === fingerprint) continue;
-      if (entity.entityType === 'focus_ledger_v2' && state?.baseSnapshot && !state.deleted) {
-        const correctionId = `correction-${fingerprintDeviceSyncValue({
-          entityId: entity.entityId,
-          before: state.confirmedFingerprint,
-          after: fingerprint,
-        })}`;
-        const payload: FocusLedgerCorrectionV2 = {
-          correctionId,
-          sessionId: entity.entityId,
-          baseLedgerRevision: state.confirmedRevision,
-          before: state.baseSnapshot as typeof split.ledger,
-          after: entity.payload,
-          reason: 'local_ledger_changed_after_sync',
-          createdAt: Date.now(),
-          createdByDeviceId: deviceId,
-        };
-        await enqueueIgnoringDuplicate({
-          opId: `v2-${fingerprintDeviceSyncValue(payload)}`,
-          entityType: 'focus_ledger_correction_v2',
-          entityId: correctionId,
-          kind: 'put',
-          baseRevision: 0,
-          baseFingerprint: null,
-          payload,
-          deviceId,
-          accountGeneration: generation,
-        });
-        continue;
-      }
+      // `bundles` is a lossy UI projection. Once a canonical state exists it
+      // must not be rebuilt into a mutation on every refresh/re-pair.
+      if (state) continue;
       await enqueueIgnoringDuplicate({
         ...entity,
-        opId: `v2-${fingerprintDeviceSyncValue({ entity, base: state?.confirmedRevision ?? 0 })}`,
+        opId: `v2-${fingerprintDeviceSyncValue({ entity, baseRevision: 0, deviceId })}`,
         kind: 'put',
-        baseRevision: state?.confirmedRevision ?? 0,
-        baseFingerprint: state?.confirmedFingerprint ?? null,
+        baseRevision: 0,
+        baseFingerprint: null,
         deviceId,
         accountGeneration: generation,
       });
@@ -272,6 +281,7 @@ async function enqueueChangedCachedEntities(deviceId: string, generation: number
 
 async function removeConfirmedLegacyPending(deviceId: string): Promise<void> {
   for (const record of await readPendingDeviceSyncBundles()) {
+    if (record.syncDeviceId !== null && record.syncDeviceId !== deviceId) continue;
     const split = splitBundleForSyncV2(record.bundle, deviceId);
     const ledgerFingerprint = fingerprintDeviceSyncValue({ deleted: false, payload: split.ledger });
     const metadataFingerprint = fingerprintDeviceSyncValue({
@@ -288,11 +298,7 @@ async function removeConfirmedLegacyPending(deviceId: string): Promise<void> {
 }
 
 async function enqueueIgnoringDuplicate(mutation: SyncV2Mutation): Promise<void> {
-  try {
-    await enqueueMobileV2Mutation(mutation);
-  } catch (error) {
-    if (!(error instanceof DOMException && error.name === 'ConstraintError')) throw error;
-  }
+  await enqueueMobileV2Mutation(mutation);
 }
 
 async function getEpochStatus(input: {
@@ -351,18 +357,20 @@ async function requestJson(
       referrerPolicy: 'no-referrer',
       signal: controller.signal,
     });
-    const value = (await response.json()) as unknown;
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!contentType.toLowerCase().startsWith('application/json')) {
+      throw new SyncV2ClientError('contract_error');
+    }
+    const value = await readDeviceSyncJsonResponse(response, SYNC_V2_MAX_RESPONSE_BYTES);
     if (!response.ok) {
-      const code =
-        isRecord(value) && isRecord(value.error) && typeof value.error.code === 'string'
-          ? value.error.code.slice(0, 120)
-          : `http_${response.status}`;
-      throw new Error(`canonical Sync v2 ${path} failed: ${response.status} ${code}`);
+      if (response.status === 401) throw new SyncV2ClientError('authentication_failed');
+      if (response.status === 403) throw new SyncV2ClientError('authorization_failed');
+      throw new SyncV2ClientError('contract_error');
     }
     return value;
   } catch (error) {
     if (input.signal?.aborted) throw error;
-    if (timedOut) throw new Error(`canonical Sync v2 ${path} 请求超时`);
+    if (timedOut) throw new SyncV2ClientError('timeout');
     throw error;
   } finally {
     window.clearTimeout(timer);
@@ -424,6 +432,7 @@ function normalizeCheckpoint(
   value: MobileV2BootstrapCheckpoint | null,
 ): MobileV2BootstrapCheckpoint | null {
   if (!value || !isEpoch(value as unknown as Record<string, unknown>)) return null;
+  if (!isId(value.boundDeviceId)) return null;
   if (value.cursor !== null) {
     try {
       parseCursor(value.cursor);

@@ -23,12 +23,16 @@ const HISTORY = 'syncOperationHistory';
 const DEVICES = 'syncDevices';
 const META = 'meta';
 const BOOTSTRAP_KEY = 'syncV2.bootstrap';
+const LAST_VERIFIED_KEY = 'syncV2.lastVerified';
+const LAST_ERROR_KEY = 'syncV2.lastErrorCode';
 
 export interface MobileV2BootstrapCheckpoint extends SyncV2Epoch {
   key: typeof BOOTSTRAP_KEY;
   state: SyncV2BootstrapState;
   bootstrapId: string | null;
   cursor: string | null;
+  /** Device credential that owns this cursor and outbox view. */
+  boundDeviceId: string;
   updatedAt: number;
 }
 
@@ -53,6 +57,9 @@ export async function applyMobileV2ChangesAndCheckpoint(input: {
   leaseId?: string;
   acks?: readonly SyncV2Ack[];
 }): Promise<{ imported: number; conflicts: number }> {
+  if (input.checkpoint.boundDeviceId !== input.deviceId) {
+    throw new Error('Sync v2 checkpoint 与当前设备凭据不匹配');
+  }
   const database = await openMobileDatabase();
   const transaction = database.transaction(
     [ENTITY_STATE, OUTBOX, CONFLICTS, HISTORY, 'bundles', META],
@@ -86,6 +93,8 @@ export async function applyMobileV2ChangesAndCheckpoint(input: {
       if (
         !item ||
         item.leaseId !== input.leaseId ||
+        item.deviceId !== input.deviceId ||
+        item.accountGeneration !== input.checkpoint.accountGeneration ||
         item.entityType !== ack.entityType ||
         item.entityId !== ack.entityId
       ) {
@@ -137,11 +146,35 @@ export async function applyMobileV2ChangesAndCheckpoint(input: {
     for (const change of input.changes) {
       const key = `${change.entityType}\u0000${change.entityId}`;
       const existing = states.get(key);
-      if (existing && change.revision <= existing.confirmedRevision) {
+      const pendingItem = pendingByEntity.get(key);
+      if (existing && change.revision < existing.confirmedRevision) {
+        putRemoteConflict(
+          conflictStore,
+          historyStore,
+          change,
+          existing.baseSnapshot,
+          pendingItem?.payload ?? existing.baseSnapshot,
+          ['revision_rollback'],
+        );
+        conflicts += 1;
+        continue;
+      }
+      if (existing && change.revision === existing.confirmedRevision) {
+        if (change.fingerprint !== existing.confirmedFingerprint) {
+          putRemoteConflict(
+            conflictStore,
+            historyStore,
+            change,
+            existing.baseSnapshot,
+            pendingItem?.payload ?? existing.baseSnapshot,
+            ['same_revision_fingerprint_mismatch'],
+          );
+          conflicts += 1;
+          continue;
+        }
         affected.add(change.entityId);
         continue;
       }
-      const pendingItem = pendingByEntity.get(key);
       const pendingFingerprint = pendingItem
         ? fingerprintDeviceSyncValue({
             deleted: pendingItem.payload === null,
@@ -149,20 +182,14 @@ export async function applyMobileV2ChangesAndCheckpoint(input: {
           })
         : null;
       if (pendingFingerprint !== null && pendingFingerprint !== change.fingerprint) {
-        conflictStore.put({
-          conflictId: `remote-${change.changeSeq}-${change.entityType}-${change.entityId}`,
-          entityType: change.entityType,
-          entityId: change.entityId,
-          base: existing?.baseSnapshot ?? null,
-          local: pendingItem?.payload ?? null,
-          remote: change.payload,
-          fields: [change.deleted ? 'deleted' : 'payload'],
-          sourceDeviceIds: [change.sourceDeviceId],
-          status: 'open',
-          createdAt: Date.now(),
-          resolvedAt: null,
-          resolutionOpId: null,
-        } satisfies SyncV2Conflict);
+        putRemoteConflict(
+          conflictStore,
+          historyStore,
+          change,
+          existing?.baseSnapshot ?? null,
+          pendingItem?.payload ?? null,
+          [change.deleted ? 'deleted' : 'payload'],
+        );
         conflicts += 1;
         continue;
       }
@@ -224,8 +251,11 @@ export async function applyMobileV2ChangesAndCheckpoint(input: {
 
     metaStore.put({ key: BOOTSTRAP_KEY, value: input.checkpoint });
     metaStore.put({ key: 'cursor', value: input.checkpoint.cursor });
-    metaStore.put({ key: 'lastSyncAt', value: Date.now() });
+    const verifiedAt = Date.now();
+    metaStore.put({ key: 'lastSyncAt', value: verifiedAt });
     metaStore.put({ key: 'serverTime', value: input.serverTime });
+    metaStore.put({ key: LAST_VERIFIED_KEY, value: { deviceId: input.deviceId, at: verifiedAt } });
+    metaStore.put({ key: LAST_ERROR_KEY, value: { deviceId: input.deviceId, code: null } });
     await done(transaction);
     return { imported, conflicts };
   } catch (error) {
@@ -274,6 +304,7 @@ export async function enqueueMobileV2Mutation(
 ): Promise<void> {
   const database = await openMobileDatabase();
   const transaction = database.transaction(OUTBOX, 'readwrite');
+  const store = transaction.objectStore(OUTBOX);
   const record: SyncV2OutboxItem = {
     ...mutation,
     state: 'pending',
@@ -286,11 +317,30 @@ export async function enqueueMobileV2Mutation(
     createdAt: now,
     updatedAt: now,
   };
-  transaction.objectStore(OUTBOX).add(record);
-  await done(transaction);
+  try {
+    const existing = (await request(store.get(mutation.opId))) as SyncV2OutboxItem | undefined;
+    if (existing) {
+      if (!sameMutation(existing, mutation)) {
+        throw new Error('同一 Sync v2 opId 对应了不同 payload');
+      }
+    } else {
+      store.add(record);
+    }
+    await done(transaction);
+  } catch (error) {
+    try {
+      transaction.abort();
+    } catch {
+      // A request failure can abort the transaction before this catch runs.
+    }
+    throw error;
+  } finally {
+    database.close();
+  }
 }
 
 export async function claimMobileV2Outbox(
+  boundDeviceId: string,
   limit: number,
   now = Date.now(),
 ): Promise<{
@@ -305,6 +355,7 @@ export async function claimMobileV2Outbox(
   const items = records
     .filter(
       (item) =>
+        item.deviceId === boundDeviceId &&
         (item.state === 'pending' ||
           item.state === 'retry' ||
           (item.state === 'uploading' && (item.leaseExpiresAt ?? 0) <= now)) &&
@@ -322,11 +373,13 @@ export async function claimMobileV2Outbox(
     }));
   for (const item of items) store.put(item);
   await done(transaction);
+  database.close();
   return { leaseId, items };
 }
 
 export async function settleMobileV2Ack(input: {
   leaseId: string;
+  deviceId: string;
   ack: SyncV2Ack;
   payload: SyncV2Payload | null;
   epoch: SyncV2Epoch;
@@ -337,13 +390,22 @@ export async function settleMobileV2Ack(input: {
   const transaction = database.transaction([OUTBOX, ENTITY_STATE, HISTORY], 'readwrite');
   const outbox = transaction.objectStore(OUTBOX);
   const item = (await request(outbox.get(input.ack.opId))) as SyncV2OutboxItem | undefined;
-  if (!item || item.leaseId !== input.leaseId) {
+  if (
+    !item ||
+    item.leaseId !== input.leaseId ||
+    item.deviceId !== input.deviceId ||
+    item.accountGeneration !== input.epoch.accountGeneration ||
+    item.entityType !== input.ack.entityType ||
+    item.entityId !== input.ack.entityId
+  ) {
     transaction.abort();
+    database.close();
     return false;
   }
   if (input.ack.status === 'applied' || input.ack.status === 'duplicate') {
     if (input.ack.revision === null || input.ack.fingerprint === null) {
       transaction.abort();
+      database.close();
       return false;
     }
     const state: MobileV2EntityState = {
@@ -378,6 +440,7 @@ export async function settleMobileV2Ack(input: {
     });
   }
   await done(transaction);
+  database.close();
   return true;
 }
 
@@ -408,6 +471,7 @@ export async function retryMobileV2Lease(
       changed += 1;
     }
   await done(transaction);
+  database.close();
   return changed;
 }
 
@@ -416,6 +480,25 @@ export async function writeMobileV2Conflict(conflict: SyncV2Conflict): Promise<v
   const transaction = database.transaction(CONFLICTS, 'readwrite');
   transaction.objectStore(CONFLICTS).put(conflict);
   await done(transaction);
+  database.close();
+}
+
+export async function readMobileV2Conflicts(): Promise<SyncV2Conflict[]> {
+  const database = await openMobileDatabase();
+  const transaction = database.transaction(CONFLICTS, 'readonly');
+  const values = (await request(transaction.objectStore(CONFLICTS).getAll())) as SyncV2Conflict[];
+  await done(transaction);
+  database.close();
+  return values;
+}
+
+export async function readMobileV2OperationHistory(): Promise<unknown[]> {
+  const database = await openMobileDatabase();
+  const transaction = database.transaction(HISTORY, 'readonly');
+  const values = (await request(transaction.objectStore(HISTORY).getAll())) as unknown[];
+  await done(transaction);
+  database.close();
+  return values;
 }
 
 export async function readMobileV2EntityState(
@@ -426,6 +509,7 @@ export async function readMobileV2EntityState(
   const transaction = database.transaction(ENTITY_STATE, 'readonly');
   const value = await request(transaction.objectStore(ENTITY_STATE).get([entityType, entityId]));
   await done(transaction);
+  database.close();
   return (value as MobileV2EntityState | undefined) ?? null;
 }
 
@@ -434,6 +518,7 @@ export async function writeMobileV2EntityState(value: MobileV2EntityState): Prom
   const transaction = database.transaction(ENTITY_STATE, 'readwrite');
   transaction.objectStore(ENTITY_STATE).put(value);
   await done(transaction);
+  database.close();
 }
 
 export async function writeMobileV2Bootstrap(
@@ -443,33 +528,45 @@ export async function writeMobileV2Bootstrap(
   const transaction = database.transaction(META, 'readwrite');
   transaction.objectStore(META).put({ key: BOOTSTRAP_KEY, value: checkpoint });
   await done(transaction);
+  database.close();
 }
 
 export async function resetMobileV2Epoch(checkpoint: MobileV2BootstrapCheckpoint): Promise<void> {
   const database = await openMobileDatabase();
-  const transaction = database.transaction([OUTBOX, ENTITY_STATE, HISTORY, META], 'readwrite');
+  const transaction = database.transaction(
+    [OUTBOX, ENTITY_STATE, CONFLICTS, HISTORY, 'bundles', META],
+    'readwrite',
+  );
   const outbox = transaction.objectStore(OUTBOX);
   const records = (await request(outbox.getAll())) as SyncV2OutboxItem[];
   const history = transaction.objectStore(HISTORY);
   const now = Date.now();
   for (const item of records) {
+    const deviceCredentialChanged = item.deviceId !== checkpoint.boundDeviceId;
+    const accountGenerationChanged = item.accountGeneration !== checkpoint.accountGeneration;
     if (
-      item.accountGeneration !== checkpoint.accountGeneration &&
+      (deviceCredentialChanged || accountGenerationChanged) &&
       (item.state === 'pending' || item.state === 'uploading' || item.state === 'retry')
     ) {
       history.put({
         opId: item.opId,
         entityType: item.entityType,
         entityId: item.entityId,
-        status: 'generation-requeued',
+        status: deviceCredentialChanged ? 'device-credential-changed' : 'generation-requeued',
         revision: null,
-        errorCode: 'account_generation_changed',
+        errorCode: deviceCredentialChanged
+          ? 'device_credential_changed'
+          : 'account_generation_changed',
         completedAt: now,
       });
       outbox.delete(item.opId);
     }
   }
   transaction.objectStore(ENTITY_STATE).clear();
+  transaction.objectStore(CONFLICTS).clear();
+  transaction.objectStore('bundles').clear();
+  transaction.objectStore(META).delete(LAST_VERIFIED_KEY);
+  transaction.objectStore(META).delete(LAST_ERROR_KEY);
   transaction.objectStore(META).put({ key: BOOTSTRAP_KEY, value: checkpoint });
   await done(transaction);
   database.close();
@@ -484,28 +581,55 @@ export async function mobileV2EntityMatches(
   return state?.confirmedFingerprint === fingerprint && state.deleted !== true;
 }
 
-export async function readMobileV2Status(): Promise<{
+export async function readMobileV2Status(boundDeviceId: string): Promise<{
   pending: number;
   conflicts: number;
   rejected: number;
+  lastVerifiedAt: number | null;
+  lastErrorCode: string | null;
 }> {
   const database = await openMobileDatabase();
-  const transaction = database.transaction([OUTBOX, CONFLICTS], 'readonly');
-  const [outbox, conflicts] = await Promise.all([
+  const transaction = database.transaction([OUTBOX, CONFLICTS, META], 'readonly');
+  const [outbox, conflicts, lastVerified, lastError] = await Promise.all([
     request(transaction.objectStore(OUTBOX).getAll()) as Promise<SyncV2OutboxItem[]>,
     request(transaction.objectStore(CONFLICTS).getAll()) as Promise<SyncV2Conflict[]>,
+    request(transaction.objectStore(META).get(LAST_VERIFIED_KEY)) as Promise<
+      { value?: unknown } | undefined
+    >,
+    request(transaction.objectStore(META).get(LAST_ERROR_KEY)) as Promise<
+      { value?: unknown } | undefined
+    >,
   ]);
   await done(transaction);
   database.close();
+  const currentOutbox = outbox.filter((item) => item.deviceId === boundDeviceId);
+  const verified = scopedStatusValue(lastVerified?.value, boundDeviceId);
+  const error = scopedStatusValue(lastError?.value, boundDeviceId);
   return {
-    pending: outbox.filter(
+    pending: currentOutbox.filter(
       (item) => item.state === 'pending' || item.state === 'uploading' || item.state === 'retry',
     ).length,
     conflicts:
       conflicts.filter((item) => item.status === 'open').length +
-      outbox.filter((item) => item.state === 'conflict').length,
-    rejected: outbox.filter((item) => item.state === 'rejected').length,
+      currentOutbox.filter((item) => item.state === 'conflict').length,
+    rejected: currentOutbox.filter((item) => item.state === 'rejected').length,
+    lastVerifiedAt: typeof verified?.at === 'number' ? verified.at : null,
+    lastErrorCode: typeof error?.code === 'string' ? error.code : null,
   };
+}
+
+export async function writeMobileV2SyncFailure(
+  deviceId: string,
+  errorCode: string,
+): Promise<void> {
+  const database = await openMobileDatabase();
+  const transaction = database.transaction(META, 'readwrite');
+  transaction.objectStore(META).put({
+    key: LAST_ERROR_KEY,
+    value: { deviceId, code: errorCode.slice(0, 80) },
+  });
+  await done(transaction);
+  database.close();
 }
 
 export async function readMobileV2Bootstrap(): Promise<MobileV2BootstrapCheckpoint | null> {
@@ -514,6 +638,7 @@ export async function readMobileV2Bootstrap(): Promise<MobileV2BootstrapCheckpoi
   const record = (await request(transaction.objectStore(META).get(BOOTSTRAP_KEY))) as
     { value?: MobileV2BootstrapCheckpoint } | undefined;
   await done(transaction);
+  database.close();
   return record?.value ?? null;
 }
 
@@ -522,14 +647,92 @@ export async function putMobileDeviceIdentity(value: {
   devicePublicId: string;
   accountPublicId: string;
   displayName: string;
-  token: string;
   scopes: string[];
   expiresAt: number;
 }): Promise<void> {
   const database = await openMobileDatabase();
   const transaction = database.transaction(DEVICES, 'readwrite');
-  transaction.objectStore(DEVICES).put(value);
+  // Construct an explicit allowlisted object so a caller using `as any` cannot
+  // smuggle token/cookie/Authorization fields into ordinary IndexedDB.
+  transaction.objectStore(DEVICES).put({
+    deviceId: value.deviceId,
+    devicePublicId: value.devicePublicId,
+    accountPublicId: value.accountPublicId,
+    displayName: value.displayName,
+    scopes: [...value.scopes],
+    expiresAt: value.expiresAt,
+  });
   await done(transaction);
+  database.close();
+}
+
+export async function readMobileDeviceIdentity(deviceId: string): Promise<unknown> {
+  const database = await openMobileDatabase();
+  const transaction = database.transaction(DEVICES, 'readonly');
+  const value = await request(transaction.objectStore(DEVICES).get(deviceId));
+  await done(transaction);
+  database.close();
+  return value;
+}
+
+function putRemoteConflict(
+  conflictStore: IDBObjectStore,
+  historyStore: IDBObjectStore,
+  change: SyncV2Change,
+  base: SyncV2Payload | null,
+  local: SyncV2Payload | null,
+  fields: string[],
+): void {
+  const now = Date.now();
+  conflictStore.put({
+    conflictId: `remote-${change.changeSeq}-${change.entityType}-${change.entityId}`,
+    entityType: change.entityType,
+    entityId: change.entityId,
+    base,
+    local,
+    remote: change.payload,
+    fields,
+    sourceDeviceIds: [change.sourceDeviceId],
+    status: 'open',
+    createdAt: now,
+    resolvedAt: null,
+    resolutionOpId: null,
+  } satisfies SyncV2Conflict);
+  historyStore.put({
+    opId: `remote-${change.changeSeq}`,
+    entityType: change.entityType,
+    entityId: change.entityId,
+    status: 'conflict',
+    revision: change.revision,
+    errorCode: fields[0] ?? 'remote_conflict',
+    completedAt: now,
+  });
+}
+
+function sameMutation(left: SyncV2Mutation, right: SyncV2Mutation): boolean {
+  return (
+    left.opId === right.opId &&
+    left.entityType === right.entityType &&
+    left.entityId === right.entityId &&
+    left.kind === right.kind &&
+    left.baseRevision === right.baseRevision &&
+    left.baseFingerprint === right.baseFingerprint &&
+    left.deviceId === right.deviceId &&
+    left.accountGeneration === right.accountGeneration &&
+    fingerprintDeviceSyncValue(left.payload) === fingerprintDeviceSyncValue(right.payload)
+  );
+}
+
+function scopedStatusValue(value: unknown, deviceId: string): Record<string, unknown> | null {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    (value as { deviceId?: unknown }).deviceId !== deviceId
+  ) {
+    return null;
+  }
+  return value as Record<string, unknown>;
 }
 
 function request<T>(value: IDBRequest<T>): Promise<T> {

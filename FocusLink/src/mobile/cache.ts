@@ -1,5 +1,15 @@
 import type { DeviceSyncChange, DeviceSyncSessionBundle } from '@shared/sync/deviceProtocol';
-import { makeDeviceSyncOperationId, validateDeviceSyncBundle } from '@shared/sync/deviceProtocol';
+import {
+  fingerprintDeviceSyncValue,
+  makeDeviceSyncOperationId,
+  validateDeviceSyncBundle,
+} from '@shared/sync/deviceProtocol';
+import {
+  splitBundleForSyncV2,
+  type SyncV2EntityType,
+  type SyncV2OutboxItem,
+  type SyncV2Payload,
+} from '@shared/sync/v2Protocol';
 import { isOfflineFocusRuntime, type OfflineFocusRuntime } from './offlineFocusRuntime';
 import type { LiveFocusSnapshotLike } from './runtimeModel';
 import {
@@ -9,7 +19,7 @@ import {
 } from '@shared/sync/taskSnapshotProtocol';
 
 const DATABASE_NAME = 'focuslink-mobile-preview';
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 5;
 const BUNDLE_STORE = 'bundles';
 const META_STORE = 'meta';
 const PENDING_STORE = 'pendingBundles';
@@ -64,6 +74,8 @@ export interface PendingDeviceSyncBundle {
   attemptCount: number;
   nextRetryAt: number;
   lastErrorCode: string | null;
+  /** Canonical device credential that owns this operation, null for pre-v2 migration records. */
+  syncDeviceId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -194,6 +206,7 @@ export async function enqueuePendingDeviceSyncBundle(
     attemptCount: 0,
     nextRetryAt: 0,
     lastErrorCode: null,
+    syncDeviceId: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -219,16 +232,39 @@ export async function completeOfflineFocusRuntime(
     attemptCount: 0,
     nextRetryAt: 0,
     lastErrorCode: null,
+    syncDeviceId: null,
     createdAt: now,
     updatedAt: now,
   };
   const database = await openDatabase();
-  const transaction = database.transaction([PENDING_STORE, META_STORE], 'readwrite');
-  transaction.objectStore(PENDING_STORE).put(record);
-  transaction.objectStore(META_STORE).delete(OFFLINE_FOCUS_KEY);
-  await transactionDone(transaction);
-  database.close();
-  return record;
+  const transaction = database.transaction(
+    [PENDING_STORE, META_STORE, V2_OUTBOX_STORE, V2_ENTITY_STATE_STORE],
+    'readwrite',
+  );
+  try {
+    const metaStore = transaction.objectStore(META_STORE);
+    const checkpointRecord = await requestValue<MetaRecord | undefined>(
+      metaStore.get('syncV2.bootstrap'),
+    );
+    const binding = canonicalMobileBinding(checkpointRecord?.value);
+    if (binding) {
+      record.syncDeviceId = binding.deviceId;
+      await enqueueCanonicalBundleInTransaction(transaction, bundle, binding, now);
+    }
+    transaction.objectStore(PENDING_STORE).put(record);
+    metaStore.delete(OFFLINE_FOCUS_KEY);
+    await transactionDone(transaction);
+    return record;
+  } catch (error) {
+    try {
+      transaction.abort();
+    } catch {
+      // A failed IndexedDB request may already have aborted the transaction.
+    }
+    throw error;
+  } finally {
+    database.close();
+  }
 }
 
 export async function removePendingDeviceSyncBundle(opId: string): Promise<void> {
@@ -425,7 +461,7 @@ function validateChanges(changes: readonly DeviceSyncChange[]): void {
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const database = request.result;
       if (!database.objectStoreNames.contains(BUNDLE_STORE)) {
         database.createObjectStore(BUNDLE_STORE, { keyPath: 'entityId' });
@@ -457,6 +493,22 @@ function openDatabase(): Promise<IDBDatabase> {
       }
       if (!database.objectStoreNames.contains(V2_DEVICE_STORE)) {
         database.createObjectStore(V2_DEVICE_STORE, { keyPath: 'deviceId' });
+      }
+      if (event.oldVersion < 5 && request.transaction) {
+        // A provisional v2 build accepted a `token` property in this ordinary
+        // IndexedDB store. Rewrite every surviving identity as an allowlisted
+        // public record during the schema upgrade; credentials remain solely
+        // in the Android Keystore/native connection store.
+        const deviceStore = request.transaction.objectStore(V2_DEVICE_STORE);
+        const cursorRequest = deviceStore.openCursor();
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
+          if (!cursor) return;
+          const sanitized = sanitizeStoredMobileDeviceIdentity(cursor.value);
+          if (sanitized === null) cursor.delete();
+          else cursor.update(sanitized);
+          cursor.continue();
+        };
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -554,6 +606,7 @@ function normalizePendingRecord(value: unknown, now: number): PendingDeviceSyncB
     attemptCount,
     nextRetryAt: typeof value.nextRetryAt === 'number' ? Math.max(0, value.nextRetryAt) : 0,
     lastErrorCode: typeof value.lastErrorCode === 'string' ? value.lastErrorCode : null,
+    syncDeviceId: typeof value.syncDeviceId === 'string' ? value.syncDeviceId : null,
     createdAt,
     updatedAt: typeof value.updatedAt === 'number' ? value.updatedAt : createdAt,
   };
@@ -562,9 +615,117 @@ function normalizePendingRecord(value: unknown, now: number): PendingDeviceSyncB
     value.attemptCount === normalized.attemptCount &&
     value.nextRetryAt === normalized.nextRetryAt &&
     value.lastErrorCode === normalized.lastErrorCode &&
+    value.syncDeviceId === normalized.syncDeviceId &&
     value.createdAt === normalized.createdAt &&
     value.updatedAt === normalized.updatedAt;
   return unchanged ? (value as unknown as PendingDeviceSyncBundle) : normalized;
+}
+
+interface CanonicalMobileBinding {
+  deviceId: string;
+  accountGeneration: number;
+}
+
+function canonicalMobileBinding(value: unknown): CanonicalMobileBinding | null {
+  if (!isRecord(value) || value.state !== 'v2-active') return null;
+  if (
+    typeof value.boundDeviceId !== 'string' ||
+    value.boundDeviceId.length < 1 ||
+    value.boundDeviceId.length > 200 ||
+    !Number.isSafeInteger(value.accountGeneration) ||
+    Number(value.accountGeneration) < 1
+  ) {
+    return null;
+  }
+  return { deviceId: value.boundDeviceId, accountGeneration: Number(value.accountGeneration) };
+}
+
+async function enqueueCanonicalBundleInTransaction(
+  transaction: IDBTransaction,
+  bundle: DeviceSyncSessionBundle,
+  binding: CanonicalMobileBinding,
+  now: number,
+): Promise<void> {
+  const split = splitBundleForSyncV2(bundle, binding.deviceId);
+  const entities: Array<{
+    entityType: SyncV2EntityType;
+    entityId: string;
+    payload: SyncV2Payload;
+  }> = [
+    { entityType: 'focus_ledger_v2', entityId: bundle.session.id, payload: split.ledger },
+    { entityType: 'focus_metadata_v2', entityId: bundle.session.id, payload: split.metadata },
+  ];
+  const stateStore = transaction.objectStore(V2_ENTITY_STATE_STORE);
+  const outboxStore = transaction.objectStore(V2_OUTBOX_STORE);
+  for (const entity of entities) {
+    const state = await requestValue<
+      | { confirmedRevision?: unknown; confirmedFingerprint?: unknown }
+      | undefined
+    >(stateStore.get([entity.entityType, entity.entityId]));
+    const baseRevision = Number.isSafeInteger(state?.confirmedRevision)
+      ? Number(state?.confirmedRevision)
+      : 0;
+    const baseFingerprint =
+      typeof state?.confirmedFingerprint === 'string' ? state.confirmedFingerprint : null;
+    const opId = `v2-${fingerprintDeviceSyncValue({
+      entity,
+      baseRevision,
+      deviceId: binding.deviceId,
+    })}`;
+    const item: SyncV2OutboxItem = {
+      ...entity,
+      opId,
+      kind: 'put',
+      baseRevision,
+      baseFingerprint,
+      deviceId: binding.deviceId,
+      accountGeneration: binding.accountGeneration,
+      state: 'pending',
+      attemptCount: 0,
+      nextRetryAt: 0,
+      leaseId: null,
+      leaseExpiresAt: null,
+      claimedAt: null,
+      errorCode: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const existing = await requestValue<SyncV2OutboxItem | undefined>(outboxStore.get(opId));
+    if (existing && !sameCanonicalOutboxMutation(existing, item)) {
+      throw new Error('同一 Sync v2 opId 对应了不同 payload');
+    }
+    if (!existing) outboxStore.add(item);
+  }
+}
+
+function sameCanonicalOutboxMutation(left: SyncV2OutboxItem, right: SyncV2OutboxItem): boolean {
+  return (
+    left.entityType === right.entityType &&
+    left.entityId === right.entityId &&
+    left.kind === right.kind &&
+    left.baseRevision === right.baseRevision &&
+    left.baseFingerprint === right.baseFingerprint &&
+    left.deviceId === right.deviceId &&
+    left.accountGeneration === right.accountGeneration &&
+    fingerprintDeviceSyncValue(left.payload) === fingerprintDeviceSyncValue(right.payload)
+  );
+}
+
+function sanitizeStoredMobileDeviceIdentity(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value) || typeof value.deviceId !== 'string' || value.deviceId.length < 1) {
+    return null;
+  }
+  return {
+    deviceId: value.deviceId,
+    devicePublicId: typeof value.devicePublicId === 'string' ? value.devicePublicId : '',
+    accountPublicId: typeof value.accountPublicId === 'string' ? value.accountPublicId : '',
+    displayName: typeof value.displayName === 'string' ? value.displayName : '',
+    scopes: Array.isArray(value.scopes)
+      ? value.scopes.filter((scope): scope is string => typeof scope === 'string')
+      : [],
+    expiresAt:
+      typeof value.expiresAt === 'number' && Number.isFinite(value.expiresAt) ? value.expiresAt : 0,
+  };
 }
 
 async function updatePendingDeviceSyncBundle(
