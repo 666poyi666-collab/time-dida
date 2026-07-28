@@ -414,6 +414,7 @@ export async function settleMobileV2Ack(input: {
       confirmedRevision: input.ack.revision,
       confirmedFingerprint: input.ack.fingerprint,
       baseSnapshot: input.payload,
+      deleted: input.payload === null,
       ...input.epoch,
       updatedAt: now,
     };
@@ -618,10 +619,7 @@ export async function readMobileV2Status(boundDeviceId: string): Promise<{
   };
 }
 
-export async function writeMobileV2SyncFailure(
-  deviceId: string,
-  errorCode: string,
-): Promise<void> {
+export async function writeMobileV2SyncFailure(deviceId: string, errorCode: string): Promise<void> {
   const database = await openMobileDatabase();
   const transaction = database.transaction(META, 'readwrite');
   transaction.objectStore(META).put({

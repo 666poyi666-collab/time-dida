@@ -78,6 +78,39 @@ describe('mobile Sync v2 persistence', () => {
     expect((await claimMobileV2Outbox('phone', 10, 12)).items).toHaveLength(0);
   });
 
+  it('persists a standalone delete ACK as a tombstone', async () => {
+    const deleted: SyncV2Mutation = {
+      ...mutation,
+      opId: 'mobile-delete-op',
+      entityId: 'mobile-deleted',
+      kind: 'delete',
+      payload: null,
+    };
+    await enqueueMobileV2Mutation(deleted, 1);
+    const claimed = await claimMobileV2Outbox('phone', 1, 2);
+    await expect(
+      settleMobileV2Ack({
+        leaseId: claimed.leaseId,
+        deviceId: 'phone',
+        payload: null,
+        ack: {
+          opId: deleted.opId,
+          entityType: deleted.entityType,
+          entityId: deleted.entityId,
+          status: 'applied',
+          revision: 2,
+          fingerprint: fingerprintDeviceSyncValue({ deleted: true, payload: null }),
+          errorCode: null,
+        },
+        epoch: { syncEpoch: 's1', cursorEpoch: 'c1', accountGeneration: 1 },
+      }),
+    ).resolves.toBe(true);
+    expect(await readMobileV2EntityState(deleted.entityType, deleted.entityId)).toMatchObject({
+      deleted: true,
+      baseSnapshot: null,
+    });
+  });
+
   it('persists the explicit bootstrap migration state', async () => {
     await writeMobileV2Bootstrap({
       key: 'syncV2.bootstrap',

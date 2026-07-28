@@ -659,8 +659,7 @@ async function enqueueCanonicalBundleInTransaction(
   const outboxStore = transaction.objectStore(V2_OUTBOX_STORE);
   for (const entity of entities) {
     const state = await requestValue<
-      | { confirmedRevision?: unknown; confirmedFingerprint?: unknown }
-      | undefined
+      { confirmedRevision?: unknown; confirmedFingerprint?: unknown } | undefined
     >(stateStore.get([entity.entityType, entity.entityId]));
     const baseRevision = Number.isSafeInteger(state?.confirmedRevision)
       ? Number(state?.confirmedRevision)

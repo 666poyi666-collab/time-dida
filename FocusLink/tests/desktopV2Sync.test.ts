@@ -1,0 +1,232 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { fingerprintDeviceSyncValue } from '../shared/sync/deviceProtocol';
+import type { FocusMetadataV2 } from '../shared/sync/v2Protocol';
+
+const harness = vi.hoisted(() => ({
+  meta: new Map<string, string>(),
+  connection: {
+    endpoint: 'https://sync.example.test',
+    accessToken: `fl2_account1_desktop1_${'x'.repeat(32)}`,
+    deviceId: 'device-desktop1',
+    scope: 'scope-1',
+  },
+  state: null as Record<string, unknown> | null,
+  deleted: [] as string[],
+  discarded: [] as string[],
+  enqueued: [] as Array<Record<string, unknown>>,
+  remoteConflicts: [] as Array<Record<string, unknown>>,
+  paths: [] as string[],
+}));
+
+vi.mock('../electron/db/index.js', () => ({
+  getDb: () => ({ transaction: (operation: () => unknown) => operation }),
+  getMeta: (key: string) => harness.meta.get(key) ?? null,
+  setMeta: (key: string, value: string) => harness.meta.set(key, value),
+  getSession: () => null,
+  deleteSession: (id: string) => harness.deleted.push(id),
+  insertDeviceSyncBundleIfMissing: () => false,
+  listFinishedSessionsForDeviceSync: () => [],
+  listPauses: () => [],
+  listSegments: () => [],
+}));
+
+vi.mock('../electron/sync/deviceSyncService.js', () => ({
+  getDeviceSyncDataConnection: () => harness.connection,
+}));
+
+vi.mock('../electron/sync/v2OutboxStore.js', () => ({
+  migrateLegacyV2State: vi.fn(),
+  claimV2Outbox: vi.fn(() => ({ leaseId: 'lease', items: [] })),
+  discardPendingV2MutationsForEntity: vi.fn((_scope: string, entityId: string) => {
+    harness.discarded.push(entityId);
+    return 0;
+  }),
+  enqueueV2Mutation: vi.fn((_scope: string, value: Record<string, unknown>) => {
+    harness.enqueued.push(value);
+  }),
+  hasOpenV2Conflict: vi.fn(() => false),
+  hasPendingV2Mutation: vi.fn(() => null),
+  listV2EntityStates: vi.fn(() => []),
+  readDesktopV2Status: vi.fn(() => ({ pending: 0, conflicts: 0, rejected: 0 })),
+  readV2EntityState: vi.fn(() => harness.state),
+  recordRemoteV2History: vi.fn(),
+  requeueStaleGenerationV2Outbox: vi.fn(),
+  retryV2Lease: vi.fn(),
+  settleV2Ack: vi.fn(() => true),
+  writeRemoteV2Conflict: vi.fn(
+    (_scope: string, change: Record<string, unknown>, ...rest: unknown[]) => {
+      harness.remoteConflicts.push({ change, rest });
+    },
+  ),
+  writeV2EntityState: vi.fn(),
+}));
+
+import {
+  deleteDesktopSessionWithV2Tombstone,
+  runDesktopSyncV2,
+} from '../electron/sync/deviceSyncV2Service';
+
+describe('desktop canonical Sync v2 boundary', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    harness.meta.clear();
+    harness.state = null;
+    harness.deleted = [];
+    harness.discarded = [];
+    harness.enqueued = [];
+    harness.remoteConflicts = [];
+    harness.paths = [];
+  });
+
+  it('uses only canonical v2 status/exchange routes and never falls back', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input)).pathname;
+        harness.paths.push(path);
+        if (path === '/sync/v2/status') return json(status(0));
+        return json(page('c0'));
+      }),
+    );
+    await expect(runDesktopSyncV2()).resolves.toMatchObject({ cursor: 'c0' });
+    expect(harness.paths).toEqual(['/sync/v2/status', '/sync/v2/exchange', '/sync/v2/exchange']);
+    expect(harness.paths.some((path) => path.includes('/v1/') || path.includes('/sync/push'))).toBe(
+      false,
+    );
+  });
+
+  it('records a fixed authentication failure and never includes the device credential', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => json({ error: { code: 'invalid_token' } }, 401)),
+    );
+    const error = await runDesktopSyncV2().catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ code: 'authentication_failed' });
+    expect(String(error)).not.toContain(harness.connection.accessToken);
+    expect(harness.meta.get('deviceSync.lastErrorV2.scope-1')).toBe('authentication_failed');
+  });
+
+  it('stores a same-revision different-fingerprint response as a conflict', async () => {
+    const payload: FocusMetadataV2 = {
+      sessionId: 'session-1',
+      title: '本机版本',
+      note: null,
+      subject: null,
+      tags: [],
+      taskAssociation: null,
+      updatedAt: 1,
+      updatedByDeviceId: 'device-desktop1',
+    };
+    harness.state = {
+      entityType: 'focus_metadata_v2',
+      entityId: 'session-1',
+      confirmedRevision: 7,
+      confirmedFingerprint: fingerprintDeviceSyncValue(payload),
+      baseSnapshot: payload,
+      deleted: false,
+      changeSeq: 7,
+      sourceDeviceId: 'device-desktop1',
+      syncEpoch: 'sync-1',
+      cursorEpoch: 'cursor-1',
+      accountGeneration: 1,
+      updatedAt: 1,
+    };
+    harness.meta.set(
+      'syncV2.desktop.checkpointV2.scope-1',
+      JSON.stringify({
+        version: 2,
+        state: 'v2-active',
+        cursor: 'c7',
+        boundDeviceId: 'device-desktop1',
+        syncEpoch: 'sync-1',
+        cursorEpoch: 'cursor-1',
+        accountGeneration: 1,
+        lastChangeSeq: 7,
+        updatedAt: 1,
+      }),
+    );
+    const remote = { ...payload, title: '平板版本', updatedByDeviceId: 'device-tablet1' };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input)).pathname;
+        if (path === '/sync/v2/status') return json(status(8));
+        return json({
+          ...page('c8'),
+          changes: [
+            {
+              changeSeq: 8,
+              entityType: 'focus_metadata_v2',
+              entityId: 'session-1',
+              revision: 7,
+              fingerprint: fingerprintDeviceSyncValue(remote),
+              deleted: false,
+              payload: remote,
+              sourceDeviceId: 'device-tablet1',
+            },
+          ],
+        });
+      }),
+    );
+
+    await expect(runDesktopSyncV2()).resolves.toMatchObject({ conflicts: 1, cursor: 'c8' });
+    expect(harness.remoteConflicts).toHaveLength(1);
+    const recorded = harness.remoteConflicts[0] as { rest: unknown[] };
+    expect(recorded.rest[recorded.rest.length - 1]).toEqual(['same_revision_fingerprint_mismatch']);
+  });
+
+  it('writes paired tombstones before removing a locally confirmed session', () => {
+    harness.state = {
+      entityType: 'focus_metadata_v2',
+      entityId: 'session-delete',
+      confirmedRevision: 4,
+      confirmedFingerprint: 'a'.repeat(64),
+      baseSnapshot: {},
+      deleted: false,
+      changeSeq: 4,
+      sourceDeviceId: 'device-desktop1',
+      syncEpoch: 'sync-1',
+      cursorEpoch: 'cursor-1',
+      accountGeneration: 1,
+      updatedAt: 1,
+    };
+    deleteDesktopSessionWithV2Tombstone('session-delete');
+    expect(harness.enqueued).toHaveLength(2);
+    expect(harness.enqueued.every((mutation) => mutation.kind === 'delete')).toBe(true);
+    expect(harness.discarded).toEqual(['session-delete']);
+    expect(harness.deleted).toEqual(['session-delete']);
+  });
+});
+
+function status(changeSeq: number) {
+  return {
+    protocolVersion: 2,
+    syncEpoch: 'sync-1',
+    cursorEpoch: 'cursor-1',
+    accountGeneration: 1,
+    changeSeq,
+    serverTime: 10,
+  };
+}
+
+function page(nextCursor: string) {
+  return {
+    protocolVersion: 2,
+    syncEpoch: 'sync-1',
+    cursorEpoch: 'cursor-1',
+    accountGeneration: 1,
+    acks: [],
+    changes: [],
+    nextCursor,
+    hasMore: false,
+    serverTime: 11,
+  };
+}
+
+function json(value: unknown, statusCode = 200): Response {
+  return new Response(JSON.stringify(value), {
+    status: statusCode,
+    headers: { 'content-type': 'application/json' },
+  });
+}

@@ -65,4 +65,18 @@ public class FocusAuthorityProjectionV1Test {
         assertEquals("offline", FocusAuthorityProjectionV1.freshness(true, 10, 11, "timeout", 12));
         assertTrue(FocusAuthorityProjectionV1.FRESH_AFTER_MS > 0L);
     }
+
+    @Test
+    public void providerContractUsesTheVersionedSameSignatureConstants() {
+        assertEquals(
+            "app.focuslink.mobile.authority.projection",
+            FocusAuthorityProjectionProvider.AUTHORITY
+        );
+        assertEquals(
+            "app.focuslink.mobile.permission.READ_AUTHORITY_PROJECTION",
+            FocusAuthorityProjectionProvider.READ_PERMISSION
+        );
+        assertEquals("getProjectionV1", FocusAuthorityProjectionProvider.METHOD_GET_V1);
+        assertEquals("projection", FocusAuthorityProjectionProvider.RESULT_PROJECTION);
+    }
 }

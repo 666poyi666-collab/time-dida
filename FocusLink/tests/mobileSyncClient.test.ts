@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   exchangeDeviceSyncPairingCode,
   fetchLiveFocusSnapshot,
-  isInvalidDeviceSyncCursorError,
   pullDeviceSyncPage,
+  pushPendingDeviceSyncBundle,
 } from '../src/mobile/syncClient';
 import {
   loadConnectionPreferences,
@@ -117,26 +117,34 @@ describe('mobile sync client request recovery', () => {
     await expect(request).rejects.toMatchObject({ name: 'AbortError' });
   });
 
-  it('preserves the invalid_cursor error code for one-shot account cache recovery', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            error: { code: 'invalid_cursor', message: 'cursor is invalid for this account' },
-          }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } },
-        ),
-      ),
-    );
-
-    const request = pullDeviceSyncPage({
-      endpoint: 'https://sync.example.test',
-      token: 'test-token',
-      deviceId: 'tablet',
-      cursor: 'old-account-cursor',
-    });
-    await expect(request).rejects.toSatisfy(isInvalidDeviceSyncCursorError);
+  it('retires the legacy ledger route locally and never sends a fallback request', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      pullDeviceSyncPage({
+        endpoint: 'https://sync.example.test',
+        token: 'test-token',
+        deviceId: 'tablet',
+        cursor: 'old-account-cursor',
+      }),
+    ).rejects.toMatchObject({ code: 'legacy_route_retired', status: 410 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(
+      pushPendingDeviceSyncBundle({
+        endpoint: 'https://sync.example.test',
+        token: 'test-token',
+        deviceId: 'tablet',
+        mutation: {
+          opId: 'legacy-op',
+          entity: 'focus_session_bundle',
+          entityId: 'session-1',
+          kind: 'delete',
+          baseRevision: 0,
+          payload: null,
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'legacy_route_retired', status: 410 });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('explains that Android loopback needs adb reverse when the embedded service is unreachable', async () => {

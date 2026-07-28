@@ -31,7 +31,11 @@ export function classifySyncV2Error(error: unknown): SyncV2ClientErrorCode {
 
   const message = error instanceof Error ? error.message : '';
   if (/\b401\b|authentication[_ -]?failed/i.test(message)) return 'authentication_failed';
-  if (/\b403\b|authorization[_ -]?failed|(?:missing|insufficient|denied) scope/i.test(message)) {
+  if (
+    /\b403\b|authorization[_ -]?failed|scope (?:missing|insufficient|denied)|(?:missing|insufficient|denied) scope/i.test(
+      message,
+    )
+  ) {
     return 'authorization_failed';
   }
   if (/超时|timeout/i.test(message)) return 'timeout';

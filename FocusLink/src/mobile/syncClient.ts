@@ -1,11 +1,6 @@
 import {
-  DEVICE_SYNC_ENTITY,
-  DEVICE_SYNC_MAX_PULL,
-  DEVICE_SYNC_PROTOCOL_VERSION,
   normalizeDeviceSyncEndpoint,
-  type DeviceSyncChange,
   type DeviceSyncMutation,
-  type DeviceSyncRequest,
   type DeviceSyncResponse,
 } from '@shared/sync/deviceProtocol';
 import { readDeviceSyncJsonResponse } from '@shared/sync/httpTransport';
@@ -113,110 +108,18 @@ export class DeviceSyncRequestError extends Error {
   }
 }
 
-export function isInvalidDeviceSyncCursorError(error: unknown): boolean {
-  return error instanceof DeviceSyncRequestError && error.code === 'invalid_cursor';
-}
-
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
-const LEDGER_REQUEST_TIMEOUT_MS = 20_000;
 
 export async function pullDeviceSyncPage(input: PullPageInput): Promise<DeviceSyncResponse> {
-  const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
-  const token = input.token.trim();
-  if (!token) throw new Error('请填写访问令牌');
-
-  const request: DeviceSyncRequest = {
-    protocolVersion: DEVICE_SYNC_PROTOCOL_VERSION,
-    deviceId: input.deviceId,
-    cursor: input.cursor,
-    mutations: [],
-    pullLimit: DEVICE_SYNC_MAX_PULL,
-  };
-
-  let response: Response;
-  try {
-    response = await fetchWithTimeout(
-      `${endpoint}/v1/sync`,
-      {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
-        cache: 'no-store',
-        credentials: 'omit',
-        redirect: 'error',
-        referrerPolicy: 'no-referrer',
-      },
-      input.signal,
-      LEDGER_REQUEST_TIMEOUT_MS,
-    );
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw error;
-    if (error instanceof RequestTimeoutError) throw new Error('同步请求超时，正在重连');
-    throw new Error(
-      navigator.onLine ? unreachableMobileServiceMessage(endpoint, '同步服务') : '当前离线',
-    );
-  }
-
-  if (!response.ok) {
-    const detail = await readErrorResponse(response);
-    if (response.status === 401 || response.status === 403) {
-      throw new DeviceSyncRequestError(detail.message || '访问令牌无效或无权读取', detail.code);
-    }
-    throw new DeviceSyncRequestError(
-      detail.message || `同步服务返回 HTTP ${response.status}`,
-      detail.code,
-      response.status,
-      parseRetryAfterMs(response.headers.get('retry-after')),
-    );
-  }
-
-  const value = await readDeviceSyncJsonResponse(response);
-  return validateResponse(value, []);
+  void input;
+  throw new DeviceSyncRequestError('legacy Sync v1 数据入口已退休', 'legacy_route_retired', 410);
 }
 
 export async function pushPendingDeviceSyncBundle(
   input: PushPendingBundleInput,
 ): Promise<DeviceSyncResponse> {
-  const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
-  const token = input.token.trim();
-  if (!token) throw new Error('请填写访问令牌');
-  const request: DeviceSyncRequest = {
-    protocolVersion: DEVICE_SYNC_PROTOCOL_VERSION,
-    deviceId: input.deviceId,
-    cursor: null,
-    mutations: [input.mutation],
-    pullLimit: 1,
-  };
-  const response = await fetchWithTimeout(
-    `${endpoint}/v1/sync`,
-    {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-      cache: 'no-store',
-      credentials: 'omit',
-      redirect: 'error',
-      referrerPolicy: 'no-referrer',
-    },
-    input.signal,
-    LEDGER_REQUEST_TIMEOUT_MS,
-  );
-  if (!response.ok) {
-    const detail = await readErrorResponse(response);
-    throw new DeviceSyncRequestError(
-      detail.message || `同步服务返回 HTTP ${response.status}`,
-      detail.code,
-    );
-  }
-  return validateResponse(await readDeviceSyncJsonResponse(response), [input.mutation.opId]);
+  void input;
+  throw new DeviceSyncRequestError('legacy Sync v1 数据入口已退休', 'legacy_route_retired', 410);
 }
 
 export async function fetchLiveFocusSnapshot(
@@ -523,67 +426,6 @@ function parseLiveFocusAck(value: unknown): LiveFocusCommandAck {
   };
 }
 
-function validateResponse(value: unknown, expectedAckIds: readonly string[]): DeviceSyncResponse {
-  if (!isRecord(value)) throw new Error('同步响应必须是对象');
-  if (value.protocolVersion !== DEVICE_SYNC_PROTOCOL_VERSION) {
-    throw new Error(`同步协议版本不兼容：需要 v${DEVICE_SYNC_PROTOCOL_VERSION}`);
-  }
-  if (!Array.isArray(value.acks) || value.acks.length !== expectedAckIds.length) {
-    throw new Error('同步响应写入确认数量无效');
-  }
-  if (!Array.isArray(value.changes)) throw new Error('同步响应缺少 changes');
-  if (typeof value.nextCursor !== 'string') throw new Error('同步响应缺少 nextCursor');
-  if (typeof value.hasMore !== 'boolean') throw new Error('同步响应缺少 hasMore');
-  if (typeof value.serverTime !== 'number' || !Number.isFinite(value.serverTime)) {
-    throw new Error('同步响应缺少有效 serverTime');
-  }
-
-  const changes = value.changes.map(parseChange);
-  const acks = value.acks.map((ack, index) => parseDeviceSyncAck(ack, expectedAckIds[index]));
-  return {
-    protocolVersion: DEVICE_SYNC_PROTOCOL_VERSION,
-    acks,
-    changes,
-    nextCursor: value.nextCursor,
-    hasMore: value.hasMore,
-    serverTime: value.serverTime,
-  };
-}
-
-function parseDeviceSyncAck(value: unknown, expectedOpId: string) {
-  if (!isRecord(value) || value.opId !== expectedOpId || typeof value.entityId !== 'string') {
-    throw new Error('同步写入确认标识无效');
-  }
-  if (
-    value.status !== 'applied' &&
-    value.status !== 'duplicate' &&
-    value.status !== 'conflict' &&
-    value.status !== 'rejected'
-  ) {
-    throw new Error('同步写入确认状态无效');
-  }
-  if (value.revision !== null && !Number.isSafeInteger(value.revision)) {
-    throw new Error('同步写入确认版本无效');
-  }
-  if (value.errorCode !== null && typeof value.errorCode !== 'string') {
-    throw new Error('同步写入确认错误码无效');
-  }
-  return value as unknown as DeviceSyncResponse['acks'][number];
-}
-
-function parseChange(value: unknown): DeviceSyncChange {
-  if (!isRecord(value)) throw new Error('同步变更必须是对象');
-  if (value.entity !== DEVICE_SYNC_ENTITY) throw new Error('同步服务返回了未知实体');
-  if (typeof value.deviceId !== 'string' || typeof value.entityId !== 'string') {
-    throw new Error('同步变更缺少设备或会话 ID');
-  }
-  if (typeof value.deleted !== 'boolean') throw new Error('同步变更缺少删除状态');
-  if (!Number.isSafeInteger(value.changeSeq) || !Number.isSafeInteger(value.revision)) {
-    throw new Error('同步变更序号或版本无效');
-  }
-  return value as unknown as DeviceSyncChange;
-}
-
 async function readErrorDetail(response: Response): Promise<string> {
   return (await readErrorResponse(response)).message;
 }
@@ -616,14 +458,6 @@ async function readErrorResponse(response: Response): Promise<{
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function parseRetryAfterMs(value: string | null): number | null {
-  if (!value) return null;
-  const seconds = Number(value);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1_000);
-  const date = Date.parse(value);
-  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null;
 }
 
 function isText(value: unknown, maxLength: number): value is string {

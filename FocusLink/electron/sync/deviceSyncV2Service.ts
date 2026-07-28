@@ -41,6 +41,7 @@ import {
 } from '../db/index.js';
 import {
   claimV2Outbox,
+  discardPendingV2MutationsForEntity,
   enqueueV2Mutation,
   hasOpenV2Conflict,
   hasPendingV2Mutation,
@@ -189,6 +190,7 @@ export function deleteDesktopSessionWithV2Tombstone(entityId: string): void {
   const checkpoint = readCheckpoint(connection.scope);
   const db = getDb();
   db.transaction(() => {
+    discardPendingV2MutationsForEntity(connection.scope, entityId);
     for (const entityType of ['focus_ledger_v2', 'focus_metadata_v2'] as const) {
       const state = readV2EntityState(connection.scope, entityType, entityId);
       if (!state || state.deleted) continue;

@@ -60,7 +60,6 @@ import {
 } from './sync/embeddedDeviceSyncServer.js';
 import { hasDeviceSyncToken } from './sync/deviceSyncCredentials.js';
 import { coordinateAndroidSyncDevices } from './sync/androidSyncCoordinator.js';
-import { deleteDesktopSessionWithV2Tombstone } from './sync/deviceSyncV2Service.js';
 import {
   listSessions,
   listSessionsInRange,
@@ -427,6 +426,9 @@ export function registerIpc(
     }
 
     return withPendingSyncExclusive(async () => {
+      const { deleteDesktopSessionWithV2Tombstone } = await import(
+        './sync/deviceSyncV2Service.js'
+      );
       // 独占区间覆盖撤队列、外部删除和本地删除，防止新的后台 create 在中间插入。
       deleteSyncQueueForSegments(
         segs.map((segment) => segment.id),

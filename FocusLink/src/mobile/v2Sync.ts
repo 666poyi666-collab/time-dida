@@ -208,11 +208,7 @@ async function drain(
       result.cursor = response.nextCursor;
     } catch (error) {
       if (claimed.items.length > 0) {
-        await retryMobileV2Lease(
-          claimed.leaseId,
-          classifySyncV2Error(error),
-          Date.now() + 30_000,
-        );
+        await retryMobileV2Lease(claimed.leaseId, classifySyncV2Error(error), Date.now() + 30_000);
       }
       throw error;
     }

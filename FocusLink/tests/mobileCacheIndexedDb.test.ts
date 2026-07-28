@@ -14,6 +14,11 @@ import {
   type LocalSessionSyncMeta,
 } from '../src/mobile/cache';
 import { startOfflineFocus } from '../src/mobile/offlineFocusRuntime';
+import {
+  claimMobileV2Outbox,
+  readMobileDeviceIdentity,
+  writeMobileV2Bootstrap,
+} from '../src/mobile/v2Cache';
 
 const DATABASE_NAME = 'focuslink-mobile-preview';
 
@@ -98,6 +103,58 @@ describe('mobile IndexedDB local-first persistence', () => {
     expect(await readPendingDeviceSyncBundles()).toEqual([]);
     expect(await readLocalSessionSyncMeta(runtime.id)).toBeNull();
   });
+
+  it('commits a completed offline session and its canonical v2 outbox together when paired', async () => {
+    const runtime = startOfflineFocus({
+      id: 'paired-local-session',
+      segmentId: 'paired-local-segment',
+      title: '已配对离线专注',
+      task: null,
+      now: 1_720_000_000_000,
+    });
+    await writeMobileV2Bootstrap({
+      key: 'syncV2.bootstrap',
+      state: 'v2-active',
+      bootstrapId: null,
+      cursor: 'c4',
+      boundDeviceId: 'device-phone',
+      syncEpoch: 'sync-1',
+      cursorEpoch: 'cursor-1',
+      accountGeneration: 1,
+      updatedAt: 1,
+    });
+    await createOfflineFocusRuntime(runtime, makeMeta(runtime.id));
+
+    const pending = await completeOfflineFocusRuntime(makeBundle(runtime.id));
+    const claimed = await claimMobileV2Outbox('device-phone', 10, Date.now());
+
+    expect(pending).toMatchObject({ syncDeviceId: 'device-phone' });
+    expect(await readOfflineFocusRuntime()).toBeNull();
+    expect((await readPendingDeviceSyncBundles()).map((record) => record.opId)).toContain(
+      pending.opId,
+    );
+    expect(claimed.items).toHaveLength(2);
+    expect(claimed.items.map((item) => item.entityType).sort()).toEqual([
+      'focus_ledger_v2',
+      'focus_metadata_v2',
+    ]);
+  });
+
+  it('removes legacy plaintext credentials from the v5 device-store migration', async () => {
+    await seedVersionFourIdentity({
+      deviceId: 'legacy-phone',
+      devicePublicId: 'public-phone',
+      accountPublicId: 'public-account',
+      displayName: '旧手机',
+      scopes: ['sync:read'],
+      expiresAt: 999,
+      token: 'fl2_legacy_plaintext_token',
+      cookie: 'session=secret',
+    });
+    const identity = await readMobileDeviceIdentity('legacy-phone');
+    expect(JSON.stringify(identity)).not.toMatch(/fl2_|token|cookie|secret/i);
+    expect(identity).toMatchObject({ deviceId: 'legacy-phone', scopes: ['sync:read'] });
+  });
 });
 
 function makeMeta(sessionId: string): LocalSessionSyncMeta {
@@ -170,6 +227,29 @@ function seedVersionTwo(records: unknown[]): Promise<void> {
       database.createObjectStore('meta', { keyPath: 'key' });
       const pending = database.createObjectStore('pendingBundles', { keyPath: 'opId' });
       for (const record of records) pending.put(record);
+    };
+    request.onsuccess = () => {
+      request.result.close();
+      resolve();
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function seedVersionFourIdentity(identity: unknown): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DATABASE_NAME, 4);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      database.createObjectStore('bundles', { keyPath: 'entityId' });
+      database.createObjectStore('meta', { keyPath: 'key' });
+      database.createObjectStore('pendingBundles', { keyPath: 'opId' });
+      database.createObjectStore('sessionSyncMeta', { keyPath: 'sessionId' });
+      database.createObjectStore('syncOutbox', { keyPath: 'opId' });
+      database.createObjectStore('syncEntityState', { keyPath: ['entityType', 'entityId'] });
+      database.createObjectStore('syncConflicts', { keyPath: 'conflictId' });
+      database.createObjectStore('syncOperationHistory', { keyPath: 'opId' });
+      database.createObjectStore('syncDevices', { keyPath: 'deviceId' }).put(identity);
     };
     request.onsuccess = () => {
       request.result.close();

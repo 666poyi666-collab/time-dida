@@ -133,8 +133,7 @@ export function enqueueV2Mutation(
          base_fingerprint, payload, device_id, account_generation, state,
          attempt_count, next_retry_at, created_at, updated_at
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, ?, ?)`,
-    )
-    .run(
+    ).run(
       connectionScope,
       mutation.opId,
       mutation.entityType,
@@ -210,7 +209,7 @@ export function settleV2Ack(
   return db.transaction(() => {
     const item = db
       .prepare(
-      `SELECT * FROM sync_v2_outbox
+        `SELECT * FROM sync_v2_outbox
        WHERE connection_scope = ? AND op_id = ? AND lease_id = ?`,
       )
       .get(connectionScope, ack.opId, leaseId) as OutboxRow | undefined;
@@ -225,56 +224,56 @@ export function settleV2Ack(
     if (ack.status === 'applied' || ack.status === 'duplicate') {
       if (ack.revision === null || ack.fingerprint === null) return false;
       writeV2EntityState(connectionScope, {
-      entityType: ack.entityType,
-      entityId: ack.entityId,
-      revision: ack.revision,
-      fingerprint: ack.fingerprint,
-      payload,
-      deleted: payload === null,
-      changeSeq: null,
-      sourceDeviceId: item.device_id,
-      epoch,
-      now,
-    });
+        entityType: ack.entityType,
+        entityId: ack.entityId,
+        revision: ack.revision,
+        fingerprint: ack.fingerprint,
+        payload,
+        deleted: payload === null,
+        changeSeq: null,
+        sourceDeviceId: item.device_id,
+        epoch,
+        now,
+      });
       db.prepare(
-      `DELETE FROM sync_v2_outbox
+        `DELETE FROM sync_v2_outbox
        WHERE connection_scope = ? AND op_id = ? AND lease_id = ?`,
       ).run(connectionScope, ack.opId, leaseId);
     } else {
       db.prepare(
-      `UPDATE sync_v2_outbox SET state = ?, error_code = ?, lease_id = NULL,
+        `UPDATE sync_v2_outbox SET state = ?, error_code = ?, lease_id = NULL,
        lease_expires_at = NULL, claimed_at = NULL, updated_at = ?
        WHERE connection_scope = ? AND op_id = ? AND lease_id = ?`,
       ).run(ack.status, ack.errorCode, now, connectionScope, ack.opId, leaseId);
       if (ack.status === 'conflict') {
         writeV2Conflict(connectionScope, {
-        conflictId: `ack-${ack.opId}`,
-        entityType: ack.entityType,
-        entityId: ack.entityId,
-        base:
-          readV2EntityState(connectionScope, ack.entityType, ack.entityId)?.baseSnapshot ?? null,
-        local: payload,
-        remote: null,
-        fields: ['revision'],
-        sourceDeviceIds: [item.device_id],
-        now,
+          conflictId: `ack-${ack.opId}`,
+          entityType: ack.entityType,
+          entityId: ack.entityId,
+          base:
+            readV2EntityState(connectionScope, ack.entityType, ack.entityId)?.baseSnapshot ?? null,
+          local: payload,
+          remote: null,
+          fields: ['revision'],
+          sourceDeviceIds: [item.device_id],
+          now,
         });
       }
     }
     db.prepare(
-    `INSERT OR REPLACE INTO sync_v2_operation_history (
+      `INSERT OR REPLACE INTO sync_v2_operation_history (
        connection_scope, op_id, entity_type, entity_id, status, revision,
        error_code, completed_at
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
-    connectionScope,
-    ack.opId,
-    ack.entityType,
-    ack.entityId,
-    ack.status,
-    ack.revision,
-    ack.errorCode,
-    now,
+      connectionScope,
+      ack.opId,
+      ack.entityType,
+      ack.entityId,
+      ack.status,
+      ack.revision,
+      ack.errorCode,
+      now,
     );
     return true;
   })();
@@ -422,6 +421,42 @@ export function hasOpenV2Conflict(
       )
       .get(connectionScope, entityType, entityId),
   );
+}
+
+/**
+ * A user may delete a local record before its first upload. Preserve an audit
+ * row, then remove only work that has not become a terminal authority result.
+ */
+export function discardPendingV2MutationsForEntity(
+  connectionScope: string,
+  entityId: string,
+  now = Date.now(),
+): number {
+  const db = getDb();
+  return db.transaction(() => {
+    const rows = db
+      .prepare(
+        `SELECT * FROM sync_v2_outbox WHERE connection_scope = ? AND entity_id = ?
+         AND state IN ('pending', 'uploading', 'retry')`,
+      )
+      .all(connectionScope, entityId) as OutboxRow[];
+    const history = db.prepare(
+      `INSERT OR REPLACE INTO sync_v2_operation_history (
+        connection_scope, op_id, entity_type, entity_id, status, revision,
+        error_code, completed_at) VALUES (?, ?, ?, ?, 'locally-deleted', NULL,
+        'local_entity_deleted_before_ack', ?)`,
+    );
+    for (const row of rows) {
+      history.run(connectionScope, row.op_id, row.entity_type, row.entity_id, now);
+    }
+    if (rows.length > 0) {
+      db.prepare(
+        `DELETE FROM sync_v2_outbox WHERE connection_scope = ? AND entity_id = ?
+         AND state IN ('pending', 'uploading', 'retry')`,
+      ).run(connectionScope, entityId);
+    }
+    return rows.length;
+  })();
 }
 
 export function requeueStaleGenerationV2Outbox(
