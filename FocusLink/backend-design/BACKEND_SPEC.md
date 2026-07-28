@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相；当前实现 v0.12.61
+> 状态：v0.12.x 后端单一真相；当前实现 v0.12.68
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -10,7 +10,7 @@
 - 桌面、Web/PWA 与 Android 继续共享协议、幂等 command id、revision 冲突处理和 completed ledger；移动 renderer 不复制 Electron 业务服务。
 - 移动端覆盖安装必须保留兼容的 endpoint、token 选择与本地账本缓存；协议或缓存升级只能做显式兼容迁移，不能靠清除应用数据恢复。
 - Android 原生 Keystore 连接与 WebView 偏好必须执行同一旧默认端口迁移；WebView 会话令牌被系统回收不得隐式清空仍服务于活动通知的原生连接。
-- v0.12.53 已完成 Windows 覆盖安装与双 Android 真实联调；三端生产连接使用同一 Cloudflare HTTPS 自定义域名，本机 Node/Docker 服务保留为回归与应急实现。
+- 历史 v0.12.53 完成过 Windows 覆盖安装与双 Android 真实联调；当前生产入口已收口为 canonical `foxlink-cloud-mcp` HTTPS origin。本机 Node 服务只允许回环合同测试，Node/Docker production authority 已硬退役。
 - v0.12.60 在 v1 实时控制面之外增加 Sync v2：三类实体独立 revision；SQLite/IndexedDB 租约 Outbox、base snapshot、显式 epoch、设备水位、tombstone/graveyard 和冲突中心共同保证本地修改不会被静默覆盖。
 
 ## Sync v2 不变量
@@ -200,19 +200,33 @@ revision、服务端单调 change sequence 与不透明 cursor。规则如下：
 - 服务端对 cursor 之后同一实体的多次历史 revision 先折叠为最新状态，再按 change sequence、条数与响应字节预算分页；全新设备不得先导入旧 revision 再把同一批历史误判为本地冲突。
 - 当前桌面端不执行远端删除，也不自动覆盖已有会话；删除/编辑冲突需要后续显式清理与合并流程。
 - Electron 访问令牌只经 `safeStorage` 加密落盘，不进入 `AppSettings`、renderer 日志或多端 payload。
-- 回环内置服务可生成 2 分钟一次性配对 offer。二维码/短码只暴露协议版本、回环 endpoint、密码学随机 nonce 和过期时间；`POST /v1/pair` 在校验设备 ID 后一次性兑换当前长期令牌，成功后立即消费，过期或重放返回 410。配对路由不记录请求体、nonce 或令牌；Android 兑换后的令牌仍进入 Keystore，Web/PWA 仍遵循用户明确选择的会话级/记住策略。
-- Electron 只有在首次 `GET /v1/live` 成功并通过协议校验后才切换到实时事实源；握手失败时保持本机 idle/计时可用，并以 `2s → 4s → 8s … → 60s` 有界退避重连。已确认的 running/paused 实时会话断线时不得切回本机空闲状态或伪造云端确认。
+- 回环测试后端可生成 2 分钟一次性配对 offer；生产配对只走 canonical `POST /sync/v1/pair/offers` 与 `POST /sync/v1/pair/exchange`。二维码/短码只暴露协议版本、canonical endpoint、密码学随机 nonce 和过期时间；兑换成功后立即消费，过期或重放返回 410。配对路由不记录请求体、nonce 或令牌；Android 兑换后的令牌进入 Keystore，Web/PWA 遵循用户明确选择的会话级/记住策略。
+- Electron 只有在首次 `GET /sync/v2/live` 成功并通过协议校验后才切换到实时事实源；握手失败时保持本机 idle/计时可用，并以 `2s → 4s → 8s … → 60s` 有界退避重连。已确认的 running/paused 实时会话断线时不得切回本机空闲状态或伪造云端确认。
 - 生成 completed bundle 时，旧版本遗留的暂停孤立引用只在传输副本中归一为 `segmentId: null`，原始 SQLite 行不被静默删除；诊断必须记录会话 ID 和孤立数量。
 
 `cloud/` 的默认开发入口仍是回环测试后端：默认监听 `127.0.0.1`，启动必须显式提供
 `FOCUSLINK_CLOUD_TEST_TOKEN`，执行精确 CORS allowlist、Bearer 鉴权、512 KiB 单会话包上限与请求/响应各 1 MiB 字节预算；请求和响应都按序列化字节切页，可用
 忽略目录中的单进程 JSON 文件持久化。
 
-个人云部署使用 `cloud/Dockerfile`、`cloud/Web.Dockerfile` + `cloud/docker-compose.yml`，目标平台固定为免费开源的自托管 Coolify。Compose 同时发布 `focuslink-web` PWA 与 `focuslink-cloud` API；Coolify 分别绑定 Web HTTPS 域名和同步 HTTPS 域名，Web 域名必须加入 API 的精确 CORS allowlist；生产服务还固定附加 Capacitor 所需的 `https://localhost` 与 `capacitor://localhost`，否则原生 App 会在 Bearer 请求前被浏览器 CORS 拦截。API 模式使用 `FOCUSLINK_CLOUD_MODE=production`，监听容器 `8787`，要求反向代理确认原始 HTTPS、至少 32 字符随机 Bearer token、精确 HTTPS CORS origin、持久卷 `/data`、安全响应头、请求超时和进程级限流。Coolify 必须启用自动证书、两个健康检查和名为 `focuslink-cloud-data` 的持久卷；API 只允许单实例运行，升级前备份该卷。账号环境变量格式为 JSON 数组：`[{"accountId":"owner","accessToken":"<openssl rand -hex 32>"}]`，不得写入仓库或构建日志。
+生产同步的唯一数据 authority 是 `cloudflare/accountDurableObject.ts` 的 Account Durable Object。`cloudflare/worker.ts` 只作为私有 service-binding authority adapter：`wrangler.jsonc` 固定 `workers_dev=false`、`preview_urls=false` 且没有 `routes`，不得创建 `workers.dev`、preview 或自定义域名入口。生产客户端只保存 canonical `foxlink-cloud-mcp` HTTPS origin；公网 OAuth、owner session、CSRF、resource/audience 与 CORS 由该 adapter 校验，再通过 service binding 调用私有 FocusLink Worker。客户端不得改指向私有 Worker。
 
-Cloudflare 是 v0.12.47 起的公网托管实现，入口为 `cloudflare/worker.ts`，账号级 SQLite Durable Object 位于 `cloudflare/accountDurableObject.ts`，配置真值为 `wrangler.jsonc`。Worker 必须与 Node/Docker 实现保持相同的 `/health`、`/v1/sync`、`/v1/tasks`、`/v1/live`、`/v1/live/wait`、`/v1/live/command` DTO 和结构化错误；SQLite 表分别保存实体、revision、opId、change log、任务快照、实时会话和 commandId。Durable Object 以 Bearer token 派生账号边界并串行提交账号操作；任何日志和响应都不得返回 token。生产客户端使用已验证的 HTTPS 自定义域名，`workers.dev` 只作为部署诊断入口。Node/Docker 仍是协议回归与应急实现，不因 Cloudflare 上线而删除。
+Node `cloud/server.ts` 仅保留显式 token 的 `127.0.0.1` 合同测试后端。`startPersonalCloud()` 与 `FOCUSLINK_CLOUD_MODE=production` 固定失败；`cloud/Dockerfile` 是不可启动 authority 的退役标记镜像，Compose 不再声明 Node cloud API、静态 bearer 账号或持久卷。Node 不能作为应急 production authority，也不能绕过设备撤销、scope、Account DO 事务或 MCP 投影。
 
-该个人云配置满足单用户多设备持续在线，但不冒充通用 SaaS 身份平台：它没有 PKCE/OIDC、自助注册、设备撤销、refresh token、多实例数据库协调或托管备份。若未来开放给不受信任的多用户，必须先增加正式身份、租户数据库、KMS、审计、外部限流、备份恢复演练与 cursor 压缩/过期策略；当前不得水平扩容。
+canonical adapter 与私有 authority 的路由表如下。`/v1/*`、`/v2/*` 和 `/sync/push` 均为已退休外部路径，adapter 与私有 Worker 都不得回退：
+
+| Canonical path | 方法 | 凭据 / scope | 私有 Account DO 路径 |
+| --- | --- | --- | --- |
+| `/sync/v2/status` | GET | device token · `sync:read` | `/v2/sync/epoch` |
+| `/sync/v2/exchange` | POST | device token · 无 mutation 时 `sync:read`，有 mutation 时 `sync:write` | `/v2/sync` |
+| `/sync/v2/tasks` | GET / POST | device token · `sync:read` / `sync:write` | `/v1/tasks`（仅 DO 内部） |
+| `/sync/v2/live` | GET | device token · `live:read` | `/v1/live`（仅 DO 内部） |
+| `/sync/v2/live/wait` | GET | device token · `live:read` | `/v1/live/wait`（仅 DO 内部） |
+| `/sync/v2/live/command` | POST | device token · `live:write` | `/v1/live/command`（仅 DO 内部） |
+| `/sync/v1/pair/offers` | POST | adapter 先验 owner session + CSRF；fl2 token 仍由 DO 校验 `devices:manage` | `/v2/pair/offers` |
+| `/sync/v1/pair/exchange` | POST | 一次性高熵 nonce；不得要求已有 bearer | `/v2/pair/exchange` |
+| `/internal/mcp/v1/focus/summary` | GET | 仅 MCP service binding credential；公网 OAuth 由 `foxlink-cloud-mcp` 校验 `focuslink:read` | 同名内部投影 |
+
+Account DO 保存实体、revision、reservation/result、change feed、任务快照、实时会话、commandId 与设备 credential HMAC；每个请求在 DO 内执行真实 scope、过期、撤销、跨账号和 `deviceId` 绑定检查。任何日志、响应或同步实体都不得返回 token。`/healthz` 只证明进程存活；`/readyz` 必须验证必需 secrets 与 Account DO SQLite probe，不能把配置存在冒充 authority 可写。
 
 实时活动会话是独立控制平面，协议真值位于 `shared/sync/liveFocusProtocol.ts`。Web/PWA、Android
 与显式开启实时控制的 Electron 同步同一账号下的唯一活动会话。Electron 由
@@ -222,7 +236,7 @@ Cloudflare 是 v0.12.47 起的公网托管实现，入口为 `cloudflare/worker.
 - 状态仅为 `idle / running / paused`，合法迁移是 `idle→running`、`running→paused`、`paused→running` 以及活动态经 `finish/abort` 回到 idle。服务端持有 revision 与时间边界，客户端只做显示外推。
 - 每个命令含随机稳定 `commandId`、发起 `deviceId`、目标 `sessionId` 与 `expectedRevision`；相同正文重放返回 duplicate，同 id 不同正文被拒绝，旧 revision 返回 conflict 和最新快照。
 - start 由客户端生成 session id，可携带有界标题与可选任务上下文；同一账号一次只能有一个活动会话。pause/resume/finish/abort 必须命中当前 session，陈旧通知或快捷设置动作不能作用于下一轮。
-- `GET /v1/live` 返回当前快照；`GET /v1/live/wait` 只在 revision 前进或有界超时后返回，HTTP 断开必须释放 waiter；`POST /v1/live/command` 处理幂等命令。三者都复用 Bearer 账号隔离与精确 CORS。
+- `GET /sync/v2/live` 返回当前快照；`GET /sync/v2/live/wait` 只在 revision 前进或有界超时后返回，HTTP 断开必须释放 waiter；`POST /sync/v2/live/command` 处理幂等命令。三者都经 canonical adapter，私有 authority 复验 device credential 与 scope。
 - 每个响应给出 `serverTime`，并把 active/pause/wall 三时间物化到该时刻。running 后只有 active 与 wall 增长，paused 后只有 pause 与 wall 增长；客户端从该基点逐秒显示，不能用本机时间改写云端事实。
 - finish/abort 在同一次持久化提交中闭合当前 segment/pause、生成通过 completed-bundle 校验的完整 Session/Segment/Pause，并写入现有账本 change log；其他设备随后用原 cursor 协议拉回，不能观察半个会话。
 - 实时快照携带 segment/pause 边界；Electron 以 `serverTime` 计算本机时钟偏移后投影 `TimerSnapshot`。由任一设备结束时，Electron 必须先运行账本拉取并确认完整 bundle 已进入 SQLite，再发出 `finished` 快照触发 dida/TomaToDo 副作用。
@@ -238,7 +252,7 @@ Cloudflare 是 v0.12.47 起的公网托管实现，入口为 `cloudflare/worker.
 
 - 电脑端每次成功读取滴答工作台后自动发布项目与活动任务快照；发布失败只记诊断，不得让已经成功的本地任务刷新变成失败。
 - 快照只包含选择专注所需的任务 ID、来源、标题、项目、优先级、到期日、标签、父子关系和完成状态；不包含任务正文、原始 JSON、CLI/OAuth 凭据或第三方写入能力。Checklist 子项在传输时展平并保留 `parentId`。
-- 云端按账号保留最后一份完整快照，内容相同的同设备重放不增加 revision。Web/PWA/Android 使用 `GET /v1/tasks` 读取并写入 IndexedDB；PC 关闭或任务服务暂时不可达时继续使用最后一次缓存。
+- 云端按账号保留最后一份完整快照，内容相同的同设备重放不增加 revision。Web/PWA/Android 使用 `GET /sync/v2/tasks` 读取并写入 IndexedDB；PC 关闭或任务服务暂时不可达时继续使用最后一次缓存。
 - 移动端开始实时会话时可以携带快照中的任务上下文，也可以不关联任务自由开始。任务上下文最终进入 completed bundle，PC 拉回后仍由桌面端执行 dida/TomaToDo 副作用。
 - 任务快照解决的是“PC 已读取内容的跨设备可选副本”，不是移动端直连滴答，也不把本地测试后端提升为生产云。PC 尚未成功发布过快照时，其他端只能自由标题开始。
 

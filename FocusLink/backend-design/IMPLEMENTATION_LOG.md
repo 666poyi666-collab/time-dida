@@ -1,5 +1,28 @@
 # FocusLink 实施日志
 
+## 2026-07-28 · v0.12.68 私有 authority 与 canonical adapter 收口
+
+- `cloudflare/worker.ts` 改为无公网入口的 service-binding authority adapter；只接受 canonical `/sync/v2/*` 与 `/sync/v1/pair/*`。pair offer 将 fl2 credential 转交 DO 复验 `devices:manage`，公网 owner session + CSRF 仍由 foxlink-cloud-mcp 负责。
+- Account DO 绑定 authenticated device 与 body/mutation `deviceId`；live/task scope、伪造/过期/撤销/跨账号 token 负测齐全。V2 change feed 使用与 foxlink adapter 一致的 1,100,000-byte cap 二分选页，cursor/watermark 只推进到返回尾。
+- Node personal-cloud production entry、Docker API service、静态 bearer account 和数据卷硬退役；Node 只保留回环合同测试。`/readyz` 检查三项两两不同的 service secret 并执行 DO SQLite probe。
+- 手机、平板、手表响应式比例与 Android Keystore-first 恢复已实现；本地 viewport screenshot 与样式契约覆盖八位计时、双按钮、完整错误/设备字段及横向 overflow。
+- `focus_guard_state_v1` producer golden fixture 与 Java consumer 完全一致；因同账号 32-byte root provisioning 尚不存在，生产 publisher 保持阻断，不创建第二 authority 或明文状态面。
+- 本轮只做本地实现、dry-run 和自动化；未部署、未读取/复用远端 secret，最终 v0.12.68 ADB 覆盖安装与 PC-off 三轮验收未执行，`supportsPcOff=false`。
+
+## 2026-07-28 · v0.12.67 Android 安全凭据恢复
+
+- 手机和手表共用 `restoreOrMigrateNativeFocusConnection`：优先读取 Android Keystore；旧版仅有 WebView credential 时，原生写入成功后才清理浏览器副本。
+- 手表配对流程补齐原生 `configureConnection` 与启动恢复；手机配对、手工连接的提交顺序同步收紧，Keystore 失败不再产生假保存。
+- 新增恢复/迁移/失败保持和三类视口 CSS 契约测试。当前真机上已经被 v0.12.66 删除的旧手表凭据无法凭空恢复，需重新配对后完成活动态视觉验收。
+- 本轮不部署、不读取远端 secret，`supportsPcOff` 继续为 false。
+
+## 2026-07-28 · v0.12.66 canonical 云端专注数据面
+
+- Account Durable Object 增加内部 `GET /internal/mcp/v1/focus/summary` 投影；独立 MCP service credential 与设备 token、OAuth token 分离，公网 OAuth 仍由 canonical foxlink-cloud-mcp 验证 `focuslink:read`。
+- 投影从 `focus_ledger_v2` 与 `focus_metadata_v2` 生成次数、任务、时长、起止、最近记录和 `lastVerifiedAt/freshness`，不输出 note、tags 或任何凭据。
+- live/task 公网路径迁移到 `/sync/v2/live*` 与 `/sync/v2/tasks`；旧 `/v1/*` 保持退休，DO 内部路径增加真实设备 credential、scope 与 `deviceId` 绑定。
+- 当前只完成本地实现和门禁；未部署、未读取远端 secret，`supportsPcOff` 维持 false。
+
 ## 2026-07-27 · v0.12.65 专注时间之带磨砂材质
 
 - running 专注材料从确定性锯齿、浮尘和内部颗粒改为全高半透明磨砂玻璃；以柔和内雾、宽幅漫反射和薄边缘高光保留质感及刻度可读性，去除长条展开后的毛边与分节感。

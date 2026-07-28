@@ -16,15 +16,6 @@ export interface MobileConnectionPreferences {
 }
 
 export function loadConnectionPreferences(): MobileConnectionPreferences {
-  const native = Capacitor.isNativePlatform();
-  if (native) {
-    // v0.12.x briefly allowed a persistent WebView token.  Android now owns
-    // the durable credential in Keystore; remove both browser copies before
-    // any renderer code can reuse them.  MobileApp restores it into memory
-    // through the narrow native bridge after startup.
-    sessionStorage.removeItem(TOKEN_SESSION_KEY);
-    localStorage.removeItem(TOKEN_LOCAL_KEY);
-  }
   const rememberToken = localStorage.getItem(REMEMBER_TOKEN_KEY) === 'true';
   const storedEndpoint = localStorage.getItem(ENDPOINT_KEY);
   const migrationPending = localStorage.getItem(LOOPBACK_MIGRATION_KEY) !== 'true';
@@ -49,9 +40,11 @@ export function loadConnectionPreferences(): MobileConnectionPreferences {
   }
   return {
     endpoint,
-    token: native
-      ? ''
-      : rememberToken
+    // Native v0.12.x builds may still have the only credential copy in Web
+    // Storage. Keep that value available until the caller has durably migrated
+    // it into Android Keystore. saveConnectionPreferences removes both browser
+    // copies only after that native write succeeds.
+    token: rememberToken
       ? (localStorage.getItem(TOKEN_LOCAL_KEY) ?? '')
       : (sessionStorage.getItem(TOKEN_SESSION_KEY) ?? ''),
     rememberToken,
@@ -82,6 +75,9 @@ export function migrateLegacyMobileSyncEndpoint(endpoint: string): string {
 export function saveConnectionPreferences(value: MobileConnectionPreferences): void {
   localStorage.setItem(ENDPOINT_KEY, value.endpoint);
   if (Capacitor.isNativePlatform()) {
+    // Native callers must persist the credential through FocusRuntime before
+    // invoking this function. This is the commit point that removes the legacy
+    // plaintext copies after the Keystore write has been confirmed.
     localStorage.setItem(REMEMBER_TOKEN_KEY, 'true');
     sessionStorage.removeItem(TOKEN_SESSION_KEY);
     localStorage.removeItem(TOKEN_LOCAL_KEY);

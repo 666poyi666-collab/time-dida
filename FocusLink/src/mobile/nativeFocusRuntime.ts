@@ -246,6 +246,28 @@ export async function readNativeFocusConnection(): Promise<NativeFocusConnection
   };
 }
 
+/**
+ * Restores the existing Keystore credential or atomically migrates a legacy
+ * renderer credential. The caller may purge Web Storage only after this
+ * promise resolves with a connection.
+ */
+export async function restoreOrMigrateNativeFocusConnection(
+  legacyConnection: NativeFocusConnection | null,
+): Promise<NativeFocusConnection | null> {
+  if (!isNativeFocusRuntimeAvailable()) return null;
+  const stored = await readNativeFocusConnection();
+  if (stored) return stored;
+  if (!legacyConnection?.endpoint || !legacyConnection.accessToken || !legacyConnection.deviceId) {
+    return null;
+  }
+  await configureNativeFocusConnection(
+    legacyConnection.endpoint,
+    legacyConnection.accessToken,
+    legacyConnection.deviceId,
+  );
+  return legacyConnection;
+}
+
 export async function openNativeBackgroundSettings(): Promise<boolean> {
   if (!isNativeFocusRuntimeAvailable()) return false;
   return (await FocusRuntime.openBackgroundSettings()).opened === true;

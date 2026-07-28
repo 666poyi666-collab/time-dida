@@ -53,7 +53,7 @@ async function runProtocol(): Promise<void> {
   assert.equal(health.status, 200);
   assert.equal(((await health.json()) as { storage: string }).storage, 'sqlite-durable-object');
 
-  const unauthenticated = await raw(`/v1/live?probe=${Date.now()}`, {}, false);
+  const unauthenticated = await raw(`/sync/v2/live?probe=${Date.now()}`, {}, false);
   assert.equal(unauthenticated.status, 401);
   assert.deepEqual(await unauthenticated.json(), {
     error: { code: 'unauthenticated', message: 'valid Bearer token required' },
@@ -101,7 +101,7 @@ async function runProtocol(): Promise<void> {
     [second.session.id],
   );
 
-  const tasks = await request<TaskSnapshotResponse>('/v1/tasks', {
+  const tasks = await request<TaskSnapshotResponse>('/sync/v2/tasks', {
     method: 'POST',
     body: JSON.stringify({
       protocolVersion: 1,
@@ -129,11 +129,11 @@ async function runProtocol(): Promise<void> {
       },
     }),
   });
-  const taskRead = await request<TaskSnapshotResponse>('/v1/tasks');
+  const taskRead = await request<TaskSnapshotResponse>('/sync/v2/tasks');
   assert.equal(taskRead.revision, tasks.revision);
   assert.equal(taskRead.snapshot?.tasks.length, 1);
 
-  const initialLive = await request<LiveFocusSnapshotResponse>('/v1/live');
+  const initialLive = await request<LiveFocusSnapshotResponse>('/sync/v2/live');
   assert.equal(initialLive.snapshot.state, 'idle');
   const liveEntityId = `${runId}-live`;
   const start = liveRequest(
@@ -170,7 +170,7 @@ async function runProtocol(): Promise<void> {
   assert.equal(finished.ack.completedEntityId, liveEntityId);
 
   const waited = await request<LiveFocusWaitResponse>(
-    `/v1/live/wait?afterRevision=${resumed.snapshot.revision}&waitMs=100`,
+    `/sync/v2/live/wait?afterRevision=${resumed.snapshot.revision}&waitMs=100`,
   );
   assert.equal(waited.changed, true);
 
@@ -199,9 +199,9 @@ async function verifyPersistence(state: SavedState): Promise<void> {
   assert(ids.has(state.firstEntityId));
   assert(ids.has(state.secondEntityId));
   assert(ids.has(state.liveEntityId));
-  const tasks = await request<TaskSnapshotResponse>('/v1/tasks');
+  const tasks = await request<TaskSnapshotResponse>('/sync/v2/tasks');
   assert(tasks.revision >= state.taskRevision);
-  const live = await request<LiveFocusSnapshotResponse>('/v1/live');
+  const live = await request<LiveFocusSnapshotResponse>('/sync/v2/live');
   assert(live.snapshot.revision >= state.liveRevision);
   assert.equal(live.snapshot.state, 'idle');
   console.log(JSON.stringify({ ok: true, phase: 'verify', ...state }));
@@ -292,7 +292,7 @@ function liveRequest(
 }
 
 async function liveCommand(body: LiveFocusCommandRequest): Promise<LiveFocusCommandResponse> {
-  return request<LiveFocusCommandResponse>('/v1/live/command', {
+  return request<LiveFocusCommandResponse>('/sync/v2/live/command', {
     method: 'POST',
     body: JSON.stringify(body),
   });

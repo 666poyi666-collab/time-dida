@@ -8,6 +8,6 @@ public class FocusLinkConfigTest {
     @Test
     public void previewBuildKeepsTheFocusLinkIdentity() {
         assertEquals("app.focuslink.mobile", BuildConfig.APPLICATION_ID);
-        assertEquals("0.12.65", BuildConfig.VERSION_NAME);
+        assertEquals("0.12.68", BuildConfig.VERSION_NAME);
     }
 }

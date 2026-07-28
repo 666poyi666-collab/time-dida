@@ -4,10 +4,15 @@ import {
   makeNativeDisplaySnapshot,
   nativeFocusCommandSuccessCopy,
   normalizeNativePauseReminderDelayMinutes,
+  restoreOrMigrateNativeFocusConnection,
 } from '../src/mobile/nativeFocusRuntime';
 import { idleLiveFocusSnapshot } from '../src/mobile/runtimeModel';
 
 const capacitorHarness = vi.hoisted(() => ({ native: false, pluginAvailable: false }));
+const nativePluginHarness = vi.hoisted(() => ({
+  configureConnection: vi.fn(),
+  getConnection: vi.fn(),
+}));
 
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
@@ -15,13 +20,17 @@ vi.mock('@capacitor/core', () => ({
     isPluginAvailable: (name: string) =>
       name === 'FocusRuntime' && capacitorHarness.pluginAvailable,
   },
-  registerPlugin: () => ({}),
+  registerPlugin: () => nativePluginHarness,
 }));
 
 describe('mobile native focus display projection', () => {
   beforeEach(() => {
     capacitorHarness.native = false;
     capacitorHarness.pluginAvailable = false;
+    nativePluginHarness.configureConnection.mockReset();
+    nativePluginHarness.configureConnection.mockResolvedValue(undefined);
+    nativePluginHarness.getConnection.mockReset();
+    nativePluginHarness.getConnection.mockResolvedValue({ configured: false });
   });
 
   it('keeps a bounded native snapshot alive between background cloud polls', () => {
@@ -73,6 +82,63 @@ describe('mobile native focus display projection', () => {
 
     capacitorHarness.native = false;
     expect(isNativeFocusRuntimeAvailable()).toBe(false);
+  });
+
+  it('restores the Keystore credential without overwriting it from a legacy browser copy', async () => {
+    capacitorHarness.native = true;
+    capacitorHarness.pluginAvailable = true;
+    nativePluginHarness.getConnection.mockResolvedValue({
+      configured: true,
+      endpoint: 'https://sync.example.test',
+      accessToken: 'keystore-token',
+      deviceId: 'device-watch',
+    });
+
+    await expect(
+      restoreOrMigrateNativeFocusConnection({
+        endpoint: 'https://legacy.example.test',
+        accessToken: 'legacy-token',
+        deviceId: 'device-legacy',
+      }),
+    ).resolves.toEqual({
+      endpoint: 'https://sync.example.test',
+      accessToken: 'keystore-token',
+      deviceId: 'device-watch',
+    });
+    expect(nativePluginHarness.configureConnection).not.toHaveBeenCalled();
+  });
+
+  it('migrates a legacy renderer credential before its browser copy can be removed', async () => {
+    capacitorHarness.native = true;
+    capacitorHarness.pluginAvailable = true;
+    const legacyConnection = {
+      endpoint: 'https://sync.example.test',
+      accessToken: 'legacy-token',
+      deviceId: 'device-watch',
+    };
+
+    await expect(restoreOrMigrateNativeFocusConnection(legacyConnection)).resolves.toEqual(
+      legacyConnection,
+    );
+    expect(nativePluginHarness.configureConnection).toHaveBeenCalledWith({
+      endpoint: legacyConnection.endpoint,
+      accessToken: legacyConnection.accessToken,
+      deviceId: legacyConnection.deviceId,
+    });
+  });
+
+  it('does not claim a legacy credential was migrated when the Keystore write fails', async () => {
+    capacitorHarness.native = true;
+    capacitorHarness.pluginAvailable = true;
+    nativePluginHarness.configureConnection.mockRejectedValue(new Error('keystore unavailable'));
+
+    await expect(
+      restoreOrMigrateNativeFocusConnection({
+        endpoint: 'https://sync.example.test',
+        accessToken: 'legacy-token',
+        deviceId: 'device-watch',
+      }),
+    ).rejects.toThrow('keystore unavailable');
   });
 
   it('reports the actual native action source in the confirmation copy', () => {

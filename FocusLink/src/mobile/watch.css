@@ -79,6 +79,8 @@ html.watch-runtime {
 
 /* 主视图四行铺满：状态 / 读数(伸展) / 任务 / 操作 */
 .watch-main {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
 
@@ -114,15 +116,20 @@ html.watch-runtime {
 
 .watch-clock-cell {
   display: grid;
+  overflow: hidden;
+  width: 100%;
+  min-width: 0;
   gap: min(8px, 1.8vh);
   justify-items: center;
   align-self: center;
 }
 
 .watch-clock {
+  display: block;
+  max-width: 100%;
   margin: 0;
   font-family: var(--font-number);
-  font-size: min(84px, 23vw, 26vh);
+  font-size: min(68px, 17.5vw, 22vh);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
@@ -160,6 +167,8 @@ html.watch-runtime {
 /* 任务行本身就是「选任务」的入口：idle 可点，进行中只作标题展示。 */
 .watch-task-line {
   overflow: hidden;
+  width: min(100%, 92vw);
+  min-width: 0;
   max-width: 92vw;
   padding: min(7px, 1.6vh) 14px;
   border: 1px solid rgb(var(--app-border));
@@ -191,11 +200,12 @@ html.watch-runtime {
 .watch-actions {
   display: grid;
   gap: min(10px, 2.4vw);
-  grid-auto-columns: minmax(0, 1fr);
-  grid-auto-flow: column;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   width: 100%;
 }
 .watch-actions button {
+  width: 100%;
+  min-width: 0;
   min-height: min(52px, 12vh);
   border: 1px solid rgb(var(--app-border-strong));
   border-radius: 999px;

@@ -65,169 +65,169 @@ export async function applyMobileV2ChangesAndCheckpoint(input: {
   const bundleStore = transaction.objectStore('bundles');
   const metaStore = transaction.objectStore(META);
   try {
-  const [storedStates, pending, cached] = await Promise.all([
-    request(entityStore.getAll()) as Promise<MobileV2EntityState[]>,
-    request(outboxStore.getAll()) as Promise<SyncV2OutboxItem[]>,
-    request(bundleStore.getAll()) as Promise<CachedBundle[]>,
-  ]);
-  const states = new Map(
-    storedStates.map((state) => [`${state.entityType}\u0000${state.entityId}`, state]),
-  );
-  const pendingByEntity = new Map(
-    pending.map((item) => [`${item.entityType}\u0000${item.entityId}`, item]),
-  );
-  const cachedById = new Map(cached.map((item) => [item.entityId, item]));
-  const affected = new Set<string>();
-  let conflicts = 0;
+    const [storedStates, pending, cached] = await Promise.all([
+      request(entityStore.getAll()) as Promise<MobileV2EntityState[]>,
+      request(outboxStore.getAll()) as Promise<SyncV2OutboxItem[]>,
+      request(bundleStore.getAll()) as Promise<CachedBundle[]>,
+    ]);
+    const states = new Map(
+      storedStates.map((state) => [`${state.entityType}\u0000${state.entityId}`, state]),
+    );
+    const pendingByEntity = new Map(
+      pending.map((item) => [`${item.entityType}\u0000${item.entityId}`, item]),
+    );
+    const cachedById = new Map(cached.map((item) => [item.entityId, item]));
+    const affected = new Set<string>();
+    let conflicts = 0;
 
-  for (const ack of input.acks ?? []) {
-    if (!input.leaseId) throw new Error('Sync v2 ACK 缺少持久 lease');
-    const item = (await request(outboxStore.get(ack.opId))) as SyncV2OutboxItem | undefined;
-    if (
-      !item ||
-      item.leaseId !== input.leaseId ||
-      item.entityType !== ack.entityType ||
-      item.entityId !== ack.entityId
-    ) {
-      throw new Error('Sync v2 ACK 不属于当前持久 lease');
+    for (const ack of input.acks ?? []) {
+      if (!input.leaseId) throw new Error('Sync v2 ACK 缺少持久 lease');
+      const item = (await request(outboxStore.get(ack.opId))) as SyncV2OutboxItem | undefined;
+      if (
+        !item ||
+        item.leaseId !== input.leaseId ||
+        item.entityType !== ack.entityType ||
+        item.entityId !== ack.entityId
+      ) {
+        throw new Error('Sync v2 ACK 不属于当前持久 lease');
+      }
+      if (ack.status === 'applied' || ack.status === 'duplicate') {
+        if (ack.revision === null || ack.fingerprint === null) {
+          throw new Error('Sync v2 成功 ACK 缺少权威版本');
+        }
+        const state: MobileV2EntityState = {
+          entityType: ack.entityType,
+          entityId: ack.entityId,
+          confirmedRevision: ack.revision,
+          confirmedFingerprint: ack.fingerprint,
+          baseSnapshot: item.payload,
+          deleted: item.payload === null,
+          sourceDeviceId: item.deviceId,
+          syncEpoch: input.checkpoint.syncEpoch,
+          cursorEpoch: input.checkpoint.cursorEpoch,
+          accountGeneration: input.checkpoint.accountGeneration,
+          updatedAt: Date.now(),
+        };
+        entityStore.put(state);
+        states.set(`${state.entityType}\u0000${state.entityId}`, state);
+        pendingByEntity.delete(`${state.entityType}\u0000${state.entityId}`);
+        historyStore.put({
+          opId: ack.opId,
+          entityType: ack.entityType,
+          entityId: ack.entityId,
+          status: ack.status,
+          revision: ack.revision,
+          errorCode: null,
+          completedAt: Date.now(),
+        });
+        outboxStore.delete(ack.opId);
+        continue;
+      }
+      outboxStore.put({
+        ...item,
+        state: ack.status,
+        errorCode: ack.errorCode,
+        leaseId: null,
+        leaseExpiresAt: null,
+        claimedAt: null,
+        updatedAt: Date.now(),
+      });
     }
-    if (ack.status === 'applied' || ack.status === 'duplicate') {
-      if (ack.revision === null || ack.fingerprint === null) {
-        throw new Error('Sync v2 成功 ACK 缺少权威版本');
+
+    for (const change of input.changes) {
+      const key = `${change.entityType}\u0000${change.entityId}`;
+      const existing = states.get(key);
+      if (existing && change.revision <= existing.confirmedRevision) {
+        affected.add(change.entityId);
+        continue;
+      }
+      const pendingItem = pendingByEntity.get(key);
+      const pendingFingerprint = pendingItem
+        ? fingerprintDeviceSyncValue({
+            deleted: pendingItem.payload === null,
+            payload: pendingItem.payload,
+          })
+        : null;
+      if (pendingFingerprint !== null && pendingFingerprint !== change.fingerprint) {
+        conflictStore.put({
+          conflictId: `remote-${change.changeSeq}-${change.entityType}-${change.entityId}`,
+          entityType: change.entityType,
+          entityId: change.entityId,
+          base: existing?.baseSnapshot ?? null,
+          local: pendingItem?.payload ?? null,
+          remote: change.payload,
+          fields: [change.deleted ? 'deleted' : 'payload'],
+          sourceDeviceIds: [change.sourceDeviceId],
+          status: 'open',
+          createdAt: Date.now(),
+          resolvedAt: null,
+          resolutionOpId: null,
+        } satisfies SyncV2Conflict);
+        conflicts += 1;
+        continue;
       }
       const state: MobileV2EntityState = {
-        entityType: ack.entityType,
-        entityId: ack.entityId,
-        confirmedRevision: ack.revision,
-        confirmedFingerprint: ack.fingerprint,
-        baseSnapshot: item.payload,
-        deleted: item.payload === null,
-        sourceDeviceId: item.deviceId,
+        entityType: change.entityType,
+        entityId: change.entityId,
+        confirmedRevision: change.revision,
+        confirmedFingerprint: change.fingerprint,
+        baseSnapshot: change.payload,
+        deleted: change.deleted,
+        changeSeq: change.changeSeq,
+        sourceDeviceId: change.sourceDeviceId,
         syncEpoch: input.checkpoint.syncEpoch,
         cursorEpoch: input.checkpoint.cursorEpoch,
         accountGeneration: input.checkpoint.accountGeneration,
         updatedAt: Date.now(),
       };
+      states.set(key, state);
       entityStore.put(state);
-      states.set(`${state.entityType}\u0000${state.entityId}`, state);
-      pendingByEntity.delete(`${state.entityType}\u0000${state.entityId}`);
+      affected.add(change.entityId);
       historyStore.put({
-        opId: ack.opId,
-        entityType: ack.entityType,
-        entityId: ack.entityId,
-        status: ack.status,
-        revision: ack.revision,
+        opId: `remote-${change.changeSeq}`,
+        entityType: change.entityType,
+        entityId: change.entityId,
+        status: 'remote',
+        revision: change.revision,
         errorCode: null,
         completedAt: Date.now(),
       });
-      outboxStore.delete(ack.opId);
-      continue;
     }
-    outboxStore.put({
-      ...item,
-      state: ack.status,
-      errorCode: ack.errorCode,
-      leaseId: null,
-      leaseExpiresAt: null,
-      claimedAt: null,
-      updatedAt: Date.now(),
-    });
-  }
 
-  for (const change of input.changes) {
-    const key = `${change.entityType}\u0000${change.entityId}`;
-    const existing = states.get(key);
-    if (existing && change.revision <= existing.confirmedRevision) {
-      affected.add(change.entityId);
-      continue;
+    let imported = 0;
+    for (const entityId of affected) {
+      const ledger = states.get(`focus_ledger_v2\u0000${entityId}`);
+      const metadata = states.get(`focus_metadata_v2\u0000${entityId}`);
+      if (ledger?.deleted) {
+        bundleStore.delete(entityId);
+        cachedById.delete(entityId);
+        continue;
+      }
+      if (!ledger?.baseSnapshot || !metadata?.baseSnapshot || metadata.deleted) continue;
+      const bundle = joinV2Bundle(
+        ledger.baseSnapshot as FocusLedgerV2,
+        metadata.baseSnapshot as FocusMetadataV2,
+      );
+      const validation = validateDeviceSyncBundle(bundle);
+      if (!validation.ok) throw new Error(`远端 v2 会话无法物化：${validation.error ?? 'invalid'}`);
+      const revision = Math.max(ledger.confirmedRevision, metadata.confirmedRevision);
+      const changeSeq = Math.max(ledger.changeSeq ?? 0, metadata.changeSeq ?? 0);
+      bundleStore.put({
+        entityId,
+        revision,
+        changeSeq,
+        sourceDeviceId: ledger.sourceDeviceId ?? metadata.sourceDeviceId ?? input.deviceId,
+        bundle,
+      } satisfies CachedBundle);
+      if (!cachedById.has(entityId)) imported += 1;
     }
-    const pendingItem = pendingByEntity.get(key);
-    const pendingFingerprint = pendingItem
-      ? fingerprintDeviceSyncValue({
-          deleted: pendingItem.payload === null,
-          payload: pendingItem.payload,
-        })
-      : null;
-    if (pendingFingerprint !== null && pendingFingerprint !== change.fingerprint) {
-      conflictStore.put({
-        conflictId: `remote-${change.changeSeq}-${change.entityType}-${change.entityId}`,
-        entityType: change.entityType,
-        entityId: change.entityId,
-        base: existing?.baseSnapshot ?? null,
-        local: pendingItem?.payload ?? null,
-        remote: change.payload,
-        fields: [change.deleted ? 'deleted' : 'payload'],
-        sourceDeviceIds: [change.sourceDeviceId],
-        status: 'open',
-        createdAt: Date.now(),
-        resolvedAt: null,
-        resolutionOpId: null,
-      } satisfies SyncV2Conflict);
-      conflicts += 1;
-      continue;
-    }
-    const state: MobileV2EntityState = {
-      entityType: change.entityType,
-      entityId: change.entityId,
-      confirmedRevision: change.revision,
-      confirmedFingerprint: change.fingerprint,
-      baseSnapshot: change.payload,
-      deleted: change.deleted,
-      changeSeq: change.changeSeq,
-      sourceDeviceId: change.sourceDeviceId,
-      syncEpoch: input.checkpoint.syncEpoch,
-      cursorEpoch: input.checkpoint.cursorEpoch,
-      accountGeneration: input.checkpoint.accountGeneration,
-      updatedAt: Date.now(),
-    };
-    states.set(key, state);
-    entityStore.put(state);
-    affected.add(change.entityId);
-    historyStore.put({
-      opId: `remote-${change.changeSeq}`,
-      entityType: change.entityType,
-      entityId: change.entityId,
-      status: 'remote',
-      revision: change.revision,
-      errorCode: null,
-      completedAt: Date.now(),
-    });
-  }
 
-  let imported = 0;
-  for (const entityId of affected) {
-    const ledger = states.get(`focus_ledger_v2\u0000${entityId}`);
-    const metadata = states.get(`focus_metadata_v2\u0000${entityId}`);
-    if (ledger?.deleted) {
-      bundleStore.delete(entityId);
-      cachedById.delete(entityId);
-      continue;
-    }
-    if (!ledger?.baseSnapshot || !metadata?.baseSnapshot || metadata.deleted) continue;
-    const bundle = joinV2Bundle(
-      ledger.baseSnapshot as FocusLedgerV2,
-      metadata.baseSnapshot as FocusMetadataV2,
-    );
-    const validation = validateDeviceSyncBundle(bundle);
-    if (!validation.ok) throw new Error(`远端 v2 会话无法物化：${validation.error ?? 'invalid'}`);
-    const revision = Math.max(ledger.confirmedRevision, metadata.confirmedRevision);
-    const changeSeq = Math.max(ledger.changeSeq ?? 0, metadata.changeSeq ?? 0);
-    bundleStore.put({
-      entityId,
-      revision,
-      changeSeq,
-      sourceDeviceId: ledger.sourceDeviceId ?? metadata.sourceDeviceId ?? input.deviceId,
-      bundle,
-    } satisfies CachedBundle);
-    if (!cachedById.has(entityId)) imported += 1;
-  }
-
-  metaStore.put({ key: BOOTSTRAP_KEY, value: input.checkpoint });
-  metaStore.put({ key: 'cursor', value: input.checkpoint.cursor });
-  metaStore.put({ key: 'lastSyncAt', value: Date.now() });
-  metaStore.put({ key: 'serverTime', value: input.serverTime });
-  await done(transaction);
-  return { imported, conflicts };
+    metaStore.put({ key: BOOTSTRAP_KEY, value: input.checkpoint });
+    metaStore.put({ key: 'cursor', value: input.checkpoint.cursor });
+    metaStore.put({ key: 'lastSyncAt', value: Date.now() });
+    metaStore.put({ key: 'serverTime', value: input.serverTime });
+    await done(transaction);
+    return { imported, conflicts };
   } catch (error) {
     // Any validation or materialization failure must keep the outbox item and
     // cursor together. IndexedDB otherwise commits already queued writes when
@@ -245,10 +245,7 @@ export async function applyMobileV2ChangesAndCheckpoint(input: {
   }
 }
 
-function joinV2Bundle(
-  ledger: FocusLedgerV2,
-  metadata: FocusMetadataV2,
-): DeviceSyncSessionBundle {
+function joinV2Bundle(ledger: FocusLedgerV2, metadata: FocusMetadataV2): DeviceSyncSessionBundle {
   return {
     session: {
       id: ledger.sessionId,
@@ -448,9 +445,7 @@ export async function writeMobileV2Bootstrap(
   await done(transaction);
 }
 
-export async function resetMobileV2Epoch(
-  checkpoint: MobileV2BootstrapCheckpoint,
-): Promise<void> {
+export async function resetMobileV2Epoch(checkpoint: MobileV2BootstrapCheckpoint): Promise<void> {
   const database = await openMobileDatabase();
   const transaction = database.transaction([OUTBOX, ENTITY_STATE, HISTORY, META], 'readwrite');
   const outbox = transaction.objectStore(OUTBOX);
@@ -503,8 +498,8 @@ export async function readMobileV2Status(): Promise<{
   await done(transaction);
   database.close();
   return {
-    pending: outbox.filter((item) =>
-      item.state === 'pending' || item.state === 'uploading' || item.state === 'retry',
+    pending: outbox.filter(
+      (item) => item.state === 'pending' || item.state === 'uploading' || item.state === 'retry',
     ).length,
     conflicts:
       conflicts.filter((item) => item.status === 'open').length +

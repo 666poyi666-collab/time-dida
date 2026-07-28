@@ -3,50 +3,52 @@
   "name": "focuslink-sync",
   "main": "cloudflare/worker.ts",
   "compatibility_date": "2026-07-25",
-  "workers_dev": true,
-  "routes": [
-    {
-      "pattern": "focuslink-sync.pyzzgk.dpdns.org",
-      "custom_domain": true
-    }
-  ],
+  // Internal authority only. The canonical foxlink-cloud-mcp Worker reaches
+  // this Worker through a Cloudflare service binding; deployment must not
+  // create workers.dev, preview or custom-domain public ingress.
+  "workers_dev": false,
+  "preview_urls": false,
   "vars": {
     "FOCUSLINK_ACCOUNT_ID": "primary",
-    "FOCUSLINK_ALLOWED_ORIGINS": "https://localhost,capacitor://localhost,http://localhost"
+    "FOCUSLINK_ALLOWED_ORIGINS": "https://localhost,capacitor://localhost,http://localhost",
   },
+  // Required deploy-time secrets (never vars or repository values):
+  // FOCUSLINK_SYNC_TOKEN, FOCUSLINK_DEVICE_PEPPER,
+  // FOCUSLINK_MCP_SERVICE_TOKEN. FOCUSLINK_DEVICE_PEPPER_PREVIOUS is optional
+  // only during an intentional pepper rotation.
   "durable_objects": {
     "bindings": [
       {
         "name": "FOCUSLINK_ACCOUNT",
-        "class_name": "FocusLinkAccount"
-      }
-    ]
+        "class_name": "FocusLinkAccount",
+      },
+    ],
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["FocusLinkAccount"]
-    }
+      "new_sqlite_classes": ["FocusLinkAccount"],
+    },
   ],
   "queues": {
     "producers": [
       {
         "binding": "FOCUSLINK_PUSH_QUEUE",
-        "queue": "focuslink-sync-push"
-      }
+        "queue": "focuslink-sync-push",
+      },
     ],
     "consumers": [
       {
         "queue": "focuslink-sync-push",
         "max_batch_size": 20,
-        "max_batch_timeout": 5
-      }
-    ]
+        "max_batch_timeout": 5,
+      },
+    ],
   },
   "triggers": {
-    "crons": ["17 2 * * *"]
+    "crons": ["17 2 * * *"],
   },
   "observability": {
-    "enabled": true
-  }
+    "enabled": true,
+  },
 }

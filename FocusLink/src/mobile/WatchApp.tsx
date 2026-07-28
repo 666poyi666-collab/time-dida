@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as CapacitorApp, type URLOpenListenerEvent } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { normalizeDeviceSyncEndpoint } from '@shared/sync/deviceProtocol';
 import { parseDeviceSyncPairingUrl } from '@shared/sync/pairingProtocol';
 import type { LiveFocusCommand } from '@shared/sync/liveFocusProtocol';
 import type { SyncedTask } from '@shared/sync/taskSnapshotProtocol';
@@ -20,6 +21,11 @@ import {
   sendLiveFocusCommand,
   waitForLiveFocusSnapshot,
 } from './syncClient';
+import {
+  configureNativeFocusConnection,
+  isNativeFocusRuntimeAvailable,
+  restoreOrMigrateNativeFocusConnection,
+} from './nativeFocusRuntime';
 import {
   getOrCreateDeviceId,
   loadConnectionPreferences,
@@ -92,6 +98,46 @@ export function WatchApp() {
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
   const consumedNoncesRef = useRef(new Set<string>());
+
+  // Restore the Keystore credential on every native launch. For an upgrade
+  // from an older build, migrate the legacy WebView copy first and purge it
+  // only after the native store confirms the write.
+  useEffect(() => {
+    if (!isNativeFocusRuntimeAvailable()) return;
+    let disposed = false;
+    const legacyPreferences = preferencesRef.current;
+    void restoreOrMigrateNativeFocusConnection(
+      legacyPreferences.endpoint && legacyPreferences.token
+        ? {
+            endpoint: normalizeDeviceSyncEndpoint(legacyPreferences.endpoint),
+            accessToken: legacyPreferences.token,
+            deviceId,
+          }
+        : null,
+    )
+      .then((nativeConnection) => {
+        if (disposed || !nativeConnection) return;
+        const next: MobileConnectionPreferences = {
+          endpoint: normalizeDeviceSyncEndpoint(nativeConnection.endpoint),
+          token: nativeConnection.accessToken,
+          rememberToken: true,
+        };
+        saveConnectionPreferences(next);
+        if (nativeConnection.deviceId.startsWith('device-')) {
+          rememberAssignedDeviceId(nativeConnection.deviceId);
+        }
+        setDeviceId(nativeConnection.deviceId);
+        preferencesRef.current = next;
+        setPreferences(next);
+        setConnection('connecting');
+      })
+      .catch(() => {
+        if (!disposed) setNotice('Android 安全凭据恢复失败，请重新配对');
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [deviceId]);
 
   // 秒针：活跃且停留在主视图时才逐秒外推读数；idle 或任务选择页停表省电，
   // 也避免整份任务列表跟着秒针每秒重渲染。回到主视图先立即校准一次。
@@ -178,8 +224,13 @@ export function WatchApp() {
           displayName: 'FocusLink Watch',
         },
       })
-        .then((paired) => {
-          const next = { endpoint: pairing.endpoint, token: paired.accessToken, rememberToken: true };
+        .then(async (paired) => {
+          const next = {
+            endpoint: pairing.endpoint,
+            token: paired.accessToken,
+            rememberToken: true,
+          };
+          await configureNativeFocusConnection(next.endpoint, next.token, paired.deviceId);
           saveConnectionPreferences(next);
           rememberAssignedDeviceId(paired.deviceId);
           setDeviceId(paired.deviceId);

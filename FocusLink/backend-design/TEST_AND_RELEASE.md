@@ -39,13 +39,10 @@ npm run android:sync
 ```
 
 `npm run test:cross-device` 先运行协议与移动客户端 Vitest，再用
-`cloud/docker-compose.yml` + `cloud/docker-compose.test.yml` 启动完全隔离的个人云环境。脚本使用随机项目名、
-随机测试 token、独立临时卷和回环端口 `18080/18787`，验证自由专注、任务关联、幂等重放、revision 冲突、
-PC 账本回收、容器重启持久化和停机恢复；无论成功失败都必须执行 `docker compose down --volumes`。
-测试覆盖不替代 Coolify 公网 HTTPS、备份和恢复演练。
-默认会从当前源码重建镜像；仅当 Docker Hub 暂时不可达且本机已有由当前源码生成的
-`focuslink-cloud:local` / `focuslink-web:local` 时，允许临时设置 `FOCUSLINK_TEST_SKIP_BUILD=1` 使用缓存镜像，
-同时必须单独通过 `npm run build:web` 与 `npm run build:cloud`，并在验收记录中注明未重新拉取基础镜像。
+`cloud/docker-compose.yml` + `cloud/docker-compose.test.yml` 只验证 Web/PWA 容器。Node personal-cloud
+authority 已退役，不能再用 Docker/Coolify、静态 bearer account 或本地 JSON 卷模拟 production。
+回环协议测试直接使用 `startDeviceSyncTestBackend()` 且只监听 `127.0.0.1`；生产数据面必须验证
+canonical foxlink-cloud-mcp → private service binding → Account DO 链路。
 
 账本协议测试必须覆盖 Bearer 鉴权、精确 CORS、512 KiB bundle/1 MiB 请求与响应字节预算、`opId` 重放及正文回退、
 `baseRevision` 冲突、按连接分区的原子检查点、耐久冲突状态、`invalid_cursor` 恢复、单调 cursor 分页与账号隔离。
@@ -74,12 +71,17 @@ PC 账本回收、容器重启持久化和停机恢复；无论成功失败都�
 错误 command id、非终态 ack、断网、非 200 和非法 JSON。Service 只有在匹配 command id 的终态 ack 后才可删除持久命令，
 其他失败必须保留以便下一轮至少一次重放。OEM 候选的纯逻辑测试必须覆盖华为 action、小米显式组件及最终应用详情兜底。
 
-个人云发布前必须运行 `npm run cloud:container:test` 和 `npm run build:cloud`，再在 Coolify 单实例应用中验证：HTTPS
-强制、错误 token 为 401、错误 origin 为 403、限流为 429、`/health` 标记 production、容器重启后活动会话/任务快照/
-完成账本仍存在。`focuslink-cloud-data` 卷必须配置备份并做一次恢复演练；未绑定有效 HTTPS 域名或未挂载持久卷时不得把
-回环测试结果写成云端已上线。
+发布前必须证明 Node production authority 无法启动：`startPersonalCloud()` 固定失败，Compose 不包含
+`focuslink-cloud` API，容器配置不含 `FOCUSLINK_CLOUD_ACCOUNTS` 或生产 bearer token。运行
+`wrangler deploy --dry-run` 只用于生成本地 bundle 证据，不等于部署或远端验收。
 
-Cloudflare 托管实现还必须先执行 Worker 类型检查和本地协议测试，再用 Wrangler 部署到自定义 HTTPS 域名。公网门禁覆盖 `/health`、错误 token、`opId` applied/duplicate/复用拒绝、旧 revision conflict、cursor 增量、任务快照、`commandId` 幂等与复用拒绝、实时 start/pause/resume/finish；保存第一次运行的状态文件，重新部署同一 Worker 后以 `verify` 模式确认账本、revision、change log、实时 idle 和幂等记录仍在。三端只记录自定义域名，不以 `workers.dev` 在单一网络成功替代生产验收；访问令牌只通过 Wrangler secret 和各平台安全存储传递。
+Cloudflare 托管实现必须先执行 Worker 类型检查、本地协议测试、deployment containment 测试和 dry-run。
+私有 FocusLink Worker 不得有 `workers.dev`、preview 或 custom route；唯一公网 origin 是
+foxlink-cloud-mcp adapter。公网门禁覆盖 canonical `/sync/v2/*`、`/sync/v1/pair/*`、错误 token、
+OAuth/device 双向拒绝、`opId` applied/duplicate/复用拒绝、旧 revision conflict、cursor 增量、
+任务快照、`commandId` 幂等与复用拒绝、实时 start/pause/resume/finish，以及 MCP
+`focuslink:read` 摘要。保存第一次运行的状态证据，升级后确认 ledger、revision、change feed、
+实时 idle 和幂等结果仍在；访问令牌只通过 deploy secret 与各平台安全存储传递。
 
 Sync v2 额外覆盖 inventory/manifest/bootstrap、三类 epoch、租约过期恢复、`opId` 幂等、旧 revision 冲突、tagId 合并、tombstone 水位、配对 nonce 重放、scope/撤销/轮换、冲突/回收站标准 mutation、Queue `credential-missing` 诊断和重部署持久性。R2 门禁必须包含真实 object 写入、AES-GCM 篡改检测、maintenance 写拒绝、恢复失败回滚及 generation 切换；账户未启用 R2 时记录 Cloudflare 错误码并判定该门禁未通过。
 

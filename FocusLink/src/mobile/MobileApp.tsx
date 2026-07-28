@@ -49,8 +49,8 @@ import {
   drainNativeFocusCommands,
   enterNativePictureInPicture,
   isNativeFocusRuntimeAvailable,
-  readNativeFocusConnection,
   readNativeFocusStatus,
+  restoreOrMigrateNativeFocusConnection,
   setNativeImmersiveSystemBars,
   subscribeToNativeFocusCommands,
   updateNativeFocusSnapshot,
@@ -171,9 +171,18 @@ export function MobileApp() {
   }, [appearance]);
 
   useEffect(() => {
-    if (!isNativeFocusRuntimeAvailable() || preferencesRef.current.token) return;
+    if (!isNativeFocusRuntimeAvailable()) return;
     let disposed = false;
-    void readNativeFocusConnection()
+    const legacyPreferences = preferencesRef.current;
+    void restoreOrMigrateNativeFocusConnection(
+      legacyPreferences.endpoint && legacyPreferences.token
+        ? {
+            endpoint: normalizeDeviceSyncEndpoint(legacyPreferences.endpoint),
+            accessToken: legacyPreferences.token,
+            deviceId,
+          }
+        : null,
+    )
       .then((connection) => {
         if (disposed || !connection) return;
         const next: MobileConnectionPreferences = {
@@ -181,9 +190,8 @@ export function MobileApp() {
           token: connection.accessToken,
           rememberToken: true,
         };
-        // Keep the token only in React memory. saveConnectionPreferences on a
-        // native build persists endpoint/flags and actively removes browser
-        // token remnants; the durable copy remains in Android Keystore.
+        // The helper has confirmed the Keystore copy. Keep the token only in
+        // React memory and now remove any legacy browser remnants.
         saveConnectionPreferences(next);
         if (connection.deviceId.startsWith('device-')) {
           rememberAssignedDeviceId(connection.deviceId);
@@ -202,7 +210,7 @@ export function MobileApp() {
     return () => {
       disposed = true;
     };
-  }, []);
+  }, [deviceId]);
 
   useEffect(() => {
     let disposed = false;
@@ -231,10 +239,10 @@ export function MobileApp() {
             token: paired.accessToken,
             rememberToken: true,
           };
+          await configureNativeFocusConnection(next.endpoint, next.token, paired.deviceId);
           saveConnectionPreferences(next);
           rememberAssignedDeviceId(paired.deviceId);
           setDeviceId(paired.deviceId);
-          await configureNativeFocusConnection(next.endpoint, next.token, paired.deviceId);
           preferencesRef.current = next;
           connectionKeyRef.current = connectionKey(next);
           setPreferences(next);
@@ -907,6 +915,7 @@ export function MobileApp() {
         setTaskSnapshot(null);
         setSelectedTaskId('');
       }
+      await configureNativeFocusConnection(next.endpoint, next.token, deviceId);
       saveConnectionPreferences(next);
       preferencesRef.current = next;
       connectionKeyRef.current = connectionKey(next);

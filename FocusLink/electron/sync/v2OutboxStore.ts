@@ -163,14 +163,7 @@ export function claimV2Outbox(
     return {
       leaseId,
       items: rows.flatMap((row) =>
-        update.run(
-          leaseId,
-          now + leaseMs,
-          now,
-          now,
-          connectionScope,
-          row.op_id,
-        ).changes === 1
+        update.run(leaseId, now + leaseMs, now, now, connectionScope, row.op_id).changes === 1
           ? [
               rowToItem({
                 ...row,
@@ -232,7 +225,8 @@ export function settleV2Ack(
         conflictId: `ack-${ack.opId}`,
         entityType: ack.entityType,
         entityId: ack.entityId,
-        base: readV2EntityState(connectionScope, ack.entityType, ack.entityId)?.baseSnapshot ?? null,
+        base:
+          readV2EntityState(connectionScope, ack.entityType, ack.entityId)?.baseSnapshot ?? null,
         local: payload,
         remote: null,
         fields: ['revision'],
@@ -309,16 +303,18 @@ export function listV2EntityStates(
   connectionScope: string,
   entityId?: string,
 ): DesktopV2EntityState[] {
-  const rows = (entityId
-    ? getDb()
-        .prepare(
-          `SELECT * FROM sync_v2_entity_state
+  const rows = (
+    entityId
+      ? getDb()
+          .prepare(
+            `SELECT * FROM sync_v2_entity_state
            WHERE connection_scope = ? AND entity_id = ?`,
-        )
-        .all(connectionScope, entityId)
-    : getDb()
-        .prepare('SELECT * FROM sync_v2_entity_state WHERE connection_scope = ?')
-        .all(connectionScope)) as Array<Parameters<typeof entityRow>[0]>;
+          )
+          .all(connectionScope, entityId)
+      : getDb()
+          .prepare('SELECT * FROM sync_v2_entity_state WHERE connection_scope = ?')
+          .all(connectionScope)
+  ) as Array<Parameters<typeof entityRow>[0]>;
   return rows.map(entityRow);
 }
 
@@ -421,13 +417,7 @@ export function requeueStaleGenerationV2Outbox(
        'account_generation_changed', ?)`,
     );
     for (const row of rows)
-      history.run(
-        connectionScope,
-        row.op_id,
-        row.entity_type,
-        row.entity_id,
-        now,
-      );
+      history.run(connectionScope, row.op_id, row.entity_type, row.entity_id, now);
     if (rows.length > 0) {
       db.prepare(
         `DELETE FROM sync_v2_outbox WHERE connection_scope = ?
@@ -496,18 +486,13 @@ export function readDesktopV2Status(connectionScope: string): DesktopV2Status {
     .get(connectionScope) as { count: number };
   return {
     pending:
-      (byState.get('pending') ?? 0) +
-      (byState.get('uploading') ?? 0) +
-      (byState.get('retry') ?? 0),
+      (byState.get('pending') ?? 0) + (byState.get('uploading') ?? 0) + (byState.get('retry') ?? 0),
     conflicts: conflicts.count + (byState.get('conflict') ?? 0),
     rejected: byState.get('rejected') ?? 0,
   };
 }
 
-export function pruneV2OperationHistory(
-  connectionScope: string,
-  now = Date.now(),
-): number {
+export function pruneV2OperationHistory(connectionScope: string, now = Date.now()): number {
   return getDb()
     .prepare(
       `DELETE FROM sync_v2_operation_history

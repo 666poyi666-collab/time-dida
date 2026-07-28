@@ -37,7 +37,10 @@ async function main(): Promise<void> {
       : null;
 
   const health = await request<Record<string, unknown>>('/healthz', undefined, '', 'GET');
-  assert(health.syncV2ProtocolVersion === SYNC_V2_PROTOCOL_VERSION, 'healthz does not advertise Sync v2');
+  assert(
+    health.syncV2ProtocolVersion === SYNC_V2_PROTOCOL_VERSION,
+    'healthz does not advertise Sync v2',
+  );
 
   const oauthLike = await raw('/sync/v2/status', 'Bearer oauth-looking-token', 'GET');
   assert(oauthLike.status === 401, 'OAuth-shaped bearer must not access device sync');
@@ -120,8 +123,14 @@ interface EpochStatus {
 
 function assertEpoch(value: EpochStatus): void {
   assert(value.protocolVersion === SYNC_V2_PROTOCOL_VERSION, 'status protocol version is invalid');
-  assert(typeof value.syncEpoch === 'string' && value.syncEpoch.length > 0, 'sync epoch is invalid');
-  assert(typeof value.cursorEpoch === 'string' && value.cursorEpoch.length > 0, 'cursor epoch is invalid');
+  assert(
+    typeof value.syncEpoch === 'string' && value.syncEpoch.length > 0,
+    'sync epoch is invalid',
+  );
+  assert(
+    typeof value.cursorEpoch === 'string' && value.cursorEpoch.length > 0,
+    'cursor epoch is invalid',
+  );
   assert(Number.isSafeInteger(value.accountGeneration), 'account generation is invalid');
 }
 
@@ -147,7 +156,11 @@ async function sync(
   );
 }
 
-async function raw(pathname: string, authorization: string, method: 'GET' | 'POST'): Promise<Response> {
+async function raw(
+  pathname: string,
+  authorization: string,
+  method: 'GET' | 'POST',
+): Promise<Response> {
   return fetch(`${endpoint}${pathname}`, {
     method,
     headers: authorization ? { authorization } : undefined,
@@ -169,9 +182,12 @@ async function request<T = unknown>(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
-    const error = Object.assign(new Error(`${pathname}: ${response.status} ${await response.text()}`), {
-      status: response.status,
-    });
+    const error = Object.assign(
+      new Error(`${pathname}: ${response.status} ${await response.text()}`),
+      {
+        status: response.status,
+      },
+    );
     throw error;
   }
   return response.json() as Promise<T>;

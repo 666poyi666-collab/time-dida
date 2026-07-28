@@ -2988,6 +2988,14 @@ code {
   white-space: nowrap;
 }
 
+.sync-status-ledger.state-error .sync-copy span {
+  display: block;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .sync-status-live.state-live .network-dot,
 .sync-status-ledger.state-confirmed .network-dot {
   background: var(--focus);
@@ -3495,6 +3503,26 @@ code {
     border-top: 0;
     border-left: 1px solid var(--border);
   }
+
+  .runtime-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .runtime-facts > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .runtime-facts > div:last-child {
+    border-bottom: 0;
+  }
+
+  .runtime-facts dd {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
 }
 
 @media (max-width: 480px) {
@@ -3776,6 +3804,10 @@ code {
    手机上按「先看时间、再决定做什么、动作永远在手边」重排：
    读数升为主角，操作条粘在拇指区，任务与标题收成紧凑的一段。 */
 @media (max-width: 620px) {
+  .focus-system-tools {
+    display: none;
+  }
+
   .focus-instrument {
     display: flex;
     flex-direction: column;
@@ -3860,13 +3892,25 @@ code {
     font-size: 11px;
   }
   .sync-copy span {
-    overflow: hidden;
+    overflow: visible;
     font-size: 10px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
   }
 
   .focus-console-header {
     display: none;
+  }
+}
+
+/* ≤480px 的内容内边距已收为 14px；粘底操作条必须使用同一实际值，
+   否则沿用 20px 负边距会在 393dp 手机上制造 6px 横向溢出。 */
+@media (max-width: 480px) {
+  .focus-actions {
+    margin-right: calc(-1 * max(14px, env(safe-area-inset-right, 0px)));
+    margin-left: calc(-1 * max(14px, env(safe-area-inset-left, 0px)));
+    padding-right: max(14px, env(safe-area-inset-right, 0px));
+    padding-left: max(14px, env(safe-area-inset-left, 0px));
   }
 }

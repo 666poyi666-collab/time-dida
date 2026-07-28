@@ -5,9 +5,9 @@ export const LIVE_FOCUS_MAX_WAIT_MS = 25_000;
 export const LIVE_FOCUS_MAX_TITLE_LENGTH = 1_000;
 export const LIVE_FOCUS_MAX_TRANSITIONS = 5_000;
 export const LIVE_FOCUS_MAX_COMMAND_BODY_BYTES = 16 * 1024;
-export const LIVE_FOCUS_SNAPSHOT_PATH = '/v1/live' as const;
-export const LIVE_FOCUS_WAIT_PATH = '/v1/live/wait' as const;
-export const LIVE_FOCUS_COMMAND_PATH = '/v1/live/command' as const;
+export const LIVE_FOCUS_SNAPSHOT_PATH = '/sync/v2/live' as const;
+export const LIVE_FOCUS_WAIT_PATH = '/sync/v2/live/wait' as const;
+export const LIVE_FOCUS_COMMAND_PATH = '/sync/v2/live/command' as const;
 
 const LIVE_FOCUS_REQUEST_KEYS = new Set(['protocolVersion', 'deviceId', 'command']);
 const LIVE_FOCUS_START_COMMAND_KEYS = new Set([

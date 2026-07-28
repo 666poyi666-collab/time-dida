@@ -1,13 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
+  SYNC_V2_MAX_ENTITY_BYTES,
+  SYNC_V2_MAX_RESPONSE_BYTES,
+  SYNC_V2_PROTOCOL_VERSION,
   canPhysicallyPurge,
   claimOutboxItems,
   mergeFocusMetadata,
   mergeTags,
+  paginateSyncV2Response,
   parseDeviceToken,
   shouldForceBootstrap,
   type FocusMetadataV2,
+  type SyncV2Ack,
+  type SyncV2Change,
   type SyncV2OutboxItem,
 } from '../shared/sync/v2Protocol';
 
@@ -21,6 +27,44 @@ const base: FocusMetadataV2 = {
   updatedAt: 1,
   updatedByDeviceId: 'desktop',
 };
+
+const epoch = { syncEpoch: 'sync-1', cursorEpoch: 'cursor-1', accountGeneration: 1 };
+
+function change(changeSeq: number, noteBytes: number): SyncV2Change {
+  return {
+    changeSeq,
+    entityType: 'focus_metadata_v2',
+    entityId: `session-${changeSeq}`,
+    revision: 1,
+    fingerprint: 'a'.repeat(64),
+    deleted: false,
+    payload: {
+      ...base,
+      sessionId: `session-${changeSeq}`,
+      note: 'x'.repeat(noteBytes),
+    },
+    sourceDeviceId: 'desktop',
+  };
+}
+
+function pageBytes(
+  page: {
+    changes: SyncV2Change[];
+    nextCursor: string;
+    hasMore: boolean;
+  },
+  acks: SyncV2Ack[] = [],
+): number {
+  return new TextEncoder().encode(
+    JSON.stringify({
+      protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+      ...epoch,
+      acks,
+      ...page,
+      serverTime: 100,
+    }),
+  ).byteLength;
+}
 
 describe('Sync v2 merge policy', () => {
   it('merges independent scalar and tag changes without touching ledger data', () => {
@@ -56,6 +100,135 @@ describe('Sync v2 merge policy', () => {
 });
 
 describe('Sync v2 operational policies', () => {
+  it('paginates by bytes without losing or duplicating the next page', () => {
+    const available = [change(1, 600_000), change(2, 600_000)];
+    const first = paginateSyncV2Response(
+      {
+        protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+        ...epoch,
+        acks: [],
+        serverTime: 100,
+      },
+      available,
+      500,
+      'c0',
+      (change) => `c${change.changeSeq.toString(36)}`,
+    );
+
+    expect(first.changes.map((item) => item.changeSeq)).toEqual([1]);
+    expect(first.nextCursor).toBe('c1');
+    expect(first.hasMore).toBe(true);
+    expect(pageBytes(first)).toBeLessThanOrEqual(SYNC_V2_MAX_RESPONSE_BYTES);
+
+    const second = paginateSyncV2Response(
+      {
+        protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+        ...epoch,
+        acks: [],
+        serverTime: 100,
+      },
+      available.filter((item) => item.changeSeq > 1),
+      500,
+      first.nextCursor,
+      (item) => `c${item.changeSeq.toString(36)}`,
+    );
+    expect(second.changes.map((item) => item.changeSeq)).toEqual([2]);
+    expect(second.nextCursor).toBe('c2');
+    expect(second.hasMore).toBe(false);
+    expect(pageBytes(second)).toBeLessThanOrEqual(SYNC_V2_MAX_RESPONSE_BYTES);
+    expect(SYNC_V2_MAX_ENTITY_BYTES).toBe(1024 * 1024);
+  });
+
+  it('fits one near-limit entity together with acknowledgements', () => {
+    const acks: SyncV2Ack[] = Array.from({ length: 40 }, (_, index) => ({
+      opId: `op-${index}-${'x'.repeat(80)}`,
+      entityType: 'focus_metadata_v2',
+      entityId: `session-${index}`,
+      status: 'applied',
+      revision: 1,
+      fingerprint: 'b'.repeat(64),
+      errorCode: null,
+    }));
+    const page = paginateSyncV2Response(
+      {
+        protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+        ...epoch,
+        acks,
+        serverTime: 100,
+      },
+      [change(1, 1_040_000)],
+      500,
+      'c0',
+      (item) => `c${item.changeSeq.toString(36)}`,
+    );
+    expect(page.changes).toHaveLength(1);
+    expect(page.hasMore).toBe(false);
+    expect(pageBytes(page, acks)).toBeLessThanOrEqual(SYNC_V2_MAX_RESPONSE_BYTES);
+  });
+
+  it('checks at most logarithmically many serialized prefixes for 500 small changes', () => {
+    const available = Array.from({ length: 500 }, (_, index) => change(index + 1, 1));
+    const stringify = vi.spyOn(JSON, 'stringify');
+    try {
+      const page = paginateSyncV2Response(
+        {
+          protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+          ...epoch,
+          acks: [],
+          serverTime: 100,
+        },
+        available,
+        500,
+        'c0',
+        (item) => `c${item.changeSeq.toString(36)}`,
+      );
+      expect(page.changes).toHaveLength(500);
+      expect(page.hasMore).toBe(false);
+      expect(stringify.mock.calls.length).toBeLessThanOrEqual(10);
+    } finally {
+      stringify.mockRestore();
+    }
+  });
+
+  it('accounts for the extra byte in a terminal hasMore=false response', () => {
+    const available = [change(1, 1)];
+    const expected = {
+      changes: available,
+      nextCursor: 'c1',
+      hasMore: false,
+    };
+    const exactBudget = pageBytes(expected);
+    const exact = paginateSyncV2Response(
+      {
+        protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+        ...epoch,
+        acks: [],
+        serverTime: 100,
+      },
+      available,
+      500,
+      'c0',
+      (item) => `c${item.changeSeq.toString(36)}`,
+      exactBudget,
+    );
+    expect(pageBytes(exact)).toBe(exactBudget);
+    expect(() =>
+      paginateSyncV2Response(
+        {
+          protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+          ...epoch,
+          acks: [],
+          serverTime: 100,
+        },
+        available,
+        500,
+        'c0',
+        (item) => `c${item.changeSeq.toString(36)}`,
+        exactBudget - 1,
+      ),
+    ).toThrow(/exceeds/);
+  });
+
   it('claims only ready records and recovers expired uploading leases', () => {
     const item = (
       state: SyncV2OutboxItem['state'],

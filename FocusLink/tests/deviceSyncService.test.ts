@@ -161,7 +161,7 @@ describe('desktop device sync checkpoints', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-        if (String(input).endsWith('/v1/tasks')) {
+        if (String(input).endsWith('/sync/v2/tasks')) {
           taskCalls += 1;
           if (taskCalls === 1) throw new Error('offline');
           return jsonResponse({
@@ -417,5 +417,4 @@ describe('desktop device sync checkpoints', () => {
       [...harness.meta.values()].some((value) => value.includes('无法连接跨设备同步服务')),
     ).toBe(true);
   });
-
 });

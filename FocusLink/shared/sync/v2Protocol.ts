@@ -1,9 +1,13 @@
-import type { DeviceSyncSessionBundle } from './deviceProtocol';
+import { DEVICE_SYNC_MAX_BODY_BYTES, type DeviceSyncSessionBundle } from './deviceProtocol';
 
 export const SYNC_V2_PROTOCOL_VERSION = 2 as const;
 export const SYNC_V2_MAX_PUSH = 200;
 export const SYNC_V2_MAX_PULL = 500;
 export const SYNC_V2_DEFAULT_LEASE_MS = 30_000;
+/** Matches foxlink-cloud-mcp MAX_EXCHANGE_BODY_BYTES. */
+export const SYNC_V2_MAX_ENTITY_BYTES = DEVICE_SYNC_MAX_BODY_BYTES;
+/** Matches foxlink-cloud-mcp MAX_UPSTREAM_RESPONSE_BYTES. */
+export const SYNC_V2_MAX_RESPONSE_BYTES = 1_100_000;
 
 export type SyncV2EntityType =
   | 'focus_ledger_v2'
@@ -87,10 +91,7 @@ export interface EncryptedFocusGuardEnvelopeV1 {
 }
 
 export type SyncV2Payload =
-  | FocusLedgerV2
-  | FocusMetadataV2
-  | FocusLedgerCorrectionV2
-  | EncryptedFocusGuardEnvelopeV1;
+  FocusLedgerV2 | FocusMetadataV2 | FocusLedgerCorrectionV2 | EncryptedFocusGuardEnvelopeV1;
 
 export interface SyncV2Epoch {
   syncEpoch: string;
@@ -146,6 +147,62 @@ export interface SyncV2Response extends SyncV2Epoch {
   nextCursor: string;
   hasMore: boolean;
   serverTime: number;
+}
+
+export interface SyncV2ResponsePage {
+  changes: SyncV2Change[];
+  nextCursor: string;
+  hasMore: boolean;
+}
+
+/**
+ * Selects a response page by both record count and the canonical adapter's
+ * serialized byte budget. The cursor advances only through the last returned
+ * change; a truncated byte page always advertises hasMore.
+ */
+export function paginateSyncV2Response(
+  base: Omit<SyncV2Response, 'changes' | 'nextCursor' | 'hasMore'>,
+  available: readonly SyncV2Change[],
+  pullLimit: number,
+  initialCursor: string,
+  cursorFor: (change: SyncV2Change) => string,
+  maxBytes = SYNC_V2_MAX_RESPONSE_BYTES,
+): SyncV2ResponsePage {
+  const maximumCount = Math.min(pullLimit, available.length);
+  if (maximumCount === 0) {
+    return { changes: [], nextCursor: initialCursor, hasMore: available.length > 0 };
+  }
+  let lower = 1;
+  let upper = maximumCount;
+  let acceptedCount = 0;
+  // Serialized response size is monotonic as an ordered prefix grows. Binary
+  // search avoids repeatedly stringifying the whole prefix for all 500 items.
+  while (lower <= upper) {
+    const candidateCount = Math.floor((lower + upper) / 2);
+    const candidateChanges = available.slice(0, candidateCount);
+    const candidateCursor = cursorFor(candidateChanges[candidateChanges.length - 1]);
+    const trial: SyncV2Response = {
+      ...base,
+      changes: candidateChanges,
+      nextCursor: candidateCursor,
+      hasMore: available.length > candidateCount,
+    };
+    if (new TextEncoder().encode(JSON.stringify(trial)).byteLength <= maxBytes) {
+      acceptedCount = candidateCount;
+      lower = candidateCount + 1;
+    } else {
+      upper = candidateCount - 1;
+    }
+  }
+  if (acceptedCount === 0) {
+    throw new RangeError('one stored v2 change exceeds the canonical response byte budget');
+  }
+  const changes = available.slice(0, acceptedCount);
+  return {
+    changes,
+    nextCursor: cursorFor(changes[changes.length - 1]),
+    hasMore: available.length > changes.length,
+  };
 }
 
 export interface SyncV2InventoryItem {

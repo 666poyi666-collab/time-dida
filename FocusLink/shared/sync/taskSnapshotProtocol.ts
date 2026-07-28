@@ -1,7 +1,7 @@
 import type { Project, Task, TaskSource } from '../types';
 
 export const TASK_SNAPSHOT_PROTOCOL_VERSION = 1 as const;
-export const TASK_SNAPSHOT_PATH = '/v1/tasks' as const;
+export const TASK_SNAPSHOT_PATH = '/sync/v2/tasks' as const;
 export const TASK_SNAPSHOT_MAX_BODY_BYTES = 512 * 1024;
 export const TASK_SNAPSHOT_MAX_TASKS = 5_000;
 export const TASK_SNAPSHOT_MAX_PROJECTS = 500;

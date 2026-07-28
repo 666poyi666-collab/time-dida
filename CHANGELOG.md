@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.12.68 - 2026-07-28（私有 Account DO authority 与分页 liveness）
+
+- **唯一 production authority**：Cloudflare Account Durable Object 成为唯一生产数据权威；私有 FocusLink Worker 固定关闭 `workers.dev`、preview 和 custom route，只接受 canonical service-binding 路径。Node `startPersonalCloud()`、production CLI、Docker/Compose 静态 bearer authority 全部硬退役，回环 Node 仅保留合同测试。
+- **canonical 路由与配对**：live、tasks、exchange、status 和 pairing 统一为 `/sync/v2/*`、`/sync/v1/pair/*`；`/v1/*`、`/v2/*`、`/sync/push` 不回退。pair offer 先由 foxlink-cloud-mcp 校验 owner session + CSRF，再携带 fl2 credential 交给 DO 复验 `devices:manage`；pair exchange 只消费一次性高熵 nonce。
+- **身份与 liveness**：device token 强制绑定 request/mutation `deviceId`；格式有效的伪造、过期、撤销、跨账号、错误 secret/scope 均拒绝。V2 change feed 按 foxlink adapter 的 `1,100,000` serialized-byte cap 二分选页，cursor 与 watermark 只推进到实际返回尾；1 MiB 单实体上限、acks、第二页无丢重和 500 项复杂度有直接测试。
+- **真实 readiness 与请求边界**：`/readyz` 同时探测 Account DO SQLite，三个必需 service secrets 至少 32 字节且两两不同。Account DO 在读取完整正文前执行 content-length 预拒和 bounded stream；task publish 与 live command 拒绝未知 query。
+- **MCP 与多端体验**：内部只读投影返回次数、任务、有效/暂停/总时长、最近记录及 freshness，不输出 note、tags、deviceId 或 credential。手机隐藏平板专属模块，平板显示完整设备身份与状态字段，手表八位计时和双按钮在小屏内收敛；Android 凭据按 Keystore-first 无损恢复。
+- **未完成边界**：Focus Guard 加密 state producer 只有与不做手机控 Java consumer 一致的 golden fixture；因 FocusLink 尚无同账号 32-byte root provisioning，未伪造第二把根密钥、未接生产 publisher。本版未部署、未读取远端 secret、未执行最终 v0.12.68 ADB 覆盖安装或 PC-off 三轮验收，`supportsPcOff=false`。
+
+## v0.12.67 - 2026-07-28（Android 配对凭据无损迁移）
+
+- **覆盖升级不再丢配对**：修复 Android 启动时先删除旧 WebView token、手表又不读取或写入 Keystore，导致覆盖安装后显示“未配对”的回归。手机与手表统一为“先恢复已有 Keystore；否则把旧凭据写入 Keystore并确认成功；最后清理浏览器副本”。
+- **失败保持可恢复**：Keystore 写入失败时不再删除唯一旧凭据；新配对和手工保存连接也必须先完成原生安全持久化，才提交 renderer 偏好。
+- **比例回归门禁**：新增手机/平板/手表 CSS 契约，锁定手机错误完整换行、平板状态字段不省略、手表八位计时和双操作按钮不越界。
+- **状态**：本版仍是本地候选；未部署远端服务，正式 PC-off 验收与完整四端同版安装矩阵未完成，`supportsPcOff=false`。
+
+## v0.12.66 - 2026-07-28（云端专注投影与手机/手表比例修复）
+
+- **PC-off 数据面**：Account DO 新增仅供 canonical cloud MCP service binding 调用的专注投影，返回专注次数、任务分配、起止时间、有效/暂停/总时长、最近记录和独立的 authority freshness；默认不返回 note、tags 或凭据。
+- **唯一 authority 与实时兼容**：设备身份强制绑定请求和 mutation `deviceId`；Node personal-cloud 默认拒绝权威 v2 写。实时控制与任务快照迁移到 `/sync/v2/live*`、`/sync/v2/tasks`，公网 `/v1/*` 继续 410，Account DO 对读写分别校验设备 token scope。
+- **真实设备比例**：OWW221 的八位计时按整串宽度收敛，单列 grid 不再被大读数撑宽，暂停/结束按钮强制落在 378×496 屏内；小米手机不再渲染平板专属显示模块，同步失败原因允许完整换行；华为平板状态事实改为单列完整展示。
+- **状态**：本版是本地候选，`supportsPcOff=false`；未部署远端服务，正式 PC-off 三轮验收与发布证据仍待后续统一执行。
+
 ## v0.12.65 - 2026-07-27（专注时间之带磨砂材质）
 
 - **专注态重绘**：移除运行中绿色材料每 3px 生成的锯齿轮廓、齿端浮尘和内部颗粒，避免长时间展开后形成毛虫般的分节与毛边。

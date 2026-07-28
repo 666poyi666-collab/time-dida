@@ -198,6 +198,7 @@ async function handleRequest(
   pairingExchange?: (nonce: string, deviceId: string) => { accessToken: string } | null,
 ): Promise<void> {
   const requestUrl = new URL(request.url ?? '/', 'http://focuslink.test');
+  requestUrl.pathname = canonicalLocalCompatibilityPath(requestUrl.pathname);
   if (
     requireForwardedHttps &&
     requestUrl.pathname !== '/health' &&
@@ -498,7 +499,6 @@ async function handleRequest(
     }
   }
 
-
   if (requestUrl.pathname === '/sync/v2/exchange') {
     try {
       sendJson(response, 200, v2Store.sync(accountId, parsed as SyncV2Request));
@@ -562,6 +562,14 @@ function routeMethod(pathname: string): 'GET' | 'POST' | null {
   if (pathname === TASK_SNAPSHOT_PATH) return 'POST';
   if (pathname === LIVE_FOCUS_SNAPSHOT_PATH || pathname === LIVE_FOCUS_WAIT_PATH) return 'GET';
   return null;
+}
+
+function canonicalLocalCompatibilityPath(pathname: string): string {
+  if (pathname === '/v1/live') return LIVE_FOCUS_SNAPSHOT_PATH;
+  if (pathname === '/v1/live/wait') return LIVE_FOCUS_WAIT_PATH;
+  if (pathname === '/v1/live/command') return LIVE_FOCUS_COMMAND_PATH;
+  if (pathname === '/v1/tasks') return TASK_SNAPSHOT_PATH;
+  return pathname;
 }
 
 function hasJsonContentType(request: http.IncomingMessage): boolean {

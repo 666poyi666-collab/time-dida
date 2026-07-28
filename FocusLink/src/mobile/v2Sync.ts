@@ -132,9 +132,7 @@ async function drain(
 ): Promise<MobileV2BootstrapCheckpoint> {
   let checkpoint = initial;
   for (let page = 0; page < MAX_PAGES_PER_RUN; page += 1) {
-    const claimed = allowPush
-      ? await claimMobileV2Outbox(1)
-      : { leaseId: '', items: [] };
+    const claimed = allowPush ? await claimMobileV2Outbox(1) : { leaseId: '', items: [] };
     const request = {
       protocolVersion: SYNC_V2_PROTOCOL_VERSION,
       deviceId: connection.deviceId,
@@ -459,7 +457,8 @@ function isAck(value: unknown): value is SyncV2Ack {
     isEntityType(value.entityType) &&
     isId(value.entityId) &&
     ['applied', 'duplicate', 'conflict', 'rejected'].includes(String(value.status)) &&
-    (value.revision === null || (Number.isSafeInteger(value.revision) && Number(value.revision) >= 1)) &&
+    (value.revision === null ||
+      (Number.isSafeInteger(value.revision) && Number(value.revision) >= 1)) &&
     (value.fingerprint === null || isFingerprint(value.fingerprint)) &&
     (value.errorCode === null || typeof value.errorCode === 'string')
   );

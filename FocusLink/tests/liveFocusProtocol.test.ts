@@ -27,9 +27,9 @@ function startRequest(overrides: Record<string, unknown> = {}): Record<string, u
 
 describe('live focus protocol', () => {
   it('uses stable v1 routes and accepts strict start/transition commands', () => {
-    expect(LIVE_FOCUS_SNAPSHOT_PATH).toBe('/v1/live');
-    expect(LIVE_FOCUS_WAIT_PATH).toBe('/v1/live/wait');
-    expect(LIVE_FOCUS_COMMAND_PATH).toBe('/v1/live/command');
+    expect(LIVE_FOCUS_SNAPSHOT_PATH).toBe('/sync/v2/live');
+    expect(LIVE_FOCUS_WAIT_PATH).toBe('/sync/v2/live/wait');
+    expect(LIVE_FOCUS_COMMAND_PATH).toBe('/sync/v2/live/command');
 
     const start = validateLiveFocusCommandRequest(startRequest());
     expect(start.ok).toBe(true);

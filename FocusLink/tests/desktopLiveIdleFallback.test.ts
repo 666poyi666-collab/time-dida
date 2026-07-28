@@ -62,8 +62,8 @@ describe('desktop live idle fallback', () => {
     };
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
-      if (url.endsWith('/v1/live')) return Promise.resolve(liveIdle());
-      if (url.includes('/v1/live/wait')) return Promise.reject(new TypeError('fetch failed'));
+      if (url.endsWith('/sync/v2/live')) return Promise.resolve(liveIdle());
+      if (url.includes('/sync/v2/live/wait')) return Promise.reject(new TypeError('fetch failed'));
       return Promise.reject(new Error(`unexpected URL: ${url}`));
     });
     const controller = new FocusTimerController(local as never);
@@ -98,9 +98,10 @@ describe('desktop live idle fallback', () => {
     };
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
-      if (url.endsWith('/v1/live')) return Promise.resolve(liveIdle());
-      if (url.includes('/v1/live/wait')) return new Promise<Response>(() => undefined);
-      if (url.includes('/v1/live/command')) return Promise.reject(new TypeError('fetch failed'));
+      if (url.endsWith('/sync/v2/live')) return Promise.resolve(liveIdle());
+      if (url.includes('/sync/v2/live/wait')) return new Promise<Response>(() => undefined);
+      if (url.includes('/sync/v2/live/command'))
+        return Promise.reject(new TypeError('fetch failed'));
       return Promise.reject(new Error(`unexpected URL: ${url}`));
     });
     const controller = new FocusTimerController(local as never);

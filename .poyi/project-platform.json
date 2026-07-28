@@ -24,15 +24,13 @@
   ],
   "mcp": {
     "status": "partial",
+    "toolContractId": "focuslink-cloud-mcp-v1",
+    "requiredScopes": ["focuslink:read"],
     "dataPlane": "derived_projection",
     "cloudBaseUrl": "https://foxlink-mcp.focuslink-poyi-6465e9.workers.dev",
     "projection": {
       "mode": "sync_on_read",
-      "requiredDiagnostics": [
-        "epoch",
-        "lag",
-        "degraded"
-      ]
+      "requiredDiagnostics": ["epoch", "lag", "degraded"]
     },
     "routes": {
       "mcp": "/mcp",
@@ -58,10 +56,11 @@
     "supportsBidirectionalDelta": false,
     "pairing": {
       "status": "closed_pending_as_binding_and_joint_e2e",
-      "offers": {
-        "access": "internal_service_binding_only",
-        "ownerAuthorization": "as_owner_session_plus_csrf",
-        "serviceCredential": "aud_action_bound_non_oauth",
+        "offers": {
+          "access": "internal_service_binding_only",
+          "ownerAuthorization": "as_owner_session_plus_csrf",
+          "serviceCredential": "adapter_forwards_fl2_after_owner_gate",
+          "authorityScope": "devices:manage",
         "publicOAuthStatus": 403,
         "publicDeviceTokenStatus": 403,
         "credentialReturnedToBrowser": false

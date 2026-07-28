@@ -4,9 +4,17 @@ import { FocusLinkAccount, type WorkerEnv } from './accountDurableObject';
 
 export { FocusLinkAccount };
 
-const PUBLIC_ROUTES = new Map([
+// This Worker has no public ingress. The foxlink-cloud-mcp adapter is the sole
+// public boundary and reaches these canonical paths through a service binding.
+// Internal DO paths stay private so the adapter cannot accidentally revive the
+// retired /v1/* or /v2/* public contracts.
+const CANONICAL_AUTHORITY_ROUTES = new Map([
   ['/sync/v2/status', '/v2/sync/epoch'],
   ['/sync/v2/exchange', '/v2/sync'],
+  ['/sync/v2/tasks', '/v1/tasks'],
+  ['/sync/v2/live', '/v1/live'],
+  ['/sync/v2/live/wait', '/v1/live/wait'],
+  ['/sync/v2/live/command', '/v1/live/command'],
   ['/sync/v1/pair/offers', '/v2/pair/offers'],
   ['/sync/v1/pair/exchange', '/v2/pair/exchange'],
 ]);
@@ -23,7 +31,8 @@ export default {
         json({
           ok: true,
           service: 'focuslink-device-sync-cloudflare',
-          production: true,
+          publicIngress: false,
+          deploymentMode: 'internal-service-binding-only',
           protocolVersion: DEVICE_SYNC_PROTOCOL_VERSION,
           syncV2ProtocolVersion: SYNC_V2_PROTOCOL_VERSION,
           storage: 'sqlite-durable-object',
@@ -33,15 +42,75 @@ export default {
     if (url.pathname === '/readyz') {
       if (request.method !== 'GET')
         return errorJson(405, 'method_not_allowed', 'method not allowed');
-      if (!env.FOCUSLINK_ACCOUNT_ID || !env.FOCUSLINK_SYNC_TOKEN) {
+      if (
+        !env.FOCUSLINK_ACCOUNT_ID ||
+        !validDistinctServiceSecrets([
+          env.FOCUSLINK_SYNC_TOKEN,
+          env.FOCUSLINK_DEVICE_PEPPER,
+          env.FOCUSLINK_MCP_SERVICE_TOKEN,
+        ])
+      ) {
         return errorJson(503, 'not_configured', 'worker account binding is incomplete');
       }
-      return withCors(request, env, json({ ok: true, ready: true, service: 'foxlink-cloud-mcp' }));
+      try {
+        const id = env.FOCUSLINK_ACCOUNT.idFromName(env.FOCUSLINK_ACCOUNT_ID);
+        const stub = env.FOCUSLINK_ACCOUNT.get(id);
+        const authorityResponse = await stub.fetch(
+          new Request('https://focuslink.internal/internal/readyz', {
+            method: 'GET',
+            headers: {
+              'x-focuslink-account': env.FOCUSLINK_ACCOUNT_ID,
+              'x-focuslink-internal': env.FOCUSLINK_SYNC_TOKEN,
+            },
+          }),
+        );
+        const authorityStatus: unknown = await authorityResponse.json();
+        if (
+          !authorityResponse.ok ||
+          !isRecord(authorityStatus) ||
+          authorityStatus.ok !== true ||
+          authorityStatus.storageReady !== true
+        ) {
+          return errorJson(503, 'authority_unready', 'account authority is not ready');
+        }
+        return withCors(
+          request,
+          env,
+          json({
+            ok: true,
+            ready: true,
+            service: 'focuslink-device-sync-cloudflare',
+            publicIngress: false,
+            authorityReady: true,
+            mcpProjectionReady: true,
+          }),
+        );
+      } catch {
+        return errorJson(503, 'authority_unreachable', 'account authority is unavailable');
+      }
+    }
+    if (url.pathname === '/internal/mcp/v1/focus/summary') {
+      if (request.method !== 'GET') {
+        return errorJson(405, 'method_not_allowed', 'GET required');
+      }
+      if (
+        !env.FOCUSLINK_ACCOUNT_ID ||
+        !env.FOCUSLINK_MCP_SERVICE_TOKEN ||
+        request.headers.get('x-focuslink-mcp-service') !== env.FOCUSLINK_MCP_SERVICE_TOKEN
+      ) {
+        return errorJson(401, 'internal_service_unauthenticated', 'service credential required');
+      }
+      const id = env.FOCUSLINK_ACCOUNT.idFromName(env.FOCUSLINK_ACCOUNT_ID);
+      const stub = env.FOCUSLINK_ACCOUNT.get(id);
+      const headers = new Headers();
+      headers.set('x-focuslink-account', env.FOCUSLINK_ACCOUNT_ID);
+      headers.set('x-focuslink-mcp-service', env.FOCUSLINK_MCP_SERVICE_TOKEN);
+      return stub.fetch(new Request(request.url, { method: 'GET', headers }));
     }
     if (isRetiredPublicRoute(url.pathname)) {
       return errorJson(410, 'legacy_route_retired', 'use /sync/v2/exchange or /sync/v2/status');
     }
-    const authorityPath = PUBLIC_ROUTES.get(url.pathname);
+    const authorityPath = CANONICAL_AUTHORITY_ROUTES.get(url.pathname);
     if (!authorityPath) return errorJson(404, 'not_found', 'route not found');
     if (request.method === 'OPTIONS') return preflight(request, env);
 
@@ -49,18 +118,16 @@ export default {
     if (originError) return originError;
     const authorization = request.headers.get('authorization');
     const pairingExchange = url.pathname === '/sync/v1/pair/exchange';
-    const pairingOffer = url.pathname === '/sync/v1/pair/offers';
     const isDevice =
       /^Bearer fl2_[A-Za-z0-9-]{6,80}_[A-Za-z0-9-]{6,80}_[A-Za-z0-9_-]{32,160}$/.test(
         authorization ?? '',
       );
-    // Offer creation is owner-session + CSRF work performed through an internal
-    // service binding. A public OAuth or device bearer must not mint a device.
-    if (pairingOffer) {
-      return errorJson(403, 'pair_offers_internal_only', 'pair offers require the owner service binding');
-    }
-    // Sync accepts only the device token form. OAuth tokens and the Worker
-    // owner credential are intentionally not valid sync credentials.
+    // Pair-offer creation reaches this private Worker only after the public
+    // foxlink-cloud-mcp adapter validates owner session + CSRF. The supplied
+    // fl2 credential is still checked by the Account DO for devices:manage;
+    // merely matching the token shape here is never sufficient.
+    // Other sync routes likewise accept only device credentials. OAuth tokens
+    // and the Worker owner credential are intentionally not sync credentials.
     if (!pairingExchange && !isDevice) {
       return withCors(
         request,
@@ -120,6 +187,18 @@ export default {
 
 function isRetiredPublicRoute(pathname: string): boolean {
   return pathname === '/sync/push' || pathname.startsWith('/v1/') || pathname.startsWith('/v2/');
+}
+
+function validServiceSecret(value: string | undefined): value is string {
+  return typeof value === 'string' && value.length >= 32;
+}
+
+function validDistinctServiceSecrets(values: Array<string | undefined>): values is string[] {
+  return values.every(validServiceSecret) && new Set(values).size === values.length;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function allowedOrigins(env: WorkerEnv): Set<string> {

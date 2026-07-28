@@ -10,9 +10,12 @@ import {
 } from '@shared/sync/deviceProtocol';
 import { readDeviceSyncJsonResponse } from '@shared/sync/httpTransport';
 import {
+  LIVE_FOCUS_COMMAND_PATH,
   LIVE_FOCUS_MAX_TITLE_LENGTH,
   LIVE_FOCUS_MAX_WAIT_MS,
   LIVE_FOCUS_PROTOCOL_VERSION,
+  LIVE_FOCUS_SNAPSHOT_PATH,
+  LIVE_FOCUS_WAIT_PATH,
   type LiveFocusCommand,
   type LiveFocusCommandAck,
   type LiveFocusCommandRequest,
@@ -219,7 +222,7 @@ export async function pushPendingDeviceSyncBundle(
 export async function fetchLiveFocusSnapshot(
   input: LiveFocusConnectionInput,
 ): Promise<LiveFocusSnapshotResponse> {
-  const response = await liveFocusFetch(input, '/v1/live');
+  const response = await liveFocusFetch(input, LIVE_FOCUS_SNAPSHOT_PATH);
   return parseLiveSnapshotResponse(await readDeviceSyncJsonResponse(response));
 }
 
@@ -256,7 +259,12 @@ export async function waitForLiveFocusSnapshot(
     afterRevision: String(input.afterRevision),
     waitMs: String(waitMs),
   });
-  const response = await liveFocusFetch(input, `/v1/live/wait?${query}`, {}, waitMs + 10_000);
+  const response = await liveFocusFetch(
+    input,
+    `${LIVE_FOCUS_WAIT_PATH}?${query}`,
+    {},
+    waitMs + 10_000,
+  );
   const value = await readDeviceSyncJsonResponse(response);
   if (!isRecord(value) || typeof value.changed !== 'boolean') {
     throw new Error('实时等待响应缺少 changed');
@@ -272,7 +280,7 @@ export async function sendLiveFocusCommand(
     deviceId: input.deviceId,
     command: input.command,
   };
-  const response = await liveFocusFetch(input, '/v1/live/command', {
+  const response = await liveFocusFetch(input, LIVE_FOCUS_COMMAND_PATH, {
     method: 'POST',
     body: JSON.stringify(request),
   });

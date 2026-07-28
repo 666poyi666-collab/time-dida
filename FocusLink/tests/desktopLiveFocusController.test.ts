@@ -139,7 +139,7 @@ describe('desktop live focus controller', () => {
         ) => Promise<Response>;
       }
     ).request.bind(controller);
-    const response = await request('/v1/live', runtimeConnection.current!);
+    const response = await request('/sync/v2/live', runtimeConnection.current!);
 
     expect(response.status).toBe(200);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
@@ -164,8 +164,8 @@ describe('desktop live focus controller', () => {
         ) => Promise<Response>;
       }
     ).request.bind(controller);
-    await expect(request('/v1/live/command', runtimeConnection.current!)).rejects.toThrow(
-      '无法连接实时同步服务（http://127.0.0.1:18787/v1/live/command）',
+    await expect(request('/sync/v2/live/command', runtimeConnection.current!)).rejects.toThrow(
+      '无法连接实时同步服务（http://127.0.0.1:18787/sync/v2/live/command）',
     );
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     controller.dispose();
@@ -215,8 +215,8 @@ describe('desktop live focus controller', () => {
     };
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = String(input);
-      if (url.endsWith('/v1/live')) return initial;
-      if (url.includes('/v1/live/wait')) {
+      if (url.endsWith('/sync/v2/live')) return initial;
+      if (url.includes('/sync/v2/live/wait')) {
         return new Promise<Response>((_resolve, reject) => {
           init?.signal?.addEventListener(
             'abort',
@@ -225,7 +225,7 @@ describe('desktop live focus controller', () => {
           );
         });
       }
-      if (url.includes('/v1/live/command')) {
+      if (url.includes('/sync/v2/live/command')) {
         const now = Date.now();
         return Promise.resolve(
           new Response(
@@ -276,9 +276,9 @@ describe('desktop live focus controller', () => {
 
     expect(result.state).toBe('running');
     expect(local.startWithTask).not.toHaveBeenCalled();
-    expect(fetchSpy.mock.calls.some(([input]) => String(input).includes('/v1/live/command'))).toBe(
-      true,
-    );
+    expect(
+      fetchSpy.mock.calls.some(([input]) => String(input).includes('/sync/v2/live/command')),
+    ).toBe(true);
     controller.dispose();
     fetchSpy.mockRestore();
   });
@@ -297,8 +297,8 @@ describe('desktop live focus controller', () => {
     };
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input);
-      if (url.endsWith('/v1/live')) return initial;
-      if (url.includes('/v1/live/wait')) {
+      if (url.endsWith('/sync/v2/live')) return initial;
+      if (url.includes('/sync/v2/live/wait')) {
         return Promise.reject(new TypeError('fetch failed'));
       }
       return Promise.reject(new Error(`unexpected URL: ${url}`));

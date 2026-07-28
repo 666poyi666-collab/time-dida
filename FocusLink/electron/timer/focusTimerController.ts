@@ -1,8 +1,11 @@
 import crypto from 'node:crypto';
 import type { TaskSource, TimerSnapshot } from '@shared/types';
 import {
+  LIVE_FOCUS_COMMAND_PATH,
   LIVE_FOCUS_MAX_WAIT_MS,
   LIVE_FOCUS_PROTOCOL_VERSION,
+  LIVE_FOCUS_SNAPSHOT_PATH,
+  LIVE_FOCUS_WAIT_PATH,
   type LiveFocusAction,
   type LiveFocusCommand,
   type LiveFocusSnapshot,
@@ -249,7 +252,7 @@ export class FocusTimerController {
       action === 'start'
         ? { ...base, action, title: task?.taskTitle ?? null, task }
         : { ...base, action };
-    const response = await this.request('/v1/live/command', connection, {
+    const response = await this.request(LIVE_FOCUS_COMMAND_PATH, connection, {
       method: 'POST',
       body: JSON.stringify({
         protocolVersion: LIVE_FOCUS_PROTOCOL_VERSION,
@@ -295,7 +298,7 @@ export class FocusTimerController {
       const initialController = new AbortController();
       this.abortController = initialController;
       const initial = (await (
-        await this.request('/v1/live', connection, {}, initialController.signal)
+        await this.request(LIVE_FOCUS_SNAPSHOT_PATH, connection, {}, initialController.signal)
       ).json()) as LiveFocusSnapshotResponse;
       if (generation !== this.generation || !this.isCurrentConnection(connection)) return;
       if (!this.liveMode && this.local.getSnapshot().state !== 'idle') {
@@ -312,7 +315,7 @@ export class FocusTimerController {
       while (generation === this.generation && getDeviceSyncRuntimeConnection()) {
         const controller = new AbortController();
         this.abortController = controller;
-        const query = `/v1/live/wait?afterRevision=${this.liveRevision}&waitMs=${LIVE_FOCUS_MAX_WAIT_MS}`;
+        const query = `${LIVE_FOCUS_WAIT_PATH}?afterRevision=${this.liveRevision}&waitMs=${LIVE_FOCUS_MAX_WAIT_MS}`;
         const next = (await (
           await this.request(query, connection, {}, controller.signal)
         ).json()) as LiveFocusSnapshotResponse;

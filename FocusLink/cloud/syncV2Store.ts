@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fingerprintDeviceSyncValue } from '../shared/sync/deviceProtocol';
 import {
   SYNC_V2_PROTOCOL_VERSION,
+  paginateSyncV2Response,
   type SyncV2Ack,
   type SyncV2BootstrapEntitiesRequest,
   type SyncV2BootstrapEntitiesResponse,
@@ -152,8 +153,20 @@ export class SyncV2Store {
     const cursor = decodeCursor(accountId, request.cursor, account.epoch, account.changeSeq);
     const acks = request.mutations.map((mutation) => applyMutation(account, mutation, this.now()));
     const available = account.changes.filter((change) => change.changeSeq > cursor);
-    const changes = available.slice(0, request.pullLimit);
-    const nextSeq = changes.at(-1)?.changeSeq ?? cursor;
+    const serverTime = this.now();
+    const page = paginateSyncV2Response(
+      {
+        protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+        ...account.epoch,
+        acks,
+        serverTime,
+      },
+      available,
+      request.pullLimit,
+      encodeCursor(accountId, account.epoch, cursor),
+      (change) => encodeCursor(accountId, account.epoch, change.changeSeq),
+    );
+    const nextSeq = page.changes.at(-1)?.changeSeq ?? cursor;
     touchDevice(account, request.deviceId, this.now());
     const device = account.devices.get(request.deviceId)!;
     device.watermark = nextSeq;
@@ -162,10 +175,10 @@ export class SyncV2Store {
       protocolVersion: SYNC_V2_PROTOCOL_VERSION,
       ...account.epoch,
       acks,
-      changes: structuredClone(changes),
-      nextCursor: encodeCursor(accountId, account.epoch, nextSeq),
-      hasMore: available.length > changes.length,
-      serverTime: this.now(),
+      changes: structuredClone(page.changes),
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+      serverTime,
     };
   }
 

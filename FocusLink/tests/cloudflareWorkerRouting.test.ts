@@ -18,6 +18,8 @@ interface ForwardedCall {
   url: string;
   authorization: string | null;
   forwardedAuthorization: string | null;
+  mcpService: string | null;
+  internalService: string | null;
   account: string | null;
 }
 
@@ -28,12 +30,22 @@ function makeEnv(forwarded: ForwardedCall[]): WorkerEnv {
         url: request.url,
         authorization: request.headers.get('authorization'),
         forwardedAuthorization: request.headers.get('x-focuslink-authorization'),
+        mcpService: request.headers.get('x-focuslink-mcp-service'),
+        internalService: request.headers.get('x-focuslink-internal'),
         account: request.headers.get('x-focuslink-account'),
       });
-      return new Response(JSON.stringify({ ok: true, forwarded: true }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
+      const ready = new URL(request.url).pathname === '/internal/readyz';
+      return new Response(
+        JSON.stringify(
+          ready
+            ? { ok: true, storageReady: true, authority: 'focuslink-account-do' }
+            : { ok: true, forwarded: true },
+        ),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      );
     },
   };
   return {
@@ -42,28 +54,37 @@ function makeEnv(forwarded: ForwardedCall[]): WorkerEnv {
       get: () => stub,
     },
     FOCUSLINK_ACCOUNT_ID: 'account-public',
-    FOCUSLINK_SYNC_TOKEN: 'owner-internal-token',
+    FOCUSLINK_SYNC_TOKEN: 'owner-internal-token-with-at-least-32-characters',
+    FOCUSLINK_DEVICE_PEPPER: 'device-pepper-with-at-least-32-characters',
+    FOCUSLINK_MCP_SERVICE_TOKEN: 'mcp-service-token-which-is-not-a-device-token',
     FOCUSLINK_ALLOWED_ORIGINS: ALLOWED_ORIGIN,
   } as unknown as WorkerEnv;
 }
 
 function call(
   path: string,
-  { method = 'GET', authorization, origin }: {
+  {
+    method = 'GET',
+    authorization,
+    origin,
+    mcpService,
+  }: {
     method?: string;
     authorization?: string;
     origin?: string;
+    mcpService?: string;
   } = {},
   env: WorkerEnv = makeEnv([]),
 ): Promise<Response> {
   const headers = new Headers();
   if (authorization) headers.set('authorization', authorization);
   if (origin) headers.set('origin', origin);
+  if (mcpService) headers.set('x-focuslink-mcp-service', mcpService);
   const request = new Request(`https://foxlink-cloud-mcp.example${path}`, { method, headers });
   return worker.fetch(request, env);
 }
 
-describe('foxlink public worker routing is the single guarded entry', () => {
+describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
   it('retires every legacy data route with 410 and no production fallback', async () => {
     for (const path of ['/sync/push', '/v1/tasks', '/v1/live', '/v2/sync', '/v2/sync/epoch']) {
       const response = await call(path, { method: 'POST' });
@@ -97,15 +118,32 @@ describe('foxlink public worker routing is the single guarded entry', () => {
     expect(response.status).toBe(401);
   });
 
-  it('never lets a public device token mint pairing offers', async () => {
-    const response = await call('/sync/v1/pair/offers', {
-      method: 'POST',
-      authorization: `Bearer ${VALID_DEVICE_TOKEN}`,
+  it('forwards canonical pair offers so the DO can enforce devices:manage', async () => {
+    const forwarded: ForwardedCall[] = [];
+    const env = makeEnv(forwarded);
+    const response = await call(
+      '/sync/v1/pair/offers',
+      {
+        method: 'POST',
+        authorization: `Bearer ${VALID_DEVICE_TOKEN}`,
+      },
+      env,
+    );
+    expect(response.status).toBe(200);
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]).toMatchObject({
+      authorization: null,
+      forwardedAuthorization: `Bearer ${VALID_DEVICE_TOKEN}`,
+      account: 'account-public',
     });
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      error: { code: 'pair_offers_internal_only' },
-    });
+    expect(forwarded[0].url).toContain('/v2/pair/offers');
+  });
+
+  it('rejects pair-offer creation without a device credential before the DO', async () => {
+    const forwarded: ForwardedCall[] = [];
+    const response = await call('/sync/v1/pair/offers', { method: 'POST' }, makeEnv(forwarded));
+    expect(response.status).toBe(401);
+    expect(forwarded).toHaveLength(0);
   });
 
   it('returns 404 for any route outside the canonical allowlist', async () => {
@@ -131,12 +169,108 @@ describe('foxlink public worker routing is the single guarded entry', () => {
     expect(forwarded[0].url).toContain('/v2/sync');
   });
 
+  it('keeps live control available on the canonical route while legacy /v1/live stays retired', async () => {
+    const forwarded: ForwardedCall[] = [];
+    const env = makeEnv(forwarded);
+    const response = await call(
+      '/sync/v2/live',
+      { authorization: `Bearer ${VALID_DEVICE_TOKEN}` },
+      env,
+    );
+    expect(response.status).toBe(200);
+    expect(forwarded[0]).toMatchObject({
+      forwardedAuthorization: `Bearer ${VALID_DEVICE_TOKEN}`,
+    });
+    expect(forwarded[0].url).toContain('/v1/live');
+    expect((await call('/v1/live', { authorization: `Bearer ${VALID_DEVICE_TOKEN}` })).status).toBe(
+      410,
+    );
+  });
+
+  it('allows only the dedicated MCP service credential onto the internal focus projection', async () => {
+    const denied = await call('/internal/mcp/v1/focus/summary');
+    expect(denied.status).toBe(401);
+
+    const forwarded: ForwardedCall[] = [];
+    const env = makeEnv(forwarded);
+    const accepted = await call(
+      '/internal/mcp/v1/focus/summary?limit=10',
+      { mcpService: 'mcp-service-token-which-is-not-a-device-token' },
+      env,
+    );
+    expect(accepted.status).toBe(200);
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]).toMatchObject({
+      authorization: null,
+      forwardedAuthorization: null,
+      mcpService: 'mcp-service-token-which-is-not-a-device-token',
+      account: 'account-public',
+    });
+  });
+
+  it('reports ready only after the Account DO storage probe succeeds', async () => {
+    const forwarded: ForwardedCall[] = [];
+    const env = makeEnv(forwarded);
+    const response = await call('/readyz', {}, env);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ready: true,
+      publicIngress: false,
+      authorityReady: true,
+      mcpProjectionReady: true,
+    });
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]).toMatchObject({
+      account: 'account-public',
+      internalService: 'owner-internal-token-with-at-least-32-characters',
+    });
+    expect(forwarded[0].url).toContain('/internal/readyz');
+  });
+
+  it('fails readiness when the MCP service secret or Account DO probe is missing', async () => {
+    const missingSecret = makeEnv([]);
+    delete missingSecret.FOCUSLINK_MCP_SERVICE_TOKEN;
+    expect((await call('/readyz', {}, missingSecret)).status).toBe(503);
+
+    const failedProbe = makeEnv([]);
+    failedProbe.FOCUSLINK_ACCOUNT = {
+      idFromName: () => ({ name: 'account' }),
+      get: () => ({
+        fetch: async () =>
+          new Response(JSON.stringify({ ok: false, storageReady: false }), {
+            status: 503,
+            headers: { 'content-type': 'application/json' },
+          }),
+      }),
+    } as unknown as WorkerEnv['FOCUSLINK_ACCOUNT'];
+    const response = await call('/readyz', {}, failedProbe);
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'authority_unready' },
+    });
+  });
+
+  it('fails readiness when any two service secrets are reused', async () => {
+    const reused = makeEnv([]);
+    reused.FOCUSLINK_MCP_SERVICE_TOKEN = reused.FOCUSLINK_SYNC_TOKEN;
+    expect((await call('/readyz', {}, reused)).status).toBe(503);
+
+    reused.FOCUSLINK_MCP_SERVICE_TOKEN = 'mcp-service-token-which-is-not-a-device-token';
+    reused.FOCUSLINK_DEVICE_PEPPER = reused.FOCUSLINK_SYNC_TOKEN;
+    expect((await call('/readyz', {}, reused)).status).toBe(503);
+  });
+
   it('denies a disallowed CORS origin before forwarding', async () => {
     const forwarded: ForwardedCall[] = [];
     const env = makeEnv(forwarded);
     const response = await call(
       '/sync/v2/exchange',
-      { method: 'POST', authorization: `Bearer ${VALID_DEVICE_TOKEN}`, origin: 'https://evil.example' },
+      {
+        method: 'POST',
+        authorization: `Bearer ${VALID_DEVICE_TOKEN}`,
+        origin: 'https://evil.example',
+      },
       env,
     );
     expect(response.status).toBe(403);

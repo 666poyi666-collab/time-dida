@@ -47,7 +47,10 @@ import {
   writeRemoteV2Conflict,
   writeV2EntityState,
 } from './v2OutboxStore.js';
-import { getDeviceSyncDataConnection, type DeviceSyncRuntimeConnection } from './deviceSyncService.js';
+import {
+  getDeviceSyncDataConnection,
+  type DeviceSyncRuntimeConnection,
+} from './deviceSyncService.js';
 
 const CHECKPOINT_PREFIX = 'syncV2.desktop.checkpointV2';
 const LAST_SYNC_PREFIX = 'deviceSync.lastSyncAtV2';
@@ -183,12 +186,7 @@ async function drainPages(
       );
     } catch (error) {
       if (claimed.items.length > 0) {
-        retryV2Lease(
-          connection.scope,
-          claimed.leaseId,
-          errorCode(error),
-          Date.now() + 30_000,
-        );
+        retryV2Lease(connection.scope, claimed.leaseId, errorCode(error), Date.now() + 30_000);
       }
       throw error;
     }
@@ -233,8 +231,7 @@ function applyPageAtomically(
       syncEpoch: response.syncEpoch,
       cursorEpoch: response.cursorEpoch,
       accountGeneration: response.accountGeneration,
-      lastChangeSeq:
-        response.changes.at(-1)?.changeSeq ?? parseCursor(response.nextCursor),
+      lastChangeSeq: response.changes.at(-1)?.changeSeq ?? parseCursor(response.nextCursor),
       updatedAt: Date.now(),
     };
     writeCheckpoint(connection.scope, next);
@@ -327,10 +324,7 @@ function applyRemoteMetadata(metadata: FocusMetadataV2): void {
     );
 }
 
-function joinV2Bundle(
-  ledger: FocusLedgerV2,
-  metadata: FocusMetadataV2,
-): DeviceSyncSessionBundle {
+function joinV2Bundle(ledger: FocusLedgerV2, metadata: FocusMetadataV2): DeviceSyncSessionBundle {
   return {
     session: {
       id: ledger.sessionId,
@@ -363,11 +357,7 @@ function enqueueChangedEntities(
     const fingerprint = fingerprintDeviceSyncValue({ deleted: false, payload: entity.payload });
     if (state?.confirmedFingerprint === fingerprint) continue;
 
-    if (
-      entity.entityType === 'focus_ledger_v2' &&
-      state?.baseSnapshot &&
-      !state.deleted
-    ) {
+    if (entity.entityType === 'focus_ledger_v2' && state?.baseSnapshot && !state.deleted) {
       const correctionId = `correction-${fingerprintDeviceSyncValue({
         entityId: entity.entityId,
         before: state.confirmedFingerprint,
@@ -474,12 +464,7 @@ async function exchange(
   connection: DeviceSyncRuntimeConnection,
   request: SyncV2Request,
 ): Promise<SyncV2Response> {
-  return (await requestJson(
-    connection,
-    '/sync/v2/exchange',
-    'POST',
-    request,
-  )) as SyncV2Response;
+  return (await requestJson(connection, '/sync/v2/exchange', 'POST', request)) as SyncV2Response;
 }
 
 async function requestJson(
@@ -584,9 +569,11 @@ function isAck(value: unknown): value is SyncV2Ack {
     isEntityType(value.entityType) &&
     isId(value.entityId) &&
     ['applied', 'duplicate', 'conflict', 'rejected'].includes(String(value.status)) &&
-    (value.revision === null || (Number.isSafeInteger(value.revision) && Number(value.revision) >= 1)) &&
+    (value.revision === null ||
+      (Number.isSafeInteger(value.revision) && Number(value.revision) >= 1)) &&
     (value.fingerprint === null || isFingerprint(value.fingerprint)) &&
-    (value.errorCode === null || (typeof value.errorCode === 'string' && value.errorCode.length <= 240))
+    (value.errorCode === null ||
+      (typeof value.errorCode === 'string' && value.errorCode.length <= 240))
   );
 }
 
@@ -606,9 +593,7 @@ function isChange(value: unknown): value is SyncV2Change {
   );
 }
 
-function stripOutboxState(
-  item: ReturnType<typeof claimV2Outbox>['items'][number],
-): SyncV2Mutation {
+function stripOutboxState(item: ReturnType<typeof claimV2Outbox>['items'][number]): SyncV2Mutation {
   return {
     opId: item.opId,
     entityType: item.entityType,
@@ -631,7 +616,8 @@ function readCheckpoint(scope: string): Checkpoint {
         isRecord(value) &&
         value.version === 2 &&
         (value.state === 'uninitialized' || value.state === 'v2-active') &&
-        (value.cursor === null || (typeof value.cursor === 'string' && parseCursor(value.cursor) >= 0)) &&
+        (value.cursor === null ||
+          (typeof value.cursor === 'string' && parseCursor(value.cursor) >= 0)) &&
         isEpoch(value) &&
         Number.isSafeInteger(value.lastChangeSeq) &&
         Number(value.lastChangeSeq) >= 0 &&

@@ -42,8 +42,10 @@ import {
 import {
   SYNC_V2_MAX_PULL,
   SYNC_V2_MAX_PUSH,
+  SYNC_V2_MAX_ENTITY_BYTES,
   SYNC_V2_PROTOCOL_VERSION,
   isEncryptedFocusGuardEnvelopeV1,
+  paginateSyncV2Response,
   type SyncV2Ack,
   type SyncV2BootstrapEntitiesRequest,
   type SyncV2BootstrapEntitiesResponse,
@@ -58,6 +60,13 @@ import {
   type SyncV2Request,
   type SyncV2Response,
 } from '../shared/sync/v2Protocol';
+import {
+  buildFocusMcpProjection,
+  type FocusProjectionLedger,
+  type FocusProjectionMetadata,
+} from '../shared/sync/focusMcpProjection';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface WorkerEnv {
   FOCUSLINK_ACCOUNT: DurableObjectNamespace<FocusLinkAccount>;
@@ -69,6 +78,8 @@ export interface WorkerEnv {
   FOCUSLINK_BACKUP_KEY?: string;
   FOCUSLINK_BACKUPS?: R2Bucket;
   FOCUSLINK_PUSH_QUEUE?: Queue;
+  /** Dedicated credential used only by the cloud MCP service binding. */
+  FOCUSLINK_MCP_SERVICE_TOKEN?: string;
 }
 
 interface EntityRow extends Record<string, SqlStorageValue> {
@@ -122,6 +133,12 @@ interface V2ChangeRow extends Record<string, SqlStorageValue> {
   payload_json: string | null;
 }
 
+interface FocusProjectionEntityRow extends Record<string, SqlStorageValue> {
+  entity_type: 'focus_ledger_v2' | 'focus_metadata_v2';
+  revision: number;
+  payload_json: string;
+}
+
 interface TaskRow extends Record<string, SqlStorageValue> {
   revision: number;
   source_device_id: string | null;
@@ -157,7 +174,7 @@ export interface V2Identity {
   owner: boolean;
 }
 
-class ProtocolError extends Error {
+export class ProtocolError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
@@ -165,6 +182,63 @@ class ProtocolError extends Error {
   ) {
     super(message);
   }
+}
+
+export interface ParsedV2DeviceCredential {
+  accountPublicId: string;
+  devicePublicId: string;
+  secret: string;
+}
+
+export interface V2DeviceCredentialRecord extends Record<string, SqlStorageValue> {
+  device_id: string;
+  account_public_id: string;
+  secret_hmac: string;
+  scopes_json: string;
+  expires_at: number | null;
+  revoked_at: number | null;
+}
+
+export function parseV2DeviceCredential(header: string): ParsedV2DeviceCredential | null {
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const match = /^fl2_([A-Za-z0-9-]{6,80})_([A-Za-z0-9-]{6,80})_([A-Za-z0-9_-]{32,160})$/.exec(
+    token,
+  );
+  return match ? { accountPublicId: match[1], devicePublicId: match[2], secret: match[3] } : null;
+}
+
+export function authorizeV2CredentialRecord(
+  credential: ParsedV2DeviceCredential,
+  row: V2DeviceCredentialRecord | undefined,
+  secretDigest: string | null,
+  scope: string,
+  now: number,
+): V2Identity {
+  if (
+    !row ||
+    row.account_public_id !== credential.accountPublicId ||
+    row.revoked_at !== null ||
+    (row.expires_at !== null && row.expires_at <= now)
+  ) {
+    throw new ProtocolError(401, 'device_revoked_or_expired', 'device credential is inactive');
+  }
+  if (!secretDigest || !constantTimeEqual(secretDigest, row.secret_hmac)) {
+    throw new ProtocolError(401, 'unauthenticated', 'device credential is invalid');
+  }
+  let scopes: string[];
+  try {
+    const value: unknown = JSON.parse(row.scopes_json);
+    if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+      throw new Error('invalid scopes');
+    }
+    scopes = value;
+  } catch {
+    throw new ProtocolError(500, 'store_corrupt', 'device scope record is invalid');
+  }
+  if (!scopes.includes(scope)) {
+    throw new ProtocolError(403, 'scope_denied', `scope ${scope} required`);
+  }
+  return { deviceId: row.device_id, scopes, owner: false };
 }
 
 /**
@@ -216,12 +290,48 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       const accountId = request.headers.get('x-focuslink-account') ?? '';
       if (!isId(accountId)) throw new ProtocolError(400, 'invalid_account', 'invalid account id');
 
+      if (url.pathname === '/internal/readyz') {
+        if (request.method !== 'GET') {
+          throw new ProtocolError(405, 'method_not_allowed', 'GET required');
+        }
+        if (request.headers.get('x-focuslink-internal') !== this.env.FOCUSLINK_SYNC_TOKEN) {
+          throw new ProtocolError(
+            401,
+            'internal_service_unauthenticated',
+            'service credential required',
+          );
+        }
+        const probe = this.sql
+          .exec<Record<string, SqlStorageValue>>('SELECT 1 AS storage_ready')
+          .one();
+        return json({
+          ok: Number(probe.storage_ready) === 1,
+          storageReady: Number(probe.storage_ready) === 1,
+          authority: 'focuslink-account-do',
+        });
+      }
       if (
         url.pathname === '/internal/v2/backup' &&
         request.method === 'POST' &&
         request.headers.get('x-focuslink-internal') === this.env.FOCUSLINK_SYNC_TOKEN
       ) {
         return json(await this.createV2Backup('daily'));
+      }
+      if (url.pathname === '/internal/mcp/v1/focus/summary') {
+        if (request.method !== 'GET') {
+          throw new ProtocolError(405, 'method_not_allowed', 'GET required');
+        }
+        if (
+          !this.env.FOCUSLINK_MCP_SERVICE_TOKEN ||
+          request.headers.get('x-focuslink-mcp-service') !== this.env.FOCUSLINK_MCP_SERVICE_TOKEN
+        ) {
+          throw new ProtocolError(
+            401,
+            'internal_service_unauthenticated',
+            'cloud MCP service credential required',
+          );
+        }
+        return json(this.focusMcpProjection(url));
       }
 
       if (url.pathname === '/v1/sync' && request.method === 'POST') {
@@ -351,24 +461,31 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         return json(await this.restoreV2Backup(await readJson(request, 16 * 1024)));
       }
       if (url.pathname === '/v1/tasks' && request.method === 'GET') {
+        await this.authorizeV2(request, 'sync:read');
         rejectUnexpectedQuery(url);
         return json(this.getTaskSnapshot());
       }
       if (url.pathname === '/v1/tasks' && request.method === 'POST') {
+        rejectUnexpectedQuery(url);
         const body = await readJson(request, 512 * 1024);
         if (!validateTaskSnapshotPublishRequest(body)) {
           throw new ProtocolError(400, 'invalid_request', 'invalid task snapshot');
         }
+        const identity = await this.authorizeV2(request, 'sync:write');
+        assertV2DeviceBinding(identity, body.deviceId);
         return json(this.publishTaskSnapshot(body));
       }
       if (url.pathname === '/v1/live' && request.method === 'GET') {
+        await this.authorizeV2(request, 'live:read');
         rejectUnexpectedQuery(url);
         return json(this.getLiveSnapshot());
       }
       if (url.pathname === '/v1/live/wait' && request.method === 'GET') {
+        await this.authorizeV2(request, 'live:read');
         return json(await this.waitForLive(url));
       }
       if (url.pathname === '/v1/live/command' && request.method === 'POST') {
+        rejectUnexpectedQuery(url);
         const body = await readJson(request, 16 * 1024);
         const validation = validateLiveFocusCommandRequest(body);
         if (!validation.ok || !validation.request) {
@@ -378,6 +495,8 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
             validation.error ?? 'invalid live command',
           );
         }
+        const identity = await this.authorizeV2(request, 'live:write');
+        assertV2DeviceBinding(identity, validation.request.deviceId);
         return json(this.commandLive(validation.request));
       }
       throw new ProtocolError(404, 'not_found', 'route not found');
@@ -542,6 +661,77 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       INSERT OR IGNORE INTO task_state(singleton, revision) VALUES (1, 0);
       INSERT OR IGNORE INTO live_state(singleton, revision) VALUES (1, 0);
     `);
+  }
+
+  private focusMcpProjection(url: URL) {
+    rejectUnexpectedQuery(url, new Set(['from', 'to', 'limit']));
+    const generatedAt = Date.now();
+    const from = parseBoundedTimestamp(url.searchParams.get('from'), generatedAt - 30 * DAY_MS);
+    const to = parseBoundedTimestamp(url.searchParams.get('to'), generatedAt);
+    const limit = parseBoundedInteger(url.searchParams.get('limit'), 20, 1, 100);
+    if (to <= from || to - from > 10 * 366 * DAY_MS) {
+      throw new ProtocolError(
+        400,
+        'invalid_range',
+        'focus range must be positive and at most 10 years',
+      );
+    }
+
+    const rows = this.sql
+      .exec<FocusProjectionEntityRow>(
+        `SELECT entity_type, revision, payload_json
+           FROM v2_entities
+          WHERE deleted = 0
+            AND payload_json IS NOT NULL
+            AND entity_type IN ('focus_ledger_v2', 'focus_metadata_v2')`,
+      )
+      .toArray();
+    const ledgers: FocusProjectionLedger[] = [];
+    const metadata: FocusProjectionMetadata[] = [];
+    for (const row of rows) {
+      let payload: unknown;
+      try {
+        payload = JSON.parse(row.payload_json);
+      } catch {
+        continue;
+      }
+      if (row.entity_type === 'focus_ledger_v2') {
+        ledgers.push({
+          revision: row.revision,
+          payload: payload as FocusProjectionLedger['payload'],
+        });
+      } else {
+        metadata.push({
+          revision: row.revision,
+          payload: payload as FocusProjectionMetadata['payload'],
+        });
+      }
+    }
+    const latestDevice = this.sql
+      .exec<{ last_seen_at: number | null }>(
+        'SELECT MAX(last_seen_at) AS last_seen_at FROM v2_devices WHERE revoked_at IS NULL',
+      )
+      .one().last_seen_at;
+    const latestLedgerChange = this.sql
+      .exec<{ created_at: number | null }>(
+        `SELECT MAX(created_at) AS created_at
+           FROM v2_changes
+          WHERE entity_type IN ('focus_ledger_v2', 'focus_metadata_v2')`,
+      )
+      .one().created_at;
+    const verifiedCandidates = [latestDevice, latestLedgerChange].filter(
+      (value): value is number => typeof value === 'number' && Number.isSafeInteger(value),
+    );
+    return buildFocusMcpProjection({
+      ledgers,
+      metadata,
+      generatedAt,
+      lastVerifiedAt: verifiedCandidates.length > 0 ? Math.max(...verifiedCandidates) : null,
+      changeSeq: this.v2ChangeSeq(),
+      from,
+      to,
+      limit,
+    });
   }
 
   private sync(accountId: string, request: DeviceSyncRequest): DeviceSyncResponse {
@@ -797,8 +987,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         request.pullLimit + 1,
       )
       .toArray();
-    const selected = available.slice(0, request.pullLimit);
-    const changes: SyncV2Change[] = selected.map((row) => ({
+    const candidateChanges: SyncV2Change[] = available.map((row) => ({
       changeSeq: row.change_seq,
       entityType: row.entity_type,
       entityId: row.entity_id,
@@ -808,7 +997,21 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       payload: row.payload_json ? (JSON.parse(row.payload_json) as SyncV2Payload) : null,
       sourceDeviceId: row.source_device_id,
     }));
-    const nextSeq = changes.at(-1)?.changeSeq ?? cursorSeq;
+    const serverTime = Date.now();
+    const initialCursor = encodeV2Cursor(accountId, epoch, cursorSeq);
+    const page = paginateSyncV2Response(
+      {
+        protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+        ...epoch,
+        acks,
+        serverTime,
+      },
+      candidateChanges,
+      request.pullLimit,
+      initialCursor,
+      (change) => encodeV2Cursor(accountId, epoch, change.changeSeq),
+    );
+    const nextSeq = page.changes.at(-1)?.changeSeq ?? cursorSeq;
     this.sql.exec(
       'UPDATE v2_devices SET watermark = ?, last_seen_at = ? WHERE device_id = ?',
       nextSeq,
@@ -819,10 +1022,8 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       protocolVersion: SYNC_V2_PROTOCOL_VERSION,
       ...epoch,
       acks,
-      changes,
-      nextCursor: encodeV2Cursor(accountId, epoch, nextSeq),
-      hasMore: available.length > selected.length,
-      serverTime: Date.now(),
+      ...page,
+      serverTime,
     };
   }
 
@@ -1012,33 +1213,19 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     if (header === `Bearer ${this.env.FOCUSLINK_SYNC_TOKEN}`) {
       return { deviceId: 'owner-migration', scopes: ['*'], owner: true };
     }
-    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-    const match = /^fl2_([A-Za-z0-9-]{6,80})_([A-Za-z0-9-]{6,80})_([A-Za-z0-9_-]{32,160})$/.exec(
-      token,
-    );
-    if (!match) throw new ProtocolError(401, 'unauthenticated', 'valid device credential required');
+    const credential = parseV2DeviceCredential(header);
+    if (!credential) {
+      throw new ProtocolError(401, 'unauthenticated', 'valid device credential required');
+    }
     const row = this.sql
-      .exec<{
-        device_id: string;
-        account_public_id: string;
-        secret_hmac: string;
-        pepper_version: number;
-        scopes_json: string;
-        expires_at: number | null;
-        revoked_at: number | null;
-      }>(
+      .exec<V2DeviceCredentialRecord & { pepper_version: number }>(
         `SELECT device_id, account_public_id, secret_hmac, pepper_version, scopes_json, expires_at, revoked_at
        FROM v2_devices WHERE device_public_id = ?`,
-        match[2],
+        credential.devicePublicId,
       )
       .toArray()[0];
-    if (
-      !row ||
-      row.account_public_id !== match[1] ||
-      row.revoked_at !== null ||
-      (row.expires_at !== null && row.expires_at <= Date.now())
-    ) {
-      throw new ProtocolError(401, 'device_revoked_or_expired', 'device credential is inactive');
+    if (!row) {
+      return authorizeV2CredentialRecord(credential, undefined, null, scope, Date.now());
     }
     const pepper =
       row.pepper_version === 2
@@ -1046,19 +1233,14 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         : (this.env.FOCUSLINK_DEVICE_PEPPER_PREVIOUS ?? this.env.FOCUSLINK_DEVICE_PEPPER);
     if (!pepper)
       throw new ProtocolError(503, 'credential_missing', 'device pepper is not configured');
-    const digest = await hmacHex(pepper, match[3]);
-    if (!constantTimeEqual(digest, row.secret_hmac)) {
-      throw new ProtocolError(401, 'unauthenticated', 'device credential is invalid');
-    }
-    const scopes = JSON.parse(row.scopes_json) as string[];
-    if (!scopes.includes(scope))
-      throw new ProtocolError(403, 'scope_denied', `scope ${scope} required`);
+    const digest = await hmacHex(pepper, credential.secret);
+    const identity = authorizeV2CredentialRecord(credential, row, digest, scope, Date.now());
     this.sql.exec(
       'UPDATE v2_devices SET last_seen_at = ?, stale = 0 WHERE device_id = ?',
       Date.now(),
-      row.device_id,
+      identity.deviceId,
     );
-    return { deviceId: row.device_id, scopes, owner: false };
+    return identity;
   }
 
   private createPairOffer(value: unknown): {
@@ -1949,7 +2131,11 @@ function validateV2BootstrapEntities(value: SyncV2BootstrapEntitiesRequest): voi
     throw new ProtocolError(400, 'invalid_request', 'invalid v2 bootstrap entities');
   }
   for (const mutation of value.entities) {
-    if (mutation.deviceId !== value.deviceId || validateV2Mutation(mutation)) {
+    const validationError = validateV2Mutation(mutation);
+    if (validationError === 'payload_too_large') {
+      throw new ProtocolError(413, validationError, 'v2 entity exceeds protocol limit');
+    }
+    if (mutation.deviceId !== value.deviceId || validationError) {
       throw new ProtocolError(400, 'invalid_request', 'invalid v2 bootstrap mutation');
     }
   }
@@ -1969,7 +2155,11 @@ function validateV2SyncRequest(value: SyncV2Request): void {
     throw new ProtocolError(400, 'invalid_request', 'invalid v2 sync request');
   }
   for (const mutation of value.mutations) {
-    if (mutation.deviceId !== value.deviceId || validateV2Mutation(mutation)) {
+    const validationError = validateV2Mutation(mutation);
+    if (validationError === 'payload_too_large') {
+      throw new ProtocolError(413, validationError, 'v2 entity exceeds protocol limit');
+    }
+    if (mutation.deviceId !== value.deviceId || validationError) {
       throw new ProtocolError(400, 'invalid_request', 'invalid v2 mutation');
     }
   }
@@ -1996,6 +2186,12 @@ function validateV2Mutation(mutation: SyncV2Mutation): string | null {
     return 'invalid_fingerprint';
   if ((mutation.kind === 'put' || mutation.kind === 'restore') && !isRecord(mutation.payload))
     return 'payload_required';
+  if (
+    mutation.payload !== null &&
+    deviceSyncJsonByteLength(mutation.payload) > SYNC_V2_MAX_ENTITY_BYTES
+  ) {
+    return 'payload_too_large';
+  }
   if ((mutation.kind === 'delete' || mutation.kind === 'purge') && mutation.payload !== null)
     return 'delete_payload_forbidden';
   if (
@@ -2425,13 +2621,44 @@ function decodeCursor(accountId: string, cursor: string | null, maximum: number)
   }
 }
 
-async function readJson(request: Request, limit: number): Promise<unknown> {
+export async function readJson(request: Request, limit: number): Promise<unknown> {
   if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get('content-type') ?? '')) {
     throw new ProtocolError(415, 'unsupported_media_type', 'application/json required');
   }
-  const body = await request.text();
-  if (new TextEncoder().encode(body).byteLength > limit) {
+  const declaredLength = request.headers.get('content-length');
+  if (
+    declaredLength !== null &&
+    /^(0|[1-9]\d*)$/.test(declaredLength) &&
+    Number(declaredLength) > limit
+  ) {
     throw new ProtocolError(413, 'payload_too_large', 'request body exceeds protocol limit');
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const reader = request.body?.getReader();
+  if (reader) {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        await reader.cancel().catch(() => undefined);
+        throw new ProtocolError(413, 'payload_too_large', 'request body exceeds protocol limit');
+      }
+      chunks.push(value);
+    }
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  let body: string;
+  try {
+    body = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new ProtocolError(400, 'invalid_json', 'request body is not valid UTF-8 JSON');
   }
   try {
     return JSON.parse(body) as unknown;
@@ -2440,10 +2667,36 @@ async function readJson(request: Request, limit: number): Promise<unknown> {
   }
 }
 
-function rejectUnexpectedQuery(url: URL): void {
-  if ([...url.searchParams].length > 0) {
+export function rejectUnexpectedQuery(url: URL, allowed: ReadonlySet<string> = new Set()): void {
+  if ([...url.searchParams.keys()].some((key) => !allowed.has(key))) {
     throw new ProtocolError(400, 'invalid_query', 'route does not accept query fields');
   }
+}
+
+function parseBoundedTimestamp(value: string | null, fallback: number): number {
+  if (value === null) return fallback;
+  if (!/^(0|[1-9]\d*)$/.test(value)) {
+    throw new ProtocolError(400, 'invalid_query', 'timestamp must be a non-negative integer');
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new ProtocolError(400, 'invalid_query', 'timestamp is too large');
+  }
+  return parsed;
+}
+
+function parseBoundedInteger(
+  value: string | null,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  if (value === null) return fallback;
+  const parsed = parseUnsigned(value, 'limit');
+  if (parsed < minimum || parsed > maximum) {
+    throw new ProtocolError(400, 'invalid_query', `limit must be ${minimum}..${maximum}`);
+  }
+  return parsed;
 }
 
 function parseUnsigned(value: string | null, name: string): number {

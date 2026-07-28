@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Maximize2, Minimize2, PictureInPicture2 } from 'lucide-react';
 import {
-  compactDeviceId,
   formatClockDuration,
   idleLiveFocusSnapshot,
   liveConnectionCopy,
@@ -17,6 +16,7 @@ import type { MobileAuthorityMode } from './cache';
 import { MobileConfirmDialog } from './MobileConfirmDialog';
 import { MobileTemporalRibbon } from './MobileTemporalRibbon';
 import { flattenSyncedTaskTree } from './taskBrowserModel';
+import { focusDeviceLabel, isTabletFocusViewport } from './viewportPolicy';
 
 export type MobileFocusCommand = 'start' | 'pause' | 'resume' | 'finish';
 
@@ -75,6 +75,9 @@ export function FocusConsole({
 }: FocusConsoleProps) {
   const [now, setNow] = useState(() => Date.now());
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
+  const [tabletViewport, setTabletViewport] = useState(() =>
+    isTabletFocusViewport(window.innerWidth),
+  );
   const current = snapshot ?? idleLiveFocusSnapshot(0, now);
   const active = current.state !== 'idle';
   const cachedRemoteOnly = allowOfflineStart && !localOfflineMode;
@@ -95,6 +98,12 @@ export function FocusConsole({
     return () => window.clearTimeout(timer);
   }, [active, current.revision, current.serverTime, current.state]);
 
+  useEffect(() => {
+    const update = () => setTabletViewport(isTabletFocusViewport(window.innerWidth));
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
   const durations = useMemo(() => projectLiveFocusDurations(current, now), [current, now]);
   const controls = runtimeControlAvailability({
     snapshot: current,
@@ -105,8 +114,7 @@ export function FocusConsole({
     allowOfflineStart,
   });
   const connectionCopy = liveConnectionCopy(connection, snapshot !== null);
-  const recentDevice =
-    current.ownerDeviceId === localDeviceId ? '此设备' : compactDeviceId(current.ownerDeviceId);
+  const recentDevice = focusDeviceLabel(current.ownerDeviceId, localDeviceId, tabletViewport);
   const showingCachedSnapshot = snapshotSource === 'cache' && connection !== 'live';
 
   const requestFinish = () => {
@@ -237,7 +245,7 @@ export function FocusConsole({
             <RuntimeMetric label="总历时" value={formatClockDuration(durations.wallElapsedMs)} />
           </div>
 
-          {active && nativeSystemControls.available && (
+          {active && nativeSystemControls.available && tabletViewport && (
             <section className="focus-system-tools" aria-label="平板专注显示">
               <div className="focus-system-tools-copy">
                 <strong>平板专注显示</strong>

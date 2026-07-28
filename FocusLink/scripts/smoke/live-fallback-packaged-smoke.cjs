@@ -159,7 +159,7 @@ async function assertLoopbackClosed(endpoint) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 800);
   try {
-    const response = await fetch(`${endpoint}/v1/live`, {
+    const response = await fetch(`${endpoint}/sync/v2/live`, {
       signal: controller.signal,
       redirect: 'error',
     });
