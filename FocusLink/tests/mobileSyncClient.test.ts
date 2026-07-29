@@ -7,9 +7,8 @@ import {
 } from '../src/mobile/syncClient';
 import {
   cloudOnlyMobileSyncEndpoint,
-  defaultNativeEndpointForMode,
+  configuredNativeEndpoint,
   loadConnectionPreferences,
-  STAGING_FOCUSLINK_ENDPOINT,
 } from '../src/mobile/preferences';
 
 describe('mobile sync client request recovery', () => {
@@ -18,12 +17,12 @@ describe('mobile sync client request recovery', () => {
     vi.unstubAllGlobals();
   });
 
-  it('pins the non-production staging build to the staging FocusLink authority', () => {
-    expect(defaultNativeEndpointForMode('staging')).toBe(STAGING_FOCUSLINK_ENDPOINT);
-    expect(STAGING_FOCUSLINK_ENDPOINT).toBe(
-      'https://foxlink-mcp-staging.focuslink-poyi-6465e9.workers.dev',
+  it('uses only an explicitly injected HTTPS candidate endpoint', () => {
+    expect(configuredNativeEndpoint(undefined)).toBe('');
+    expect(configuredNativeEndpoint('http://127.0.0.1:8787')).toBe('');
+    expect(configuredNativeEndpoint('https://candidate.example.test/')).toBe(
+      'https://candidate.example.test',
     );
-    expect(defaultNativeEndpointForMode('production')).toBe('');
   });
 
   it('exchanges a one-time pairing code and sends no existing bearer credential', async () => {

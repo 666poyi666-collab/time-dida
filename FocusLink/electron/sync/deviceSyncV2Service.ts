@@ -50,6 +50,7 @@ import {
   readDesktopV2Status,
   readV2EntityState,
   recordRemoteV2History,
+  repairSyntheticCorrectionConflicts,
   requeueStaleGenerationV2Outbox,
   retryV2Lease,
   settleV2Ack,
@@ -147,6 +148,7 @@ async function runDesktopSyncV2WithConnection(
       writeCheckpoint(connection.scope, checkpoint);
     }
 
+    repairSyntheticCorrectionConflicts(connection.scope);
     getDb().transaction(() => enqueueChangedEntities(connection, checkpoint.accountGeneration))();
     checkpoint = await drainPages(connection, checkpoint, result, true);
     const localStatus = readDesktopV2Status(connection.scope);
@@ -487,9 +489,17 @@ function enqueueChangedEntities(
         before: state.baseSnapshot as FocusLedgerV2,
         after: entity.payload as FocusLedgerV2,
         reason: 'local_ledger_changed_after_sync',
-        createdAt: Date.now(),
+        // A correction is an immutable logical record. Reusing its stable end
+        // timestamp keeps retries byte-identical across automatic sync rounds.
+        createdAt: (entity.payload as FocusLedgerV2).endedAt,
         createdByDeviceId: connection.deviceId,
       };
+      const confirmedCorrection = readV2EntityState(
+        connection.scope,
+        'focus_ledger_correction_v2',
+        correctionId,
+      );
+      if (confirmedCorrection && !confirmedCorrection.deleted) continue;
       enqueueV2Mutation(connection.scope, {
         opId: `v2-${fingerprintDeviceSyncValue({ connection: connection.scope, payload })}`,
         entityType: 'focus_ledger_correction_v2',

@@ -1,6 +1,5 @@
 // IPC 处理器 - 主进程接收渲染进程调用
 // 所有 IPC 通道类型安全；关键操作写日志
-import crypto from 'node:crypto';
 import { ipcMain, BrowserWindow, app } from 'electron';
 import type { FocusTimerController } from './timer/focusTimerController.js';
 import { LocalTaskProvider } from './tasks/localProvider.js';
@@ -54,13 +53,6 @@ import {
   runDeviceSync,
 } from './sync/deviceSyncService.js';
 import {
-  EMBEDDED_DEVICE_SYNC_ENDPOINT,
-  createEmbeddedPairingOffer,
-  reconcileEmbeddedDeviceSyncServer,
-} from './sync/embeddedDeviceSyncServer.js';
-import { hasDeviceSyncToken } from './sync/deviceSyncCredentials.js';
-import { coordinateAndroidSyncDevices } from './sync/androidSyncCoordinator.js';
-import {
   listSessions,
   listSessionsInRange,
   getSession as getSessionDb,
@@ -73,6 +65,15 @@ import {
   deleteSyncQueueForSegments,
 } from './db/index.js';
 import { exportSessionById } from './export.js';
+
+function isLoopbackEndpoint(value: string): boolean {
+  try {
+    const host = new URL(value).hostname;
+    return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  } catch {
+    return false;
+  }
+}
 import { buildSessionAnalytics } from '@shared/sessionAnalytics';
 import { logger } from './logger.js';
 import type {
@@ -605,13 +606,6 @@ export function registerIpc(
   ipcMain.handle('device-sync:status', () => getDeviceSyncStatus());
   ipcMain.handle('device-sync:configure', async (_e, input) => {
     configureDeviceSync(input);
-    try {
-      await reconcileEmbeddedDeviceSyncServer();
-    } catch (error) {
-      logger.warn('deviceSync', 'embedded service reconciliation failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
     const next = getSettings();
     onSettingsChanged(['deviceSync'], next);
     for (const w of BrowserWindow.getAllWindows()) {
@@ -623,31 +617,13 @@ export function registerIpc(
     return getDeviceSyncStatus();
   });
   ipcMain.handle('device-sync:quick-setup', async () => {
-    configureDeviceSync({
-      enabled: true,
-      endpoint: EMBEDDED_DEVICE_SYNC_ENDPOINT,
-      autoSync: true,
-      liveControlEnabled: true,
-      accessToken: hasDeviceSyncToken() ? undefined : crypto.randomBytes(32).toString('base64url'),
-    });
-    await reconcileEmbeddedDeviceSyncServer();
-
-    let healthResponse: Response;
-    try {
-      healthResponse = await fetch(`${EMBEDDED_DEVICE_SYNC_ENDPOINT}/health`, {
-        signal: AbortSignal.timeout(5_000),
-      });
-    } catch (error) {
-      throw new Error(
-        `本机同步服务启动失败：${error instanceof Error ? error.message : String(error)}`,
-      );
+    const status = getDeviceSyncStatus();
+    if (!status.configured) {
+      throw new Error('请先配置云端同步地址和设备凭据；桌面端不再提供本机中继');
     }
-    if (!healthResponse.ok) {
-      throw new Error(`本机同步服务健康检查失败（HTTP ${healthResponse.status}）`);
+    if (isLoopbackEndpoint(status.endpoint)) {
+      throw new Error('本机回环同步已退役，请重新通过云端配对配置此设备');
     }
-
-    const { connectedAndroidDevices, pairedAndroidDevices, androidPairingErrors } =
-      await coordinateAndroidSyncDevices();
     let sync: Awaited<ReturnType<typeof runDeviceSync>> | null = null;
     let syncError: string | null = null;
     try {
@@ -670,13 +646,13 @@ export function registerIpc(
       status: getDeviceSyncStatus(),
       sync,
       syncError,
-      connectedAndroidDevices,
-      pairedAndroidDevices,
-      androidPairingErrors,
+      connectedAndroidDevices: [],
     };
   });
   ipcMain.handle('device-sync:run', () => runDeviceSync());
-  ipcMain.handle('device-sync:create-pairing-offer', () => createEmbeddedPairingOffer());
+  ipcMain.handle('device-sync:create-pairing-offer', () => {
+    throw new Error('本机配对码已退役，请使用云端账号配对流程');
+  });
 
   // ============ 番茄 Todo 同步（独立并行通道） ============
   /** 手动同步单个 segment 到番茄 Todo */

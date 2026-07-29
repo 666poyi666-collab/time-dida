@@ -62,11 +62,6 @@ import {
   getPendingTomatodoCount,
 } from './sync/tomatodoSyncService.js';
 import { runAutomaticDeviceSync } from './sync/deviceSyncService.js';
-import { coordinateAndroidSyncDevices } from './sync/androidSyncCoordinator.js';
-import {
-  closeEmbeddedDeviceSyncServer,
-  reconcileEmbeddedDeviceSyncServer,
-} from './sync/embeddedDeviceSyncServer.js';
 import { startFoxlinkBusinessApi, type FoxlinkBusinessApi } from './mcp/businessApi.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1114,16 +1109,11 @@ app.whenReady().then(() => {
     }
     if (domains.includes('deviceSync')) {
       timer.reloadConfiguration();
-      void coordinateAndroidSyncDevices()
-        .then((result) => {
-          if (result.pairedAndroidDevices.length > 0) return runAutomaticDeviceSync();
-          return undefined;
-        })
-        .catch((error) => {
-          logger.warn('deviceSync', 'Android coordination after settings change failed', {
-            error: error instanceof Error ? error.message : String(error),
-          });
+      void runAutomaticDeviceSync().catch((error) => {
+        logger.warn('deviceSync', 'cloud sync after settings change failed', {
+          error: error instanceof Error ? error.message : String(error),
         });
+      });
     }
     // 只有快捷键域变更才重新注册 - 主题/小窗/任务来源变更不再触发快捷键重注册
     if (domains.includes('hotkeys')) {
@@ -1163,18 +1153,11 @@ app.whenReady().then(() => {
       });
     });
 
-  void reconcileEmbeddedDeviceSyncServer()
-    .then(async () => {
-      const pairing = await coordinateAndroidSyncDevices();
-      if (process.argv.includes('--repair-android-sync'))
-        logger.info('deviceSync', 'requested Android pairing repair completed', pairing);
-      return runAutomaticDeviceSync();
-    })
-    .catch((error) => {
-      logger.warn('deviceSync', 'startup sync failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+  void runAutomaticDeviceSync().catch((error) => {
+    logger.warn('deviceSync', 'startup sync failed', {
+      error: error instanceof Error ? error.message : String(error),
     });
+  });
 
   // 启动后立即检查，并持续探测番茄 Todo：用户晚于 FocusLink 启动客户端时也能自动补传。
   const TOMATODO_UPLOAD_INTERVAL_MS = 20_000;
@@ -1211,21 +1194,6 @@ app.whenReady().then(() => {
     });
   }, DEVICE_SYNC_INTERVAL_MS);
   deviceSyncInterval.unref?.();
-
-  const ANDROID_BRIDGE_INTERVAL_MS = 30_000;
-  const androidBridgeInterval = setInterval(() => {
-    void coordinateAndroidSyncDevices()
-      .then((result) => {
-        if (result.pairedAndroidDevices.length > 0) return runAutomaticDeviceSync();
-        return undefined;
-      })
-      .catch((error) => {
-        logger.warn('deviceSync', 'periodic Android coordination failed', {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-  }, ANDROID_BRIDGE_INTERVAL_MS);
-  androidBridgeInterval.unref?.();
 
   // 专注小窗 IPC 控制
   ipcMain.on('mini:show', () => showMiniWindow());
@@ -1270,16 +1238,11 @@ app.whenReady().then(() => {
   powerMonitor.on('resume', () => {
     logger.info('main', 'system resume');
     timer?.reconnect();
-    void reconcileEmbeddedDeviceSyncServer()
-      .then(async () => {
-        await coordinateAndroidSyncDevices();
-        return runAutomaticDeviceSync();
-      })
-      .catch((error) => {
-        logger.warn('deviceSync', 'resume sync failed', {
-          error: error instanceof Error ? error.message : String(error),
-        });
+    void runAutomaticDeviceSync().catch((error) => {
+      logger.warn('deviceSync', 'resume sync failed', {
+        error: error instanceof Error ? error.message : String(error),
       });
+    });
   });
 
   app.on('activate', () => {
@@ -1325,13 +1288,6 @@ app.on('before-quit', (e) => {
     runtimeUiInitialized = false;
     destroyTray();
     unregisterAll();
-    try {
-      await closeEmbeddedDeviceSyncServer();
-    } catch (error) {
-      logger.warn('deviceSync', 'embedded service shutdown failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
     await foxlinkBusinessApi?.close();
     foxlinkBusinessApi = null;
     closeDatabase();

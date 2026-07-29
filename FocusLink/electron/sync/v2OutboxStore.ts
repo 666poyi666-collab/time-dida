@@ -52,6 +52,60 @@ export interface DesktopV2Status {
   rejected: number;
 }
 
+/**
+ * Removes only the terminal conflicts produced by the pre-0.12.70 correction
+ * payload timestamp bug. The authoritative correction and every non-matching
+ * conflict remain intact; the next exchange proves the surviving correction.
+ */
+export function repairSyntheticCorrectionConflicts(
+  connectionScope: string,
+  now = Date.now(),
+): number {
+  const db = getDb();
+  return db.transaction(() => {
+    const rows = db
+      .prepare(
+        `SELECT * FROM sync_v2_outbox
+         WHERE connection_scope = ?
+           AND entity_type = 'focus_ledger_correction_v2'
+           AND state = 'conflict'
+           AND base_revision = 0
+           AND base_fingerprint IS NULL
+           AND error_code = 'revision_conflict'`,
+      )
+      .all(connectionScope) as OutboxRow[];
+    const resolveConflict = db.prepare(
+      `UPDATE sync_v2_conflicts
+       SET status = 'resolved', resolution_op_id = ?, resolved_at = ?
+       WHERE connection_scope = ? AND conflict_id = ? AND status = 'open'`,
+    );
+    const history = db.prepare(
+      `INSERT OR REPLACE INTO sync_v2_operation_history (
+       connection_scope, op_id, entity_type, entity_id, status, revision,
+       error_code, completed_at
+      ) VALUES (?, ?, ?, ?, 'locally-superseded', NULL,
+       'synthetic_correction_conflict_repaired', ?)`,
+    );
+    const remove = db.prepare(
+      `DELETE FROM sync_v2_outbox
+       WHERE connection_scope = ? AND op_id = ? AND state = 'conflict'`,
+    );
+    let repaired = 0;
+    for (const row of rows) {
+      if (!isSyntheticCorrectionConflict(row)) continue;
+      resolveConflict.run(
+        'auto-synthetic-correction-repair-v1',
+        now,
+        connectionScope,
+        `ack-${row.op_id}`,
+      );
+      history.run(connectionScope, row.op_id, row.entity_type, row.entity_id, now);
+      repaired += remove.run(connectionScope, row.op_id).changes;
+    }
+    return repaired;
+  })();
+}
+
 export function migrateLegacyV2State(connectionScope: string, now = Date.now()): void {
   const marker = `syncV2.desktop.legacyMigrated.${connectionScope}`;
   const ownerKey = 'syncV2.desktop.legacyMigrationOwnerScope';
@@ -601,6 +655,27 @@ function writeV2Conflict(
       JSON.stringify(input.sourceDeviceIds),
       input.now,
     );
+}
+
+function isSyntheticCorrectionConflict(row: OutboxRow): boolean {
+  if (!row.entity_id.startsWith('correction-') || row.payload === null) return false;
+  try {
+    const payload = JSON.parse(row.payload) as Record<string, unknown>;
+    return (
+      payload.correctionId === row.entity_id &&
+      typeof payload.sessionId === 'string' &&
+      typeof payload.baseLedgerRevision === 'number' &&
+      payload.reason === 'local_ledger_changed_after_sync' &&
+      typeof payload.createdAt === 'number' &&
+      typeof payload.createdByDeviceId === 'string' &&
+      payload.before !== null &&
+      typeof payload.before === 'object' &&
+      payload.after !== null &&
+      typeof payload.after === 'object'
+    );
+  } catch {
+    return false;
+  }
 }
 
 function entityRow(row: {

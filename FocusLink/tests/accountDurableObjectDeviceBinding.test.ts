@@ -12,12 +12,30 @@ import {
   ProtocolError,
   assertV2DeviceBinding,
   authorizeV2CredentialRecord,
+  encodeDevicePublicId,
   parseV2DeviceCredential,
   readJson,
   rejectUnexpectedQuery,
   type V2DeviceCredentialRecord,
   type V2Identity,
 } from '../cloudflare/accountDurableObject';
+
+describe('device public id encoding', () => {
+  it('never emits the underscore reserved as an fl2 credential separator', () => {
+    const value = encodeDevicePublicId(
+      Uint8Array.from([255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]),
+    );
+    expect(value).toBe('ffffffffffffffffffffffff');
+    expect(value).toMatch(/^[A-Za-z0-9-]{6,80}$/);
+    expect(value).not.toContain('_');
+  });
+
+  it('requires the full 96 bits of random input', () => {
+    expect(() => encodeDevicePublicId(new Uint8Array(11))).toThrow(
+      'device public id requires 12 random bytes',
+    );
+  });
+});
 
 function identity(deviceId: string, owner = false): V2Identity {
   return { deviceId, scopes: ['sync:write'], owner };

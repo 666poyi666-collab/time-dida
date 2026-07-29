@@ -222,25 +222,31 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
     );
   });
 
-  it('allows only the dedicated MCP service credential onto the internal focus projection', async () => {
-    const denied = await call('/internal/mcp/v1/focus/summary');
-    expect(denied.status).toBe(401);
-
-    const forwarded: ForwardedCall[] = [];
-    const env = makeEnv(forwarded);
-    const accepted = await call(
+  it('allows only the dedicated MCP service credential onto each internal focus projection', async () => {
+    for (const path of [
       '/internal/mcp/v1/focus/summary?limit=10',
-      { mcpService: 'mcp-service-token-which-is-not-a-device-token' },
-      env,
-    );
-    expect(accepted.status).toBe(200);
-    expect(forwarded).toHaveLength(1);
-    expect(forwarded[0]).toMatchObject({
-      authorization: null,
-      forwardedAuthorization: null,
-      mcpService: 'mcp-service-token-which-is-not-a-device-token',
-      account: 'account-public',
-    });
+      '/internal/mcp/v1/focus/records?limit=10',
+    ]) {
+      const denied = await call(path);
+      expect(denied.status).toBe(401);
+
+      const forwarded: ForwardedCall[] = [];
+      const env = makeEnv(forwarded);
+      const accepted = await call(
+        path,
+        { mcpService: 'mcp-service-token-which-is-not-a-device-token' },
+        env,
+      );
+      expect(accepted.status).toBe(200);
+      expect(forwarded).toHaveLength(1);
+      expect(forwarded[0]).toMatchObject({
+        authorization: null,
+        forwardedAuthorization: null,
+        mcpService: 'mcp-service-token-which-is-not-a-device-token',
+        account: 'account-public',
+      });
+      expect(forwarded[0]!.url).toContain(path);
+    }
   });
 
   it('reports ready only after the Account DO storage probe succeeds', async () => {

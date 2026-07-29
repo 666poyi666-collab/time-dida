@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相；当前实现 v0.12.69
+> 状态：v0.12.x 后端单一真相；当前实现 v0.12.70
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -14,6 +14,14 @@
 - v0.12.60 在 v1 实时控制面之外增加 Sync v2：三类实体独立 revision；SQLite/IndexedDB 租约 Outbox、base snapshot、显式 epoch、设备水位、tombstone/graveyard 和冲突中心共同保证本地修改不会被静默覆盖。
 
 ## Sync v2 不变量
+
+- Account Durable Object 是唯一账户 authority；Windows、手机和平板都直接访问云端，Electron 不运行内嵌同步服务，不维护 ADB reverse，也不自动配对 Android。
+- `focus_ledger_correction_v2` 的 logical identity、payload 时间戳与 opId 必须跨同步轮次稳定。历史缺陷修复只处理无 base 的 correction revision conflict；操作历史保留，真实 conflict 不自动关闭。
+- 移动 App 打开并在线时立即拉取账本、任务与 live，并在前台长轮询。被系统结束后不终止云端 live，也不将缓存当成本地计时 authority；重新打开后从 Account DO 收敛。
+- 离线移动会话只作为本机临时账本，完成后持久排队。联网时若存在不同 cloud live，状态固定为 `forked-local`，不得自动覆盖或合并。
+- ChatGPT MCP 的状态、今日明细和记录列表直接读取私有 Account DO 记录 DTO；D1 只用于诊断。MCP 仅有 `focuslink:read`，不提供写工具或第二套 identity。
+- Account DO 冷启动先读取单行 `account_schema_version`；已迁移账户不得在每次唤醒时重放全量 schema/index DDL。旧 `authority_observation_schema_version=2` 账户只补写新标记，避免大账户触发 Cloudflare 行读取上限。
+- cloud live 结束必须在同一 authority 中写入 v1 兼容 bundle 与 v2 `focus_ledger_v2`/`focus_metadata_v2`。历史 v1-only 完成账本按有界批次补迁移；已有任一 v2 实体保持不变，不生成重复 ledger/metadata。
 
 - 已结束时间账本不可直接覆盖；时间、segment 或 pause 修正都生成带原因的 correction。
 - metadata 以 base/local/remote 三方比较；标题、学科、任务、备注双边异值进入冲突，标签以稳定 tagId 合并。

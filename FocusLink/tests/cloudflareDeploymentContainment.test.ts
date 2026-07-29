@@ -67,6 +67,47 @@ describe('FocusLink authority deployment containment', () => {
     expect(source).toContain('this.assertAuthorityObservationDependencies()');
   });
 
+  it('does not replay the full account schema on every Durable Object wake', () => {
+    const source = fs.readFileSync(
+      path.join(projectRoot, 'cloudflare', 'accountDurableObject.ts'),
+      'utf8',
+    );
+    const initializer = source.slice(source.indexOf('private initializeSchema(): void'));
+    const fastPath = initializer.indexOf("WHERE key = 'account_schema_version'");
+    const legacyFastPath = initializer.indexOf(
+      "WHERE key = 'authority_observation_schema_version'",
+    );
+    const fullSchema = initializer.indexOf('CREATE TABLE IF NOT EXISTS entities');
+
+    expect(fastPath).toBeGreaterThanOrEqual(0);
+    expect(legacyFastPath).toBeGreaterThan(fastPath);
+    expect(fullSchema).toBeGreaterThan(legacyFastPath);
+    expect(initializer).toContain("VALUES ('account_schema_version', '1')");
+  });
+
+  it('publishes completed live sessions to v2 and backfills legacy-only bundles', () => {
+    const source = fs.readFileSync(
+      path.join(projectRoot, 'cloudflare', 'accountDurableObject.ts'),
+      'utf8',
+    );
+    const publishLive = source.slice(
+      source.indexOf('private publishLiveBundle'),
+      source.indexOf('private readLive'),
+    );
+    const syncV2 = source.slice(
+      source.indexOf('private syncV2'),
+      source.indexOf('private applyV2Mutation'),
+    );
+
+    expect(publishLive).toContain("'focus_ledger_v2'");
+    expect(publishLive).toContain("'focus_metadata_v2'");
+    expect(publishLive).toContain('splitBundleForSyncV2(bundle, deviceId)');
+    expect(syncV2.indexOf('this.backfillLegacyCompletedBundles()')).toBeLessThan(
+      syncV2.indexOf('const epoch = this.v2Epoch()'),
+    );
+    expect(source).toContain("'legacy_v1_completed_bundle_backfill_version', '1'");
+  });
+
   it('keeps the retired Node service from becoming a second production authority', () => {
     const server = fs.readFileSync(path.join(projectRoot, 'cloud', 'server.ts'), 'utf8');
     const dockerfile = fs.readFileSync(path.join(projectRoot, 'cloud', 'Dockerfile'), 'utf8');

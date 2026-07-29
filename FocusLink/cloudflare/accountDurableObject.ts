@@ -46,11 +46,15 @@ import {
   SYNC_V2_PROTOCOL_VERSION,
   isEncryptedFocusGuardEnvelopeV1,
   paginateSyncV2Response,
+  splitBundleForSyncV2,
   type SyncV2Ack,
   type SyncV2BootstrapEntitiesRequest,
   type SyncV2BootstrapEntitiesResponse,
   type SyncV2BootstrapInventoryRequest,
   type SyncV2BootstrapInventoryResponse,
+  type FocusLedgerCorrectionV2,
+  type FocusLedgerV2,
+  type FocusMetadataV2,
   type SyncV2Change,
   type SyncV2EntityType,
   type SyncV2Epoch,
@@ -61,7 +65,9 @@ import {
   type SyncV2Response,
 } from '../shared/sync/v2Protocol';
 import {
+  buildFocusMcpRecordsProjection,
   buildFocusMcpProjection,
+  type FocusProjectionCorrection,
   type FocusProjectionLedger,
   type FocusProjectionMetadata,
 } from '../shared/sync/focusMcpProjection';
@@ -147,8 +153,16 @@ interface V2ChangeRow extends Record<string, SqlStorageValue> {
   payload_json: string | null;
 }
 
+interface LegacyCompletedBundleRow extends Record<string, SqlStorageValue> {
+  entity_id: string;
+  payload_json: string;
+  device_id: string | null;
+  has_ledger: number;
+  has_metadata: number;
+}
+
 interface FocusProjectionEntityRow extends Record<string, SqlStorageValue> {
-  entity_type: 'focus_ledger_v2' | 'focus_metadata_v2';
+  entity_type: 'focus_ledger_v2' | 'focus_metadata_v2' | 'focus_ledger_correction_v2';
   revision: number;
   payload_json: string;
 }
@@ -360,7 +374,10 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       ) {
         return json(await this.createV2Backup('daily'));
       }
-      if (url.pathname === '/internal/mcp/v1/focus/summary') {
+      if (
+        url.pathname === '/internal/mcp/v1/focus/summary' ||
+        url.pathname === '/internal/mcp/v1/focus/records'
+      ) {
         if (request.method !== 'GET') {
           throw new ProtocolError(405, 'method_not_allowed', 'GET required');
         }
@@ -374,7 +391,11 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
             'cloud MCP service credential required',
           );
         }
-        return json(this.focusMcpProjection(url));
+        return json(
+          url.pathname.endsWith('/records')
+            ? this.focusMcpRecordsProjection(url)
+            : this.focusMcpProjection(url),
+        );
       }
 
       if (url.pathname === '/v1/sync' && request.method === 'POST') {
@@ -551,6 +572,34 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
   }
 
   private initializeSchema(): void {
+    let metaAvailable = true;
+    let current: MetaRow | undefined;
+    try {
+      current = this.sql
+        .exec<MetaRow>("SELECT value FROM meta WHERE key = 'account_schema_version'")
+        .toArray()[0];
+    } catch {
+      metaAvailable = false;
+    }
+    if (current?.value === '1') return;
+    if (current && current.value !== '1') {
+      throw new Error('account schema version is invalid');
+    }
+    if (metaAvailable) {
+      // Accounts created before account_schema_version already completed the
+      // authority-observation v2 migration. Mark them ready without replaying
+      // CREATE INDEX statements over a large Durable Object on every wake.
+      const legacyReady = this.sql
+        .exec<MetaRow>("SELECT value FROM meta WHERE key = 'authority_observation_schema_version'")
+        .toArray()[0];
+      if (legacyReady?.value === '2') {
+        this.sql.exec("INSERT INTO meta(key, value) VALUES ('account_schema_version', '1')");
+        return;
+      }
+    }
+
+    // A brand-new Durable Object has no meta table yet. Create the complete
+    // schema below; established accounts take the constant-row fast path.
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS meta (
         key TEXT PRIMARY KEY,
@@ -713,6 +762,11 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       INSERT OR IGNORE INTO live_state(singleton, revision) VALUES (1, 0);
     `);
     this.migrateAuthorityObservationSchema();
+    this.sql.exec(`
+      INSERT INTO meta(key, value)
+      VALUES ('account_schema_version', '1')
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value;
+    `);
   }
 
   private migrateAuthorityObservationSchema(): void {
@@ -770,11 +824,14 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
            FROM v2_entities
           WHERE deleted = 0
             AND payload_json IS NOT NULL
-            AND entity_type IN ('focus_ledger_v2', 'focus_metadata_v2')`,
+            AND entity_type IN (
+              'focus_ledger_v2', 'focus_metadata_v2', 'focus_ledger_correction_v2'
+            )`,
       )
       .toArray();
     const ledgers: FocusProjectionLedger[] = [];
     const metadata: FocusProjectionMetadata[] = [];
+    const corrections: FocusProjectionCorrection[] = [];
     for (const row of rows) {
       let payload: unknown;
       try {
@@ -788,9 +845,91 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
           payload: payload as FocusProjectionLedger['payload'],
         });
       } else {
-        metadata.push({
+        if (row.entity_type === 'focus_metadata_v2') {
+          metadata.push({
+            revision: row.revision,
+            payload: payload as FocusProjectionMetadata['payload'],
+          });
+        } else {
+          corrections.push({
+            revision: row.revision,
+            payload: payload as FocusProjectionCorrection['payload'],
+          });
+        }
+      }
+    }
+    const latestDevice = this.sql
+      .exec<{ last_seen_at: number | null }>(
+        'SELECT MAX(last_seen_at) AS last_seen_at FROM v2_devices WHERE revoked_at IS NULL',
+      )
+      .one().last_seen_at;
+    const latestLedgerChange = this.sql
+      .exec<{ created_at: number | null }>(
+        `SELECT MAX(created_at) AS created_at
+           FROM v2_changes
+          WHERE entity_type IN (
+            'focus_ledger_v2', 'focus_metadata_v2', 'focus_ledger_correction_v2'
+          )`,
+      )
+      .one().created_at;
+    const verifiedCandidates = [latestDevice, latestLedgerChange].filter(
+      (value): value is number => typeof value === 'number' && Number.isSafeInteger(value),
+    );
+    return buildFocusMcpProjection({
+      ledgers,
+      metadata,
+      corrections,
+      generatedAt,
+      lastVerifiedAt: verifiedCandidates.length > 0 ? Math.max(...verifiedCandidates) : null,
+      changeSeq: this.v2ChangeSeq(),
+      from,
+      to,
+      limit,
+    });
+  }
+
+  private focusMcpRecordsProjection(url: URL) {
+    rejectUnexpectedQuery(url, new Set(['from', 'to', 'limit']));
+    const generatedAt = Date.now();
+    const from = parseBoundedTimestamp(url.searchParams.get('from'), generatedAt - 30 * DAY_MS);
+    const to = parseBoundedTimestamp(url.searchParams.get('to'), generatedAt);
+    const limit = parseBoundedInteger(url.searchParams.get('limit'), 50, 1, 100);
+    if (to <= from || to - from > 10 * 366 * DAY_MS) {
+      throw new ProtocolError(
+        400,
+        'invalid_range',
+        'focus range must be positive and at most 10 years',
+      );
+    }
+    const rows = this.sql
+      .exec<FocusProjectionEntityRow>(
+        `SELECT entity_type, revision, payload_json
+           FROM v2_entities
+          WHERE deleted = 0
+            AND payload_json IS NOT NULL
+            AND entity_type IN (
+              'focus_ledger_v2', 'focus_metadata_v2', 'focus_ledger_correction_v2'
+            )`,
+      )
+      .toArray();
+    const ledgers: FocusProjectionLedger[] = [];
+    const metadata: FocusProjectionMetadata[] = [];
+    const corrections: FocusProjectionCorrection[] = [];
+    for (const row of rows) {
+      let payload: unknown;
+      try {
+        payload = JSON.parse(row.payload_json);
+      } catch {
+        continue;
+      }
+      if (row.entity_type === 'focus_ledger_v2') {
+        ledgers.push({ revision: row.revision, payload: payload as FocusLedgerV2 });
+      } else if (row.entity_type === 'focus_metadata_v2') {
+        metadata.push({ revision: row.revision, payload: payload as FocusMetadataV2 });
+      } else {
+        corrections.push({
           revision: row.revision,
-          payload: payload as FocusProjectionMetadata['payload'],
+          payload: payload as FocusProjectionCorrection['payload'],
         });
       }
     }
@@ -803,18 +942,23 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       .exec<{ created_at: number | null }>(
         `SELECT MAX(created_at) AS created_at
            FROM v2_changes
-          WHERE entity_type IN ('focus_ledger_v2', 'focus_metadata_v2')`,
+          WHERE entity_type IN (
+            'focus_ledger_v2', 'focus_metadata_v2', 'focus_ledger_correction_v2'
+          )`,
       )
       .one().created_at;
     const verifiedCandidates = [latestDevice, latestLedgerChange].filter(
       (value): value is number => typeof value === 'number' && Number.isSafeInteger(value),
     );
-    return buildFocusMcpProjection({
+    const live = this.getLiveSnapshot();
+    return buildFocusMcpRecordsProjection({
       ledgers,
       metadata,
+      corrections,
+      live: live.snapshot,
+      serverTime: live.serverTime,
       generatedAt,
       lastVerifiedAt: verifiedCandidates.length > 0 ? Math.max(...verifiedCandidates) : null,
-      changeSeq: this.v2ChangeSeq(),
       from,
       to,
       limit,
@@ -1067,6 +1211,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       request.mutations.length > 0
     )
       throw new ProtocolError(503, 'maintenance_mode', 'account restore is in progress');
+    this.backfillLegacyCompletedBundles();
     const epoch = this.v2Epoch();
     assertV2Epoch(request, epoch);
     const cursorSeq = decodeV2Cursor(accountId, request.cursor, epoch, this.v2ChangeSeq());
@@ -1163,6 +1308,18 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       return this.storeV2Ack(operationFingerprint, mutation, 'rejected', null, null, validation);
     const row = this.v2Entity(mutation.entityType, mutation.entityId);
     if (mutation.baseRevision !== (row?.revision ?? 0)) {
+      if (row && isSyntheticCorrectionDuplicate(mutation, row)) {
+        const result = this.storeV2Ack(
+          operationFingerprint,
+          mutation,
+          'duplicate',
+          row.revision,
+          row.fingerprint,
+          null,
+        );
+        this.resolveSyntheticCorrectionConflicts(mutation, row.payload_json);
+        return result;
+      }
       const result = this.storeV2Ack(
         operationFingerprint,
         mutation,
@@ -1267,6 +1424,40 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       Date.now(),
     );
     return ack;
+  }
+
+  private resolveSyntheticCorrectionConflicts(
+    mutation: SyncV2Mutation,
+    canonicalPayloadJson: string | null,
+  ): void {
+    if (canonicalPayloadJson === null) return;
+    const rows = this.sql
+      .exec<{
+        conflict_id: string;
+        base_json: string | null;
+        local_json: string | null;
+        remote_json: string | null;
+        fields_json: string;
+      }>(
+        `SELECT conflict_id, base_json, local_json, remote_json, fields_json FROM v2_conflicts
+         WHERE entity_type = 'focus_ledger_correction_v2'
+           AND entity_id = ? AND status = 'open'`,
+        mutation.entityId,
+      )
+      .toArray();
+    for (const conflict of rows) {
+      if (!historicalCorrectionConflictMatches(conflict, mutation.payload, canonicalPayloadJson)) {
+        continue;
+      }
+      this.sql.exec(
+        `UPDATE v2_conflicts
+         SET status = 'resolved', resolved_at = ?, resolution_op_id = ?
+         WHERE conflict_id = ? AND status = 'open'`,
+        Date.now(),
+        mutation.opId,
+        conflict.conflict_id,
+      );
+    }
   }
 
   private v2Entity(entityType: SyncV2EntityType, entityId: string): V2EntityRow | undefined {
@@ -1534,7 +1725,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     )
       throw new ProtocolError(400, 'invalid_request', 'invalid pair offer');
     const nonce = randomToken(32);
-    const devicePublicId = randomToken(12);
+    const devicePublicId = randomDevicePublicId();
     const expiresAt = Date.now() + 10 * 60 * 1000;
     this.sql.exec(
       `INSERT INTO v2_pair_offers(nonce, device_public_id, display_name, scopes_json, expires_at)
@@ -2180,7 +2371,11 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       const rejection = validateLiveTransition(
         live.session,
         request.command,
-        this.entity(request.command.sessionId),
+        Boolean(
+          this.entity(request.command.sessionId) ??
+          this.v2Entity('focus_ledger_v2', request.command.sessionId) ??
+          this.v2Entity('focus_metadata_v2', request.command.sessionId),
+        ),
       );
       if (rejection) {
         const ack = liveRejectedAck(request.command.commandId, live.revision, rejection);
@@ -2298,6 +2493,21 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
   }
 
   private publishLiveBundle(deviceId: string, bundle: DeviceSyncSessionBundle): void {
+    const split = splitBundleForSyncV2(bundle, deviceId);
+    this.insertCompletedV2Entity(
+      deviceId,
+      'focus_ledger_v2',
+      bundle.session.id,
+      split.ledger,
+      false,
+    );
+    this.insertCompletedV2Entity(
+      deviceId,
+      'focus_metadata_v2',
+      bundle.session.id,
+      split.metadata,
+      false,
+    );
     const payloadJson = JSON.stringify(bundle);
     const sequence = this.incrementChangeSeq();
     this.sql.exec(
@@ -2312,6 +2522,122 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       bundle.session.id,
       payloadJson,
       Date.now(),
+    );
+  }
+
+  private backfillLegacyCompletedBundles(): void {
+    const marker = this.sql
+      .exec<MetaRow>(
+        "SELECT value FROM meta WHERE key = 'legacy_v1_completed_bundle_backfill_version'",
+      )
+      .toArray()[0];
+    if (marker?.value === '1') return;
+
+    const limit = 25;
+    this.ctx.storage.transactionSync(() => {
+      const rows = this.sql
+        .exec<LegacyCompletedBundleRow>(
+          `SELECT e.entity_id, e.payload_json,
+             (SELECT c.device_id FROM changes c
+               WHERE c.entity_id = e.entity_id
+               ORDER BY c.change_seq ASC LIMIT 1) AS device_id,
+             CASE WHEN EXISTS(
+               SELECT 1 FROM v2_entities v
+                WHERE v.entity_type = 'focus_ledger_v2' AND v.entity_id = e.entity_id
+             ) THEN 1 ELSE 0 END AS has_ledger,
+             CASE WHEN EXISTS(
+               SELECT 1 FROM v2_entities v
+                WHERE v.entity_type = 'focus_metadata_v2' AND v.entity_id = e.entity_id
+             ) THEN 1 ELSE 0 END AS has_metadata
+           FROM entities e
+          WHERE e.deleted = 0
+            AND e.payload_json IS NOT NULL
+            AND (
+              NOT EXISTS(
+                SELECT 1 FROM v2_entities v
+                 WHERE v.entity_type = 'focus_ledger_v2' AND v.entity_id = e.entity_id
+              ) OR NOT EXISTS(
+                SELECT 1 FROM v2_entities v
+                 WHERE v.entity_type = 'focus_metadata_v2' AND v.entity_id = e.entity_id
+              )
+            )
+          ORDER BY e.entity_id ASC
+          LIMIT ?`,
+          limit,
+        )
+        .toArray();
+      for (const row of rows) {
+        let bundle: DeviceSyncSessionBundle;
+        try {
+          bundle = JSON.parse(row.payload_json) as DeviceSyncSessionBundle;
+        } catch {
+          continue;
+        }
+        if (!validateDeviceSyncBundle(bundle).ok) continue;
+        const sourceDeviceId = row.device_id ?? 'legacy-v1-migration';
+        const split = splitBundleForSyncV2(bundle, sourceDeviceId);
+        if (!row.has_ledger) {
+          this.insertCompletedV2Entity(
+            sourceDeviceId,
+            'focus_ledger_v2',
+            row.entity_id,
+            split.ledger,
+            true,
+          );
+        }
+        if (!row.has_metadata) {
+          this.insertCompletedV2Entity(
+            sourceDeviceId,
+            'focus_metadata_v2',
+            row.entity_id,
+            split.metadata,
+            true,
+          );
+        }
+      }
+      if (rows.length < limit) {
+        this.sql.exec(`
+          INSERT INTO meta(key, value)
+          VALUES ('legacy_v1_completed_bundle_backfill_version', '1')
+          ON CONFLICT(key) DO UPDATE SET value=excluded.value;
+        `);
+      }
+    });
+  }
+
+  private insertCompletedV2Entity(
+    sourceDeviceId: string,
+    entityType: 'focus_ledger_v2' | 'focus_metadata_v2',
+    entityId: string,
+    payload: FocusLedgerV2 | FocusMetadataV2,
+    allowExisting: boolean,
+  ): void {
+    if (this.v2Entity(entityType, entityId)) {
+      if (allowExisting) return;
+      throw new ProtocolError(409, 'session_id_exists', 'completed session already exists');
+    }
+    const payloadJson = JSON.stringify(payload);
+    const fingerprint = fingerprintDeviceSyncValue({ deleted: false, payload });
+    const sequence = this.incrementV2ChangeSeq();
+    const now = Date.now();
+    this.sql.exec(
+      `INSERT INTO v2_entities(entity_type, entity_id, revision, fingerprint, deleted, payload_json,
+       delete_change_seq, deleted_at, purge_after) VALUES (?, ?, 1, ?, 0, ?, NULL, NULL, NULL)`,
+      entityType,
+      entityId,
+      fingerprint,
+      payloadJson,
+    );
+    this.sql.exec(
+      `INSERT INTO v2_changes(change_seq, source_device_id, entity_type, entity_id, revision,
+       fingerprint, deleted, payload_json, created_at) VALUES (?, ?, ?, ?, 1, ?, 0, ?, ?)`,
+      sequence,
+      sourceDeviceId,
+      entityType,
+      entityId,
+      fingerprint,
+      payloadJson,
+      now,
     );
   }
 
@@ -2606,6 +2932,87 @@ function isV2EntityType(value: unknown): value is SyncV2EntityType {
   );
 }
 
+function isSyntheticCorrectionDuplicate(mutation: SyncV2Mutation, row: V2EntityRow): boolean {
+  return (
+    mutation.entityType === 'focus_ledger_correction_v2' &&
+    mutation.kind === 'put' &&
+    mutation.baseRevision === 0 &&
+    mutation.baseFingerprint === null &&
+    !row.deleted &&
+    correctionJsonMatches(row.payload_json, mutation.payload)
+  );
+}
+
+function correctionJsonMatches(serialized: string | null, candidate: unknown): boolean {
+  if (serialized === null) return false;
+  try {
+    return correctionPayloadsEquivalent(
+      JSON.parse(serialized),
+      typeof candidate === 'string' ? JSON.parse(candidate) : candidate,
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function correctionPayloadsEquivalent(left: unknown, right: unknown): boolean {
+  if (!isCorrectionRecord(left) || !isCorrectionRecord(right)) return false;
+  const normalize = (value: FocusLedgerCorrectionV2) => ({
+    correctionId: value.correctionId,
+    sessionId: value.sessionId,
+    baseLedgerRevision: value.baseLedgerRevision,
+    before: value.before,
+    after: value.after,
+    reason: value.reason,
+    createdByDeviceId: value.createdByDeviceId,
+  });
+  return (
+    fingerprintDeviceSyncValue(normalize(left)) === fingerprintDeviceSyncValue(normalize(right))
+  );
+}
+
+export function historicalCorrectionConflictMatches(
+  conflict: {
+    base_json: string | null;
+    local_json: string | null;
+    remote_json: string | null;
+    fields_json: string;
+  },
+  incoming: unknown,
+  canonicalPayloadJson: string | null,
+): boolean {
+  if (
+    conflict.base_json !== null ||
+    canonicalPayloadJson === null ||
+    !correctionJsonMatches(conflict.local_json, incoming) ||
+    !correctionJsonMatches(conflict.remote_json, canonicalPayloadJson)
+  ) {
+    return false;
+  }
+  try {
+    const fields = JSON.parse(conflict.fields_json) as unknown;
+    return Array.isArray(fields) && fields.length === 1 && fields[0] === 'revision';
+  } catch {
+    return false;
+  }
+}
+
+function isCorrectionRecord(value: unknown): value is FocusLedgerCorrectionV2 {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.correctionId === 'string' &&
+    typeof value.sessionId === 'string' &&
+    typeof value.baseLedgerRevision === 'number' &&
+    Number.isSafeInteger(value.baseLedgerRevision) &&
+    value.baseLedgerRevision >= 1 &&
+    isRecord(value.before) &&
+    isRecord(value.after) &&
+    typeof value.reason === 'string' &&
+    typeof value.createdAt === 'number' &&
+    typeof value.createdByDeviceId === 'string'
+  );
+}
+
 function isFingerprint(value: unknown): value is string {
   return typeof value === 'string' && /^[a-f0-9]{32,128}$/i.test(value);
 }
@@ -2625,6 +3032,17 @@ function randomToken(bytes: number): string {
   const value = new Uint8Array(bytes);
   crypto.getRandomValues(value);
   return base64Url(value);
+}
+
+function randomDevicePublicId(): string {
+  const value = new Uint8Array(12);
+  crypto.getRandomValues(value);
+  return encodeDevicePublicId(value);
+}
+
+export function encodeDevicePublicId(value: Uint8Array): string {
+  if (value.byteLength !== 12) throw new Error('device public id requires 12 random bytes');
+  return hex(value);
 }
 
 function publicId(accountId: string): string {
@@ -2702,8 +3120,9 @@ function constantTimeEqual(left: string, right: string): boolean {
   return mismatch === 0;
 }
 
-function hex(value: ArrayBuffer): string {
-  return [...new Uint8Array(value)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+function hex(value: ArrayBuffer | Uint8Array): string {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function base64Url(value: Uint8Array): string {
@@ -2751,7 +3170,7 @@ function toChange(row: ChangeRow): DeviceSyncChange {
 function validateLiveTransition(
   session: StoredLiveSession | null,
   command: LiveFocusCommand,
-  existingEntity: EntityRow | undefined,
+  existingEntity: boolean,
 ): string | null {
   if (command.action === 'start') {
     if (session) return 'active_session_exists';

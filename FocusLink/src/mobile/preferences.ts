@@ -5,11 +5,9 @@ const TOKEN_SESSION_KEY = 'focuslink.mobile.token.session';
 const TOKEN_LOCAL_KEY = 'focuslink.mobile.token.local';
 const REMEMBER_TOKEN_KEY = 'focuslink.mobile.remember-token';
 const DEVICE_ID_KEY = 'focuslink.mobile.device-id';
-export const STAGING_FOCUSLINK_ENDPOINT =
-  'https://foxlink-mcp-staging.focuslink-poyi-6465e9.workers.dev';
 
-export function defaultNativeEndpointForMode(mode: string): string {
-  return mode === 'staging' ? STAGING_FOCUSLINK_ENDPOINT : '';
+export function configuredNativeEndpoint(endpoint: string | undefined): string {
+  return cloudOnlyMobileSyncEndpoint(endpoint ?? '');
 }
 
 export interface MobileConnectionPreferences {
@@ -23,7 +21,9 @@ export function loadConnectionPreferences(): MobileConnectionPreferences {
   const storedEndpoint = localStorage.getItem(ENDPOINT_KEY);
   const endpointBeforeRetirement =
     storedEndpoint ??
-    (Capacitor.isNativePlatform() ? defaultNativeEndpointForMode(import.meta.env.MODE) : '');
+    (Capacitor.isNativePlatform()
+      ? configuredNativeEndpoint(import.meta.env.VITE_FOCUSLINK_ENDPOINT)
+      : '');
   const endpoint = cloudOnlyMobileSyncEndpoint(endpointBeforeRetirement);
   if (storedEndpoint !== null && endpoint !== storedEndpoint) {
     // Old Android installs may retain a localhost/ADB or LAN HTTP endpoint. Do

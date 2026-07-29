@@ -11,7 +11,7 @@ describe('Android pairing entry', () => {
     expect(normalizePairingCodeInput('  AbC_def-123  ')).toBe('AbC_def-123');
   });
 
-  it('keeps isolated browsable pair links for production and staging automation', () => {
+  it('keeps one canonical browsable pair link without a second staging app identity', () => {
     const manifest = fs.readFileSync(
       path.join(projectRoot, 'android', 'app', 'src', 'main', 'AndroidManifest.xml'),
       'utf8',
@@ -30,7 +30,8 @@ describe('Android pairing entry', () => {
     expect(manifest).toContain('android:scheme="${pairScheme}"');
     expect(manifest).toContain('android:host="pair"');
     expect(gradle).toContain('manifestPlaceholders = [pairScheme: "focuslink"]');
-    expect(gradle).toContain('manifestPlaceholders = [pairScheme: "focuslink-staging"]');
+    expect(gradle).not.toContain('applicationIdSuffix ".staging"');
+    expect(gradle).not.toContain('focuslink-mcp-staging');
     for (const source of [mobile, watch]) {
       expect(source).toContain("CapacitorApp.addListener('appUrlOpen'");
       expect(source).toContain('CapacitorApp.getLaunchUrl()');

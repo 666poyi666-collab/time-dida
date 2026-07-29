@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fingerprintDeviceSyncValue } from '../shared/sync/deviceProtocol';
-import type { FocusMetadataV2 } from '../shared/sync/v2Protocol';
+import type { FocusSegment, FocusSession, PauseEvent } from '../shared/types';
+import type { FocusLedgerV2, FocusMetadataV2 } from '../shared/sync/v2Protocol';
 
 const harness = vi.hoisted(() => ({
   meta: new Map<string, string>(),
@@ -12,10 +13,15 @@ const harness = vi.hoisted(() => ({
     scope: 'scope-1',
   },
   state: null as Record<string, unknown> | null,
+  states: new Map<string, Record<string, unknown>>(),
+  sessions: [] as FocusSession[],
+  segments: new Map<string, FocusSegment[]>(),
+  pauses: new Map<string, PauseEvent[]>(),
   deleted: [] as string[],
   discarded: [] as string[],
   enqueued: [] as Array<Record<string, unknown>>,
   remoteConflicts: [] as Array<Record<string, unknown>>,
+  repairCalls: 0,
   paths: [] as string[],
 }));
 
@@ -26,9 +32,9 @@ vi.mock('../electron/db/index.js', () => ({
   getSession: () => null,
   deleteSession: (id: string) => harness.deleted.push(id),
   insertDeviceSyncBundleIfMissing: () => false,
-  listFinishedSessionsForDeviceSync: () => [],
-  listPauses: () => [],
-  listSegments: () => [],
+  listFinishedSessionsForDeviceSync: () => harness.sessions,
+  listPauses: (sessionId: string) => harness.pauses.get(sessionId) ?? [],
+  listSegments: (sessionId: string) => harness.segments.get(sessionId) ?? [],
 }));
 
 vi.mock('../electron/sync/deviceSyncService.js', () => ({
@@ -49,8 +55,14 @@ vi.mock('../electron/sync/v2OutboxStore.js', () => ({
   hasPendingV2Mutation: vi.fn(() => null),
   listV2EntityStates: vi.fn(() => []),
   readDesktopV2Status: vi.fn(() => ({ pending: 0, conflicts: 0, rejected: 0 })),
-  readV2EntityState: vi.fn(() => harness.state),
+  readV2EntityState: vi.fn((_scope: string, entityType: string, entityId: string) => {
+    return harness.states.get(`${entityType}:${entityId}`) ?? harness.state;
+  }),
   recordRemoteV2History: vi.fn(),
+  repairSyntheticCorrectionConflicts: vi.fn(() => {
+    harness.repairCalls += 1;
+    return 0;
+  }),
   requeueStaleGenerationV2Outbox: vi.fn(),
   retryV2Lease: vi.fn(),
   settleV2Ack: vi.fn(() => true),
@@ -72,10 +84,15 @@ describe('desktop canonical Sync v2 boundary', () => {
     vi.restoreAllMocks();
     harness.meta.clear();
     harness.state = null;
+    harness.states.clear();
+    harness.sessions = [];
+    harness.segments.clear();
+    harness.pauses.clear();
     harness.deleted = [];
     harness.discarded = [];
     harness.enqueued = [];
     harness.remoteConflicts = [];
+    harness.repairCalls = 0;
     harness.paths = [];
   });
 
@@ -196,6 +213,119 @@ describe('desktop canonical Sync v2 boundary', () => {
     expect(harness.enqueued.every((mutation) => mutation.kind === 'delete')).toBe(true);
     expect(harness.discarded).toEqual(['session-delete']);
     expect(harness.deleted).toEqual(['session-delete']);
+  });
+
+  it('uses one stable correction and stops enqueueing it after cloud confirmation', async () => {
+    const session: FocusSession = {
+      id: 'session-correction',
+      title: '化学',
+      status: 'finished',
+      startedAt: 1_000,
+      endedAt: 31_000,
+      activeElapsedMs: 25_000,
+      pauseElapsedMs: 5_000,
+      wallElapsedMs: 30_000,
+      defaultTaskId: 'task-chemistry',
+      defaultTaskSource: 'local',
+      defaultTaskTitle: '化学',
+      note: null,
+      createdAt: 1_000,
+      updatedAt: 31_000,
+    };
+    const segment: FocusSegment = {
+      id: 'segment-correction',
+      sessionId: session.id,
+      taskId: 'task-chemistry',
+      taskSource: 'local',
+      title: '化学',
+      startedAt: 1_000,
+      endedAt: 31_000,
+      activeElapsedMs: 25_000,
+      note: null,
+      cloudFocusId: null,
+      tomatodoSubject: null,
+      createdAt: 1_000,
+      updatedAt: 31_000,
+    };
+    const pause: PauseEvent = {
+      id: 'pause-correction',
+      sessionId: session.id,
+      segmentId: segment.id,
+      pauseStartedAt: 11_000,
+      pauseEndedAt: 16_000,
+      durationMs: 5_000,
+      reason: null,
+      createdAt: 11_000,
+      updatedAt: 16_000,
+    };
+    const priorLedger: FocusLedgerV2 = {
+      sessionId: session.id,
+      startedAt: session.startedAt,
+      endedAt: 31_000,
+      status: 'finished',
+      activeElapsedMs: 20_000,
+      pausedElapsedMs: 10_000,
+      wallElapsedMs: session.wallElapsedMs,
+      originDeviceId: 'device-desktop1',
+      segments: [segment],
+      pauses: [pause],
+    };
+    harness.sessions = [session];
+    harness.segments.set(session.id, [segment]);
+    harness.pauses.set(session.id, [pause]);
+    harness.states.set(`focus_ledger_v2:${session.id}`, {
+      entityType: 'focus_ledger_v2',
+      entityId: session.id,
+      confirmedRevision: 7,
+      confirmedFingerprint: fingerprintDeviceSyncValue({ deleted: false, payload: priorLedger }),
+      baseSnapshot: priorLedger,
+      deleted: false,
+      changeSeq: 7,
+      sourceDeviceId: 'device-phone',
+      syncEpoch: 'sync-1',
+      cursorEpoch: 'cursor-1',
+      accountGeneration: 1,
+      updatedAt: 31_000,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input)).pathname;
+        return path === '/sync/v2/status' ? json(status(7)) : json(page('c7'));
+      }),
+    );
+
+    await runDesktopSyncV2();
+    const firstCorrections = harness.enqueued.filter(
+      (mutation) => mutation.entityType === 'focus_ledger_correction_v2',
+    );
+    expect(firstCorrections).toHaveLength(1);
+    expect(firstCorrections[0]).toMatchObject({
+      baseRevision: 0,
+      baseFingerprint: null,
+      payload: { createdAt: session.endedAt, baseLedgerRevision: 7 },
+    });
+    const correctionId = firstCorrections[0]!.entityId as string;
+    harness.states.set(`focus_ledger_correction_v2:${correctionId}`, {
+      entityType: 'focus_ledger_correction_v2',
+      entityId: correctionId,
+      confirmedRevision: 1,
+      confirmedFingerprint: 'c'.repeat(64),
+      baseSnapshot: firstCorrections[0]!.payload,
+      deleted: false,
+      changeSeq: 8,
+      sourceDeviceId: 'device-desktop1',
+      syncEpoch: 'sync-1',
+      cursorEpoch: 'cursor-1',
+      accountGeneration: 1,
+      updatedAt: 31_000,
+    });
+
+    await runDesktopSyncV2();
+    expect(
+      harness.enqueued.filter((mutation) => mutation.entityType === 'focus_ledger_correction_v2'),
+    ).toEqual(firstCorrections);
+    expect(harness.repairCalls).toBe(2);
   });
 });
 

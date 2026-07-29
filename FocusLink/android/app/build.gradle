@@ -10,8 +10,8 @@ android {
         applicationId "app.focuslink.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1269
-        versionName "0.12.69"
+        versionCode 1270
+        versionName "0.12.70"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "DEFAULT_SYNC_ENDPOINT", '""'
         manifestPlaceholders = [pairScheme: "focuslink"]
@@ -22,19 +22,6 @@ android {
         }
     }
     buildTypes {
-        staging {
-            initWith debug
-            applicationIdSuffix ".staging"
-            versionNameSuffix "-staging"
-            signingConfig signingConfigs.debug
-            matchingFallbacks = ["debug"]
-            buildConfigField "String", "DEFAULT_SYNC_ENDPOINT", '"https://foxlink-mcp-staging.focuslink-poyi-6465e9.workers.dev"'
-            manifestPlaceholders = [pairScheme: "focuslink-staging"]
-            resValue "string", "app_name", "FocusLink Staging"
-            resValue "string", "title_activity_main", "FocusLink Staging"
-            resValue "string", "package_name", "app.focuslink.mobile.staging"
-            resValue "string", "custom_url_scheme", "app.focuslink.mobile.staging"
-        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

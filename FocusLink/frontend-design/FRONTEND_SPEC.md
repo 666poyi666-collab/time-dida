@@ -1,6 +1,6 @@
 # FocusLink 前端设计规范
 
-> 目标版本：v0.12.x（当前实现：v0.12.69）
+> 目标版本：v0.12.x（当前实现：v0.12.70）
 >
 > 当前状态：「时间仪器 Time Instrument」设计系统已实现并取代 Linear Workbench；v0.12.63 起四个功能视图统一采用「工位横幅 → 主舞台 → 文脉栏」三段呈现语法（3单重构）。
 >
@@ -331,14 +331,14 @@ Web/PWA 与 Capacitor Android 继续复用同一套 `src/mobile/` React 界面�
 - 任务视图按电脑端项目/清单分组，默认只显示至少 52px 高的清单头与任务数量；用户展开后才渲染该清单任务。当前选中任务所在组自动展开，搜索或指定清单筛选时展开匹配组；不得在首屏一次铺开全部清单内容。
 - 统计视图直接复用 `shared/sessionAnalytics.ts` 的自然日裁切口径，提供今天/近 7 天/近 30 天三段切换、有效专注结论、专注率、四项 KPI、每日趋势、任务投入 100% 构成、六科/学习投入、24 小时专注/暂停分布、日期热力与暂停守恒收束。选择热力日期后，结论、全部 KPI、趋势、任务/学科/时段构成、暂停守恒和唯一会话账本必须一起切换到该自然日，不能只改账本文案；再次点击恢复原范围。账本可继续展开 Segment/Pause；页面不得在图表上方和下方重复两套汇总。窄于 370px 的 30 日热力使用 5 列，其他手机 7 列，平板分析区在 900px 起并排，宽屏账本保持唯一且可作为右侧阅读列。
 - Web/PWA 访问令牌默认只存 `sessionStorage`；只有用户勾选「在此设备记住令牌」才写入 `localStorage`。Android 活动通知为后台轮询与系统动作把当前令牌另存为 Android Keystore 加密密文，不写明文 SharedPreferences；WebView 会话被系统回收时不得自动清掉仍服务于活动会话的原生密文，只有用户明确移除令牌或切换 endpoint/token/device identity 时才清除。所有端均提供移除令牌与仅清除本机缓存的操作；切换 endpoint 或 token 必须先清空旧账号缓存与实时快照。
-- 桌面内置同步服务只绑定 `127.0.0.1`，是 loopback-first 测试后端，不提供 Wi-Fi 局域网直连。Android 使用该地址前必须保持电脑 FocusLink 运行，并通过 USB 执行 `adb reverse tcp:18787 tcp:18787`；手机上的 localhost/127.0.0.1 指手机自身。桌面可生成 2 分钟一次性二维码/短码，二维码使用 `focuslink://pair` 深链由系统相机打开移动 App 并预填端点/随机数，用户确认后兑换；载荷只含协议版本、端点、随机数和过期时间，成功兑换即失效，长期令牌不得进入二维码。无线或异地连接只使用 HTTPS 个人云 endpoint；不得建议把内置 HTTP 服务暴露到 `0.0.0.0`，也不得把笼统的“连接失败”作为唯一诊断。
+- 生产同步只使用 canonical HTTPS Account DO authority，Windows、手机和平板都直接连接云端；Electron 运行期不得启动 ADB reverse、自动 Android 配对或本机回环中继。生产配对由云端 owner flow 生成一次性 `focuslink://pair` 深链，载荷只含协议版本、canonical endpoint、一次性随机数和过期时间，成功兑换即失效，长期令牌不得进入二维码。旧 loopback endpoint 只可用于显式合同测试，升级后不得静默迁移其凭据，界面必须提示重新走云端配对；不得建议把测试 HTTP 服务暴露到 `0.0.0.0`，也不得把笼统的“连接失败”作为唯一诊断。
 - PWA manifest、页面标题与离线 app shell 使用「FocusLink 专注」语义，不再写「只读预览」。Service Worker 只缓存同源静态资源，不缓存 Bearer 响应或跨源实时接口。
 - Capacitor 仅包装同一个 `dist-mobile`，Android 工程只提供薄原生集成。最低 API 24；禁止系统备份 WebView token/账本缓存，Network Security Config 仅为 localhost/127.0.0.1 回环测试开放明文，生产地址必须 HTTPS。
 - Android 活动会话使用可见前台通知，动作包含暂停/继续/结束；快捷设置 Tile 在已有活动快照时只转发暂停/继续，待机时打开 App 完成必要输入。原生层不推进业务时钟，也不先行改变状态；通知/Tile 动作进入至少一次命令队列，携带 session/revision。前台 Service 可直接用 Keystore 凭据提交同一个幂等命令，Web 层也可并发重试；只有云端返回 applied/duplicate/conflict/rejected 与最新快照后才移除队列，WebView 被回收不得让系统动作失效。
 - Android 把 endpoint、device id 与 token 交给薄原生层，token 必须用 Android Keystore 加密；活动通知 Service 在 WebView 后台时以“主线程延时触发、单线程网络读取、完成后再安排下一轮”的方式每 20 秒读取云端权威快照。原生显示快照携带 `localAuthority`；本机离线会话活动期间，云端结果只可用于诊断，不得写入 Store、替换通知/悬浮条或上传指向本机 UUID 的云端命令；本机结束并清除该标记后才恢复云端投影。云端快照 revision 仍必须单调，idle 也保留 revision。系统控制区显示原生连接、省电豁免、后台限制、轮询次数/最近成功/错误，并分别提供省电设置和厂商自启动入口。
 - PWA 受浏览器后台冻结与网络调度限制，不能承诺常驻长连接；它必须缓存最后状态、给请求设置硬超时，并在 online/pageshow/重新可见时废弃旧请求立即重连。Android 用前台通知维持活动会话入口，但网络事实仍以云端快照为准。原生系统表面必须报告实际选择：小米协议与权限可用时为 `xiaomi-island`，华为/荣耀 EMUI 兼容投影为 `huawei-live-capsule`，Android 16 promoted ongoing 可用时为 `android-live-update`，否则为 `ongoing-notification`；不得笼统显示“系统级已启用”。华为兼容投影不改写云端计时事实，系统忽略字段时继续显示标准通知。
 - Android 后备悬浮条默认关闭，只能由用户显式启用；点按计时条显示关闭按钮，3 秒无操作自动收起，点关闭后持久写入禁用且不结束专注或常驻通知，只能回应用重新开启。长按进入拖动，位置更新每帧最多提交一次；拖动开始缓存安全区和尺寸，旋转、分屏和重启后根据 system bars、刘海与当前可用屏幕重新夹取。计时 tick 复用运行/暂停背景，不重复读取 WindowMetrics；系统通知可用时不得自动打开 overlay。
-- `cloud/` 当前仍是回环优先测试后端，不具备生产身份、备份、限流与监控；测试通过不等于已上线公共云服务。
+- `cloud/` 仍是回环合同测试后端，不具备生产身份承诺；生产 authority 只允许 `cloudflare/accountDurableObject.ts`，客户端不得把 `cloud/`、ADB reverse 或电脑在线误读成云端同步前置条件。
 
 ## 11. 通用组件与状态
 

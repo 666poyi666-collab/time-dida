@@ -101,7 +101,10 @@ export default {
         return errorJson(503, 'authority_unreachable', 'account authority is unavailable');
       }
     }
-    if (url.pathname === '/internal/mcp/v1/focus/summary') {
+    if (
+      url.pathname === '/internal/mcp/v1/focus/summary' ||
+      url.pathname === '/internal/mcp/v1/focus/records'
+    ) {
       if (request.method !== 'GET') {
         return errorJson(405, 'method_not_allowed', 'GET required');
       }

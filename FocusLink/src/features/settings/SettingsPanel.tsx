@@ -8,16 +8,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../app/store';
 import { ipcErrorMessage } from '../../app/ipcError';
 import type { AppSettings } from '@shared/types';
-import type {
-  DeviceSyncPairingOffer,
-  DeviceSyncStatus,
-  TomatodoBridgeStatus,
-} from '@shared/ipc/api';
+import type { DeviceSyncStatus, TomatodoBridgeStatus } from '@shared/ipc/api';
 import { APP_VERSION } from '@shared/version';
-import { createDeviceSyncPairingUrl } from '@shared/sync/pairingProtocol';
 import { resolveFontProfile, resolveTimerStyle } from '@shared/theme';
 import { motion } from 'framer-motion';
-import QRCode from 'qrcode';
 import { Icon } from '../../ui/Icon';
 import { TimerDial } from '../focus/TimerDial';
 import '../../styles/settings-motion.css';
@@ -184,8 +178,6 @@ export function SettingsPanel() {
   const [deviceSyncToken, setDeviceSyncToken] = useState('');
   const [deviceSyncSaving, setDeviceSyncSaving] = useState(false);
   const [deviceSyncRunning, setDeviceSyncRunning] = useState(false);
-  const [deviceSyncPairing, setDeviceSyncPairing] = useState<DeviceSyncPairingOffer | null>(null);
-  const [deviceSyncPairingQr, setDeviceSyncPairingQr] = useState<string | null>(null);
   useEffect(() => {
     window.focuslink.ticktick.status().then((s) => {
       setConnected(s.connected);
@@ -363,48 +355,16 @@ export function SettingsPanel() {
       setDeviceSyncStatus(result.status);
       setDeviceSyncToken('');
       setSettings(await window.focuslink.settings.get());
-      const bridgeMessage =
-        result.connectedAndroidDevices.length > 0
-          ? `，已连接 ${result.connectedAndroidDevices.length} 台安卓设备`
-          : '';
       if (result.syncError) {
-        addToast(`同步服务已自动修复${bridgeMessage}；账本将在后台继续重试`, 'info');
+        addToast('云端同步连接已检查；账本将在后台继续重试', 'info');
       } else if ((result.sync?.unresolvedConflicts ?? 0) > 0 || (result.sync?.rejected ?? 0) > 0) {
-        addToast(`同步服务已自动修复${bridgeMessage}；现有冲突记录已保留，未自动覆盖`, 'info');
+        addToast('云端同步连接已检查；现有冲突记录已保留，未自动覆盖', 'info');
       } else {
-        addToast(`本机同步已开启并完成自检${bridgeMessage}`, 'success');
+        addToast('云端同步连接已确认', 'success');
       }
     } catch (error) {
       addToast(`自动连接失败：${ipcErrorMessage(error)}`, 'error');
       await refreshDeviceSyncStatus();
-    } finally {
-      setDeviceSyncSaving(false);
-    }
-  };
-
-  const handleCreatePairingOffer = async () => {
-    setDeviceSyncSaving(true);
-    try {
-      const setup = await window.focuslink.deviceSync.quickSetup();
-      setDeviceSyncStatus(setup.status);
-      setSettings(await window.focuslink.settings.get());
-      const offer = await window.focuslink.deviceSync.createPairingOffer();
-      setDeviceSyncPairing(offer);
-      setDeviceSyncPairingQr(
-        await QRCode.toDataURL(
-          createDeviceSyncPairingUrl({
-            protocolVersion: offer.protocolVersion,
-            endpoint: offer.endpoint,
-            nonce: offer.nonce,
-            expiresAt: offer.expiresAt,
-          }),
-          { errorCorrectionLevel: 'M', margin: 1, width: 176 },
-        ),
-      );
-      addToast('一次性配对码已生成，2 分钟内使用且成功后立即失效', 'success');
-    } catch (error) {
-      setDeviceSyncPairingQr(null);
-      addToast(`无法生成配对码：${ipcErrorMessage(error)}`, 'error');
     } finally {
       setDeviceSyncSaving(false);
     }
@@ -1326,15 +1286,15 @@ export function SettingsPanel() {
       id: 'device-sync',
       tab: 'devices',
       title: '手机 / 平板同步',
-      desc: '电脑端自动常驻。首次点击开启，之后同一个按钮会自动检查并修复连接。',
+      desc: '电脑、手机和平板直接连接同一云端账号；电脑关闭不会中断移动端同步。',
       keywords:
         '手机 平板 安卓 android 移动端 跨设备 配对 二维码 扫码 短码 令牌 服务地址 endpoint ' +
-        '实时 局域网 device sync pairing token',
+        '实时 云端 device sync pairing token',
       render: () => (
         <>
           <Row
-            label={deviceSyncStatus?.configured ? '同步连接' : '开始同步'}
-            desc="自动生成安全凭据、启动本机服务、检查连接并同步，不需要填写地址或令牌"
+            label={deviceSyncStatus?.configured ? '云端同步连接' : '配置云端同步'}
+            desc="检查已保存的云端连接并同步；本机服务和 USB 中继不再参与"
           >
             <button
               type="button"
@@ -1343,44 +1303,8 @@ export function SettingsPanel() {
               disabled={deviceSyncSaving}
             >
               {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Refresh size="xs" />}
-              {deviceSyncStatus?.configured ? '立即检查并修复' : '一键开启本机同步'}
+              {deviceSyncStatus?.configured ? '检查云端连接' : '检查配置'}
             </button>
-          </Row>
-          <Row
-            label="连接手机 / 平板"
-            desc="点一次即可自动开启服务并生成二维码；移动端扫码后会安全保存连接"
-          >
-            <div className="flex min-w-[320px] flex-col items-end gap-2">
-              <button
-                type="button"
-                className="btn-outline text-[11px]"
-                onClick={() => void handleCreatePairingOffer()}
-                disabled={deviceSyncSaving}
-              >
-                <Icon.Link size="xs" />
-                显示连接二维码
-              </button>
-              {deviceSyncPairing && deviceSyncPairing.expiresAt > Date.now() && (
-                <div className="flex items-center gap-3 text-right text-[11px] leading-5 text-fg-muted">
-                  {deviceSyncPairingQr && (
-                    <img
-                      src={deviceSyncPairingQr}
-                      width={88}
-                      height={88}
-                      alt="FocusLink 一次性连接二维码"
-                      className="rounded-md border border-border bg-white p-1"
-                    />
-                  )}
-                  <div>
-                    <strong className="block font-mono text-base tracking-[0.18em] text-fg">
-                      {deviceSyncPairing.shortCode}
-                    </strong>
-                    <span className="block">扫码或在移动端填写短码 · 2 分钟内有效</span>
-                    <span className="block">二维码不包含长期令牌</span>
-                  </div>
-                </div>
-              )}
-            </div>
           </Row>
           <div
             className={`settings-status-strip ${
