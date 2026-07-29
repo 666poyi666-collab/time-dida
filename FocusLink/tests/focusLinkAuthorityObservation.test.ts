@@ -26,7 +26,7 @@ import type { WorkerEnv } from '../cloudflare/accountDurableObject';
 const AUDIENCE = 'https://authority.contract.test/authority/identity-focus';
 
 function capability(): string {
-  return `fao_${randomBytes(32).toString('base64url')}`;
+  return randomBytes(36).toString('base64url');
 }
 
 function observation(now: number, revision = 7) {
@@ -143,6 +143,14 @@ describe('FocusLink service-binding authority observation', () => {
         )
       ).status,
     ).toBe(503);
+    const shortCapability = environment(snapshot, 'c'.repeat(31));
+    expect(
+      (
+        await new FocusLinkAuthorityObservation({} as never, shortCapability).fetch(
+          request('c'.repeat(31)),
+        )
+      ).status,
+    ).toBe(503);
     expect(
       (await entrypoint.fetch(request(configuredCapability, { accept: 'application/json' })))
         .status,
@@ -150,6 +158,13 @@ describe('FocusLink service-binding authority observation', () => {
     expect(
       (await entrypoint.fetch(request(configuredCapability, { authorization: 'Bearer ignored' })))
         .status,
+    ).toBe(401);
+    expect(
+      (
+        await entrypoint.fetch(
+          request(configuredCapability, { authorization: `Capability ${'c'.repeat(31)}` }),
+        )
+      ).status,
     ).toBe(401);
     expect(
       (

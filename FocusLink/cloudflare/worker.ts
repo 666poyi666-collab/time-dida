@@ -11,8 +11,6 @@ import {
 
 export { FocusLinkAccount };
 
-const FOCUSLINK_AUTHORITY_CAPABILITY_PATTERN = /^fao_[A-Za-z0-9_-]{43}$/;
-
 // This Worker has no public ingress. The foxlink-cloud-mcp adapter is the sole
 // public boundary and reaches these canonical paths through a service binding.
 // Internal DO paths stay private so the adapter cannot accidentally revive the
@@ -232,7 +230,7 @@ export class FocusLinkAuthorityObservation extends WorkerEntrypoint<WorkerEnv> {
       !this.env.FOCUSLINK_ACCOUNT ||
       !this.env.FOCUSLINK_ACCOUNT_ID ||
       !validServiceSecret(this.env.FOCUSLINK_SYNC_TOKEN) ||
-      !FOCUSLINK_AUTHORITY_CAPABILITY_PATTERN.test(configuredCapability) ||
+      !validAuthorityCapability(configuredCapability) ||
       !configuredAudience ||
       [
         this.env.FOCUSLINK_SYNC_TOKEN,
@@ -254,12 +252,12 @@ export class FocusLinkAuthorityObservation extends WorkerEntrypoint<WorkerEnv> {
         'authority observation media type required',
       );
     }
-    const authorization = /^Capability ([A-Za-z0-9_-]+)$/.exec(
+    const authorization = /^Capability ([A-Za-z0-9._~-]+)$/.exec(
       request.headers.get('authorization') ?? '',
     );
     if (
       !authorization ||
-      !FOCUSLINK_AUTHORITY_CAPABILITY_PATTERN.test(authorization[1]) ||
+      !validAuthorityCapability(authorization[1]) ||
       !constantTimeEqual(authorization[1], configuredCapability)
     ) {
       const response = errorJson(401, 'unauthorized', 'valid capability required');
@@ -324,6 +322,15 @@ function isRetiredPublicRoute(pathname: string): boolean {
 
 function validServiceSecret(value: string | undefined): value is string {
   return typeof value === 'string' && value.length >= 32;
+}
+
+function validAuthorityCapability(value: string | undefined): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length >= 32 &&
+    value.length <= 512 &&
+    /^[A-Za-z0-9._~-]+$/.test(value)
+  );
 }
 
 function isPairAuthorityToken(value: string | null | undefined): value is string {
