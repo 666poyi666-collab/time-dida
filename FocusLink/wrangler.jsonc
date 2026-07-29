@@ -14,9 +14,12 @@
   },
   // Required deploy-time secrets (never vars or repository values):
   // FOCUSLINK_SYNC_TOKEN, FOCUSLINK_DEVICE_PEPPER,
-  // FOCUSLINK_MCP_SERVICE_TOKEN, FOCUSLINK_PAIR_AUTHORITY_TOKEN.
+  // FOCUSLINK_MCP_SERVICE_TOKEN, FOCUSLINK_PAIR_AUTHORITY_TOKEN,
+  // FOCUSLINK_AUTHORITY_CAPABILITY.
   // FOCUSLINK_DEVICE_PEPPER_PREVIOUS is optional
   // only during an intentional pepper rotation.
+  // FOCUSLINK_AUTHORITY_AUDIENCE must be set to the canonical central
+  // HTTPS /authority/identity-focus URL before production deployment.
   "durable_objects": {
     "bindings": [
       {

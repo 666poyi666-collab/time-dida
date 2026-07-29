@@ -7,8 +7,11 @@
   "preview_urls": false,
   "vars": {
     "FOCUSLINK_ACCOUNT_ID": "staging-primary",
-    "FOCUSLINK_ALLOWED_ORIGINS": "https://localhost,capacitor://localhost,http://localhost"
+    "FOCUSLINK_ALLOWED_ORIGINS": "https://localhost,capacitor://localhost,http://localhost",
+    "FOCUSLINK_AUTHORITY_AUDIENCE": "https://personal-mcp-authority-staging.focuslink-poyi-6465e9.workers.dev/authority/identity-focus"
   },
+  // FOCUSLINK_AUTHORITY_CAPABILITY is provisioned as a secret and must match
+  // the central signer's FOCUSLINK_OBSERVATION_CAPABILITY without entering Git.
   "durable_objects": {
     "bindings": [{ "name": "FOCUSLINK_ACCOUNT", "class_name": "FocusLinkAccount" }]
   },

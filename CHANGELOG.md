@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.12.69 - 2026-07-29（移动端云闭环与中央 observation 对齐）
+
+- **唯一 authority 与 canonical V2**：Account Durable Object 继续作为唯一账户 authority；同步收口原子 outbox/cursor/ACK、稳定 opId、conflict、tombstone/graveyard，以及 generation/changeSeq/epoch 单调与恢复，不创建第二套账户、token、deviceId、cursor 或云状态。
+- **Android fail-closed 恢复**：凭据使用 Keystore；WorkManager 覆盖 boot、package replacement、网络与 Doze 后恢复；401/403、撤销和 revision rollback 固定停止自动重试并保留待修复队列。ContentProvider V1 仅输出 currentFocus、history、任务名、次数/时长聚合、identityStatus 和 syncHealth，不输出 credential、deviceId、cursor 或 envelope。
+- **中央 observation canonical registry**：named service binding 使用独立 Capability 与 vendor media type；FocusLink 在中央签名层固定为 `productId=identity-focus`，staging audience 固定为完整 HTTPS `/authority/identity-focus`。同 revision 的持久 snapshot、truth、时间字段和 observation hash 保持不可变；公网、缺配置、错误 capability/audience、过期、额外字段、依赖失败与 rollback 全部 fail-closed。
+- **交付状态**：版本提升为 `0.12.69/1269`，用于本轮唯一跨端候选。staging、中央两跳、真实设备、三轮 PC-off 与 production 灰度必须在本提交后的独立验收中留下脱敏证据；未全部通过前 `supportsPcOff=false`。
+
 ## v0.12.68 - 2026-07-28（私有 Account DO authority 与分页 liveness）
 
 - **唯一 production authority**：Cloudflare Account Durable Object 成为唯一生产数据权威；私有 FocusLink Worker 固定关闭 `workers.dev`、preview 和 custom route，只接受 canonical service-binding 路径。Node `startPersonalCloud()`、production CLI、Docker/Compose 静态 bearer authority 全部硬退役，回环 Node 仅保留合同测试。

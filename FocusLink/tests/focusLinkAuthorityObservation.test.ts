@@ -22,7 +22,7 @@ import {
 import worker, { FocusLinkAuthorityObservation } from '../cloudflare/worker';
 import type { WorkerEnv } from '../cloudflare/accountDurableObject';
 
-const AUDIENCE = 'https://authority.contract.test/authority/focuslink';
+const AUDIENCE = 'https://authority.contract.test/authority/identity-focus';
 
 function capability(): string {
   return `fao_${randomBytes(32).toString('base64url')}`;
@@ -102,6 +102,10 @@ describe('FocusLink service-binding authority observation', () => {
     expect(Object.keys(JSON.parse(firstBody)).sort()).toEqual(
       ['schemaVersion', 'productId', 'audience', 'observedAt', 'expiresAt', 'truth'].sort(),
     );
+    expect(JSON.parse(firstBody)).toMatchObject({
+      productId: 'identity-focus',
+      audience: AUDIENCE,
+    });
     expect(firstBody).not.toMatch(/signature|secret|token|deviceId|cursor|envelope/i);
   });
 
@@ -201,7 +205,7 @@ describe('FocusLink service-binding authority observation', () => {
     expect(validateFocusLinkAuthorityObservation({ ...value, extra: true }, now)).toBe(false);
     expect(
       validateFocusLinkAuthorityObservation(
-        { ...value, audience: 'http://authority.contract.test/authority/focuslink' },
+        { ...value, audience: 'http://authority.contract.test/authority/identity-focus' },
         now,
       ),
     ).toBe(false);

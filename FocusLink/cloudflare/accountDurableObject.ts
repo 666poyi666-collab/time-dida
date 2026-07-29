@@ -92,7 +92,7 @@ export interface WorkerEnv {
   FOCUSLINK_PAIR_AUTHORITY_TOKEN?: string;
   /** Dedicated capability used only by the named observation service binding. */
   FOCUSLINK_AUTHORITY_CAPABILITY?: string;
-  /** Exact central-authority audience ending in /authority/focuslink. */
+  /** Exact central-authority audience ending in /authority/identity-focus. */
   FOCUSLINK_AUTHORITY_AUDIENCE?: string;
 }
 

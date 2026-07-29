@@ -85,7 +85,7 @@ OAuth/device 双向拒绝、`opId` applied/duplicate/复用拒绝、旧 revision
 
 Sync v2 额外覆盖 inventory/manifest/bootstrap、三类 epoch、租约过期恢复、`opId` 幂等、旧 revision 冲突、tagId 合并、tombstone 水位、配对 nonce 重放、scope/撤销/轮换、冲突/回收站标准 mutation、Queue `credential-missing` 诊断和重部署持久性。R2 门禁必须包含真实 object 写入、AES-GCM 篡改检测、maintenance 写拒绝、恢复失败回滚及 generation 切换；账户未启用 R2 时记录 Cloudflare 错误码并判定该门禁未通过。
 
-Authority observation 本地合同必须覆盖：默认公网入口拒绝、named service binding、精确 vendor `Accept` / `Content-Type`、独立 `Capability`、完整 HTTPS `/authority/focuslink` audience、缺 binding/配置、错误 capability/audience、依赖失败、过期、额外字段与不可用 revision。测试必须对同一持久化 revision 连读并确认正文、truth、时间字段及计算出的 SHA-256 observation hash 完全相同；任何非 200 响应不得携带签名字段或返回 secret。
+Authority observation 本地合同必须覆盖：默认公网入口拒绝、named service binding、精确 vendor `Accept` / `Content-Type`、独立 `Capability`、中央 registry 固定的 `productId=identity-focus` 与完整 HTTPS `/authority/identity-focus` audience、缺 binding/配置、错误 capability/audience、依赖失败、过期、额外字段与不可用 revision。测试必须对同一持久化 revision 连读并确认正文、truth、时间字段及计算出的 SHA-256 observation hash 完全相同；任何非 200 响应不得携带签名字段或返回 secret。
 
 公网移动端验收必须在 Windows FocusLink 进程停止时，分别由小米手机和华为平板完成开始、暂停、继续、结束，并在 Cloudflare 中各形成一份含 2 个 segment、1 个 pause 的独立账本。随后 Windows 启动并执行同步，两份会话在 SQLite 中各出现一次；再次同步不得增加副本。旧 Node cursor 切到 Cloudflare 时，客户端必须根据结构化 `invalid_cursor` 清空当前连接的缓存并从空 cursor 重建，不得依赖人工清数据。
 

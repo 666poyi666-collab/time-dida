@@ -1,7 +1,7 @@
 export const FOCUSLINK_AUTHORITY_OBSERVATION_PATH = '/internal/authority-observation/v1' as const;
 export const FOCUSLINK_AUTHORITY_OBSERVATION_MEDIA_TYPE =
   'application/vnd.poyi.authority-observation.v1+json' as const;
-export const FOCUSLINK_AUTHORITY_PRODUCT_ID = 'focuslink' as const;
+export const FOCUSLINK_AUTHORITY_PRODUCT_ID = 'identity-focus' as const;
 export const FOCUSLINK_AUTHORITY_OBSERVATION_TTL_MS = 5 * 60 * 1000;
 export const FOCUSLINK_AUTHORITY_FRESH_MS = 15 * 60 * 1000;
 

@@ -1,5 +1,11 @@
 # FocusLink 实施日志
 
+## 2026-07-29 · v0.12.69 中央 canonical identity-focus 对齐
+
+- FocusLink observation 在中央签名 registry 中固定使用 `productId=identity-focus` 与完整 HTTPS `/authority/identity-focus` audience；内部 named entrypoint 仍为 `FocusLinkAuthorityObservation`，路径仍为 `/internal/authority-observation/v1`。
+- staging Wrangler 固定 canonical audience，独立 capability 只以 Cloudflare secret 配置；默认 Worker ingress、错误 capability/audience、缺依赖、过期或额外字段继续 fail-closed。
+- 本轮跨端候选提升为 `0.12.69/1269`。远端 staging、中央两跳、真实手机/平板/手表和三轮 PC-off 必须在源码提交后独立验收；未全部完成前不得写 `supportsPcOff=true`。
+
 ## 2026-07-28 · v0.12.68 私有 authority 与 canonical adapter 收口
 
 - `cloudflare/worker.ts` 改为无公网入口的 service-binding authority adapter；只接受 canonical `/sync/v2/*` 与 `/sync/v1/pair/*`。pair offer 将 fl2 credential 转交 DO 复验 `devices:manage`，公网 owner session + CSRF 仍由 foxlink-cloud-mcp 负责。
