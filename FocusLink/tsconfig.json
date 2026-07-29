@@ -28,6 +28,7 @@
   "include": ["src", "mobile", "shared", "electron", "cloud", "tests", "*.config.ts"],
   "exclude": [
     "tests/cloudflareWorkerRouting.test.ts",
-    "tests/accountDurableObjectDeviceBinding.test.ts"
+    "tests/accountDurableObjectDeviceBinding.test.ts",
+    "tests/focusLinkAuthorityObservation.test.ts"
   ]
 }

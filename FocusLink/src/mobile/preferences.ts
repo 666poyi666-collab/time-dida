@@ -5,14 +5,11 @@ const TOKEN_SESSION_KEY = 'focuslink.mobile.token.session';
 const TOKEN_LOCAL_KEY = 'focuslink.mobile.token.local';
 const REMEMBER_TOKEN_KEY = 'focuslink.mobile.remember-token';
 const DEVICE_ID_KEY = 'focuslink.mobile.device-id';
-const LOOPBACK_MIGRATION_KEY = 'focuslink.mobile.migration.loopback-18787';
-const CURRENT_LOOPBACK_ENDPOINT = 'http://127.0.0.1:18787';
 export const STAGING_FOCUSLINK_ENDPOINT =
   'https://foxlink-mcp-staging.focuslink-poyi-6465e9.workers.dev';
-const LEGACY_LOOPBACK_PORT = '8787';
 
 export function defaultNativeEndpointForMode(mode: string): string {
-  return mode === 'staging' ? STAGING_FOCUSLINK_ENDPOINT : CURRENT_LOOPBACK_ENDPOINT;
+  return mode === 'staging' ? STAGING_FOCUSLINK_ENDPOINT : '';
 }
 
 export interface MobileConnectionPreferences {
@@ -24,25 +21,17 @@ export interface MobileConnectionPreferences {
 export function loadConnectionPreferences(): MobileConnectionPreferences {
   const rememberToken = localStorage.getItem(REMEMBER_TOKEN_KEY) === 'true';
   const storedEndpoint = localStorage.getItem(ENDPOINT_KEY);
-  const migrationPending = localStorage.getItem(LOOPBACK_MIGRATION_KEY) !== 'true';
-  const endpointBeforeMigration =
+  const endpointBeforeRetirement =
     storedEndpoint ??
     (Capacitor.isNativePlatform() ? defaultNativeEndpointForMode(import.meta.env.MODE) : '');
-  const endpoint = migrationPending
-    ? migrateLegacyMobileSyncEndpoint(endpointBeforeMigration)
-    : endpointBeforeMigration;
-  if (migrationPending) {
-    // Desktop moved its embedded service from 8787 to 18787 in v0.12.21. Android
-    // localStorage survives an overwrite install, so migrate the matching old mobile
-    // default too; otherwise the UI retries 8787 forever while adb reverse targets 18787.
+  const endpoint = cloudOnlyMobileSyncEndpoint(endpointBeforeRetirement);
+  if (storedEndpoint !== null && endpoint !== storedEndpoint) {
+    // Old Android installs may retain a localhost/ADB or LAN HTTP endpoint. Do
+    // not silently reconnect it: PC-off mobile mode is HTTPS authority-only.
     try {
-      if (storedEndpoint !== null && endpoint !== storedEndpoint) {
-        localStorage.setItem(ENDPOINT_KEY, endpoint);
-      }
-      localStorage.setItem(LOOPBACK_MIGRATION_KEY, 'true');
+      localStorage.setItem(ENDPOINT_KEY, endpoint);
     } catch {
-      // Storage can be readable but temporarily unwritable. Keep the in-memory migrated
-      // endpoint for this launch and retry persistence on the next startup.
+      // Keep the fail-closed in-memory value and retry retirement next launch.
     }
   }
   return {
@@ -58,24 +47,23 @@ export function loadConnectionPreferences(): MobileConnectionPreferences {
   };
 }
 
-/** Only migrate the retired loopback default; HTTPS and user-owned endpoints stay untouched. */
-export function migrateLegacyMobileSyncEndpoint(endpoint: string): string {
+/** Mobile data-plane endpoints are cloud HTTPS only; loopback/LAN HTTP has no fallback role. */
+export function cloudOnlyMobileSyncEndpoint(endpoint: string): string {
   try {
     const url = new URL(endpoint);
-    const isLegacyLoopback =
-      url.protocol === 'http:' &&
-      url.hostname === '127.0.0.1' &&
-      url.port === LEGACY_LOOPBACK_PORT &&
-      url.pathname === '/' &&
-      !url.search &&
-      !url.hash &&
-      !url.username &&
-      !url.password;
-    if (!isLegacyLoopback) return endpoint;
-    url.port = '18787';
+    if (
+      url.protocol !== 'https:' ||
+      !url.hostname ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    ) {
+      return '';
+    }
     return url.toString().replace(/\/$/, '');
   } catch {
-    return endpoint;
+    return '';
   }
 }
 

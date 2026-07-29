@@ -109,7 +109,10 @@ public final class FocusRuntimePlugin extends Plugin {
             FocusRuntimeConnectionStore.Connection configured = FocusRuntimeConnectionStore.get(
                 getContext()
             );
-            if (!sameConnection(previous, configured)) FocusRuntimeStore.clearSnapshot(getContext());
+            if (!sameConnection(previous, configured)) {
+                FocusRuntimeStore.clearSnapshot(getContext());
+                FocusAuthorityProjectionStore.clear(getContext());
+            }
             if (
                 configured != null &&
                 FocusLedgerNativeOutboxStore.countForDevice(
@@ -131,6 +134,7 @@ public final class FocusRuntimePlugin extends Plugin {
         FocusRuntimeConnectionStore.clear(getContext());
         FocusLedgerSyncScheduler.cancel(getContext());
         FocusRuntimeStore.clearSnapshot(getContext());
+        FocusAuthorityProjectionStore.clear(getContext());
         FocusNotificationService.synchronize(getContext());
         call.resolve();
     }
@@ -189,6 +193,32 @@ public final class FocusRuntimePlugin extends Plugin {
             );
         } catch (IllegalArgumentException | IllegalStateException exception) {
             call.reject(exception.getMessage(), "invalid_completed_ledger");
+        }
+    }
+
+    @PluginMethod
+    public void updateAuthorityProjectionHistory(PluginCall call) {
+        try {
+            JSArray history = call.getArray("history");
+            Integer pendingCount = call.getInt("pendingCount");
+            if (history == null || pendingCount == null) {
+                throw new IllegalArgumentException("history and pendingCount are required");
+            }
+            FocusAuthorityProjectionStore.updateHistory(
+                getContext(),
+                history,
+                safeTimestamp(call, "lastVerifiedAt"),
+                safeTimestamp(call, "lastAttemptAt"),
+                pendingCount,
+                call.getString("lastErrorCode", "")
+            );
+            call.resolve(
+                new JSObject()
+                    .put("accepted", history.length())
+                    .put("pending", Math.max(0, pendingCount))
+            );
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            call.reject(exception.getMessage(), "invalid_authority_projection");
         }
     }
 
@@ -564,6 +594,23 @@ public final class FocusRuntimePlugin extends Plugin {
         return left.endpoint.equals(right.endpoint) &&
         left.accessToken.equals(right.accessToken) &&
         left.deviceId.equals(right.deviceId);
+    }
+
+    private static long safeTimestamp(PluginCall call, String key) {
+        Object raw = call.getData().opt(key);
+        if (!(raw instanceof Number)) {
+            throw new IllegalArgumentException(key + " must be a safe integer");
+        }
+        Number number = (Number) raw;
+        long value = number.longValue();
+        if (
+            number.doubleValue() != (double) value ||
+            value < 0L ||
+            value > FocusRuntimeContract.MAX_SAFE_INTEGER
+        ) {
+            throw new IllegalArgumentException(key + " must be a safe integer");
+        }
+        return value;
     }
 
     static List<Intent> autoStartSettingsCandidates(Context context) {

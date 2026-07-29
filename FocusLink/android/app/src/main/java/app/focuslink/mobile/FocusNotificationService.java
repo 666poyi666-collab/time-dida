@@ -211,11 +211,15 @@ public final class FocusNotificationService extends Service {
                 this,
                 cloudClient.fetchLive(connection)
             );
-            recordPollSuccess(snapshot.stateRevision);
             if (!FocusRuntimeStore.putCloudSnapshotIfNoLocalAuthority(this, snapshot)) {
+                if (!current.localAuthority) {
+                    throw new IllegalArgumentException("cloud revision rollback or conflict");
+                }
+                recordPollSuccess(snapshot.stateRevision);
                 Log.i(TAG, "Cloud focus snapshot retained as diagnostics while local authority is active");
                 return;
             }
+            recordPollSuccess(snapshot.stateRevision);
             Log.i(TAG, "Background cloud focus snapshot confirmed at revision " + snapshot.stateRevision);
             handler.post(() -> applyCloudSnapshot(snapshot));
         } catch (Throwable exception) {
@@ -233,7 +237,9 @@ public final class FocusNotificationService extends Service {
         try {
             JSONObject response = cloudClient.sendCommand(connection, command);
             FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromCloudResponse(this, response);
-            if (!FocusRuntimeStore.putCloudSnapshotIfNoLocalAuthority(this, snapshot)) return;
+            if (!FocusRuntimeStore.putCloudSnapshotIfNoLocalAuthority(this, snapshot)) {
+                throw new IllegalArgumentException("cloud revision rollback or conflict");
+            }
             FocusRuntimeStore.completeCommand(this, command.id);
             handler.post(() -> applyCloudSnapshot(snapshot));
         } catch (Throwable exception) {
@@ -296,6 +302,12 @@ public final class FocusNotificationService extends Service {
             String message = current.getMessage();
             if (message != null && message.contains("HTTP 401")) return "authentication_failed";
             if (message != null && message.contains("HTTP 403")) return "authorization_failed";
+            if (message != null && message.contains("revision rollback")) {
+                return "revision_rollback";
+            }
+            if (message != null && message.contains("revision") && message.contains("conflict")) {
+                return "revision_conflict";
+            }
             if (type.contains("Timeout")) return "timeout";
             if (
                 type.contains("UnknownHost") ||

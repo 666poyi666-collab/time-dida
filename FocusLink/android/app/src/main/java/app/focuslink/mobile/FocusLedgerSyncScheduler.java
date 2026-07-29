@@ -1,33 +1,37 @@
 package app.focuslink.mobile;
 
-import android.app.job.JobInfo;
-import android.app.job.JobScheduler;
-import android.content.ComponentName;
 import android.content.Context;
+import androidx.work.BackoffPolicy;
+import androidx.work.Constraints;
+import androidx.work.ExistingWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
+import java.util.concurrent.TimeUnit;
 
 final class FocusLedgerSyncScheduler {
-    static final int JOB_ID = 0x464c3202;
+    static final String UNIQUE_WORK_NAME = "focuslink-ledger-sync-v2";
+    static final String WORK_TAG = "focuslink-ledger-sync";
 
     private FocusLedgerSyncScheduler() {}
 
     static void schedule(Context context) {
-        JobScheduler scheduler = context.getSystemService(JobScheduler.class);
-        if (scheduler == null) throw new IllegalStateException("JobScheduler is unavailable");
-        JobInfo job = new JobInfo.Builder(
-            JOB_ID,
-            new ComponentName(context, FocusLedgerSyncJobService.class)
-        )
-            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-            .setPersisted(true)
-            .setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
+        Constraints constraints = new Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
             .build();
-        if (scheduler.schedule(job) != JobScheduler.RESULT_SUCCESS) {
-            throw new IllegalStateException("unable to schedule completed ledger upload");
-        }
+        OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(FocusLedgerSyncWork.class)
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
+            .addTag(WORK_TAG)
+            .build();
+        WorkManager
+            .getInstance(context.getApplicationContext())
+            .enqueueUniqueWork(UNIQUE_WORK_NAME, ExistingWorkPolicy.KEEP, request);
     }
 
     static void cancel(Context context) {
-        JobScheduler scheduler = context.getSystemService(JobScheduler.class);
-        if (scheduler != null) scheduler.cancel(JOB_ID);
+        WorkManager
+            .getInstance(context.getApplicationContext())
+            .cancelUniqueWork(UNIQUE_WORK_NAME);
     }
 }

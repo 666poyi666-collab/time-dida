@@ -33,7 +33,6 @@ export function ConnectionSheet({
   const dialogRef = useRef<HTMLElement>(null);
   const endpointRef = useRef<HTMLInputElement>(null);
   const reduceMotion = useReducedMotion();
-  const usesLoopback = isLoopbackEndpoint(value.endpoint);
   const [pairingCode, setPairingCode] = useState(initialPairingCode ?? '');
   const [pairingBusy, setPairingBusy] = useState(false);
   const [pairingNotice, setPairingNotice] = useState<string | null>(null);
@@ -130,25 +129,8 @@ export function ConnectionSheet({
             onChange={(event) => onChange({ ...value, endpoint: event.target.value })}
           />
           <small>
-            生产环境仅接受 HTTPS；手机上的 localhost/127.0.0.1 指手机自身，不能直接连接电脑。
+            手机/平板仅连接 HTTPS 云端 authority；localhost、ADB reverse 和局域网 HTTP 已退役。
           </small>
-          <button
-            className="field-quick-action"
-            type="button"
-            onClick={() => onChange({ ...value, endpoint: 'http://127.0.0.1:18787' })}
-          >
-            使用 ADB reverse 地址
-          </button>
-          {usesLoopback && (
-            <div className="security-note" role="note">
-              <LinkIcon />
-              <p>
-                请保持电脑端 FocusLink 正在运行，并先执行
-                <code>adb reverse tcp:18787 tcp:18787</code>。Wi-Fi 或异地连接请改用 HTTPS
-                同步服务；不要填写电脑的局域网 HTTP 地址。
-              </p>
-            </div>
-          )}
         </div>
 
         <div className="form-field">
@@ -272,21 +254,4 @@ function LockIcon() {
       <path d="M8 10V7a4 4 0 0 1 8 0v3" />
     </svg>
   );
-}
-
-function LinkIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M9 15l6-6M7 17H5a4 4 0 010-8h4M15 7h4a4 4 0 010 8h-4" />
-    </svg>
-  );
-}
-
-function isLoopbackEndpoint(endpoint: string): boolean {
-  try {
-    const hostname = new URL(endpoint).hostname;
-    return hostname === 'localhost' || hostname === '127.0.0.1';
-  } catch {
-    return false;
-  }
 }

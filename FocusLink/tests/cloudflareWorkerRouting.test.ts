@@ -6,6 +6,12 @@ vi.mock('cloudflare:workers', () => ({
   DurableObject: class {
     constructor() {}
   },
+  WorkerEntrypoint: class {
+    env: unknown;
+    constructor(_context: unknown, env: unknown) {
+      this.env = env;
+    }
+  },
 }));
 
 import worker from '../cloudflare/worker';
@@ -13,6 +19,7 @@ import type { WorkerEnv } from '../cloudflare/accountDurableObject';
 
 const ALLOWED_ORIGIN = 'https://localhost';
 const VALID_DEVICE_TOKEN = `fl2_accountaa_devicebb_${'x'.repeat(40)}`;
+const OWNER_INTERNAL_TOKEN = `owner-internal-${'o'.repeat(40)}`;
 
 interface ForwardedCall {
   url: string;
@@ -56,7 +63,7 @@ function makeEnv(forwarded: ForwardedCall[]): WorkerEnv {
       get: () => stub,
     },
     FOCUSLINK_ACCOUNT_ID: 'account-public',
-    FOCUSLINK_SYNC_TOKEN: 'owner-internal-token-with-at-least-32-characters',
+    FOCUSLINK_SYNC_TOKEN: OWNER_INTERNAL_TOKEN,
     FOCUSLINK_DEVICE_PEPPER: 'device-pepper-with-at-least-32-characters',
     FOCUSLINK_MCP_SERVICE_TOKEN: 'mcp-service-token-which-is-not-a-device-token',
     FOCUSLINK_PAIR_AUTHORITY_TOKEN: `fla_${'p'.repeat(48)}`,
@@ -139,7 +146,7 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
     expect(forwarded).toHaveLength(1);
     expect(forwarded[0]).toMatchObject({
       authorization: null,
-      forwardedAuthorization: 'Bearer owner-internal-token-with-at-least-32-characters',
+      forwardedAuthorization: `Bearer ${OWNER_INTERNAL_TOKEN}`,
       pairAuthority: null,
       account: 'account-public',
     });
@@ -251,7 +258,7 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
     expect(forwarded).toHaveLength(1);
     expect(forwarded[0]).toMatchObject({
       account: 'account-public',
-      internalService: 'owner-internal-token-with-at-least-32-characters',
+      internalService: OWNER_INTERNAL_TOKEN,
     });
     expect(forwarded[0].url).toContain('/internal/readyz');
   });

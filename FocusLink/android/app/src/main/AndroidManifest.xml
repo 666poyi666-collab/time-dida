@@ -81,11 +81,6 @@
                 android:value="User-visible focus session status and controls synchronized with FocusLink cloud" />
         </service>
 
-        <service
-            android:name=".FocusLedgerSyncJobService"
-            android:exported="false"
-            android:permission="android.permission.BIND_JOB_SERVICE" />
-
         <receiver
             android:name=".FocusLedgerSyncReceiver"
             android:enabled="true"

@@ -50,6 +50,7 @@ export async function exchangeDeviceSyncPairingCode(input: {
   signal?: AbortSignal;
 }): Promise<{ accessToken: string; deviceId: string }> {
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
+  requireMobileCloudEndpoint(endpoint);
   const code = input.code.trim();
   if (!/^[A-Za-z0-9_-]{32,160}$/.test(code)) {
     throw new Error('请输入有效的一次性配对码');
@@ -199,6 +200,7 @@ async function liveFocusFetch(
   timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
+  requireMobileCloudEndpoint(endpoint);
   const token = input.token.trim();
   if (!token) throw new Error('请填写访问令牌');
 
@@ -226,7 +228,7 @@ async function liveFocusFetch(
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     if (error instanceof RequestTimeoutError) throw new Error('实时同步请求超时，正在重连');
     throw new Error(
-      navigator.onLine ? unreachableMobileServiceMessage(endpoint, '实时同步服务') : '当前离线',
+      navigator.onLine ? unreachableMobileServiceMessage('实时同步服务') : '当前离线',
     );
   }
 
@@ -242,12 +244,14 @@ async function liveFocusFetch(
 
 class RequestTimeoutError extends Error {}
 
-function unreachableMobileServiceMessage(endpoint: string, service: string): string {
-  const hostname = new URL(endpoint).hostname;
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return `无法连接${service}：手机上的 ${hostname} 指手机自身。请保持电脑 FocusLink 运行，并先执行 ADB reverse tcp:18787 tcp:18787；Wi-Fi 或异地连接请使用 HTTPS 同步服务`;
-  }
+function unreachableMobileServiceMessage(service: string): string {
   return `无法连接${service}，请检查 HTTPS 地址、CORS 或网络`;
+}
+
+function requireMobileCloudEndpoint(endpoint: string): void {
+  if (new URL(endpoint).protocol !== 'https:') {
+    throw new Error('移动端只允许连接 HTTPS 云端同步服务');
+  }
 }
 
 async function fetchWithTimeout(

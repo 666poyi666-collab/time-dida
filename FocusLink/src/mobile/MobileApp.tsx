@@ -6,12 +6,12 @@ import { Capacitor } from '@capacitor/core';
 import { AppNavigation, type MobileView } from './AppNavigation';
 import { normalizeDeviceSyncEndpoint } from '@shared/sync/deviceProtocol';
 import { parseDeviceSyncPairingUrl } from '@shared/sync/pairingProtocol';
+import { classifySyncV2Error } from '@shared/sync/v2ClientError';
 import type { LiveFocusCommand, LiveFocusSnapshotResponse } from '@shared/sync/liveFocusProtocol';
 import type { SyncedTask, TaskSnapshotResponse } from '@shared/sync/taskSnapshotProtocol';
 import {
   clearCachedLiveFocusSnapshot,
   clearMobileCache,
-  completeOfflineFocusRuntime,
   createOfflineFocusRuntime,
   readCachedLiveFocusSnapshot,
   readCachedTaskSnapshot,
@@ -51,9 +51,9 @@ import {
   isNativeFocusRuntimeAvailable,
   readNativeFocusStatus,
   restoreOrMigrateNativeFocusConnection,
-  enqueueNativeCompletedLedgerBundle,
   setNativeImmersiveSystemBars,
   subscribeToNativeFocusCommands,
+  updateNativeAuthorityProjectionHistory,
   updateNativeFocusSnapshot,
   type NativeFocusCommand,
 } from './nativeFocusRuntime';
@@ -95,6 +95,7 @@ import {
 } from './liveSnapshotPolicy';
 import { remoteForkEvidence } from './authorityPolicy';
 import { runMobileSyncV2 } from './v2Sync';
+import { persistCompletedOfflineFocus } from './offlineCompletion';
 
 type PullState = 'idle' | 'pulling' | 'confirmed' | 'error';
 
@@ -375,6 +376,7 @@ export function MobileApp() {
         !controller.signal.aborted;
 
       try {
+        const attemptedAt = Date.now();
         const synced = await runMobileSyncV2({
           endpoint: connection.endpoint,
           token: connection.token,
@@ -384,6 +386,14 @@ export function MobileApp() {
         if (!isCurrent()) return;
         const snapshot = await readMobileCache();
         const pending = await readPendingDeviceSyncBundles();
+        const confirmedAt = Date.now();
+        await updateNativeAuthorityProjectionHistory({
+          records: snapshot.bundles,
+          lastVerifiedAt: confirmedAt,
+          lastAttemptAt: attemptedAt,
+          pendingCount: pending.length + synced.unresolvedConflicts,
+          lastErrorCode: '',
+        }).catch(() => false);
         setPendingUploadCount(pending.length + synced.unresolvedConflicts);
         cacheRef.current = snapshot;
         setCache(snapshot);
@@ -395,6 +405,14 @@ export function MobileApp() {
         );
       } catch (error) {
         if (!isCurrent() || isAbortError(error)) return;
+        const pending = await readPendingDeviceSyncBundles().catch(() => []);
+        await updateNativeAuthorityProjectionHistory({
+          records: cacheRef.current.bundles,
+          lastVerifiedAt: cacheRef.current.lastSyncAt,
+          lastAttemptAt: Date.now(),
+          pendingCount: pending.length,
+          lastErrorCode: classifySyncV2Error(error),
+        }).catch(() => false);
         setPullState('error');
         setLedgerNotice(
           cacheRef.current.bundles.length > 0
@@ -438,6 +456,13 @@ export function MobileApp() {
     ])
       .then(([ledger, cachedLive, cachedTasks, savedOfflineRuntime, pendingUploads]) => {
         if (!active || ledgerGeneration.current !== generation) return;
+        void updateNativeAuthorityProjectionHistory({
+          records: ledger.bundles,
+          lastVerifiedAt: ledger.lastSyncAt,
+          lastAttemptAt: ledger.lastSyncAt ?? 0,
+          pendingCount: pendingUploads.length,
+          lastErrorCode: '',
+        }).catch(() => false);
         cacheRef.current = ledger;
         setCache(ledger);
         const restoredLive = savedOfflineRuntime
@@ -821,11 +846,7 @@ export function MobileApp() {
             setCommandNotice('本机专注已继续');
           } else if (action === 'finish' && nextRuntime) {
             const bundle = finishOfflineFocus(nextRuntime, now);
-            // Native delivery is an additional durable PC-off path. IndexedDB
-            // remains the foreground fallback even if JobScheduler is
-            // temporarily unavailable on a vendor Android build.
-            await enqueueNativeCompletedLedgerBundle(bundle, deviceId).catch(() => false);
-            await completeOfflineFocusRuntime(bundle);
+            await persistCompletedOfflineFocus(bundle, deviceId);
             nextRuntime = null;
             authorityModeRef.current = 'cloud-live';
             setAuthorityMode('cloud-live');

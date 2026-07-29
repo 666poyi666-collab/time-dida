@@ -6,9 +6,9 @@ import {
   pushPendingDeviceSyncBundle,
 } from '../src/mobile/syncClient';
 import {
+  cloudOnlyMobileSyncEndpoint,
   defaultNativeEndpointForMode,
   loadConnectionPreferences,
-  migrateLegacyMobileSyncEndpoint,
   STAGING_FOCUSLINK_ENDPOINT,
 } from '../src/mobile/preferences';
 
@@ -23,7 +23,7 @@ describe('mobile sync client request recovery', () => {
     expect(STAGING_FOCUSLINK_ENDPOINT).toBe(
       'https://foxlink-mcp-staging.focuslink-poyi-6465e9.workers.dev',
     );
-    expect(defaultNativeEndpointForMode('production')).toBe('http://127.0.0.1:18787');
+    expect(defaultNativeEndpointForMode('production')).toBe('');
   });
 
   it('exchanges a one-time pairing code and sends no existing bearer credential', async () => {
@@ -40,7 +40,7 @@ describe('mobile sync client request recovery', () => {
 
     await expect(
       exchangeDeviceSyncPairingCode({
-        endpoint: 'http://127.0.0.1:18787',
+        endpoint: 'https://sync.example.test',
         code: 'A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6',
         device: { platform: 'android', appVersion: 'test', displayName: 'Test device' },
       }),
@@ -49,7 +49,7 @@ describe('mobile sync client request recovery', () => {
       deviceId: 'device-assigned-by-authority',
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:18787/sync/v1/pair/exchange',
+      'https://sync.example.test/sync/v1/pair/exchange',
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -157,37 +157,30 @@ describe('mobile sync client request recovery', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('explains that Android loopback needs adb reverse when the embedded service is unreachable', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')));
-    vi.stubGlobal('navigator', { onLine: true });
-
+  it('rejects loopback before any mobile request can leave the renderer', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
     await expect(
       fetchLiveFocusSnapshot({
         endpoint: 'http://127.0.0.1:18787',
         token: 'test-token',
       }),
-    ).rejects.toThrow('ADB reverse tcp:18787 tcp:18787');
+    ).rejects.toThrow('HTTPS 云端同步服务');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it.each([
-    ['http://127.0.0.1:8787', 'http://127.0.0.1:18787'],
-    ['http://127.0.0.1:8787/', 'http://127.0.0.1:18787'],
-    ['http://localhost:8787', 'http://localhost:8787'],
-  ])('migrates the retired Android loopback endpoint from %s to %s', (legacy, current) => {
-    expect(migrateLegacyMobileSyncEndpoint(legacy)).toBe(current);
+    ['http://127.0.0.1:8787', ''],
+    ['http://127.0.0.1:18787', ''],
+    ['http://localhost:18787', ''],
+    ['http://192.168.1.2:8787', ''],
+    ['not a URL', ''],
+    ['https://sync.example.test/', 'https://sync.example.test'],
+  ])('normalizes the cloud-only mobile endpoint %s to %s', (input, expected) => {
+    expect(cloudOnlyMobileSyncEndpoint(input)).toBe(expected);
   });
 
-  it.each([
-    'https://sync.example.test',
-    'http://127.0.0.1:18787',
-    'http://127.0.0.1:8787/custom',
-    'http://192.168.1.2:8787',
-    'not a URL',
-  ])('preserves the user-owned endpoint %s', (endpoint) => {
-    expect(migrateLegacyMobileSyncEndpoint(endpoint)).toBe(endpoint);
-  });
-
-  it('persists the migrated endpoint while preserving the saved token preference', () => {
+  it('retires a stored loopback endpoint while preserving the credential for explicit repair', () => {
     const values = new Map([
       ['focuslink.mobile.endpoint', 'http://127.0.0.1:8787'],
       ['focuslink.mobile.remember-token', 'true'],
@@ -201,29 +194,14 @@ describe('mobile sync client request recovery', () => {
     vi.stubGlobal('sessionStorage', { getItem: () => null });
 
     expect(loadConnectionPreferences()).toEqual({
-      endpoint: 'http://127.0.0.1:18787',
+      endpoint: '',
       token: 'saved-token',
       rememberToken: true,
     });
-    expect(setItem).toHaveBeenCalledWith('focuslink.mobile.endpoint', 'http://127.0.0.1:18787');
-    expect(setItem).toHaveBeenCalledWith('focuslink.mobile.migration.loopback-18787', 'true');
+    expect(setItem).toHaveBeenCalledWith('focuslink.mobile.endpoint', '');
   });
 
-  it('does not rewrite a loopback endpoint explicitly saved after the one-time migration', () => {
-    const values = new Map([
-      ['focuslink.mobile.endpoint', 'http://127.0.0.1:8787'],
-      ['focuslink.mobile.migration.loopback-18787', 'true'],
-    ]);
-    vi.stubGlobal('localStorage', {
-      getItem: (key: string) => values.get(key) ?? null,
-      setItem: vi.fn(),
-    });
-    vi.stubGlobal('sessionStorage', { getItem: () => null });
-
-    expect(loadConnectionPreferences().endpoint).toBe('http://127.0.0.1:8787');
-  });
-
-  it('uses the migrated endpoint for the current launch when storage is temporarily unwritable', () => {
+  it('keeps loopback retired for the current launch when storage is temporarily unwritable', () => {
     vi.stubGlobal('localStorage', {
       getItem: (key: string) =>
         key === 'focuslink.mobile.endpoint' ? 'http://127.0.0.1:8787' : null,
@@ -233,6 +211,6 @@ describe('mobile sync client request recovery', () => {
     });
     vi.stubGlobal('sessionStorage', { getItem: () => null });
 
-    expect(loadConnectionPreferences().endpoint).toBe('http://127.0.0.1:18787');
+    expect(loadConnectionPreferences().endpoint).toBe('');
   });
 });

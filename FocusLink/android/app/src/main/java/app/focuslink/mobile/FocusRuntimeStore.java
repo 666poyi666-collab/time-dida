@@ -36,7 +36,15 @@ final class FocusRuntimeStore {
             if (snapshot.stateRevision < current.stateRevision) return false;
             if (
                 snapshot.stateRevision == current.stateRevision &&
-                (!snapshot.state.equals(current.state) || !snapshot.sessionId.equals(current.sessionId))
+                (
+                    !snapshot.state.equals(current.state) ||
+                    !snapshot.sessionId.equals(current.sessionId) ||
+                    !snapshot.title.equals(current.title) ||
+                    snapshot.primaryAdvances != current.primaryAdvances ||
+                    snapshot.controlsEnabled != current.controlsEnabled ||
+                    snapshot.localAuthority != current.localAuthority ||
+                    snapshot.primaryElapsedMs < current.primaryElapsedMs
+                )
             ) {
                 return false;
             }

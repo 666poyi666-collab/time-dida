@@ -1,8 +1,17 @@
+import { WorkerEntrypoint } from 'cloudflare:workers';
 import { DEVICE_SYNC_PROTOCOL_VERSION } from '../shared/sync/deviceProtocol';
 import { SYNC_V2_PROTOCOL_VERSION } from '../shared/sync/v2Protocol';
 import { FocusLinkAccount, type WorkerEnv } from './accountDurableObject';
+import {
+  FOCUSLINK_AUTHORITY_OBSERVATION_MEDIA_TYPE,
+  FOCUSLINK_AUTHORITY_OBSERVATION_PATH,
+  exactFocusLinkAuthorityAudience,
+  validateFocusLinkAuthorityObservation,
+} from './authorityObservation';
 
 export { FocusLinkAccount };
+
+const FOCUSLINK_AUTHORITY_CAPABILITY_PATTERN = /^fao_[A-Za-z0-9_-]{43}$/;
 
 // This Worker has no public ingress. The foxlink-cloud-mcp adapter is the sole
 // public boundary and reaches these canonical paths through a service binding.
@@ -22,6 +31,9 @@ const CANONICAL_AUTHORITY_ROUTES = new Map([
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === FOCUSLINK_AUTHORITY_OBSERVATION_PATH) {
+      return errorJson(403, 'service_binding_required', 'named service binding required');
+    }
     if (url.pathname === '/healthz') {
       if (request.method !== 'GET')
         return errorJson(405, 'method_not_allowed', 'method not allowed');
@@ -49,8 +61,8 @@ export default {
           env.FOCUSLINK_DEVICE_PEPPER,
           env.FOCUSLINK_MCP_SERVICE_TOKEN,
           env.FOCUSLINK_PAIR_AUTHORITY_TOKEN,
-        ])
-        || !isPairAuthorityToken(env.FOCUSLINK_PAIR_AUTHORITY_TOKEN)
+        ]) ||
+        !isPairAuthorityToken(env.FOCUSLINK_PAIR_AUTHORITY_TOKEN)
       ) {
         return errorJson(503, 'not_configured', 'worker account binding is incomplete');
       }
@@ -199,6 +211,112 @@ export default {
     for (const message of batch.messages) message.ack();
   },
 } satisfies ExportedHandler<WorkerEnv>;
+
+/** Private observation surface consumed only through a named service binding. */
+export class FocusLinkAuthorityObservation extends WorkerEntrypoint<WorkerEnv> {
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (
+      request.method !== 'GET' ||
+      url.pathname !== FOCUSLINK_AUTHORITY_OBSERVATION_PATH ||
+      url.search ||
+      url.hash
+    ) {
+      return errorJson(404, 'not_found', 'route not found');
+    }
+    const configuredCapability = this.env.FOCUSLINK_AUTHORITY_CAPABILITY ?? '';
+    const configuredAudience = exactFocusLinkAuthorityAudience(
+      this.env.FOCUSLINK_AUTHORITY_AUDIENCE,
+    );
+    if (
+      !this.env.FOCUSLINK_ACCOUNT ||
+      !this.env.FOCUSLINK_ACCOUNT_ID ||
+      !validServiceSecret(this.env.FOCUSLINK_SYNC_TOKEN) ||
+      !FOCUSLINK_AUTHORITY_CAPABILITY_PATTERN.test(configuredCapability) ||
+      !configuredAudience ||
+      [
+        this.env.FOCUSLINK_SYNC_TOKEN,
+        this.env.FOCUSLINK_DEVICE_PEPPER,
+        this.env.FOCUSLINK_MCP_SERVICE_TOKEN,
+        this.env.FOCUSLINK_PAIR_AUTHORITY_TOKEN,
+      ].includes(configuredCapability)
+    ) {
+      return errorJson(
+        503,
+        'authority_observation_not_configured',
+        'authority observation binding is incomplete',
+      );
+    }
+    if (request.headers.get('accept') !== FOCUSLINK_AUTHORITY_OBSERVATION_MEDIA_TYPE) {
+      return errorJson(
+        406,
+        'authority_observation_not_acceptable',
+        'authority observation media type required',
+      );
+    }
+    const authorization = /^Capability ([A-Za-z0-9_-]+)$/.exec(
+      request.headers.get('authorization') ?? '',
+    );
+    if (
+      !authorization ||
+      !FOCUSLINK_AUTHORITY_CAPABILITY_PATTERN.test(authorization[1]) ||
+      !constantTimeEqual(authorization[1], configuredCapability)
+    ) {
+      const response = errorJson(401, 'unauthorized', 'valid capability required');
+      response.headers.set('www-authenticate', 'Capability');
+      return response;
+    }
+    if (request.headers.get('x-poyi-authority-audience') !== configuredAudience) {
+      return errorJson(403, 'authority_audience_mismatch', 'authority audience mismatch');
+    }
+    try {
+      const id = this.env.FOCUSLINK_ACCOUNT.idFromName(this.env.FOCUSLINK_ACCOUNT_ID);
+      const response = await this.env.FOCUSLINK_ACCOUNT.get(id).fetch(
+        new Request(`https://focuslink.internal${FOCUSLINK_AUTHORITY_OBSERVATION_PATH}`, {
+          method: 'GET',
+          headers: {
+            'x-focuslink-account': this.env.FOCUSLINK_ACCOUNT_ID,
+            'x-focuslink-internal': this.env.FOCUSLINK_SYNC_TOKEN,
+          },
+        }),
+      );
+      if (
+        response.status !== 200 ||
+        response.headers.get('content-type') !== FOCUSLINK_AUTHORITY_OBSERVATION_MEDIA_TYPE
+      ) {
+        return errorJson(
+          503,
+          'authority_observation_unavailable',
+          'authority observation dependency is unavailable',
+        );
+      }
+      const value: unknown = await response.json();
+      if (!validateFocusLinkAuthorityObservation(value) || value.audience !== configuredAudience) {
+        return errorJson(
+          503,
+          'authority_observation_unavailable',
+          'authority observation dependency is invalid',
+        );
+      }
+      return new Response(JSON.stringify(value), {
+        status: 200,
+        headers: {
+          'cache-control': 'no-store',
+          'content-type': FOCUSLINK_AUTHORITY_OBSERVATION_MEDIA_TYPE,
+          'referrer-policy': 'no-referrer',
+          vary: 'Authorization, X-Poyi-Authority-Audience',
+          'x-content-type-options': 'nosniff',
+        },
+      });
+    } catch {
+      return errorJson(
+        503,
+        'authority_observation_unavailable',
+        'authority observation dependency is unavailable',
+      );
+    }
+  }
+}
 
 function isRetiredPublicRoute(pathname: string): boolean {
   return pathname === '/sync/push' || pathname.startsWith('/v1/') || pathname.startsWith('/v2/');

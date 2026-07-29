@@ -659,28 +659,23 @@ public class ExampleInstrumentedTest {
     }
 
     @Test
-    public void encryptsNativeConnectionAndRejectsRemoteCleartext() {
+    public void encryptsNativeConnectionAndRejectsAllCleartext() {
         Context context = isolatedRuntimeContext();
         FocusRuntimeConnectionStore.clear(context);
         String token = "instrumentation-native-token";
         try {
             FocusRuntimeConnectionStore.put(
                 context,
-                "http://127.0.0.1:8787/",
+                "https://sync.instrumentation.test/",
                 token,
                 "instrumentation-device"
             );
-            context
-                .getSharedPreferences("focus_runtime_connection_v1", Context.MODE_PRIVATE)
-                .edit()
-                .remove("loopback18787Migrated")
-                .commit();
             FocusRuntimeConnectionStore.Connection connection =
                 FocusRuntimeConnectionStore.get(context);
             assertNotNull(connection);
-            assertEquals("http://127.0.0.1:18787", connection.endpoint);
+            assertEquals("https://sync.instrumentation.test", connection.endpoint);
             assertEquals(
-                "http://127.0.0.1:18787",
+                "https://sync.instrumentation.test",
                 context
                     .getSharedPreferences("focus_runtime_connection_v1", Context.MODE_PRIVATE)
                     .getString("endpoint", "")
@@ -694,16 +689,21 @@ public class ExampleInstrumentedTest {
             assertFalse(storedToken.isEmpty());
             assertFalse(storedToken.contains(token));
 
-            try {
-                FocusRuntimeConnectionStore.put(
-                    context,
-                    "http://192.168.1.20:8787",
-                    token,
-                    "instrumentation-device"
-                );
-                throw new AssertionError("Remote cleartext endpoint must be rejected");
-            } catch (IllegalArgumentException expected) {
-                assertTrue(expected.getMessage().contains("endpoint"));
+            for (String cleartext : new String[] {
+                "http://127.0.0.1:18787",
+                "http://192.168.1.20:8787"
+            }) {
+                try {
+                    FocusRuntimeConnectionStore.put(
+                        context,
+                        cleartext,
+                        token,
+                        "instrumentation-device"
+                    );
+                    throw new AssertionError("Cleartext endpoint must be rejected");
+                } catch (IllegalArgumentException expected) {
+                    assertTrue(expected.getMessage().contains("endpoint"));
+                }
             }
         } finally {
             FocusRuntimeConnectionStore.clear(context);
@@ -801,7 +801,7 @@ public class ExampleInstrumentedTest {
             assertTrue(FocusRuntimeStore.putSnapshot(context, initial));
             FocusRuntimeConnectionStore.put(
                 context,
-                "http://127.0.0.1:18789",
+                "https://unreachable.invalid",
                 token,
                 "xiaomi-native-recovery-validation"
             );

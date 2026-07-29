@@ -1,18 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildNativeAuthorityHistory,
   enqueueNativeCompletedLedgerBundle,
   isNativeFocusRuntimeAvailable,
   makeNativeDisplaySnapshot,
   nativeFocusCommandSuccessCopy,
   normalizeNativePauseReminderDelayMinutes,
   restoreOrMigrateNativeFocusConnection,
+  updateNativeAuthorityProjectionHistory,
 } from '../src/mobile/nativeFocusRuntime';
 import { idleLiveFocusSnapshot } from '../src/mobile/runtimeModel';
+import type { CachedBundle } from '../src/mobile/cache';
 
 const capacitorHarness = vi.hoisted(() => ({ native: false, pluginAvailable: false }));
 const nativePluginHarness = vi.hoisted(() => ({
   configureConnection: vi.fn(),
   enqueueCompletedLedgerBundle: vi.fn(),
+  updateAuthorityProjectionHistory: vi.fn(),
   getConnection: vi.fn(),
 }));
 
@@ -35,6 +39,11 @@ describe('mobile native focus display projection', () => {
     nativePluginHarness.enqueueCompletedLedgerBundle.mockResolvedValue({
       queued: true,
       pending: 1,
+    });
+    nativePluginHarness.updateAuthorityProjectionHistory.mockReset();
+    nativePluginHarness.updateAuthorityProjectionHistory.mockResolvedValue({
+      accepted: 1,
+      pending: 0,
     });
     nativePluginHarness.getConnection.mockReset();
     nativePluginHarness.getConnection.mockResolvedValue({ configured: false });
@@ -205,6 +214,51 @@ describe('mobile native focus display projection', () => {
     ).toBe(true);
   });
 
+  it('projects confirmed history and specific tasks with the exact read-only V1 fields', async () => {
+    const cached = cachedBundle();
+    expect(buildNativeAuthorityHistory([cached])).toEqual([
+      {
+        sessionId: 'session-history',
+        startedAt: 1_000,
+        endedAt: 61_000,
+        status: 'finished',
+        activeMs: 50_000,
+        pausedMs: 10_000,
+        wallMs: 60_000,
+        title: '化学复习',
+        task: {
+          taskId: 'task-chemistry',
+          source: 'ticktick',
+          title: '化学错题',
+        },
+      },
+    ]);
+
+    capacitorHarness.native = true;
+    capacitorHarness.pluginAvailable = true;
+    await expect(
+      updateNativeAuthorityProjectionHistory({
+        records: [cached],
+        lastVerifiedAt: 70_000,
+        lastAttemptAt: 69_000,
+        pendingCount: 0,
+      }),
+    ).resolves.toBe(true);
+    expect(nativePluginHarness.updateAuthorityProjectionHistory).toHaveBeenCalledWith({
+      history: buildNativeAuthorityHistory([cached]),
+      lastVerifiedAt: 70_000,
+      lastAttemptAt: 69_000,
+      pendingCount: 0,
+      lastErrorCode: '',
+    });
+  });
+
+  it('omits a legacy history row whose durations cannot satisfy the consumer contract', () => {
+    const cached = cachedBundle();
+    cached.bundle.session.wallElapsedMs = 59_999;
+    expect(buildNativeAuthorityHistory([cached])).toEqual([]);
+  });
+
   it('normalizes the native pause reminder delay to the supported range', () => {
     expect(normalizeNativePauseReminderDelayMinutes()).toBe(3);
     expect(normalizeNativePauseReminderDelayMinutes(Number.NaN)).toBe(3);
@@ -213,3 +267,32 @@ describe('mobile native focus display projection', () => {
     expect(normalizeNativePauseReminderDelayMinutes(999)).toBe(240);
   });
 });
+
+function cachedBundle(): CachedBundle {
+  return {
+    entityId: 'session-history',
+    revision: 3,
+    changeSeq: 9,
+    sourceDeviceId: 'device-cloud',
+    bundle: {
+      session: {
+        id: 'session-history',
+        title: '化学复习',
+        status: 'finished',
+        startedAt: 1_000,
+        endedAt: 61_000,
+        activeElapsedMs: 50_000,
+        pauseElapsedMs: 10_000,
+        wallElapsedMs: 60_000,
+        defaultTaskId: 'task-chemistry',
+        defaultTaskSource: 'ticktick',
+        defaultTaskTitle: '化学错题',
+        note: null,
+        createdAt: 1_000,
+        updatedAt: 61_000,
+      },
+      segments: [],
+      pauses: [],
+    },
+  };
+}

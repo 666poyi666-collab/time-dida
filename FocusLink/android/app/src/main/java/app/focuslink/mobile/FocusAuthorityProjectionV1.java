@@ -21,10 +21,19 @@ final class FocusAuthorityProjectionV1 {
     ) {
         if (!connectionConfigured) return "blocked";
         boolean hasError = lastErrorCode != null && !lastErrorCode.isEmpty();
+        if (isBlockingError(lastErrorCode)) return "blocked";
         if (lastVerifiedAt <= 0L) return hasError ? "offline" : "unknown";
         if (hasError && lastAttemptAt > lastVerifiedAt) return "offline";
         if (now >= lastVerifiedAt && now - lastVerifiedAt <= FRESH_AFTER_MS) return "fresh";
         return "stale";
+    }
+
+    static boolean isBlockingError(String errorCode) {
+        return "authentication_failed".equals(errorCode) ||
+        "authorization_failed".equals(errorCode) ||
+        "cache_corrupt".equals(errorCode) ||
+        "revision_conflict".equals(errorCode) ||
+        "revision_rollback".equals(errorCode);
     }
 
     static JSONObject build(

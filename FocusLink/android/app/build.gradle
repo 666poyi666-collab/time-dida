@@ -13,7 +13,7 @@ android {
         versionCode 1268
         versionName "0.12.68"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField "String", "DEFAULT_SYNC_ENDPOINT", '"http://127.0.0.1:18787"'
+        buildConfigField "String", "DEFAULT_SYNC_ENDPOINT", '""'
         manifestPlaceholders = [pairScheme: "focuslink"]
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -54,6 +54,7 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core:$androidxCoreVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "androidx.work:work-runtime:2.10.1"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
     testImplementation "org.json:json:20240303"

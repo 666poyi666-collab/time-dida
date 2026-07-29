@@ -17,7 +17,7 @@ public class FocusLinkConfigTest {
         } else {
             assertEquals("app.focuslink.mobile", BuildConfig.APPLICATION_ID);
             assertEquals("0.12.68", BuildConfig.VERSION_NAME);
-            assertEquals("http://127.0.0.1:18787", BuildConfig.DEFAULT_SYNC_ENDPOINT);
+            assertEquals("", BuildConfig.DEFAULT_SYNC_ENDPOINT);
         }
     }
 }

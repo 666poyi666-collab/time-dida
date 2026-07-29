@@ -37,11 +37,25 @@ public final class FocusAuthorityProjectionProvider extends ContentProvider {
                 getContext()
             );
             FocusRuntimeSnapshot snapshot = FocusRuntimeStore.getSnapshot(getContext());
+            FocusAuthorityProjectionStore.Snapshot projectionCache =
+                FocusAuthorityProjectionStore.reconcileAndRead(getContext(), snapshot);
             JSONObject diagnostics = FocusNotificationService.pollDiagnostics(getContext());
-            long lastVerifiedAt = diagnostics.optLong("lastSuccessAtEpochMs", 0L);
-            long lastAttemptAt = diagnostics.optLong("lastAttemptAtEpochMs", 0L);
-            long revision = diagnostics.optLong("lastRevision", -1L);
-            String lastErrorCode = diagnostics.optString("lastErrorCode", "");
+            long liveVerifiedAt = diagnostics.optLong("lastSuccessAtEpochMs", 0L);
+            long liveAttemptAt = diagnostics.optLong("lastAttemptAtEpochMs", 0L);
+            String liveErrorCode = diagnostics.optString("lastErrorCode", "");
+            boolean hasProjectedHistory = projectionCache.history.length() > 0;
+            long lastVerifiedAt = hasProjectedHistory
+                ? oldestPositive(liveVerifiedAt, projectionCache.lastVerifiedAt)
+                : liveVerifiedAt;
+            long lastAttemptAt = Math.max(liveAttemptAt, projectionCache.lastAttemptAt);
+            String lastErrorCode = mergedError(
+                liveErrorCode,
+                liveAttemptAt,
+                liveVerifiedAt,
+                projectionCache.lastErrorCode,
+                projectionCache.lastAttemptAt,
+                projectionCache.lastVerifiedAt
+            );
             String freshness = FocusAuthorityProjectionV1.freshness(
                 connection != null,
                 lastVerifiedAt,
@@ -53,19 +67,38 @@ public final class FocusAuthorityProjectionProvider extends ContentProvider {
                 .put("state", snapshot.state)
                 .put("sessionId", snapshot.sessionId)
                 .put("title", snapshot.title)
-                .put("revision", snapshot.stateRevision)
+                .put("revision", projectionCache.revision)
                 .put("primaryElapsedMs", snapshot.primaryElapsedMs)
                 .put("primaryAdvances", snapshot.primaryAdvances)
                 .put("controlsEnabled", snapshot.allowsCommands(getContext()));
+            boolean blocked = "blocked".equals(freshness) || "unknown".equals(freshness);
+            int nativeLedgerPending = connection == null
+                ? 0
+                : FocusLedgerNativeOutboxStore.countForDevice(
+                    getContext(),
+                    connection.deviceId
+                );
+            long exposedRevision = projectionCache.revision;
+            long exposedLastVerifiedAt = lastVerifiedAt;
+            if (exposedRevision < 0L || exposedLastVerifiedAt <= 0L) {
+                exposedRevision = -1L;
+                exposedLastVerifiedAt = 0L;
+            }
+            if (exposedRevision >= 0L) currentFocus.put("revision", exposedRevision);
+            boolean redactProjection = blocked || exposedRevision < 0L;
             JSONObject projection = FocusAuthorityProjectionV1.build(
-                revision,
-                lastVerifiedAt,
+                exposedRevision,
+                exposedLastVerifiedAt,
                 freshness,
-                connection == null ? "unpaired" : "paired",
+                identityStatus(connection != null, lastErrorCode),
                 lastErrorCode,
-                FocusRuntimeStore.pendingCount(getContext()),
-                currentFocus,
-                new JSONArray()
+                logicalPendingCount(
+                    FocusRuntimeStore.pendingCount(getContext()),
+                    nativeLedgerPending,
+                    projectionCache.webPendingCount
+                ),
+                redactProjection ? null : currentFocus,
+                redactProjection ? new JSONArray() : projectionCache.history
             );
             Bundle result = new Bundle();
             result.putString(RESULT_PROJECTION, projection.toString());
@@ -73,6 +106,59 @@ public final class FocusAuthorityProjectionProvider extends ContentProvider {
         } catch (JSONException exception) {
             throw new IllegalStateException("authority projection serialization failed");
         }
+    }
+
+    private static long oldestPositive(long left, long right) {
+        if (left <= 0L || right <= 0L) return 0L;
+        return Math.min(left, right);
+    }
+
+    private static String mergedError(
+        String liveError,
+        long liveAttemptAt,
+        long liveVerifiedAt,
+        String ledgerError,
+        long ledgerAttemptAt,
+        long ledgerVerifiedAt
+    ) {
+        if (FocusAuthorityProjectionV1.isBlockingError(ledgerError)) return ledgerError;
+        if (FocusAuthorityProjectionV1.isBlockingError(liveError)) return liveError;
+        boolean liveFailed = liveError != null &&
+        !liveError.isEmpty() &&
+        liveAttemptAt > liveVerifiedAt;
+        boolean ledgerFailed = ledgerError != null &&
+        !ledgerError.isEmpty() &&
+        ledgerAttemptAt > ledgerVerifiedAt;
+        if (liveFailed && ledgerFailed) {
+            return liveAttemptAt >= ledgerAttemptAt ? liveError : ledgerError;
+        }
+        if (liveFailed) return liveError;
+        if (ledgerFailed) return ledgerError;
+        return "";
+    }
+
+    private static String identityStatus(boolean configured, String errorCode) {
+        if (!configured) return "unpaired";
+        if (
+            "cache_corrupt".equals(errorCode) ||
+            "revision_conflict".equals(errorCode) ||
+            "revision_rollback".equals(errorCode)
+        ) {
+            return "unpaired";
+        }
+        return "paired";
+    }
+
+    private static int logicalPendingCount(
+        int commandPending,
+        int nativeLedgerPending,
+        int webLedgerPending
+    ) {
+        long total = Math.max(0, commandPending) + Math.max(
+            Math.max(0, nativeLedgerPending),
+            Math.max(0, webLedgerPending)
+        );
+        return total > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) total;
     }
 
     @Nullable

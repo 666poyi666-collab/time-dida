@@ -228,6 +228,8 @@ canonical adapter 与私有 authority 的路由表如下。`/v1/*`、`/v2/*` 和
 
 Account DO 保存实体、revision、reservation/result、change feed、任务快照、实时会话、commandId 与设备 credential HMAC；每个请求在 DO 内执行真实 scope、过期、撤销、跨账号和 `deviceId` 绑定检查。任何日志、响应或同步实体都不得返回 token。`/healthz` 只证明进程存活；`/readyz` 必须验证必需 secrets 与 Account DO SQLite probe，不能把配置存在冒充 authority 可写。
 
+中央 authority 读取 FocusLink 状态时只能绑定 named entrypoint `FocusLinkAuthorityObservation`，默认 Worker 对 `/internal/authority-observation/v1` 固定返回 `service_binding_required`。请求必须精确携带 vendor `Accept`、独立 `Capability` secret 和完整 HTTPS `/authority/focuslink` audience；device/OAuth/MCP/pair 凭据均不能替代该 capability。Account DO 以真实 v2 change sequence、live revision、device watermark、generation、maintenance 与 conflict 状态生成 checkpoint fingerprint；只有 fingerprint 改变才递增 observation revision 并持久化一次完整 snapshot。同一 revision 的 truth、`observedAt`、`expiresAt` 与序列化正文永不重写；过期、缺配置、依赖失败、额外字段或不可用 revision 全部非 200，由中央 authority 在校验后另行计算 observation hash 和签名。
+
 实时活动会话是独立控制平面，协议真值位于 `shared/sync/liveFocusProtocol.ts`。Web/PWA、Android
 与显式开启实时控制的 Electron 同步同一账号下的唯一活动会话。Electron 由
 `timer/focusTimerController.ts` 统一承接 IPC、托盘、快捷键和窗口快照；实时模式中本地
@@ -243,6 +245,7 @@ Account DO 保存实体、revision、reservation/result、change feed、任务�
 - 实时快照、命令幂等记录与 completed ledger 共用账号级原子 JSON 提交并向后兼容旧测试文件；进程重启后必须保留活动时间边界和命令去重。该 JSON 仍只允许单进程本地测试。
 - dida 和番茄 To-do 始终是桌面副作用。移动命令与实时快照不携带凭据或伪造投递结果；结束会话进入 FocusLink 账本后，只有桌面端真实执行相应队列并得到可验证结果才能显示外部同步成功。
 - Android 前台 Service、通知动作与 Quick Settings Tile 是薄传输层：只保存当前显示快照和至少一次 native command 队列，不自行推进业务计时，不在云端确认前乐观翻转。快照的 `localAuthority=true` 表示 WebView 正在运行本机离线会话；此时 Service 不上传 native 云端命令，迟到的云端响应也必须在 Store 原子门禁处被拒绝，不能覆盖本机通知或 overlay。待处理云端动作必须含 session/revision 并支持冷启动 drain/ack；只有匹配 command id 的 applied/duplicate/conflict/rejected 才能完成本地队列项。
+- Android completed-ledger native mirror 由唯一 WorkManager work 承载，要求 `NetworkType.CONNECTED` 和指数退避；WorkManager 负责进程死亡、boot、网络恢复与 Doze 后续跑，boot/package-replaced receiver 只在 Keystore 身份仍有效且 native outbox 非空时补排。401/403、撤销和 revision rollback 写入固定诊断并停止自动重试，记录保留到显式凭据修复；不得退回 JobScheduler、明文 HTTP 或第二 cursor。
 - Android 后台只读刷新采用自调度链而非周期 Future：主线程触发单线程 HTTP 请求，请求的 `finally` 安排下一次 20 秒刷新，任何异常不得永久取消后续轮询。最近尝试次数、成功时间、revision 与错误写入本机诊断状态。本机权威期间允许记录探测成功，但不得 `putSnapshot/applyCloudSnapshot`；其余云端快照写入按 revision 单调拒绝旧值，idle 必须保留 revision。
 - Android 系统表面由 `SystemFocusSurfaceProvider` 选择，`StandardNotificationAdapter`、`XiaomiIslandAdapter` 与 `HuaweiCapsuleAdapter` 只共享脱敏 `FocusRuntimeSnapshot`，不共享厂商载荷。小米使用稳定业务 ID、通知 ID 与协议 3 start/running/pause/resume/finish 投影；能力证据依次为 `unsupported/protocol-selected/systemui-accepted/visually-verified`，最后一级只能由真机截图和人工矩阵写入。标准 ongoing notification 始终独立可用；华为既有 TIMER/capsule 字段与布局保持不变。
 - Android 的沉浸系统栏与画中画由 `MainActivity` 通过公开 API 提供，Capacitor 插件只暴露能力、当前状态和显式用户动作。结束活动会话后 renderer 必须恢复系统栏；画中画不支持时返回结构化 `supported: false`。这些显示能力不得引入第二套计时器、kiosk/设备所有者权限或厂商私有 API 依赖。

@@ -85,15 +85,16 @@ OAuth/device 双向拒绝、`opId` applied/duplicate/复用拒绝、旧 revision
 
 Sync v2 额外覆盖 inventory/manifest/bootstrap、三类 epoch、租约过期恢复、`opId` 幂等、旧 revision 冲突、tagId 合并、tombstone 水位、配对 nonce 重放、scope/撤销/轮换、冲突/回收站标准 mutation、Queue `credential-missing` 诊断和重部署持久性。R2 门禁必须包含真实 object 写入、AES-GCM 篡改检测、maintenance 写拒绝、恢复失败回滚及 generation 切换；账户未启用 R2 时记录 Cloudflare 错误码并判定该门禁未通过。
 
+Authority observation 本地合同必须覆盖：默认公网入口拒绝、named service binding、精确 vendor `Accept` / `Content-Type`、独立 `Capability`、完整 HTTPS `/authority/focuslink` audience、缺 binding/配置、错误 capability/audience、依赖失败、过期、额外字段与不可用 revision。测试必须对同一持久化 revision 连读并确认正文、truth、时间字段及计算出的 SHA-256 observation hash 完全相同；任何非 200 响应不得携带签名字段或返回 secret。
+
 公网移动端验收必须在 Windows FocusLink 进程停止时，分别由小米手机和华为平板完成开始、暂停、继续、结束，并在 Cloudflare 中各形成一份含 2 个 segment、1 个 pause 的独立账本。随后 Windows 启动并执行同步，两份会话在 SQLite 中各出现一次；再次同步不得增加副本。旧 Node cursor 切到 Cloudflare 时，客户端必须根据结构化 `invalid_cursor` 清空当前连接的缓存并从空 cursor 重建，不得依赖人工清数据。
 
 Android 门禁限定 `:app:`，只测试最终可交付 APK；不要让 Gradle 根任务选择器额外构建 Capacitor
 生成库中没有产品测试源码的 instrumentation APK。
 
-网络 ADB 双机验证必须先用 `adb devices -l` 核对两个唯一序列号，安装、日志和反向端口命令均显式传
-`adb -s <serial>`。测试云继续只监听 PC 回环地址；每台设备分别配置
-`adb -s <serial> reverse tcp:18787 tcp:<host-port>`，App 连接 `http://127.0.0.1:18787`，不得为了真机
-调试而放宽 Android 明文网络规则或让测试云监听局域网。逐台跑连接测试时设置 `ANDROID_SERIAL` 后执行
+ADB 双机验证必须先用 `adb devices -l` 核对两个唯一序列号，安装与日志命令均显式传
+`adb -s <serial>`。移动端只接受 canonical HTTPS authority；不得再配置 ADB reverse、localhost/LAN HTTP，
+也不得为了真机调试放宽 Android 明文网络规则。逐台跑连接测试时设置 `ANDROID_SERIAL` 后执行
 `:app:connectedDebugAndroidTest`，并核对两台设备各自的测试报告与安装版本。
 
 instrumentation 中的 native store 测试必须使用隔离的 SharedPreferences，禁止清空真机正在使用的
@@ -101,17 +102,17 @@ instrumentation 中的 native store 测试必须使用隔离的 SharedPreference
 或配置实时链路之前运行；需要保留已配置真机时，分别 `adb install -r` target/test APK、执行
 `am instrument`，最后只卸载 `.test` 包，随后复核目标包、token/缓存和 native command 队列仍在。
 
-单手机原生云端验收先以 PC 命令建立 running 会话，再通过设备 reverse 执行以下两项；参数缺失时测试必须报告
+单手机原生云端验收先以 PC 命令建立 running 会话，再通过 canonical HTTPS authority 执行以下两项；参数缺失时测试必须报告
 skipped，不得静默计为云端已验证：
 
 ```bash
 adb -s <serial> shell am instrument -w -r \
   -e class 'app.focuslink.mobile.ExampleInstrumentedTest#backgroundServiceUploadsCommandsWithoutWebView' \
-  -e focuslinkEndpoint 'http://127.0.0.1:18787' -e focuslinkToken '<temporary-token>' \
+  -e focuslinkEndpoint 'https://<temporary-authority-host>' -e focuslinkToken '<temporary-token>' \
   app.focuslink.mobile.test/androidx.test.runner.AndroidJUnitRunner
 adb -s <serial> shell am instrument -w -r \
   -e class 'app.focuslink.mobile.ExampleInstrumentedTest#backgroundServiceRetriesAfterConnectionRecovery' \
-  -e focuslinkEndpoint 'http://127.0.0.1:18787' -e focuslinkToken '<temporary-token>' \
+  -e focuslinkEndpoint 'https://<temporary-authority-host>' -e focuslinkToken '<temporary-token>' \
   app.focuslink.mobile.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
@@ -119,10 +120,10 @@ adb -s <serial> shell am instrument -w -r \
 `BuildConfig.VERSION_NAME` 与本次 `android/app/build.gradle` 配置一致；该单元测试属于 Android APK
 交付门禁，不得以 TypeScript 门禁已通过代替。
 
-双机实时 smoke 必须在两个序列号上安装同一 APK、授予或显式拒绝通知权限并保持各自 reverse。设备 A 开始后
+双机实时 smoke 必须在两个序列号上安装同一 APK、授予或显式拒绝通知权限并保持各自 HTTPS authority 连接。设备 A 开始后
 设备 B 应在一个长轮询周期内显示同一 session；依次从两台设备执行暂停/继续，确认 revision 单调且三时间守恒；
 制造同 revision 并发动作时只能一个 applied，另一台刷新 conflict 快照。结束后两台都回到 idle、账本各出现且只出现
-一份完整会话，前台通知消失。移除一台 reverse 后应保留缓存并标为离线推算，恢复后收敛；最后检查 logcat 无 crash、
+一份完整会话，前台通知消失。断开一台网络后应保留缓存并标为离线推算，恢复后收敛；最后检查 logcat 无 crash、
 ANR、ForegroundServiceStartNotAllowedException 或通知通道错误。
 
 Android 真机还必须分别在手机和平板验证：任务父子叠层及 44px 展开命中、开始前树序任务选择、running/paused 时间之带在首分钟不会铺满且刻度可读；显式授予 overlay 后回到系统桌面，左上角计时逐秒更新并可点击回到 App，结束后消失。拒绝或撤销 overlay 权限时应用应继续通过通知工作且不崩溃。PC 服务停止期间完成一场本机离线会话，重启 PC/恢复 reverse 后必须自动补传并在两端账本中只出现一次。

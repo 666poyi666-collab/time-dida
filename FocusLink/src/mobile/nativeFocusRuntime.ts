@@ -4,6 +4,7 @@ import {
   type DeviceSyncSessionBundle,
 } from '@shared/sync/deviceProtocol';
 import { splitBundleForSyncV2, type SyncV2Mutation } from '@shared/sync/v2Protocol';
+import type { CachedBundle } from './cache';
 import {
   formatClockDuration,
   liveStateLabel,
@@ -108,6 +109,24 @@ export interface NativeFocusConnection {
   deviceId: string;
 }
 
+export interface NativeAuthorityHistoryTask {
+  taskId: string;
+  source: 'local' | 'ticktick';
+  title: string | null;
+}
+
+export interface NativeAuthorityHistoryRecord {
+  sessionId: string;
+  startedAt: number;
+  endedAt: number;
+  status: 'finished' | 'aborted';
+  activeMs: number;
+  pausedMs: number;
+  wallMs: number;
+  title: string | null;
+  task: NativeAuthorityHistoryTask | null;
+}
+
 interface FocusRuntimePlugin {
   updateSnapshot(options: { snapshot: NativeFocusDisplaySnapshot }): Promise<void>;
   drainPendingCommands(): Promise<{ commands: NativeFocusCommand[] }>;
@@ -134,6 +153,13 @@ interface FocusRuntimePlugin {
   enqueueCompletedLedgerBundle(options: {
     record: NativeCompletedLedgerRecord;
   }): Promise<{ queued?: boolean; pending?: number }>;
+  updateAuthorityProjectionHistory(options: {
+    history: NativeAuthorityHistoryRecord[];
+    lastVerifiedAt: number;
+    lastAttemptAt: number;
+    pendingCount: number;
+    lastErrorCode: string;
+  }): Promise<{ accepted?: number; pending?: number }>;
   openBackgroundSettings(): Promise<{ opened?: boolean }>;
   openAutoStartSettings(): Promise<{ opened?: boolean }>;
   openOverlayPermissionSettings(): Promise<{ opened?: boolean; granted?: boolean }>;
@@ -279,6 +305,76 @@ export async function enqueueNativeCompletedLedgerBundle(
 }
 
 /**
+ * Builds the exact, credential-free V1 history consumed by 不做手机控.
+ * Invalid or arithmetically inconsistent legacy rows are omitted fail-closed.
+ */
+export function buildNativeAuthorityHistory(
+  records: readonly CachedBundle[],
+): NativeAuthorityHistoryRecord[] {
+  const result: NativeAuthorityHistoryRecord[] = [];
+  const seen = new Set<string>();
+  const sorted = [...records].sort(
+    (left, right) =>
+      right.bundle.session.startedAt - left.bundle.session.startedAt ||
+      left.bundle.session.id.localeCompare(right.bundle.session.id),
+  );
+  for (const cached of sorted) {
+    if (result.length >= 500) break;
+    const { session, segments } = cached.bundle;
+    if (
+      seen.has(session.id) ||
+      !session.id ||
+      session.id.length > 200 ||
+      (session.status !== 'finished' && session.status !== 'aborted') ||
+      !isSafeNonNegativeInteger(session.startedAt) ||
+      !isSafeNonNegativeInteger(session.endedAt) ||
+      !isSafeNonNegativeInteger(session.activeElapsedMs) ||
+      !isSafeNonNegativeInteger(session.pauseElapsedMs) ||
+      !isSafeNonNegativeInteger(session.wallElapsedMs) ||
+      session.endedAt <= session.startedAt ||
+      session.activeElapsedMs > Number.MAX_SAFE_INTEGER - session.pauseElapsedMs ||
+      session.activeElapsedMs + session.pauseElapsedMs !== session.wallElapsedMs ||
+      session.endedAt - session.startedAt !== session.wallElapsedMs
+    ) {
+      continue;
+    }
+    const task = projectionTask(session, segments);
+    seen.add(session.id);
+    result.push({
+      sessionId: session.id,
+      startedAt: session.startedAt,
+      endedAt: session.endedAt,
+      status: session.status,
+      activeMs: session.activeElapsedMs,
+      pausedMs: session.pauseElapsedMs,
+      wallMs: session.wallElapsedMs,
+      title: projectionTitle(session.title),
+      task,
+    });
+  }
+  return result;
+}
+
+export async function updateNativeAuthorityProjectionHistory(input: {
+  records: readonly CachedBundle[];
+  lastVerifiedAt: number | null;
+  lastAttemptAt: number;
+  pendingCount: number;
+  lastErrorCode?: string;
+}): Promise<boolean> {
+  if (!isNativeFocusRuntimeAvailable()) return false;
+  const history = buildNativeAuthorityHistory(input.records);
+  const result = await FocusRuntime.updateAuthorityProjectionHistory({
+    history,
+    lastVerifiedAt: safeProjectionTimestamp(input.lastVerifiedAt ?? 0),
+    lastAttemptAt: safeProjectionTimestamp(input.lastAttemptAt),
+    pendingCount: Math.max(0, Math.floor(input.pendingCount)),
+    lastErrorCode: input.lastErrorCode ?? '',
+  });
+  return result.accepted === history.length;
+}
+
+/**
  * Restores the Keystore-protected credential into renderer memory only.  The
  * caller must never write accessToken to Web Storage or IndexedDB.
  */
@@ -301,6 +397,56 @@ export async function readNativeFocusConnection(): Promise<NativeFocusConnection
     accessToken: value.accessToken,
     deviceId: value.deviceId,
   };
+}
+
+function projectionTask(
+  session: DeviceSyncSessionBundle['session'],
+  segments: DeviceSyncSessionBundle['segments'],
+): NativeAuthorityHistoryTask | null {
+  if (isProjectionId(session.defaultTaskId) && isProjectionTaskSource(session.defaultTaskSource)) {
+    return {
+      taskId: session.defaultTaskId,
+      source: session.defaultTaskSource,
+      title: projectionTitle(session.defaultTaskTitle),
+    };
+  }
+  const linked = [...segments]
+    .sort((left, right) => left.startedAt - right.startedAt || left.id.localeCompare(right.id))
+    .find(
+      (segment) => isProjectionId(segment.taskId) && isProjectionTaskSource(segment.taskSource),
+    );
+  if (!linked || !isProjectionId(linked.taskId) || !isProjectionTaskSource(linked.taskSource)) {
+    return null;
+  }
+  return {
+    taskId: linked.taskId,
+    source: linked.taskSource,
+    title: projectionTitle(linked.title),
+  };
+}
+
+function projectionTitle(value: string | null): string | null {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  return value.slice(0, 240);
+}
+
+function isProjectionId(value: string | null): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 200;
+}
+
+function isProjectionTaskSource(value: unknown): value is 'local' | 'ticktick' {
+  return value === 'local' || value === 'ticktick';
+}
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+function safeProjectionTimestamp(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error('authority projection timestamp must be a safe integer');
+  }
+  return value;
 }
 
 /**

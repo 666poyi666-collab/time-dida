@@ -38,12 +38,31 @@ final class FocusCloudClient {
     }
 
     static final class CloudException extends Exception {
+        final int httpStatus;
+
         CloudException(String message) {
-            super(message);
+            this(message, -1, null);
+        }
+
+        CloudException(String message, int httpStatus) {
+            this(message, httpStatus, null);
+        }
+
+        private CloudException(String message, int httpStatus, Throwable cause) {
+            super(message, cause);
+            this.httpStatus = httpStatus;
         }
 
         CloudException(String message, Throwable cause) {
-            super(message, cause);
+            this(message, -1, cause);
+        }
+
+        boolean isAuthenticationFailure() {
+            return httpStatus == HttpURLConnection.HTTP_UNAUTHORIZED;
+        }
+
+        boolean isAuthorizationFailure() {
+            return httpStatus == HttpURLConnection.HTTP_FORBIDDEN;
         }
     }
 
@@ -139,7 +158,10 @@ final class FocusCloudClient {
         try {
             Response response = transport.execute(method, url, accessToken, body);
             if (response.status != HttpURLConnection.HTTP_OK) {
-                throw new CloudException(operation + " returned HTTP " + response.status);
+                throw new CloudException(
+                    operation + " returned HTTP " + response.status,
+                    response.status
+                );
             }
             return new JSONObject(new String(response.body, StandardCharsets.UTF_8));
         } catch (CloudException exception) {

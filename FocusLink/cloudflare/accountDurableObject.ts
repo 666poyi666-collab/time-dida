@@ -65,6 +65,14 @@ import {
   type FocusProjectionLedger,
   type FocusProjectionMetadata,
 } from '../shared/sync/focusMcpProjection';
+import {
+  FOCUSLINK_AUTHORITY_OBSERVATION_MEDIA_TYPE,
+  FOCUSLINK_AUTHORITY_OBSERVATION_PATH,
+  buildFocusLinkAuthorityObservation,
+  exactFocusLinkAuthorityAudience,
+  validateFocusLinkAuthorityObservation,
+  type FocusLinkAuthorityObservation,
+} from './authorityObservation';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -82,6 +90,10 @@ export interface WorkerEnv {
   FOCUSLINK_MCP_SERVICE_TOKEN?: string;
   /** Dedicated credential used only to mint one-time pair offers through a service binding. */
   FOCUSLINK_PAIR_AUTHORITY_TOKEN?: string;
+  /** Dedicated capability used only by the named observation service binding. */
+  FOCUSLINK_AUTHORITY_CAPABILITY?: string;
+  /** Exact central-authority audience ending in /authority/focuslink. */
+  FOCUSLINK_AUTHORITY_AUDIENCE?: string;
 }
 
 interface EntityRow extends Record<string, SqlStorageValue> {
@@ -151,6 +163,13 @@ interface TaskRow extends Record<string, SqlStorageValue> {
 interface LiveRow extends Record<string, SqlStorageValue> {
   revision: number;
   session_json: string | null;
+}
+
+interface AuthorityObservationRow extends Record<string, SqlStorageValue> {
+  revision: number;
+  state_hash: string;
+  observation_json: string;
+  expires_at: number;
 }
 
 interface StoredLiveOperationRow extends Record<string, SqlStorageValue> {
@@ -311,6 +330,28 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
           storageReady: Number(probe.storage_ready) === 1,
           authority: 'focuslink-account-do',
         });
+      }
+      if (url.pathname === FOCUSLINK_AUTHORITY_OBSERVATION_PATH) {
+        if (request.method !== 'GET') {
+          throw new ProtocolError(405, 'method_not_allowed', 'GET required');
+        }
+        rejectUnexpectedQuery(url);
+        if (request.headers.get('x-focuslink-internal') !== this.env.FOCUSLINK_SYNC_TOKEN) {
+          throw new ProtocolError(
+            401,
+            'internal_service_unauthenticated',
+            'service credential required',
+          );
+        }
+        const observation = this.readAuthorityObservation(Date.now());
+        if (!observation) {
+          throw new ProtocolError(
+            503,
+            'authority_observation_unavailable',
+            'authority observation is unavailable',
+          );
+        }
+        return authorityObservationJson(observation);
       }
       if (
         url.pathname === '/internal/v2/backup' &&
@@ -654,12 +695,20 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         deleted_generation INTEGER NOT NULL,
         purged_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS authority_observation_snapshots (
+        revision INTEGER PRIMARY KEY,
+        state_hash TEXT NOT NULL UNIQUE,
+        observation_json TEXT NOT NULL,
+        observed_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+      );
       INSERT OR IGNORE INTO meta(key, value) VALUES ('change_seq', '0');
       INSERT OR IGNORE INTO meta(key, value) VALUES ('v2_change_seq', '0');
       INSERT OR IGNORE INTO meta(key, value) VALUES ('v2_sync_epoch', 'sync-1');
       INSERT OR IGNORE INTO meta(key, value) VALUES ('v2_cursor_epoch', 'cursor-1');
       INSERT OR IGNORE INTO meta(key, value) VALUES ('v2_account_generation', '1');
       INSERT OR IGNORE INTO meta(key, value) VALUES ('v2_maintenance', '0');
+      INSERT OR IGNORE INTO meta(key, value) VALUES ('authority_observation_revision', '0');
       INSERT OR IGNORE INTO task_state(singleton, revision) VALUES (1, 0);
       INSERT OR IGNORE INTO live_state(singleton, revision) VALUES (1, 0);
     `);
@@ -940,11 +989,19 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     const epoch = this.v2Epoch();
     const acks = this.ctx.storage.transactionSync(() => {
       const result = request.entities.map((mutation) => this.applyV2Mutation(mutation));
+      const verifiedAt = Date.now();
       this.sql.exec(
         "UPDATE v2_bootstraps SET state = 'base-established', updated_at = ? WHERE bootstrap_id = ?",
-        Date.now(),
+        verifiedAt,
         request.bootstrapId,
       );
+      this.sql.exec(
+        'UPDATE v2_devices SET watermark = ?, last_seen_at = ? WHERE device_id = ?',
+        this.v2ChangeSeq(),
+        verifiedAt,
+        request.deviceId,
+      );
+      this.recordAuthorityObservationCheckpoint(verifiedAt);
       return result;
     });
     if (this.env.FOCUSLINK_PUSH_QUEUE && acks.some((ack) => ack.status === 'applied')) {
@@ -1014,12 +1071,16 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       (change) => encodeV2Cursor(accountId, epoch, change.changeSeq),
     );
     const nextSeq = page.changes.at(-1)?.changeSeq ?? cursorSeq;
-    this.sql.exec(
-      'UPDATE v2_devices SET watermark = ?, last_seen_at = ? WHERE device_id = ?',
-      nextSeq,
-      Date.now(),
-      request.deviceId,
-    );
+    this.ctx.storage.transactionSync(() => {
+      const verifiedAt = Date.now();
+      this.sql.exec(
+        'UPDATE v2_devices SET watermark = ?, last_seen_at = ? WHERE device_id = ?',
+        nextSeq,
+        verifiedAt,
+        request.deviceId,
+      );
+      this.recordAuthorityObservationCheckpoint(verifiedAt);
+    });
     return {
       protocolVersion: SYNC_V2_PROTOCOL_VERSION,
       ...epoch,
@@ -1210,6 +1271,130 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     );
   }
 
+  private authorityObservationRevision(): number {
+    return Number(
+      this.sql
+        .exec<MetaRow>("SELECT value FROM meta WHERE key = 'authority_observation_revision'")
+        .one().value,
+    );
+  }
+
+  private recordAuthorityObservationCheckpoint(verifiedAt: number): void {
+    const audience = exactFocusLinkAuthorityAudience(this.env.FOCUSLINK_AUTHORITY_AUDIENCE);
+    if (!audience) return;
+    const authorityChangeSeq = this.v2ChangeSeq();
+    const epoch = this.v2Epoch();
+    const maintenance =
+      this.sql.exec<MetaRow>("SELECT value FROM meta WHERE key = 'v2_maintenance'").one().value ===
+      '1';
+    const devices = this.sql
+      .exec<{ device_id: string; watermark: number; stale: number }>(
+        `SELECT device_id, watermark, stale FROM v2_devices
+         WHERE revoked_at IS NULL ORDER BY device_id`,
+      )
+      .toArray();
+    const openConflictCount = Number(
+      this.sql
+        .exec<{ count: number }>("SELECT COUNT(*) AS count FROM v2_conflicts WHERE status = 'open'")
+        .one().count,
+    );
+    let pendingCount = 0;
+    for (const device of devices) {
+      if (
+        !Number.isSafeInteger(device.watermark) ||
+        device.watermark < 0 ||
+        device.watermark > authorityChangeSeq
+      ) {
+        throw new Error('authority device checkpoint is invalid');
+      }
+      pendingCount += authorityChangeSeq - device.watermark;
+      if (!Number.isSafeInteger(pendingCount)) {
+        throw new Error('authority pending count is invalid');
+      }
+    }
+    const liveRevision = this.readLive().revision;
+    const state = {
+      accountGeneration: epoch.accountGeneration,
+      authorityChangeSeq,
+      liveRevision,
+      maintenance,
+      openConflictCount,
+      devices: devices.map((device) => ({
+        deviceId: device.device_id,
+        watermark: device.watermark,
+        stale: Boolean(device.stale),
+      })),
+    };
+    const stateHash = fingerprintDeviceSyncValue(state);
+    const previous = this.sql
+      .exec<AuthorityObservationRow>(
+        `SELECT revision, state_hash, observation_json, expires_at
+         FROM authority_observation_snapshots ORDER BY revision DESC LIMIT 1`,
+      )
+      .toArray()[0];
+    if (previous?.state_hash === stateHash) return;
+
+    let blockerReason: string | null = null;
+    if (maintenance) blockerReason = 'maintenance_mode';
+    else if (openConflictCount > 0) blockerReason = 'open_conflict';
+    else if (devices.length === 0) blockerReason = 'no_active_device';
+    else if (authorityChangeSeq < 1 && liveRevision < 1)
+      blockerReason = 'authority_revision_unavailable';
+    else if (pendingCount > 0) blockerReason = 'device_catchup_pending';
+    const revision = this.authorityObservationRevision() + 1;
+    if (!Number.isSafeInteger(revision)) throw new Error('authority revision exhausted');
+    const readAvailable = devices.length > 0 && (authorityChangeSeq > 0 || liveRevision > 0);
+    const writeAvailable = readAvailable;
+    const observation = buildFocusLinkAuthorityObservation({
+      revision,
+      audience,
+      observedAtMs: verifiedAt,
+      lastVerifiedAtMs: verifiedAt,
+      pendingCount,
+      blockerReason,
+      readAvailable,
+      writeAvailable,
+      continuedSync: readAvailable && writeAvailable && blockerReason === null,
+    });
+    this.sql.exec(
+      `INSERT INTO authority_observation_snapshots(
+         revision, state_hash, observation_json, observed_at, expires_at
+       ) VALUES (?, ?, ?, ?, ?)`,
+      revision,
+      stateHash,
+      JSON.stringify(observation),
+      verifiedAt,
+      Date.parse(observation.expiresAt),
+    );
+    this.sql.exec(
+      "UPDATE meta SET value = ? WHERE key = 'authority_observation_revision'",
+      String(revision),
+    );
+  }
+
+  private readAuthorityObservation(now: number): FocusLinkAuthorityObservation | null {
+    const row = this.sql
+      .exec<AuthorityObservationRow>(
+        `SELECT revision, state_hash, observation_json, expires_at
+         FROM authority_observation_snapshots ORDER BY revision DESC LIMIT 1`,
+      )
+      .toArray()[0];
+    if (!row || row.expires_at <= now) return null;
+    let value: unknown;
+    try {
+      value = JSON.parse(row.observation_json);
+    } catch {
+      return null;
+    }
+    if (
+      !validateFocusLinkAuthorityObservation(value, now) ||
+      value.truth.revision !== row.revision
+    ) {
+      return null;
+    }
+    return value;
+  }
+
   private async authorizeV2(request: Request, scope: string): Promise<V2Identity> {
     const header = request.headers.get('x-focuslink-authorization') ?? '';
     if (header === `Bearer ${this.env.FOCUSLINK_SYNC_TOKEN}`) {
@@ -1378,13 +1563,16 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
 
   private revokeV2Device(deviceId: string): { deviceId: string; revokedAt: number } {
     const revokedAt = Date.now();
-    const result = this.sql.exec(
-      'UPDATE v2_devices SET revoked_at = ? WHERE device_id = ?',
-      revokedAt,
-      deviceId,
-    );
-    if (result.rowsWritten === 0)
-      throw new ProtocolError(404, 'device_not_found', 'device not found');
+    this.ctx.storage.transactionSync(() => {
+      const result = this.sql.exec(
+        'UPDATE v2_devices SET revoked_at = ? WHERE device_id = ? AND revoked_at IS NULL',
+        revokedAt,
+        deviceId,
+      );
+      if (result.rowsWritten === 0)
+        throw new ProtocolError(404, 'device_not_found', 'active device not found');
+      this.recordAuthorityObservationCheckpoint(revokedAt);
+    });
     return { deviceId, revokedAt };
   }
 
@@ -1456,7 +1644,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       throw new ProtocolError(409, 'conflict_entity_mismatch', 'resolution targets another entity');
     const ack = this.ctx.storage.transactionSync(() => {
       const result = this.applyV2Mutation(mutation);
-      if (result.status === 'applied' || result.status === 'duplicate')
+      if (result.status === 'applied' || result.status === 'duplicate') {
         this.sql.exec(
           `UPDATE v2_conflicts SET status = 'resolved', resolved_at = ?, resolution_op_id = ?
          WHERE conflict_id = ?`,
@@ -1464,6 +1652,8 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
           mutation.opId,
           conflictId,
         );
+        this.recordAuthorityObservationCheckpoint(Date.now());
+      }
       return result;
     });
     return { ack };
@@ -1504,7 +1694,15 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       throw new ProtocolError(400, 'mutation_kind_mismatch', `${expectedKind} mutation required`);
     const error = validateV2Mutation(mutation);
     if (error) throw new ProtocolError(400, error, 'invalid administrative mutation');
-    return { ack: this.ctx.storage.transactionSync(() => this.applyV2Mutation(mutation)) };
+    return {
+      ack: this.ctx.storage.transactionSync(() => {
+        const ack = this.applyV2Mutation(mutation);
+        if (ack.status === 'applied' || ack.status === 'duplicate') {
+          this.recordAuthorityObservationCheckpoint(Date.now());
+        }
+        return ack;
+      }),
+    };
   }
 
   private registerV2Push(deviceId: string, value: unknown): { deviceId: string; state: string } {
@@ -1583,6 +1781,12 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       )
       .toArray()
       .map((row) => [row.op_id, row.fingerprint, row.ack_json, row.created_at]);
+    const graveyard = this.sql
+      .exec<Record<string, SqlStorageValue>>(
+        'SELECT entity_hash, deleted_generation, purged_at FROM v2_graveyard ORDER BY entity_hash',
+      )
+      .toArray()
+      .map((row) => [row.entity_hash, row.deleted_generation, row.purged_at]);
     const plaintext = new TextEncoder().encode(
       JSON.stringify({
         accountGeneration: epoch.accountGeneration,
@@ -1590,6 +1794,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         entities,
         changes,
         operations,
+        graveyard,
       }),
     );
     const encrypted = await aesEncrypt(plaintext, this.env.FOCUSLINK_BACKUP_KEY);
@@ -1654,6 +1859,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       entityCount: decoded.entities.length,
       changeCount: decoded.changes.length,
       operationCount: decoded.operations.length,
+      graveyardCount: decoded.graveyard.length,
     };
   }
 
@@ -1686,6 +1892,14 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
             'INSERT INTO v2_operations(op_id, fingerprint, ack_json, created_at) VALUES (?, ?, ?, ?)',
             ...row,
           );
+        for (const row of backup.graveyard)
+          this.sql.exec(
+            `INSERT INTO v2_graveyard(entity_hash, deleted_generation, purged_at)
+             VALUES (?, ?, ?) ON CONFLICT(entity_hash) DO UPDATE SET
+             deleted_generation = MAX(v2_graveyard.deleted_generation, excluded.deleted_generation),
+             purged_at = MAX(v2_graveyard.purged_at, excluded.purged_at)`,
+            ...row,
+          );
         this.sql.exec(
           "UPDATE meta SET value = ? WHERE key = 'v2_account_generation'",
           String(nextGeneration),
@@ -1702,11 +1916,18 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
           "UPDATE meta SET value = ? WHERE key = 'v2_change_seq'",
           String(backup.changeSeq),
         );
+        // A generation change invalidates every prior cursor. Reset only the
+        // existing Account DO watermarks so each device must bootstrap the
+        // restored generation before it can gate tombstone/graveyard cleanup.
+        this.sql.exec('UPDATE v2_devices SET watermark = 0');
       });
       const after = await this.createV2Backup('post-restore');
       return { restored: true, before, after, ...this.v2Epoch() };
     } finally {
-      this.sql.exec("UPDATE meta SET value = '0' WHERE key = 'v2_maintenance'");
+      this.ctx.storage.transactionSync(() => {
+        this.sql.exec("UPDATE meta SET value = '0' WHERE key = 'v2_maintenance'");
+        this.recordAuthorityObservationCheckpoint(Date.now());
+      });
     }
   }
 
@@ -1716,6 +1937,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     entities: unknown[][];
     changes: unknown[][];
     operations: unknown[][];
+    graveyard: unknown[][];
   }> {
     const catalog = this.sql
       .exec<{ object_key: string; nonce: string; plaintext_sha256: string }>(
@@ -1735,13 +1957,27 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     );
     if ((await sha256Hex(plaintext)) !== catalog.plaintext_sha256)
       throw new ProtocolError(409, 'backup_tampered', 'backup digest mismatch');
-    return JSON.parse(new TextDecoder().decode(plaintext)) as {
+    const decoded = JSON.parse(new TextDecoder().decode(plaintext)) as {
       accountGeneration: number;
       changeSeq: number;
       entities: unknown[][];
       changes: unknown[][];
       operations: unknown[][];
+      graveyard?: unknown[][];
     };
+    if (
+      !Number.isSafeInteger(decoded.accountGeneration) ||
+      decoded.accountGeneration < 1 ||
+      !Number.isSafeInteger(decoded.changeSeq) ||
+      decoded.changeSeq < 0 ||
+      !Array.isArray(decoded.entities) ||
+      !Array.isArray(decoded.changes) ||
+      !Array.isArray(decoded.operations) ||
+      (decoded.graveyard !== undefined && !Array.isArray(decoded.graveyard))
+    ) {
+      throw new ProtocolError(409, 'backup_invalid', 'backup payload is invalid');
+    }
+    return { ...decoded, graveyard: decoded.graveyard ?? [] };
   }
 
   private getTaskSnapshot(): TaskSnapshotResponse {
@@ -1939,6 +2175,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         completedEntityId,
       };
       this.insertLiveOperation(request.command.commandId, fingerprint, ack);
+      this.recordAuthorityObservationCheckpoint(serverTime);
       return {
         protocolVersion: LIVE_FOCUS_PROTOCOL_VERSION,
         ack,
@@ -2728,6 +2965,17 @@ function json(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
     status,
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}
+
+function authorityObservationJson(value: FocusLinkAuthorityObservation): Response {
+  return new Response(JSON.stringify(value), {
+    status: 200,
+    headers: {
+      'cache-control': 'no-store',
+      'content-type': FOCUSLINK_AUTHORITY_OBSERVATION_MEDIA_TYPE,
+      'x-content-type-options': 'nosniff',
+    },
   });
 }
 

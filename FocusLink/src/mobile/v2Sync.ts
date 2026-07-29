@@ -86,8 +86,10 @@ export async function runMobileSyncV2(input: MobileSyncV2Input): Promise<MobileS
 async function runMobileSyncV2Internal(input: MobileSyncV2Input): Promise<MobileSyncV2Result> {
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
   const routed = parseDeviceToken(input.token.trim());
-  const loopback = ['localhost', '127.0.0.1'].includes(new URL(endpoint).hostname);
-  if (!routed && !loopback) {
+  if (new URL(endpoint).protocol !== 'https:') {
+    throw new Error('canonical Sync v2 移动端只接受 HTTPS 云端 authority');
+  }
+  if (!routed) {
     throw new Error('canonical Sync v2 只接受通过设备配对签发的 fl2 凭据');
   }
   const connection = {
