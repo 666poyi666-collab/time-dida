@@ -1,2 +1,0 @@
-5be1f3731acdb5c4eebcf49177b0a4ce2d7c8fad97ac825c75e923ca4259e017 *FocusLink-0.12.64-x64.exe
-3089e32dde821054ad60fd5c8020587cfcf806fae1c56da0dac662f094ca27c7 *FocusLink-0.12.64-x64-portable.exe
