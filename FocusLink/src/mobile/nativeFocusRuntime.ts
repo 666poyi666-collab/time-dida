@@ -1,5 +1,10 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import {
+  fingerprintDeviceSyncValue,
+  type DeviceSyncSessionBundle,
+} from '@shared/sync/deviceProtocol';
+import { splitBundleForSyncV2, type SyncV2Mutation } from '@shared/sync/v2Protocol';
+import {
   formatClockDuration,
   liveStateLabel,
   projectLiveFocusDurations,
@@ -126,6 +131,9 @@ interface FocusRuntimePlugin {
     accessToken?: string;
     deviceId?: string;
   }>;
+  enqueueCompletedLedgerBundle(options: {
+    record: NativeCompletedLedgerRecord;
+  }): Promise<{ queued?: boolean; pending?: number }>;
   openBackgroundSettings(): Promise<{ opened?: boolean }>;
   openAutoStartSettings(): Promise<{ opened?: boolean }>;
   openOverlayPermissionSettings(): Promise<{ opened?: boolean; granted?: boolean }>;
@@ -149,6 +157,18 @@ interface FocusRuntimePlugin {
 }
 
 const FocusRuntime = registerPlugin<FocusRuntimePlugin>('FocusRuntime');
+
+interface NativeCompletedLedgerRecord {
+  schemaVersion: 1;
+  bundleId: string;
+  deviceId: string;
+  mutations: Array<
+    Pick<
+      SyncV2Mutation,
+      'opId' | 'entityType' | 'entityId' | 'kind' | 'baseRevision' | 'baseFingerprint' | 'payload'
+    >
+  >;
+}
 
 export function isNativeFocusRuntimeAvailable(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('FocusRuntime');
@@ -219,6 +239,43 @@ export async function configureNativeFocusConnection(
 export async function clearNativeFocusConnection(): Promise<void> {
   if (!isNativeFocusRuntimeAvailable()) return;
   await FocusRuntime.clearConnection();
+}
+
+/**
+ * Durably mirrors a newly completed offline bundle into Android app-private
+ * storage before IndexedDB removes the active draft. The native worker reuses
+ * the same Keystore credential and intentionally owns no sync cursor.
+ */
+export async function enqueueNativeCompletedLedgerBundle(
+  bundle: DeviceSyncSessionBundle,
+  deviceId: string,
+): Promise<boolean> {
+  if (!isNativeFocusRuntimeAvailable()) return false;
+  const split = splitBundleForSyncV2(bundle, deviceId);
+  const entities = [
+    { entityType: 'focus_ledger_v2' as const, entityId: bundle.session.id, payload: split.ledger },
+    {
+      entityType: 'focus_metadata_v2' as const,
+      entityId: bundle.session.id,
+      payload: split.metadata,
+    },
+  ];
+  const mutations = entities.map((entity) => ({
+    ...entity,
+    opId: `v2-${fingerprintDeviceSyncValue({ entity, baseRevision: 0, deviceId })}`,
+    kind: 'put' as const,
+    baseRevision: 0,
+    baseFingerprint: null,
+  }));
+  const result = await FocusRuntime.enqueueCompletedLedgerBundle({
+    record: {
+      schemaVersion: 1,
+      bundleId: bundle.session.id,
+      deviceId,
+      mutations,
+    },
+  });
+  return result.queued === true;
 }
 
 /**

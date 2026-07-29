@@ -15,6 +15,8 @@ final class FocusCloudClient {
     private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
     private static final String LIVE_SNAPSHOT_PATH = "/sync/v2/live";
     private static final String LIVE_COMMAND_PATH = "/sync/v2/live/command";
+    private static final String SYNC_V2_STATUS_PATH = "/sync/v2/status";
+    private static final String SYNC_V2_EXCHANGE_PATH = "/sync/v2/exchange";
 
     interface Transport {
         Response execute(
@@ -80,6 +82,30 @@ final class FocusCloudClient {
         );
         validateTerminalAcknowledgement(command.id, response);
         return response;
+    }
+
+    JSONObject fetchSyncV2Status(FocusRuntimeConnectionStore.Connection connection)
+        throws CloudException {
+        return executeJson(
+            "GET",
+            connection.endpoint + SYNC_V2_STATUS_PATH,
+            connection.accessToken,
+            null,
+            "completed ledger status"
+        );
+    }
+
+    JSONObject exchangeSyncV2(
+        FocusRuntimeConnectionStore.Connection connection,
+        JSONObject request
+    ) throws CloudException {
+        return executeJson(
+            "POST",
+            connection.endpoint + SYNC_V2_EXCHANGE_PATH,
+            connection.accessToken,
+            request.toString().getBytes(StandardCharsets.UTF_8),
+            "completed ledger exchange"
+        );
     }
 
     static void validateTerminalAcknowledgement(String commandId, JSONObject response)

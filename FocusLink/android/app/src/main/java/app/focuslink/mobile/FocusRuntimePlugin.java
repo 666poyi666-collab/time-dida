@@ -110,6 +110,15 @@ public final class FocusRuntimePlugin extends Plugin {
                 getContext()
             );
             if (!sameConnection(previous, configured)) FocusRuntimeStore.clearSnapshot(getContext());
+            if (
+                configured != null &&
+                FocusLedgerNativeOutboxStore.countForDevice(
+                    getContext(),
+                    configured.deviceId
+                ) > 0
+            ) {
+                FocusLedgerSyncScheduler.schedule(getContext());
+            }
             FocusNotificationService.synchronize(getContext());
             call.resolve();
         } catch (IllegalArgumentException | IllegalStateException exception) {
@@ -120,6 +129,7 @@ public final class FocusRuntimePlugin extends Plugin {
     @PluginMethod
     public void clearConnection(PluginCall call) {
         FocusRuntimeConnectionStore.clear(getContext());
+        FocusLedgerSyncScheduler.cancel(getContext());
         FocusRuntimeStore.clearSnapshot(getContext());
         FocusNotificationService.synchronize(getContext());
         call.resolve();
@@ -143,6 +153,43 @@ public final class FocusRuntimePlugin extends Plugin {
         value.put("accessToken", connection.accessToken);
         value.put("deviceId", connection.deviceId);
         call.resolve(value);
+    }
+
+    @PluginMethod
+    public void enqueueCompletedLedgerBundle(PluginCall call) {
+        FocusRuntimeConnectionStore.Connection connection = FocusRuntimeConnectionStore.get(
+            getContext()
+        );
+        if (connection == null) {
+            call.resolve(
+                new JSObject()
+                    .put("queued", false)
+                    .put("pending", 0)
+            );
+            return;
+        }
+        try {
+            JSObject record = call.getObject("record");
+            boolean queued = FocusLedgerNativeOutboxStore.enqueue(
+                getContext(),
+                record,
+                connection.deviceId
+            );
+            FocusLedgerSyncScheduler.schedule(getContext());
+            call.resolve(
+                new JSObject()
+                    .put("queued", queued)
+                    .put(
+                        "pending",
+                        FocusLedgerNativeOutboxStore.countForDevice(
+                            getContext(),
+                            connection.deviceId
+                        )
+                    )
+            );
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            call.reject(exception.getMessage(), "invalid_completed_ledger");
+        }
     }
 
     @PluginMethod

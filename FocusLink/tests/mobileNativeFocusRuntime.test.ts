@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  enqueueNativeCompletedLedgerBundle,
   isNativeFocusRuntimeAvailable,
   makeNativeDisplaySnapshot,
   nativeFocusCommandSuccessCopy,
@@ -11,6 +12,7 @@ import { idleLiveFocusSnapshot } from '../src/mobile/runtimeModel';
 const capacitorHarness = vi.hoisted(() => ({ native: false, pluginAvailable: false }));
 const nativePluginHarness = vi.hoisted(() => ({
   configureConnection: vi.fn(),
+  enqueueCompletedLedgerBundle: vi.fn(),
   getConnection: vi.fn(),
 }));
 
@@ -29,6 +31,11 @@ describe('mobile native focus display projection', () => {
     capacitorHarness.pluginAvailable = false;
     nativePluginHarness.configureConnection.mockReset();
     nativePluginHarness.configureConnection.mockResolvedValue(undefined);
+    nativePluginHarness.enqueueCompletedLedgerBundle.mockReset();
+    nativePluginHarness.enqueueCompletedLedgerBundle.mockResolvedValue({
+      queued: true,
+      pending: 1,
+    });
     nativePluginHarness.getConnection.mockReset();
     nativePluginHarness.getConnection.mockResolvedValue({ configured: false });
   });
@@ -151,6 +158,51 @@ describe('mobile native focus display projection', () => {
     expect(nativeFocusCommandSuccessCopy({ type: 'finish', source: 'notification' })).toBe(
       '通知动作已确认结束，正在收敛账本',
     );
+  });
+
+  it('mirrors a completed bundle as two stable cursorless native mutations', async () => {
+    capacitorHarness.native = true;
+    capacitorHarness.pluginAvailable = true;
+    const bundle = {
+      session: {
+        id: 'session-native',
+        title: '离线记录',
+        status: 'finished' as const,
+        startedAt: 1,
+        endedAt: 2,
+        activeElapsedMs: 1,
+        pauseElapsedMs: 0,
+        wallElapsedMs: 1,
+        defaultTaskId: null,
+        defaultTaskSource: null,
+        defaultTaskTitle: null,
+        note: null,
+        createdAt: 1,
+        updatedAt: 2,
+      },
+      segments: [],
+      pauses: [],
+    };
+
+    await expect(enqueueNativeCompletedLedgerBundle(bundle, 'device-native')).resolves.toBe(true);
+    const record = nativePluginHarness.enqueueCompletedLedgerBundle.mock.calls[0][0].record;
+    expect(record).toMatchObject({
+      schemaVersion: 1,
+      bundleId: 'session-native',
+      deviceId: 'device-native',
+    });
+    expect(record).not.toHaveProperty('cursor');
+    expect(record).not.toHaveProperty('accessToken');
+    expect(record.mutations).toHaveLength(2);
+    expect(record.mutations.map((mutation: { entityType: string }) => mutation.entityType)).toEqual(
+      ['focus_ledger_v2', 'focus_metadata_v2'],
+    );
+    expect(
+      record.mutations.every(
+        (mutation: { baseRevision: number; baseFingerprint: null }) =>
+          mutation.baseRevision === 0 && mutation.baseFingerprint === null,
+      ),
+    ).toBe(true);
   });
 
   it('normalizes the native pause reminder delay to the supported range', () => {

@@ -51,6 +51,7 @@ import {
   isNativeFocusRuntimeAvailable,
   readNativeFocusStatus,
   restoreOrMigrateNativeFocusConnection,
+  enqueueNativeCompletedLedgerBundle,
   setNativeImmersiveSystemBars,
   subscribeToNativeFocusCommands,
   updateNativeFocusSnapshot,
@@ -820,6 +821,10 @@ export function MobileApp() {
             setCommandNotice('本机专注已继续');
           } else if (action === 'finish' && nextRuntime) {
             const bundle = finishOfflineFocus(nextRuntime, now);
+            // Native delivery is an additional durable PC-off path. IndexedDB
+            // remains the foreground fallback even if JobScheduler is
+            // temporarily unavailable on a vendor Android build.
+            await enqueueNativeCompletedLedgerBundle(bundle, deviceId).catch(() => false);
             await completeOfflineFocusRuntime(bundle);
             nextRuntime = null;
             authorityModeRef.current = 'cloud-live';

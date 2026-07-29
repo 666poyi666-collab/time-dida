@@ -89,6 +89,32 @@ public class FocusCloudClientTest {
     }
 
     @Test
+    public void usesCanonicalSyncV2RoutesForCompletedLedgerDelivery() throws Exception {
+        RecordingTransport statusTransport = new RecordingTransport(
+            200,
+            "{\"protocolVersion\":2}"
+        );
+        new FocusCloudClient(statusTransport).fetchSyncV2Status(CONNECTION);
+        assertEquals("GET", statusTransport.method);
+        assertEquals("https://sync.example.test/sync/v2/status", statusTransport.url);
+
+        RecordingTransport exchangeTransport = new RecordingTransport(200, "{}");
+        JSONObject body = new JSONObject().put("protocolVersion", 2);
+        new FocusCloudClient(exchangeTransport).exchangeSyncV2(CONNECTION, body);
+        assertEquals("POST", exchangeTransport.method);
+        assertEquals(
+            "https://sync.example.test/sync/v2/exchange",
+            exchangeTransport.url
+        );
+        assertEquals(
+            2,
+            new JSONObject(
+                new String(exchangeTransport.body, StandardCharsets.UTF_8)
+            ).getInt("protocolVersion")
+        );
+    }
+
+    @Test
     public void exposesHuaweiXiaomiAndFallbackCandidatesDeterministically() {
         List<String> huawei = FocusRuntimePlugin.autoStartSettingsCandidateKeys("HUAWEI");
         assertTrue(
