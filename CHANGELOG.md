@@ -5,6 +5,7 @@
 - **唯一 authority 与 canonical V2**：Account Durable Object 继续作为唯一账户 authority；同步收口原子 outbox/cursor/ACK、稳定 opId、conflict、tombstone/graveyard，以及 generation/changeSeq/epoch 单调与恢复，不创建第二套账户、token、deviceId、cursor 或云状态。
 - **Android fail-closed 恢复**：凭据使用 Keystore；WorkManager 覆盖 boot、package replacement、网络与 Doze 后恢复；401/403、撤销和 revision rollback 固定停止自动重试并保留待修复队列。ContentProvider V1 仅输出 currentFocus、history、任务名、次数/时长聚合、identityStatus 和 syncHealth，不输出 credential、deviceId、cursor 或 envelope。
 - **中央 observation canonical registry**：named service binding 使用独立 Capability 与 vendor media type；FocusLink 在中央签名层固定为 `productId=identity-focus`，staging audience 固定为完整 HTTPS `/authority/identity-focus`。同 revision 的持久 snapshot、truth、时间字段和 observation hash 保持不可变；公网、缺配置、错误 capability/audience、过期、额外字段、依赖失败与 rollback 全部 fail-closed。
+- **空闲 checkpoint 续期**：修复 observation 只在业务 mutation 时生成、TTL 到期后永久 503 的问题。named GET 在同一 Account DO SQLite 事务内先探测 schema/meta/live 依赖；有效 snapshot 原字节复用，缺失、损坏或到期才推进真实 verification checkpoint revision 并持久化新 snapshot。DO schema v2 移除 `state_hash` 唯一约束，使相同业务状态可在新的 checkpoint revision 下续期而不改写旧 revision。
 - **交付状态**：版本提升为 `0.12.69/1269`，用于本轮唯一跨端候选。staging、中央两跳、真实设备、三轮 PC-off 与 production 灰度必须在本提交后的独立验收中留下脱敏证据；未全部通过前 `supportsPcOff=false`。
 
 ## v0.12.68 - 2026-07-28（私有 Account DO authority 与分页 liveness）

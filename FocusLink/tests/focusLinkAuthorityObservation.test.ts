@@ -17,6 +17,7 @@ import {
   FOCUSLINK_AUTHORITY_OBSERVATION_MEDIA_TYPE,
   FOCUSLINK_AUTHORITY_OBSERVATION_PATH,
   buildFocusLinkAuthorityObservation,
+  reusableFocusLinkAuthorityObservation,
   validateFocusLinkAuthorityObservation,
 } from '../cloudflare/authorityObservation';
 import worker, { FocusLinkAuthorityObservation } from '../cloudflare/worker';
@@ -216,5 +217,27 @@ describe('FocusLink service-binding authority observation', () => {
         now,
       ),
     ).toBe(false);
+  });
+
+  it('reuses one immutable snapshot only inside its TTL and matching state checkpoint', () => {
+    const now = Date.now();
+    const value = observation(now, 11);
+    const stored = {
+      revision: value.truth.revision,
+      stateHash: 'state-a',
+      observationJson: JSON.stringify(value),
+      expiresAtMs: Date.parse(value.expiresAt),
+    };
+
+    expect(reusableFocusLinkAuthorityObservation(stored, 'state-a', now + 1_000)).toEqual(value);
+    expect(reusableFocusLinkAuthorityObservation(stored, 'state-a', stored.expiresAtMs)).toBeNull();
+    expect(reusableFocusLinkAuthorityObservation(stored, 'state-b', now + 1_000)).toBeNull();
+    expect(
+      reusableFocusLinkAuthorityObservation(
+        { ...stored, observationJson: JSON.stringify({ ...value, unexpected: true }) },
+        'state-a',
+        now + 1_000,
+      ),
+    ).toBeNull();
   });
 });

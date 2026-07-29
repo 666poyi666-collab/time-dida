@@ -54,6 +54,19 @@ describe('FocusLink authority deployment containment', () => {
     expect(vars).not.toHaveProperty('FOCUSLINK_AUTHORITY_CAPABILITY');
   });
 
+  it('allows an expired unchanged state to advance through an atomic DO checkpoint', () => {
+    const source = fs.readFileSync(
+      path.join(projectRoot, 'cloudflare', 'accountDurableObject.ts'),
+      'utf8',
+    );
+
+    expect(source).not.toContain('state_hash TEXT NOT NULL UNIQUE');
+    expect(source).toContain("'authority_observation_schema_version', '2'");
+    expect(source).toContain('this.ctx.storage.transactionSync(() => {');
+    expect(source).toContain('this.ensureAuthorityObservation(Date.now())');
+    expect(source).toContain('this.assertAuthorityObservationDependencies()');
+  });
+
   it('keeps the retired Node service from becoming a second production authority', () => {
     const server = fs.readFileSync(path.join(projectRoot, 'cloud', 'server.ts'), 'utf8');
     const dockerfile = fs.readFileSync(path.join(projectRoot, 'cloud', 'Dockerfile'), 'utf8');

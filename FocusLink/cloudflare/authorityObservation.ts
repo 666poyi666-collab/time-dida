@@ -29,6 +29,13 @@ export interface FocusLinkAuthorityObservation {
   truth: FocusLinkAuthorityTruth;
 }
 
+export interface FocusLinkAuthorityStoredSnapshot {
+  revision: number;
+  stateHash: string;
+  observationJson: string;
+  expiresAtMs: number;
+}
+
 export interface FocusLinkAuthorityCheckpointInput {
   revision: number;
   audience: string;
@@ -61,6 +68,37 @@ function isTimestamp(value: unknown): value is string {
 
 function isNonNegativeSafeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+export function reusableFocusLinkAuthorityObservation(
+  snapshot: FocusLinkAuthorityStoredSnapshot,
+  expectedStateHash: string,
+  nowMs: number,
+): FocusLinkAuthorityObservation | null {
+  if (
+    !Number.isSafeInteger(snapshot.revision) ||
+    snapshot.revision < 1 ||
+    !snapshot.stateHash ||
+    snapshot.stateHash !== expectedStateHash ||
+    !Number.isSafeInteger(snapshot.expiresAtMs) ||
+    snapshot.expiresAtMs <= nowMs
+  ) {
+    return null;
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(snapshot.observationJson);
+  } catch {
+    return null;
+  }
+  if (
+    !validateFocusLinkAuthorityObservation(value, nowMs) ||
+    value.truth.revision !== snapshot.revision ||
+    Date.parse(value.expiresAt) !== snapshot.expiresAtMs
+  ) {
+    return null;
+  }
+  return value;
 }
 
 export function exactFocusLinkAuthorityAudience(value: unknown): string | null {

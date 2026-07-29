@@ -70,7 +70,7 @@ import {
   FOCUSLINK_AUTHORITY_OBSERVATION_PATH,
   buildFocusLinkAuthorityObservation,
   exactFocusLinkAuthorityAudience,
-  validateFocusLinkAuthorityObservation,
+  reusableFocusLinkAuthorityObservation,
   type FocusLinkAuthorityObservation,
 } from './authorityObservation';
 
@@ -343,7 +343,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
             'service credential required',
           );
         }
-        const observation = this.readAuthorityObservation(Date.now());
+        const observation = this.ensureAuthorityObservation(Date.now());
         if (!observation) {
           throw new ProtocolError(
             503,
@@ -697,7 +697,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       );
       CREATE TABLE IF NOT EXISTS authority_observation_snapshots (
         revision INTEGER PRIMARY KEY,
-        state_hash TEXT NOT NULL UNIQUE,
+        state_hash TEXT NOT NULL,
         observation_json TEXT NOT NULL,
         observed_at INTEGER NOT NULL,
         expires_at INTEGER NOT NULL
@@ -712,6 +712,42 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       INSERT OR IGNORE INTO task_state(singleton, revision) VALUES (1, 0);
       INSERT OR IGNORE INTO live_state(singleton, revision) VALUES (1, 0);
     `);
+    this.migrateAuthorityObservationSchema();
+  }
+
+  private migrateAuthorityObservationSchema(): void {
+    const current = this.sql
+      .exec<MetaRow>("SELECT value FROM meta WHERE key = 'authority_observation_schema_version'")
+      .toArray()[0];
+    if (current?.value === '2') return;
+    if (current && current.value !== '1') {
+      throw new Error('authority observation schema version is invalid');
+    }
+    this.ctx.storage.transactionSync(() => {
+      this.sql.exec(`
+        DROP TABLE IF EXISTS authority_observation_snapshots_v2;
+        CREATE TABLE authority_observation_snapshots_v2 (
+          revision INTEGER PRIMARY KEY,
+          state_hash TEXT NOT NULL,
+          observation_json TEXT NOT NULL,
+          observed_at INTEGER NOT NULL,
+          expires_at INTEGER NOT NULL
+        );
+        INSERT INTO authority_observation_snapshots_v2(
+          revision, state_hash, observation_json, observed_at, expires_at
+        )
+        SELECT revision, state_hash, observation_json, observed_at, expires_at
+        FROM authority_observation_snapshots;
+        DROP TABLE authority_observation_snapshots;
+        ALTER TABLE authority_observation_snapshots_v2
+          RENAME TO authority_observation_snapshots;
+        CREATE INDEX idx_authority_observation_state_revision
+          ON authority_observation_snapshots(state_hash, revision DESC);
+        INSERT INTO meta(key, value)
+          VALUES ('authority_observation_schema_version', '2')
+          ON CONFLICT(key) DO UPDATE SET value=excluded.value;
+      `);
+    });
   }
 
   private focusMcpProjection(url: URL) {
@@ -1279,6 +1315,34 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     );
   }
 
+  private assertAuthorityObservationDependencies(): void {
+    const probe = this.sql
+      .exec<{ table_count: number; meta_count: number; live_count: number }>(
+        `
+        SELECT
+          (SELECT COUNT(*) FROM sqlite_schema
+           WHERE type = 'table' AND name IN (
+             'meta', 'v2_entities', 'v2_devices', 'v2_conflicts',
+             'live_state', 'authority_observation_snapshots'
+           )) AS table_count,
+          (SELECT COUNT(*) FROM meta WHERE key IN (
+             'v2_change_seq', 'v2_sync_epoch', 'v2_cursor_epoch',
+             'v2_account_generation', 'v2_maintenance',
+             'authority_observation_revision', 'authority_observation_schema_version'
+           )) AS meta_count,
+          (SELECT COUNT(*) FROM live_state WHERE singleton = 1) AS live_count
+      `,
+      )
+      .one();
+    if (
+      Number(probe.table_count) !== 6 ||
+      Number(probe.meta_count) !== 7 ||
+      Number(probe.live_count) !== 1
+    ) {
+      throw new Error('authority observation dependency probe failed');
+    }
+  }
+
   private recordAuthorityObservationCheckpoint(verifiedAt: number): void {
     const audience = exactFocusLinkAuthorityAudience(this.env.FOCUSLINK_AUTHORITY_AUDIENCE);
     if (!audience) return;
@@ -1332,7 +1396,21 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
          FROM authority_observation_snapshots ORDER BY revision DESC LIMIT 1`,
       )
       .toArray()[0];
-    if (previous?.state_hash === stateHash) return;
+    if (
+      previous &&
+      reusableFocusLinkAuthorityObservation(
+        {
+          revision: Number(previous.revision),
+          stateHash: previous.state_hash,
+          observationJson: previous.observation_json,
+          expiresAtMs: Number(previous.expires_at),
+        },
+        stateHash,
+        verifiedAt,
+      )
+    ) {
+      return;
+    }
 
     let blockerReason: string | null = null;
     if (maintenance) blockerReason = 'maintenance_mode';
@@ -1372,6 +1450,16 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     );
   }
 
+  private ensureAuthorityObservation(now: number): FocusLinkAuthorityObservation | null {
+    return this.ctx.storage.transactionSync(() => {
+      this.assertAuthorityObservationDependencies();
+      const current = this.readAuthorityObservation(now);
+      if (current) return current;
+      this.recordAuthorityObservationCheckpoint(now);
+      return this.readAuthorityObservation(now);
+    });
+  }
+
   private readAuthorityObservation(now: number): FocusLinkAuthorityObservation | null {
     const row = this.sql
       .exec<AuthorityObservationRow>(
@@ -1379,20 +1467,17 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
          FROM authority_observation_snapshots ORDER BY revision DESC LIMIT 1`,
       )
       .toArray()[0];
-    if (!row || row.expires_at <= now) return null;
-    let value: unknown;
-    try {
-      value = JSON.parse(row.observation_json);
-    } catch {
-      return null;
-    }
-    if (
-      !validateFocusLinkAuthorityObservation(value, now) ||
-      value.truth.revision !== row.revision
-    ) {
-      return null;
-    }
-    return value;
+    if (!row) return null;
+    return reusableFocusLinkAuthorityObservation(
+      {
+        revision: Number(row.revision),
+        stateHash: row.state_hash,
+        observationJson: row.observation_json,
+        expiresAtMs: Number(row.expires_at),
+      },
+      row.state_hash,
+      now,
+    );
   }
 
   private async authorizeV2(request: Request, scope: string): Promise<V2Identity> {
