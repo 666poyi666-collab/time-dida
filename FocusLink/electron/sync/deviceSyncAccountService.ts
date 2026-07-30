@@ -38,7 +38,7 @@ export function getDeviceSyncAccountIdentity(): {
   accountLabel: string | null;
 } {
   const token = getDeviceSyncToken();
-  const match = token?.match(/^fl2_([A-Za-z0-9-]{6,80})_[A-Za-z0-9-]{6,80}_/);
+  const match = token?.match(/^fl2_([A-Za-z0-9-]{6,80})_[A-Za-z0-9-]{6,80}_[A-Za-z0-9_-]{32,160}$/);
   return {
     signedIn: Boolean(match),
     accountId: match?.[1] ?? null,
@@ -233,12 +233,21 @@ function wait(ms: number): Promise<void> {
 function readBootstrapError(value: unknown): string {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
   const record = value as Record<string, unknown>;
-  if (typeof record.message === 'string') return record.message;
-  if (typeof record.error === 'string') return record.error;
+  if (typeof record.message === 'string') return redactBootstrapErrorMessage(record.message);
+  if (typeof record.error === 'string') return redactBootstrapErrorMessage(record.error);
   const nested = record.error;
   return nested &&
     typeof nested === 'object' &&
     typeof (nested as Record<string, unknown>).message === 'string'
-    ? String((nested as Record<string, unknown>).message)
+    ? redactBootstrapErrorMessage(String((nested as Record<string, unknown>).message))
     : '';
+}
+
+function redactBootstrapErrorMessage(value: string): string {
+  return value
+    .replace(/\bfl2_[A-Za-z0-9_-]+/g, '[device-credential-redacted]')
+    .replace(/\bflb_[A-Za-z0-9_-]+/g, '[poll-credential-redacted]')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .trim()
+    .slice(0, 240);
 }

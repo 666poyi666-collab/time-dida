@@ -82,6 +82,16 @@ export function validateFocusLinkDeviceRegistrationResponse(
 ): value is FocusLinkDeviceRegistrationResponse {
   return (
     isRecord(value) &&
+    hasExactKeys(value, [
+      'protocolVersion',
+      'accountPublicId',
+      'deviceId',
+      'accessToken',
+      'tokenType',
+      'scopes',
+      'expiresAt',
+      'serverTime',
+    ]) &&
     value.protocolVersion === FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION &&
     typeof value.accountPublicId === 'string' &&
     /^[A-Za-z0-9-]{6,80}$/.test(value.accountPublicId) &&
@@ -90,13 +100,26 @@ export function validateFocusLinkDeviceRegistrationResponse(
     typeof value.accessToken === 'string' &&
     /^fl2_[A-Za-z0-9-]{6,80}_[A-Za-z0-9-]{6,80}_[A-Za-z0-9_-]{32,160}$/.test(value.accessToken) &&
     value.tokenType === 'Bearer' &&
-    Array.isArray(value.scopes) &&
-    value.scopes.length > 0 &&
-    value.scopes.every((scope) =>
-      (FOCUSLINK_ENROLLED_DEVICE_SCOPES as readonly string[]).includes(scope),
-    ) &&
+    hasExactEnrolledScopes(value.scopes) &&
     Number.isSafeInteger(value.expiresAt) &&
     Number.isSafeInteger(value.serverTime)
+  );
+}
+
+function hasExactEnrolledScopes(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length === FOCUSLINK_ENROLLED_DEVICE_SCOPES.length &&
+    new Set(value).size === FOCUSLINK_ENROLLED_DEVICE_SCOPES.length &&
+    FOCUSLINK_ENROLLED_DEVICE_SCOPES.every((scope) => value.includes(scope))
+  );
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: string[]): boolean {
+  const keys = Object.keys(value).sort();
+  const expectedKeys = [...expected].sort();
+  return (
+    keys.length === expectedKeys.length && keys.every((key, index) => key === expectedKeys[index])
   );
 }
 

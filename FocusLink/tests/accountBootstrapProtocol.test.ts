@@ -60,6 +60,14 @@ describe('owner account bootstrap protocol', () => {
         registration,
       }),
     ).toBeNull();
+    expect(
+      parseFocusLinkAccountBootstrapRequest({
+        protocolVersion: 1,
+        action: 'start',
+        registration,
+        flowId: `flow_${'f'.repeat(40)}`,
+      }),
+    ).toBeNull();
   });
 
   it('accepts only the canonical owner login origin and bounded poll metadata', () => {
@@ -131,6 +139,18 @@ describe('owner account bootstrap protocol', () => {
       parseFocusLinkAccountBootstrapResponse({
         ...authenticated,
         device: { ...device, accountPublicId: 'account2' },
+      }),
+    ).toBeNull();
+    expect(
+      parseFocusLinkAccountBootstrapResponse({
+        ...authenticated,
+        device: { ...device, scopes: ['sync:read'] },
+      }),
+    ).toBeNull();
+    expect(
+      parseFocusLinkAccountBootstrapResponse({
+        ...authenticated,
+        device: { ...device, extra: true },
       }),
     ).toBeNull();
     expect(parseFocusLinkAccountBootstrapResponse({ ...authenticated, extra: true })).toBeNull();

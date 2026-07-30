@@ -185,6 +185,56 @@ describe('desktop owner account enrollment', () => {
     expect(harness.openedUrls).toEqual([]);
   });
 
+  it('rejects a changed poll credential after the owner flow starts', async () => {
+    vi.useFakeTimers();
+    const flowId = `flow_${'f'.repeat(40)}`;
+    const pollToken = `flb_${'p'.repeat(48)}`;
+    const now = Date.now();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          Response.json({
+            protocolVersion: 1,
+            status: 'login-required',
+            flowId,
+            pollToken,
+            loginUrl:
+              'https://poyi-oauth-as.focuslink-poyi-6465e9.workers.dev/owner/focuslink-device?flow=public',
+            retryAfterMs: 750,
+            expiresAt: now + 300_000,
+            serverTime: now,
+          }),
+        )
+        .mockResolvedValueOnce(
+          Response.json({
+            protocolVersion: 1,
+            status: 'login-required',
+            flowId,
+            pollToken: `flb_${'q'.repeat(48)}`,
+            loginUrl:
+              'https://poyi-oauth-as.focuslink-poyi-6465e9.workers.dev/owner/focuslink-device?flow=public',
+            retryAfterMs: 750,
+            expiresAt: now + 300_000,
+            serverTime: now,
+          }),
+        ),
+    );
+
+    const login = loginDeviceSyncAccount();
+    const loginError = login.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await vi.advanceTimersByTimeAsync(750);
+    const error = await loginError;
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('轮询中更换了授权流程');
+    expect(harness.token).toBeNull();
+    expect(harness.openedUrls).toHaveLength(1);
+  });
+
   it('reports an undeployed canonical gateway without exposing the response body', async () => {
     vi.stubGlobal(
       'fetch',
@@ -199,6 +249,33 @@ describe('desktop owner account enrollment', () => {
     expect(JSON.stringify(harness.logs)).not.toContain('flb_');
   });
 
+  it('redacts bootstrap credentials from non-404 server errors', async () => {
+    const pollToken = `flb_${'p'.repeat(48)}`;
+    const deviceToken = `fl2_account1_desktop1_${'x'.repeat(32)}`;
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json(
+            { error: { message: `rejected ${pollToken} and ${deviceToken}` } },
+            { status: 400 },
+          ),
+        ),
+    );
+
+    let thrown = '';
+    try {
+      await loginDeviceSyncAccount();
+    } catch (error) {
+      thrown = error instanceof Error ? error.message : String(error);
+    }
+    expect(thrown).toContain('[poll-credential-redacted]');
+    expect(thrown).toContain('[device-credential-redacted]');
+    expect(thrown).not.toContain('flb_');
+    expect(thrown).not.toContain('fl2_');
+  });
+
   it('does not reopen login when this installation already has a valid fl2 credential', async () => {
     harness.token = `fl2_account1_desktop1_${'y'.repeat(32)}`;
     const fetchMock = vi.fn();
@@ -210,6 +287,16 @@ describe('desktop owner account enrollment', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(harness.openedUrls).toEqual([]);
+  });
+
+  it('does not treat a truncated legacy fl2 prefix as an installed credential', async () => {
+    harness.token = 'fl2_account1_desktop1_';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(Response.json({ error: 'not deployed' }, { status: 404 })),
+    );
+
+    await expect(loginDeviceSyncAccount()).rejects.toThrow('账号登录网关尚未部署');
   });
 
   it('clears only the device credential on logout and leaves local data untouched', () => {

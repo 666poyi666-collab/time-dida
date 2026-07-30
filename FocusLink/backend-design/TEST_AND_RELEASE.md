@@ -84,7 +84,7 @@ OAuth/device 双向拒绝、`opId` applied/duplicate/复用拒绝、旧 revision
 `focuslink:read` 摘要。保存第一次运行的状态证据，升级后确认 ledger、revision、change feed、
 实时 idle 和幂等结果仍在；访问令牌只通过 deploy secret 与各平台安全存储传递。
 
-账号 bootstrap 门禁必须覆盖严格 start/poll 字段、canonical `/owner/*` URL、`flb_*` poll token 短期单次消费、过期 flow、额外字段、错误 origin、凭据/日志脱敏和“未登录不得 authenticated”。`npm run probe:account-bootstrap` 只输出结构化状态；`not-deployed` 是可诊断的真实阻塞，不算公网通过。上线验收必须在无旧凭据的新安装上完成 owner 登录、独立 `fl2` 签发和第二次 poll 拒绝，并确认旧安装原位升级仍在线。
+账号 bootstrap 门禁必须覆盖严格 start/poll 字段、canonical `/owner/*` URL、`flb_*` poll token 短期单次消费、过期 flow、额外字段、错误 origin、凭据/日志脱敏和“未登录不得 authenticated”。`npm run probe:account-bootstrap` 只输出结构化状态；只有 `deployed-login-required` 返回成功退出码，`not-deployed` 是可诊断的真实阻塞，不算公网通过。上线验收必须在无旧凭据的新安装上完成 owner 登录、独立 `fl2` 签发和第二次 poll 拒绝，并确认旧安装原位升级仍在线。
 
 任务快照 freshness 门禁使用不含真实任务正文的 fixture，覆盖发布回读一致性、GET `no-store`、前台 15 秒自动刷新、revision 36→37 收敛、延迟 36 不回退、同 revision 异文拒绝，以及父子 ID/parentId 数量守恒。
 

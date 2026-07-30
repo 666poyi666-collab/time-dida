@@ -40,6 +40,7 @@ async function main(): Promise<void> {
     );
     if (response.status === 404) {
       report({ state: 'not-deployed', status: response.status });
+      process.exitCode = 1;
     } else if (!response.ok) {
       report({ state: 'gateway-error', status: response.status });
       process.exitCode = 1;

@@ -62,6 +62,13 @@ describe('FocusLink identity device registration protocol', () => {
         scopes: [...valid.scopes, 'devices:manage'],
       }),
     ).toBe(false);
+    expect(
+      validateFocusLinkDeviceRegistrationResponse({
+        ...valid,
+        scopes: ['sync:read'],
+      }),
+    ).toBe(false);
+    expect(validateFocusLinkDeviceRegistrationResponse({ ...valid, extra: true })).toBe(false);
     expect(validateFocusLinkDeviceRegistrationResponse({ ...valid, accessToken: 'oauth' })).toBe(
       false,
     );
