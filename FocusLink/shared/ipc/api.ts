@@ -14,6 +14,7 @@ import type {
   TimerSnapshot,
   TomatodoSubject,
 } from '../types';
+import type { DayLedgerAnalytics } from '../dayLedgerAnalytics';
 
 /** A serializable success/error envelope used by the CLI diagnostics endpoints. */
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -155,6 +156,8 @@ export interface SessionAnalyticsResult {
   /** 每个会话在当前统计范围内裁剪后的有效专注，用于“最长一轮”等范围 KPI。 */
   sessionActive: Array<{ sessionId: string; activeMs: number }>;
   timeline: SessionAnalyticsTimelineItem[];
+  /** Shared, derived-only effective-day ledgers. Gap is never persisted. */
+  dayLedgers: DayLedgerAnalytics[];
   totals: {
     activeMs: number;
     pauseMs: number;

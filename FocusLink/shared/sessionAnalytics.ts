@@ -1,4 +1,5 @@
 import type { FocusSegment, FocusSession, PauseEvent } from './types';
+import { buildDayLedger } from './dayLedgerAnalytics';
 import type {
   SessionAnalyticsDaily,
   SessionAnalyticsHourly,
@@ -172,6 +173,7 @@ function normalizeRange(range: SessionAnalyticsRange): SessionAnalyticsRange {
 export function buildSessionAnalytics(
   requestedRange: SessionAnalyticsRange,
   source: SessionAnalyticsSource,
+  referenceNow = Date.now(),
 ): SessionAnalyticsResult {
   const range = normalizeRange(requestedRange);
   const sessions = source.sessions
@@ -526,6 +528,17 @@ export function buildSessionAnalytics(
           Math.max(0, Math.min(100, 100 * (1 - standardDeviationMs / averageDailyActiveMs))),
         );
 
+  const dayLedgers = enumerateDays(range.start, range.end).map((day) =>
+    buildDayLedger(
+      { day, now: referenceNow },
+      {
+        sessions,
+        segments,
+        pauses,
+      },
+    ),
+  );
+
   return {
     range,
     daily,
@@ -535,6 +548,7 @@ export function buildSessionAnalytics(
     sessions,
     sessionActive,
     timeline,
+    dayLedgers,
     totals,
     stability: {
       activeDays: daily.filter((item) => item.activeMs > 0).length,

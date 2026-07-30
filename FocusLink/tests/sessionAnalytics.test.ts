@@ -85,6 +85,18 @@ describe('buildSessionAnalytics', () => {
       segmentCount: 1,
     });
     expect(result.timeline.map((item) => item.kind)).toEqual(['focus', 'pause']);
+    expect(result.dayLedgers).toHaveLength(1);
+    expect(result.dayLedgers[0]).toMatchObject({
+      status: 'observed',
+      totals: {
+        focusMs: 45 * 60 * 1000,
+        pauseMs: 15 * 60 * 1000,
+        gapMs: 12 * 60 * 60 * 1000,
+        observationMs: 13 * 60 * 60 * 1000,
+        estimatedFocusMs: 0,
+        estimatedPauseMs: 0,
+      },
+    });
     expect(result.subjects).toEqual([
       { subject: '化学', activeMs: 45 * 60 * 1000, segmentCount: 1 },
     ]);

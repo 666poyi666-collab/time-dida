@@ -1,5 +1,18 @@
 # FocusLink 实施日志
 
+## 2026-07-30 · v0.12.73 单账号 bootstrap 与任务快照 freshness
+
+- 新设备登录合同收紧为严格 start/poll：独立短期 `flb_*` poll credential、canonical owner URL、流程绑定、响应精确字段和 credential 脱敏；Electron 拒绝未经过 owner 登录直接下发的 device token。公网 probe 当前实测 404 时明确报告 `not-deployed`，不冒充新设备登录已上线；旧 `fl2` 原位升级链保持不变。
+- 任务快照增加单调 freshness 合同：PC 仅在 authority 回读相同 device/payload 后确认发布，手机可见态每 15 秒自动 GET 且强制 `no-store`，旧 revision 不回退、同 revision 异文不覆盖。回归 fixture 不包含私人任务正文。
+- 公网真正上线仍需按顺序配置独立 `fia_*`、部署私有 registration、在 foxlink gateway 实现 owner session/CSRF 与 start/poll flow store、执行 poll token 单次消费负测；本仓 dry-run 与合同测试不替代该外部部署。
+
+## 2026-07-30 · FL-REQ-20260730-DAY-LEDGER 共享有效日与 Windows Dashboard
+
+- 新增 `shared/dayLedgerAnalytics.ts`：默认有效日 07:00–22:00，观察起点只认当天第一段真实 focus，今天截止 now、历史日截止 22:00；pause 使用真实 `PauseEvent`，重叠时 pause 优先，focus/pause/gap 以边界切片后严格守恒。gap 只在读取时派生，不写 SQLite、同步队列或云端。
+- 进行中 Session 的 open segment/pause 可延伸到当前观察终点；历史 open 行、缺 Segment/PauseEvent 的旧账本只输出 estimated 汇总，绝不伪造分钟级区间。纯函数回归覆盖无 focus、尾部空档、跨午夜、重叠、running/paused、今天/历史日与旧数据边界。
+- `SessionAnalyticsResult.dayLedgers` 成为桌面/移动共享 IPC 结果。Windows Dashboard 消费该结果，增加可动画 SVG focus/pause/gap 甜甜圈、突出 07–22 的 24h 轴、精确空档列表、键盘/ARIA 和 reduced-motion；内容层保持连续，Liquid Glass 只用于日期浮层、甜甜圈和 estimated 状态徽标。
+- 桌面定向验证覆盖共享分析、renderer、九仪表、完整状态机与空闲 403 本地安全回退；本条不改版本元数据、不打包、不安装、不发布。
+
 ## 2026-07-30 · v0.12.72 单账号登录与四端候选收口
 
 - 账号模型固定为管理员派发的唯一 owner `poyi-owner`。普通 UI 不再编辑 endpoint/token/pairing；Windows、手机和平板从旧 `fl2` 无损识别登录态，新安装通过 canonical `/account/v1/device/bootstrap` 进入系统浏览器登录，成功后自动保存各设备独立凭据并开启实时与账本同步。手表只显示“从手机登录”和等待确认。

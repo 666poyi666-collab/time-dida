@@ -30,6 +30,7 @@
 - 设备 90 天未上线标 stale；tombstone 至少保留 180 天并等待全部活跃设备水位；graveyard 继续阻止旧副本复活。
 - 设备令牌使用 `fl2_` 路由格式；账号 DO 只保存 pepper HMAC、scope、过期和撤销状态，token 正文不落日志。
 - FocusLink 账号当前只接受管理员派发的唯一 subject `poyi-owner`。新设备不再走用户可见 pairing：canonical identity gateway 验证 owner 登录后，使用独立 `fia_*` authority 调用设备登记；Account DO 按 `(accountId, installationId)` 的 HMAC 派生稳定 deviceId，并为 Windows、手机、平板、手表分别签发独立 `fl2`。客户端只能获得固定 sync/live read/write scope，不能自报 owner 或 devices:manage。
+- 新设备入口固定为 `POST /account/v1/device/bootstrap` 的两阶段合同。`start` 携带严格设备 registration；gateway 返回 `flowId`、只供该流程使用的高熵 `flb_*` poll token 和 canonical `/owner/*` HTTPS 登录 URL。客户端只打开一次系统浏览器，随后用 `poll` 的 `flowId + pollToken` 领取结果；poll token 必须短期、单次消费，日志和诊断只能输出脱敏状态。未完成 owner 登录时直接返回 `authenticated`、轮询中更换 flow/credential、非 canonical 登录 origin 或回退到 installationId 领取凭据均为安全失败。
 - endpoint、authority secret、owner subject 和配对兼容层都属于基础设施细节，不进入 renderer 表单。旧合法 `fl2` 原位迁移为已登录；退出只删除本机凭据，不删除账本。移动端必须把稳定 installationId 与 authority 分配的 deviceId 分开保存，重新登录不得制造幽灵设备。
 - 推送只传 needSync hint，HTTPS/cursor 始终是数据真相。当前厂商凭据缺失，状态为 `credential-missing`。
 - R2 恢复进入 maintenance 并切换 generation 与 epoch。当前账户未启用 R2，Wrangler API `10042` 代表真实备份门禁未通过。
@@ -128,6 +129,8 @@ Provider 的稳定能力应包括：
 - 设置更新采用局部对象并与完整设置递归合并；缺失字段表示不修改。
 - 慢请求使用 request id 或版本防止旧响应覆盖新状态。
 - `sessions.analytics(range)` 是严格只读、范围有界的统计接口。数据库必须选择与范围相交的会话，而不是只按 `started_at` 落点筛选；共享聚合器按自然日裁切 Session、Segment 与 PauseEvent，跨午夜/跨月/跨年数据不得整段归到开始日。该接口不得修改计时、同步队列或外部服务状态。
+- `shared/dayLedgerAnalytics.ts` 是有效日与空档分析的唯一纯函数真值，结果通过 `SessionAnalyticsResult.dayLedgers` 暴露给桌面与移动 renderer。默认有效日为 07:00–22:00；观察起点只认真实 segment 边界，pause 以真实 `PauseEvent` 为准并在重叠时优先分类，gap 只在内存中由观察区间内 focus/pause 并集的补集推导，禁止新增 gap 表或同步实体。三类精确时长必须满足 `focus + pause + gap = observation`。
+- 当天 open segment 可在活动 Session 中延伸到 `min(now, 22:00)`，open PauseEvent 代表 paused 尾段；历史 open 行和缺少 Segment/PauseEvent 的旧会话不得伪造起止，只输出 `estimatedFocusMs/estimatedPauseMs` 与 `estimated=true`。跨午夜、重叠、DST 本地日、历史/今天均由共享纯函数裁切；00–07 与 22–24 不进入统计区间。
 - 统计会话详情同时核对 request id 和当前展开 session id；路由卸载会使所有未完成详情请求失效。失败必须清理当前 loading 并保留行内可重试错误，不得产生 unhandled rejection。
 - 统计 renderer 只订阅当前 session id 和 timer state 等原子值，不因 `activeElapsedMs` 每秒变化而重渲染整份历史列表。
 - 主窗、小窗和托盘共享计时 tick、设置与任务变更广播。
@@ -220,6 +223,8 @@ revision、服务端单调 change sequence 与不透明 cursor。规则如下：
 
 生产同步的唯一数据 authority 是 `cloudflare/accountDurableObject.ts` 的 Account Durable Object。`cloudflare/worker.ts` 只作为私有 service-binding authority adapter：`wrangler.jsonc` 固定 `workers_dev=false`、`preview_urls=false` 且没有 `routes`，不得创建 `workers.dev`、preview 或自定义域名入口。生产客户端只保存 canonical `foxlink-cloud-mcp` HTTPS origin；公网 OAuth、owner session、CSRF、resource/audience 与 CORS 由该 adapter 校验，再通过 service binding 调用私有 FocusLink Worker。客户端不得改指向私有 Worker。
 
+新设备登录的部署顺序不可交换：先在私有 FocusLink Worker 与 canonical gateway 分别配置同一代、独立于 device/OAuth/MCP 的 `fia_*` authority secret；再部署私有 `/sync/v1/devices/register` 与 Account DO migration；随后部署 gateway 的 bootstrap flow store、owner session/CSRF approval 和私有登记转发；最后运行 start/poll 正负测试并撤销旧 secret。回滚时先停止新 flow，再保留旧 `fl2` 数据面和已登录设备，不得撤销现有 device credential。仓库内合同通过或 dry-run 均不等于 gateway 已上线。
+
 Node `cloud/server.ts` 仅保留显式 token 的 `127.0.0.1` 合同测试后端。`startPersonalCloud()` 与 `FOCUSLINK_CLOUD_MODE=production` 固定失败；`cloud/Dockerfile` 是不可启动 authority 的退役标记镜像，Compose 不再声明 Node cloud API、静态 bearer 账号或持久卷。Node 不能作为应急 production authority，也不能绕过设备撤销、scope、Account DO 事务或 MCP 投影。
 
 canonical adapter 与私有 authority 的路由表如下。`/v1/*`、`/v2/*` 和 `/sync/push` 均为已退休外部路径，adapter 与私有 Worker 都不得回退：
@@ -269,6 +274,7 @@ Account DO 保存实体、revision、reservation/result、change feed、任务�
 - 电脑端每次成功读取滴答工作台后自动发布项目与活动任务快照；发布失败只记诊断，不得让已经成功的本地任务刷新变成失败。
 - 快照只包含选择专注所需的任务 ID、来源、标题、项目、优先级、到期日、标签、父子关系和完成状态；不包含任务正文、原始 JSON、CLI/OAuth 凭据或第三方写入能力。Checklist 子项在传输时展平并保留 `parentId`。
 - 云端按账号保留最后一份完整快照，内容相同的同设备重放不增加 revision。Web/PWA/Android 使用 `GET /sync/v2/tasks` 读取并写入 IndexedDB；PC 关闭或任务服务暂时不可达时继续使用最后一次缓存。
+- 任务快照 GET/POST 必须 `Cache-Control: no-store`；移动端前台每 15 秒自动拉取并在恢复可见、登录或连接 epoch 变化时立即拉取。revision 只能前进：低 revision 响应不得覆盖缓存；同 revision 若 source/payload 不同视为 authority 不一致并保留当前快照。PC 仅在服务端回读同一 source device 与同一 payload 后清除耐久 pending snapshot，防止代理旧响应把未发布内容误报为成功。
 - 移动端开始实时会话时可以携带快照中的任务上下文，也可以不关联任务自由开始。任务上下文最终进入 completed bundle，PC 拉回后仍由桌面端执行 dida/TomaToDo 副作用。
 - 任务快照解决的是“PC 已读取内容的跨设备可选副本”，不是移动端直连滴答，也不把本地测试后端提升为生产云。PC 尚未成功发布过快照时，其他端只能自由标题开始。
 

@@ -155,6 +155,24 @@ describe('专注核心点亮', () => {
 });
 
 describe('仪表读数格式化（所有仪表共用契约）', () => {
+  it('九种仪表完整覆盖 idle→running→paused→running→finished 生命周期', () => {
+    const lifecycle = ['idle', 'running', 'paused', 'running', 'finished'] as const;
+    for (const style of TIMER_STYLES) {
+      for (const [index, state] of lifecycle.entries()) {
+        const markup = renderToStaticMarkup(
+          createElement(TimerDial, {
+            ms: index * 61_000,
+            state,
+            style,
+          }),
+        );
+        expect(markup).toContain(`dial-${style}`);
+        expect(markup).toContain(`state-${state}`);
+        expect(markup).not.toMatch(/NaN|undefined/);
+      }
+    }
+  });
+
   it('idle 与秒级推进：分钟始终补零', () => {
     expect(formatDurationPadded(0)).toBe('00:00');
     expect(formatDurationPadded(9_000)).toBe('00:09');

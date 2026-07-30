@@ -2,7 +2,8 @@
 // 会话明细只保留下方唯一账本，不在 Dashboard 内重复一份表格。
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useInView, useReducedMotion } from 'framer-motion';
-import type { SessionAnalyticsResult, SessionAnalyticsTimelineItem } from '@shared/ipc/api';
+import type { SessionAnalyticsResult } from '@shared/ipc/api';
+import type { DayLedgerAnalytics, DayLedgerInterval } from '@shared/dayLedgerAnalytics';
 import { buildDashboardTaskAllocation } from '@shared/dashboardPresentation';
 import { Icon } from '../../ui/Icon';
 import { formatClock, formatMinutes } from '../../lib/time';
@@ -83,8 +84,37 @@ export function HistoryInsights({
   const singleDay = isSameLocalDay(range.start, range.end - 1);
   const isToday = singleDay && isSameLocalDay(range.start, Date.now());
   const tracked = Math.max(0, summary.active + summary.pause);
-  const focusRate = percentage(summary.active, tracked);
-  const average = summary.count > 0 ? summary.active / summary.count : 0;
+  const dayLedgers = analytics?.dayLedgers ?? [];
+  const selectedLedger = singleDay
+    ? (dayLedgers.find(
+        (item) => item.dayStartedAt === new Date(range.start).setHours(0, 0, 0, 0),
+      ) ?? dayLedgers[0])
+    : dayLedgers.at(-1);
+  const ledgerTotals = dayLedgers.reduce(
+    (total, item) => ({
+      focusMs: total.focusMs + item.totals.focusMs,
+      pauseMs: total.pauseMs + item.totals.pauseMs,
+      gapMs: total.gapMs + item.totals.gapMs,
+      observationMs: total.observationMs + item.totals.observationMs,
+      estimatedFocusMs: total.estimatedFocusMs + item.totals.estimatedFocusMs,
+      estimatedPauseMs: total.estimatedPauseMs + item.totals.estimatedPauseMs,
+    }),
+    {
+      focusMs: 0,
+      pauseMs: 0,
+      gapMs: 0,
+      observationMs: 0,
+      estimatedFocusMs: 0,
+      estimatedPauseMs: 0,
+    },
+  );
+  const dashboardFocus = ledgerTotals.focusMs + ledgerTotals.estimatedFocusMs;
+  const dashboardPause = ledgerTotals.pauseMs + ledgerTotals.estimatedPauseMs;
+  const focusRate =
+    ledgerTotals.observationMs > 0
+      ? percentage(ledgerTotals.focusMs, ledgerTotals.observationMs)
+      : percentage(summary.active, tracked);
+  const average = summary.count > 0 ? dashboardFocus / summary.count : 0;
   const longest = Math.max(0, ...(analytics?.sessionActive.map((item) => item.activeMs) ?? []));
   const activeDays = analytics?.stability.activeDays ?? 0;
 
@@ -95,8 +125,18 @@ export function HistoryInsights({
           <div className="state-block-icon">
             <Icon.Calendar size="lg" />
           </div>
-          <p className="state-block-title">这段时间还没有专注记录</p>
-          <p className="state-block-desc">开始一次专注，或查看更长的时间范围。</p>
+          <p className="state-block-title">
+            {singleDay && isToday
+              ? selectedLedger?.status === 'estimated-only'
+                ? '今日只有旧版估算记录'
+                : '今日尚未启动'
+              : '这段时间还没有专注记录'}
+          </p>
+          <p className="state-block-desc">
+            {selectedLedger?.status === 'estimated-only'
+              ? '旧记录缺少精确起止边界，只保留估算时长，不生成空档区间。'
+              : '开始一次专注，或查看更长的时间范围。'}
+          </p>
           <div className="state-block-actions">
             {(['7d', '15d', '30d'] as const).map((preset) => (
               <button
@@ -124,7 +164,7 @@ export function HistoryInsights({
         <div className="stats-primary-readout">
           <span>{singleDay ? (isToday ? '今日有效专注' : '当日有效专注') : '范围内有效专注'}</span>
           <strong>
-            <CountUp value={summary.active} format={duration} />
+            <CountUp value={dashboardFocus} format={duration} />
           </strong>
         </div>
         <div className="stats-brief-copy">
@@ -137,63 +177,107 @@ export function HistoryInsights({
           </h2>
           <p>
             {singleDay
-              ? `完成 ${summary.count} 轮，平均每轮 ${duration(average)}；暂停占已记录时间 ${percentage(summary.pause, tracked)}%。`
-              : `${activeDays} 个活跃日完成 ${summary.count} 轮，日均专注 ${duration(activeDays > 0 ? summary.active / activeDays : 0)}。`}
+              ? `完成 ${summary.count} 轮，平均每轮 ${duration(average)}；暂停占有效日已分类时间 ${percentage(dashboardPause, dashboardFocus + dashboardPause)}%。`
+              : `${activeDays} 个活跃日完成 ${summary.count} 轮，有效日日均专注 ${duration(activeDays > 0 ? dashboardFocus / activeDays : 0)}。`}
           </p>
         </div>
-        <FocusGauge rate={focusRate} />
+        <TimeBudgetDonut totals={ledgerTotals} />
       </header>
 
       <div className="stats-metric-strip" aria-label="核心指标">
-        <Metric label="有效专注" value={summary.active} note="排除暂停" tone="accent" />
+        <Metric
+          label="有效专注"
+          value={dashboardFocus}
+          note={ledgerTotals.estimatedFocusMs > 0 ? '含 estimated 旧记录' : '真实 segment 区间'}
+          tone="accent"
+        />
         <Metric
           label="暂停损耗"
-          value={summary.pause}
+          value={dashboardPause}
           note={`${100 - focusRate}% 已记录时间`}
           tone="pause"
         />
         <Metric
-          label={singleDay ? '完成轮次' : '活跃天数'}
-          value={singleDay ? summary.count : activeDays}
-          format={(current) => `${Math.round(current)}`}
-          note={`平均 ${duration(average)}`}
+          label="观察空档"
+          value={ledgerTotals.gapMs}
+          note={ledgerTotals.observationMs > 0 ? `${100 - focusRate}% 非专注区间` : '尚无观察区间'}
         />
         <Metric label="最长一轮" value={longest} note="单次有效专注" />
       </div>
 
       <div className="stats-main-grid">
         {singleDay ? (
-          <DayActivityTimeline
-            range={range}
-            timeline={analytics?.timeline ?? []}
-            onOpenSession={onOpenSession}
-          />
+          <DayActivityTimeline ledger={selectedLedger} onOpenSession={onOpenSession} />
         ) : (
           <DailyActivityChart daily={analytics?.daily ?? []} />
         )}
         <TaskAllocation analytics={analytics} totalActive={summary.active} />
       </div>
 
-      <PauseCost summary={summary} average={average} focusRate={focusRate} />
+      <GapLedger ledger={selectedLedger} />
+
+      <PauseCost pauseMs={dashboardPause} average={average} focusRate={focusRate} />
     </section>
   );
 }
 
-function FocusGauge({ rate }: { rate: number }) {
+function TimeBudgetDonut({
+  totals,
+}: {
+  totals: { focusMs: number; pauseMs: number; gapMs: number; observationMs: number };
+}) {
+  const focus = percentage(totals.focusMs, totals.observationMs);
+  const pause = percentage(totals.pauseMs, totals.observationMs);
+  const gap = Math.max(0, 100 - focus - pause);
+  const label =
+    totals.observationMs > 0
+      ? `观察时间构成：专注 ${duration(totals.focusMs)}，暂停 ${duration(totals.pauseMs)}，空档 ${duration(totals.gapMs)}`
+      : '尚无可绘制的精确观察区间';
   return (
-    <div
-      className="stats-focus-gauge hm-fade-in"
-      style={{ '--gauge-rate': `${rate * 3.6}deg` } as CSSProperties}
+    <svg
+      className="stats-time-donut hm-fade-in"
+      viewBox="0 0 100 100"
       role="img"
-      aria-label={`专注率 ${rate}%`}
+      aria-label={label}
     >
-      <div>
-        <strong>
-          <CountUp value={rate} format={(current) => `${Math.round(current)}%`} />
-        </strong>
-        <span>专注率</span>
-      </div>
-    </div>
+      <circle className="track" cx="50" cy="50" r="38" pathLength="100" />
+      {totals.observationMs > 0 && (
+        <>
+          <circle
+            className="segment focus"
+            cx="50"
+            cy="50"
+            r="38"
+            pathLength="100"
+            strokeDasharray={`${focus} ${100 - focus}`}
+          />
+          <circle
+            className="segment pause"
+            cx="50"
+            cy="50"
+            r="38"
+            pathLength="100"
+            strokeDasharray={`${pause} ${100 - pause}`}
+            strokeDashoffset={-focus}
+          />
+          <circle
+            className="segment gap"
+            cx="50"
+            cy="50"
+            r="38"
+            pathLength="100"
+            strokeDasharray={`${gap} ${100 - gap}`}
+            strokeDashoffset={-(focus + pause)}
+          />
+        </>
+      )}
+      <text x="50" y="47" textAnchor="middle">
+        {totals.observationMs > 0 ? `${focus}%` : '—'}
+      </text>
+      <text className="caption" x="50" y="61" textAnchor="middle">
+        时间利用
+      </text>
+    </svg>
   );
 }
 
@@ -222,166 +306,157 @@ function Metric({
 }
 
 function DayActivityTimeline({
-  range,
-  timeline,
+  ledger,
   onOpenSession,
 }: {
-  range: TimeRange;
-  timeline: SessionAnalyticsTimelineItem[];
+  ledger?: DayLedgerAnalytics;
   onOpenSession?: (sessionId: string) => void;
 }) {
-  const [scope, setScope] = useState<'active' | 'day'>('active');
-  const dayStart = useMemo(() => {
-    const day = new Date(range.start);
-    day.setHours(0, 0, 0, 0);
-    return day.getTime();
-  }, [range.start]);
-  const activity = useMemo(() => {
-    if (timeline.length === 0) return { start: dayStart, end: dayStart + DAY_MS };
-    const first = Math.min(...timeline.map((item) => item.startedAt));
-    const last = Math.max(
-      ...timeline.map((item) => item.endedAt ?? item.startedAt + item.durationMs),
-    );
-    const center = (first + last) / 2;
-    const span = Math.max(2 * 60 * MINUTE, last - first + 60 * MINUTE);
-    const start = Math.max(dayStart, center - span / 2);
-    return { start, end: Math.min(dayStart + DAY_MS, start + span) };
-  }, [dayStart, timeline]);
-  const windowStart = scope === 'day' ? dayStart : activity.start;
-  const windowEnd = scope === 'day' ? dayStart + DAY_MS : activity.end;
-  const windowMs = Math.max(1, windowEnd - windowStart);
+  const span = ledger ? Math.max(1, ledger.dayEndedAt - ledger.dayStartedAt) : DAY_MS;
+  const observationLabel =
+    ledger?.observationStartedAt !== null && ledger?.observationStartedAt !== undefined
+      ? `${formatClock(ledger.observationStartedAt)}–${formatClock(ledger.observationEndedAt)}`
+      : '尚未形成观察区间';
 
   return (
     <article className="stats-panel stats-rhythm-panel">
       <div className="stats-panel-head">
         <div>
-          <span>专注节律</span>
-          <h3>{scope === 'day' ? '全天 24 小时' : '活跃时间细看'}</h3>
+          <span>有效日节律</span>
+          <h3>24 小时时间轴</h3>
         </div>
-        <div className="stats-scope-switch" aria-label="时间轴范围">
-          <button
-            type="button"
-            className={scope === 'active' ? 'active' : ''}
-            aria-pressed={scope === 'active'}
-            onClick={() => setScope('active')}
-          >
-            活跃时段
-          </button>
-          <button
-            type="button"
-            className={scope === 'day' ? 'active' : ''}
-            aria-pressed={scope === 'day'}
-            onClick={() => setScope('day')}
-          >
-            全天
-          </button>
+        <div className="stats-ledger-float" role="status" aria-live="polite">
+          <strong>{ledger?.date ?? '—'}</strong>
+          <span>{observationLabel}</span>
         </div>
       </div>
 
-      <div
-        className="stats-day-overview hm-fade-in"
-        style={{ '--hm-delay': '80ms' } as CSSProperties}
-        aria-label="全天活动概览"
-      >
-        {timeline.map((item) => (
-          <TimelineBlock
-            key={`overview-${item.id}`}
-            item={item}
-            start={dayStart}
-            span={DAY_MS}
-            onOpenSession={onOpenSession}
-          />
-        ))}
-      </div>
-      <div className="stats-day-axis" aria-hidden="true">
-        <span>00:00</span>
-        <span>06:00</span>
-        <span>12:00</span>
-        <span>18:00</span>
-        <span>24:00</span>
-      </div>
-
-      <div className="stats-time-axis" aria-hidden="true">
-        {Array.from({ length: 5 }, (_, index) => {
-          const timestamp = windowStart + (windowMs * index) / 4;
-          return <span key={index}>{formatClock(timestamp)}</span>;
-        })}
-      </div>
-      {timeline.length > 0 ? (
+      {ledger ? (
         <div
-          className="stats-timeline-detail hm-fade-in"
-          style={{ '--hm-delay': '160ms' } as CSSProperties}
+          className="stats-ledger-chart hm-fade-in"
+          style={{ '--hm-delay': '80ms' } as CSSProperties}
           role="group"
-          aria-label="专注与暂停时间轴"
+          aria-label={`${ledger.date} 全天时间轴；07:00 至 22:00 为默认有效日`}
         >
-          <div className="stats-lane focus">
-            <span>专注</span>
-            {timeline
-              .filter((item) => item.kind === 'focus')
-              .map((item) => (
-                <TimelineBlock
-                  key={item.id}
-                  item={item}
-                  start={windowStart}
-                  span={windowMs}
-                  onOpenSession={onOpenSession}
-                />
-              ))}
+          <div className="stats-ledger-track">
+            <i
+              className="effective-window"
+              style={{
+                left: `${((ledger.effectiveStartedAt - ledger.dayStartedAt) / span) * 100}%`,
+                width: `${((ledger.effectiveEndedAt - ledger.effectiveStartedAt) / span) * 100}%`,
+              }}
+              aria-hidden="true"
+            />
+            {ledger.intervals.map((interval, index) => (
+              <LedgerBlock
+                key={`${interval.kind}-${interval.startedAt}-${index}`}
+                interval={interval}
+                dayStart={ledger.dayStartedAt}
+                span={span}
+                onOpenSession={onOpenSession}
+              />
+            ))}
           </div>
-          <div className="stats-lane pause">
-            <span>暂停</span>
-            {timeline
-              .filter((item) => item.kind === 'pause')
-              .map((item) => (
-                <TimelineBlock
-                  key={item.id}
-                  item={item}
-                  start={windowStart}
-                  span={windowMs}
-                  onOpenSession={onOpenSession}
-                />
-              ))}
+          <div className="stats-ledger-axis" aria-hidden="true">
+            <span style={{ left: '0%' }}>00</span>
+            <span style={{ left: `${(7 / 24) * 100}%` }}>07</span>
+            <span style={{ left: '50%' }}>12</span>
+            <span style={{ left: `${(22 / 24) * 100}%` }}>22</span>
+            <span style={{ left: '100%' }}>24</span>
+          </div>
+          <div className="stats-ledger-legend" aria-label="时间分类图例">
+            <span className="focus">专注</span>
+            <span className="pause">暂停</span>
+            <span className="gap">空档</span>
+            <span className="sleep">睡眠 / 非统计</span>
           </div>
         </div>
       ) : (
         <div className="stats-timeline-empty" role="status">
-          这段记录只有会话汇总，没有可定位到分钟的片段明细。
+          尚无共享日账本数据。
         </div>
       )}
       <p className="stats-caption">
-        {timeline.length > 0
-          ? '上方保留全天位置，下方自动放大有记录的时段；色块宽度仍按真实时间计算。'
-          : '有效专注仍计入上方指标；从新版本开始记录的片段会显示在时间轴中。'}
+        空档只由观察区间内专注与暂停并集的补集推导；00–07 与 22–24 仅作背景，不计入空档。
       </p>
     </article>
   );
 }
 
-function TimelineBlock({
-  item,
-  start,
+function LedgerBlock({
+  interval,
+  dayStart,
   span,
   onOpenSession,
 }: {
-  item: SessionAnalyticsTimelineItem;
-  start: number;
+  interval: DayLedgerInterval;
+  dayStart: number;
   span: number;
   onOpenSession?: (sessionId: string) => void;
 }) {
-  const end = item.endedAt ?? item.startedAt + item.durationMs;
-  const left = Math.max(0, ((item.startedAt - start) / span) * 100);
-  const right = Math.min(100, ((end - start) / span) * 100);
-  if (right <= 0 || left >= 100 || right <= left) return null;
-  const title = `${item.kind === 'focus' ? '专注' : '暂停'} ${formatClock(item.startedAt)}–${formatClock(end)} · ${duration(item.durationMs)}${item.title ? ` · ${item.title}` : ''}`;
+  const left = ((interval.startedAt - dayStart) / span) * 100;
+  const width = (interval.durationMs / span) * 100;
+  const label = `${interval.kind === 'focus' ? '专注' : interval.kind === 'pause' ? '暂停' : '空档'} ${formatClock(interval.startedAt)}–${formatClock(interval.endedAt)}，${duration(interval.durationMs)}`;
+  const sessionId = interval.sessionIds[0];
+  if (sessionId && interval.kind !== 'gap' && onOpenSession) {
+    return (
+      <button
+        type="button"
+        className={`stats-ledger-block ${interval.kind}`}
+        style={{ left: `${left}%`, width: `${Math.max(0.2, width)}%` }}
+        title={label}
+        aria-label={`${label}；打开会话详情`}
+        onClick={() => onOpenSession(sessionId)}
+      />
+    );
+  }
   return (
-    <button
-      type="button"
-      className={`stats-time-block ${item.kind}`}
-      style={{ left: `${left}%`, width: `${Math.max(0.18, right - left)}%` }}
-      title={title}
-      aria-label={title}
-      onClick={() => onOpenSession?.(item.sessionId)}
+    <i
+      className={`stats-ledger-block ${interval.kind}`}
+      style={{ left: `${left}%`, width: `${Math.max(0.2, width)}%` }}
+      title={label}
+      aria-hidden="true"
     />
+  );
+}
+
+function GapLedger({ ledger }: { ledger?: DayLedgerAnalytics }) {
+  const gaps = ledger?.gaps ?? [];
+  return (
+    <article className="stats-gap-ledger" aria-labelledby="stats-gap-title">
+      <header>
+        <div>
+          <span>精确空档</span>
+          <h3 id="stats-gap-title">{ledger?.date ?? '所选日期'}的空档明细</h3>
+        </div>
+        {ledger?.estimated && <strong className="stats-estimated-badge">含旧数据估算</strong>}
+      </header>
+      {gaps.length > 0 ? (
+        <ol>
+          {gaps.map((gap) => {
+            const label = `${formatClock(gap.startedAt)} 至 ${formatClock(gap.endedAt)}，空档 ${duration(gap.durationMs)}`;
+            return (
+              <li key={`${gap.startedAt}-${gap.endedAt}`} tabIndex={0} aria-label={label}>
+                <time>{formatClock(gap.startedAt)}</time>
+                <i aria-hidden="true" />
+                <time>{formatClock(gap.endedAt)}</time>
+                <strong>{duration(gap.durationMs)}</strong>
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <p role="status">
+          {ledger?.status === 'not-started'
+            ? ledger.isToday
+              ? '今日尚未启动，不把全天计算为空档。'
+              : '当日没有真实 focus 起点，未生成空档。'
+            : ledger?.status === 'estimated-only'
+              ? '旧记录缺少精确边界，只显示 estimated 时长，不伪造空档。'
+              : '观察区间内没有空档。'}
+        </p>
+      )}
+    </article>
   );
 }
 
@@ -549,22 +624,21 @@ function TaskAllocation({
 }
 
 function PauseCost({
-  summary,
+  pauseMs,
   average,
   focusRate,
 }: {
-  summary: SessionSummary;
+  pauseMs: number;
   average: number;
   focusRate: number;
 }) {
-  const tracked = summary.active + summary.pause;
-  const pauseRate = tracked > 0 ? 100 - focusRate : 0;
+  const pauseRate = focusRate > 0 || pauseMs > 0 ? 100 - focusRate : 0;
   return (
     <article className="stats-pause-cost">
       <div>
         <span>暂停损耗</span>
         <strong>
-          <CountUp value={summary.pause} format={duration} />
+          <CountUp value={pauseMs} format={duration} />
         </strong>
       </div>
       <div>
