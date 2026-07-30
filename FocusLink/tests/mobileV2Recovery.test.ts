@@ -7,6 +7,7 @@ import type { SyncV2Mutation } from '../shared/sync/v2Protocol';
 import {
   enqueueMobileV2Mutation,
   readMobileV2Bootstrap,
+  readMobileV2EntityState,
   readMobileV2Status,
   writeMobileV2Bootstrap,
 } from '../src/mobile/v2Cache';
@@ -221,6 +222,115 @@ describe('mobile canonical Sync v2 recovery', () => {
     );
     expect(fields).toEqual(['accessToken']);
     expect(JSON.stringify(fields)).not.toContain(NEW_TOKEN);
+
+    const guardFields = validateMobileSyncV2ExchangeRequest(
+      {
+        protocolVersion: 2,
+        deviceId: NEW_DEVICE_ID,
+        cursor: null,
+        mutations: [
+          {
+            opId: 'guard-invalid',
+            entityType: 'focus_guard_rule_v1',
+            entityId: 'guard-rule:study',
+            kind: 'put',
+            baseRevision: 0,
+            baseFingerprint: null,
+            payload: { plaintext: { leaked: true } },
+            deviceId: NEW_DEVICE_ID,
+            accountGeneration: 1,
+          },
+        ],
+        pullLimit: 100,
+        syncEpoch: 'sync-epoch-1',
+        cursorEpoch: 'cursor-epoch-1',
+        accountGeneration: 1,
+      },
+      NEW_DEVICE_ID,
+    );
+    expect(guardFields).toEqual(['mutations[0].payload']);
+  });
+
+  it('persists opaque Focus Guard changes while continuing the mixed-version feed', async () => {
+    const envelope = focusGuardEnvelope('config');
+    let exchanges = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const parsed = new URL(String(url));
+        if (parsed.pathname === '/sync/v2/status') return json(status(1));
+        exchanges += 1;
+        return json(
+          exchanges === 1
+            ? {
+                ...page(),
+                changes: [
+                  {
+                    changeSeq: 1,
+                    entityType: 'focus_guard_config_v1',
+                    entityId: 'guard-config-global',
+                    revision: 1,
+                    fingerprint: 'a'.repeat(64),
+                    deleted: false,
+                    payload: envelope,
+                    sourceDeviceId: 'device-desktop1',
+                  },
+                ],
+                nextCursor: 'c1',
+              }
+            : { ...page(), nextCursor: 'c1' },
+        );
+      }),
+    );
+
+    await expect(
+      runMobileSyncV2({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        token: NEW_TOKEN,
+        deviceId: 'ignored',
+      }),
+    ).resolves.toMatchObject({ downloaded: 1, cursor: 'c1' });
+    await expect(
+      readMobileV2EntityState('focus_guard_config_v1', 'guard-config-global'),
+    ).resolves.toMatchObject({ confirmedRevision: 1, baseSnapshot: envelope });
+  });
+
+  it('rejects malformed encrypted guard data without committing its cursor', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const parsed = new URL(String(url));
+        if (parsed.pathname === '/sync/v2/status') return json(status(1));
+        return json({
+          ...page(),
+          changes: [
+            {
+              changeSeq: 1,
+              entityType: 'focus_guard_config_v1',
+              entityId: 'guard-config-invalid',
+              revision: 1,
+              fingerprint: 'a'.repeat(64),
+              deleted: false,
+              payload: { ...focusGuardEnvelope('config'), plaintext: { leaked: true } },
+              sourceDeviceId: 'device-desktop1',
+            },
+          ],
+          nextCursor: 'c1',
+        });
+      }),
+    );
+
+    await expect(
+      runMobileSyncV2({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        token: NEW_TOKEN,
+        deviceId: 'ignored',
+      }),
+    ).rejects.toMatchObject({ code: 'contract_error' });
+    expect(await readMobileV2Bootstrap()).toMatchObject({ cursor: null });
+    expect(
+      await readMobileV2EntityState('focus_guard_config_v1', 'guard-config-invalid'),
+    ).toBeNull();
   });
 
   it('redacts an upstream invalid_exchange_request body and identifies contract drift', async () => {
@@ -295,4 +405,19 @@ function deleteDatabase(): Promise<void> {
     request.onerror = () => reject(request.error);
     request.onblocked = () => resolve();
   });
+}
+
+function focusGuardEnvelope(entityKind: 'rule' | 'state' | 'completion' | 'config') {
+  return {
+    version: 1,
+    algorithm: 'A256GCM',
+    product: 'focus-guard',
+    entityKind,
+    nonce: 'abcdefghijklmnop',
+    ciphertext: 'abcdefghijklmnop',
+    aadHash: 'a'.repeat(64),
+    aadBaseRevision: 0,
+    operation: 'put',
+    createdAt: 1,
+  };
 }

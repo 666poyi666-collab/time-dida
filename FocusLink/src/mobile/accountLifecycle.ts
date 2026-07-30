@@ -17,6 +17,11 @@ export interface MobileAccountRequestLifecycle {
   generation(): number;
 }
 
+export interface MobileAccountCommitResult {
+  current: boolean;
+  issues: string[];
+}
+
 export function mobileAccountConnectionKey(connection: {
   endpoint: string;
   token: string;
@@ -93,4 +98,39 @@ export function createMobileAccountLifecycle(): MobileAccountLifecycle {
       return result;
     },
   };
+}
+
+/**
+ * Commits the native credential first, then treats account-cache cleanup as best effort.
+ * A cache failure must not leave the renderer on the old account after Keystore accepted
+ * the new one; a superseding logout/login still prevents all renderer state commits.
+ */
+export async function runMobileAccountCommit(
+  lifecycle: MobileAccountLifecycle,
+  operation: number,
+  persistNative: () => Promise<void>,
+  resetAccountState: () => Promise<readonly string[]>,
+): Promise<MobileAccountCommitResult> {
+  await lifecycle.enqueueNative(persistNative);
+  if (!lifecycle.isCurrent(operation)) return { current: false, issues: [] };
+
+  let issues: string[];
+  try {
+    issues = [...(await resetAccountState())];
+  } catch {
+    issues = ['account-cache'];
+  }
+  return lifecycle.isCurrent(operation)
+    ? { current: true, issues }
+    : { current: false, issues: [] };
+}
+
+/** Renderer logout state may be committed only after the durable native clear succeeds. */
+export async function runMobileAccountLogout(
+  lifecycle: MobileAccountLifecycle,
+  operation: number,
+  clearNative: () => Promise<void>,
+): Promise<boolean> {
+  await lifecycle.enqueueNative(clearNative);
+  return lifecycle.isCurrent(operation);
 }

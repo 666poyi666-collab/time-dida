@@ -6,6 +6,10 @@ import {
   SYNC_V2_PROTOCOL_VERSION,
   canPhysicallyPurge,
   claimOutboxItems,
+  isEncryptedFocusGuardEnvelopeV1,
+  isFocusGuardEntityType,
+  isSyncV2ChangePayload,
+  isSyncV2EntityType,
   mergeFocusMetadata,
   mergeTags,
   paginateSyncV2Response,
@@ -100,6 +104,107 @@ describe('Sync v2 merge policy', () => {
 });
 
 describe('Sync v2 operational policies', () => {
+  it('recognizes every canonical entity type and validates opaque Focus Guard envelopes', () => {
+    const envelope = {
+      version: 1,
+      algorithm: 'A256GCM',
+      product: 'focus-guard',
+      entityKind: 'rule',
+      nonce: 'abcdefghijklmnop',
+      ciphertext: 'abcdefghijklmnop',
+      aadHash: 'a'.repeat(64),
+      aadBaseRevision: 0,
+      operation: 'put',
+      createdAt: 1,
+    };
+
+    for (const [entityType, entityKind] of [
+      ['focus_guard_rule_v1', 'rule'],
+      ['focus_guard_state_v1', 'state'],
+      ['focus_guard_completion_v1', 'completion'],
+      ['focus_guard_config_v1', 'config'],
+    ] as const) {
+      expect(isSyncV2EntityType(entityType)).toBe(true);
+      expect(isFocusGuardEntityType(entityType)).toBe(true);
+      expect(isEncryptedFocusGuardEnvelopeV1({ ...envelope, entityKind }, entityType)).toBe(true);
+    }
+    expect(isSyncV2EntityType('future_entity_v1')).toBe(false);
+    expect(isEncryptedFocusGuardEnvelopeV1(envelope, 'focus_guard_rule_v1')).toBe(true);
+    expect(isSyncV2ChangePayload('focus_guard_rule_v1', false, envelope)).toBe(true);
+    expect(
+      isEncryptedFocusGuardEnvelopeV1({ ...envelope, entityKind: 'state' }, 'focus_guard_rule_v1'),
+    ).toBe(false);
+    expect(isEncryptedFocusGuardEnvelopeV1({ ...envelope, plaintext: {} })).toBe(false);
+    expect(isSyncV2ChangePayload('focus_guard_rule_v1', true, null)).toBe(true);
+    expect(isSyncV2ChangePayload('focus_guard_rule_v1', true, envelope)).toBe(false);
+  });
+
+  it('paginates opaque guard updates and tombstones without changing their cursor order', () => {
+    const envelope = {
+      version: 1 as const,
+      algorithm: 'A256GCM' as const,
+      product: 'focus-guard' as const,
+      entityKind: 'config' as const,
+      nonce: 'abcdefghijklmnop',
+      ciphertext: 'x'.repeat(600_000),
+      aadHash: 'b'.repeat(64),
+      aadBaseRevision: 0,
+      operation: 'put' as const,
+      createdAt: 1,
+    };
+    const changes: SyncV2Change[] = [
+      {
+        changeSeq: 1,
+        entityType: 'focus_guard_config_v1',
+        entityId: 'guard-config:global',
+        revision: 1,
+        fingerprint: 'c'.repeat(64),
+        deleted: false,
+        payload: envelope,
+        sourceDeviceId: 'desktop',
+      },
+      {
+        changeSeq: 2,
+        entityType: 'focus_guard_config_v1',
+        entityId: 'guard-config:old',
+        revision: 2,
+        fingerprint: 'd'.repeat(64),
+        deleted: true,
+        payload: null,
+        sourceDeviceId: 'desktop',
+      },
+    ];
+    const first = paginateSyncV2Response(
+      {
+        protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+        ...epoch,
+        acks: [],
+        serverTime: 100,
+      },
+      changes,
+      1,
+      'c0',
+      (item) => `c${item.changeSeq.toString(36)}`,
+    );
+    const second = paginateSyncV2Response(
+      {
+        protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+        ...epoch,
+        acks: [],
+        serverTime: 100,
+      },
+      changes.slice(1),
+      1,
+      first.nextCursor,
+      (item) => `c${item.changeSeq.toString(36)}`,
+    );
+
+    expect(first).toMatchObject({ nextCursor: 'c1', hasMore: true });
+    expect(first.changes[0]).toMatchObject({ deleted: false, payload: envelope });
+    expect(second).toMatchObject({ nextCursor: 'c2', hasMore: false });
+    expect(second.changes[0]).toMatchObject({ deleted: true, payload: null });
+  });
+
   it('paginates by bytes without losing or duplicating the next page', () => {
     const available = [change(1, 600_000), change(2, 600_000)];
     const first = paginateSyncV2Response(

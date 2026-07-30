@@ -9,15 +9,18 @@ import {
   createOfflineFocusRuntime,
   markPendingDeviceSyncFailure,
   markPendingDeviceSyncUploading,
+  readCachedLiveFocusSnapshot,
   readLocalSessionSyncMeta,
   readOfflineFocusRuntime,
   readPendingDeviceSyncBundles,
   readCachedTaskSnapshot,
   removePendingDeviceSyncBundle,
+  writeCachedLiveFocusSnapshot,
   writeCachedTaskSnapshot,
   type LocalSessionSyncMeta,
 } from '../src/mobile/cache';
 import { startOfflineFocus } from '../src/mobile/offlineFocusRuntime';
+import type { LiveFocusSnapshotLike } from '../src/mobile/runtimeModel';
 import {
   claimMobileV2Outbox,
   readMobileDeviceIdentity,
@@ -161,7 +164,7 @@ describe('mobile IndexedDB local-first persistence', () => {
     expect(identity).toMatchObject({ deviceId: 'legacy-phone', scopes: ['sync:read'] });
   });
 
-  it('clears the account-scoped task revision before another connection can restore it', async () => {
+  it('binds task and live revisions to their account owner before another connection restores', async () => {
     const oldAccountSnapshot = {
       protocolVersion: 1,
       revision: 36,
@@ -170,10 +173,35 @@ describe('mobile IndexedDB local-first persistence', () => {
       serverTime: 36_100,
     } satisfies TaskSnapshotResponse;
 
-    await writeCachedTaskSnapshot(oldAccountSnapshot);
-    expect(await readCachedTaskSnapshot()).toEqual(oldAccountSnapshot);
+    const oldLiveSnapshot = {
+      state: 'running',
+      revision: 36,
+      sessionId: 'live-old-account',
+      startedAt: 35_000,
+      updatedAt: 36_000,
+      serverTime: 36_100,
+      observedAt: 36_100,
+      activeElapsedMs: 1_000,
+      pauseElapsedMs: 0,
+      wallElapsedMs: 1_000,
+      currentStateStartedAt: 35_000,
+      segments: [],
+      pauses: [],
+      title: '账号 A fixture',
+      ownerDeviceId: 'device-old-account',
+      taskId: null,
+      taskSource: null,
+      taskTitle: null,
+    } satisfies LiveFocusSnapshotLike;
+
+    await writeCachedTaskSnapshot(oldAccountSnapshot, 'account-a');
+    await writeCachedLiveFocusSnapshot(oldLiveSnapshot, 'account-a');
+    expect(await readCachedTaskSnapshot('account-a')).toEqual(oldAccountSnapshot);
+    expect(await readCachedLiveFocusSnapshot('account-a')).toEqual(oldLiveSnapshot);
+    expect(await readCachedTaskSnapshot('account-b')).toBeNull();
+    expect(await readCachedLiveFocusSnapshot('account-b')).toBeNull();
     await clearCachedTaskSnapshot();
-    expect(await readCachedTaskSnapshot()).toBeNull();
+    expect(await readCachedTaskSnapshot('account-a')).toBeNull();
   });
 });
 

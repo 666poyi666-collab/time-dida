@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased - 2026-07-30（Focus Guard 阶段 A 本地兼容层）
+
+- **mixed-version change feed**：Electron 与移动 renderer 共用完整 Sync v2 entity type
+  判定；四类 `focus_guard_*` 加密实体现在可在无 root、不可解密的客户端中验证并原样持久化，
+  不再因旧的三类型白名单拒绝整页或卡住 cursor。
+- **加密边界收紧**：Focus Guard envelope 固定精确字段、entity kind、A256GCM 元数据和
+  tombstone 语义；附带明文、额外字段、错误 kind、未知 type 或非法 cursor/revision 会在
+  提交 checkpoint 前失败。Account DO 继续只见密文，不新增生产 publisher。
+- **阶段边界**：本轮只做合同、parser 与本地自动化，不部署 Worker/DO/gateway，不读取或
+  写入 secret，不打包、不递增版本、不安装 Windows/小米/华为/OPPO。32-byte root
+  provisioning、解密桥、生产 schema 和真机矩阵仍须单独批准。
+
 ## v0.12.73 - 2026-07-30（账号同步加固、任务快照收敛与有效日账本）
 
 - **登录还是只登账号**：Windows、手机、平板继续不显示服务地址、访问令牌、配对码或“编辑连接”；既有 `fl2` 凭据原位升级不掉线。新设备 bootstrap 收紧为 start/poll 两阶段，使用短期独立 `flb_*` poll credential、canonical owner 登录 URL、精确字段与全链脱敏；未完成管理员登录时直接下发 device token 会被拒绝。

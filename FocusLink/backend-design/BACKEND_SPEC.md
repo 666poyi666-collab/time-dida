@@ -204,6 +204,49 @@ FocusLink 自己的专注账本，不代表记录已经写入滴答或番茄 To-
 位于 `shared/sync/deviceProtocol.ts`，固定包含 `protocolVersion`、设备 ID、幂等 `opId`、实体
 revision、服务端单调 change sequence 与不透明 cursor。规则如下：
 
+### Focus Guard V1 加密实体合同
+
+`focus_guard_rule_v1`、`focus_guard_state_v1`、`focus_guard_completion_v1` 与
+`focus_guard_config_v1` 复用同一个 Sync v2 change feed，但正文必须始终是
+`EncryptedFocusGuardEnvelopeV1`。Account DO 只验证精确 envelope、entity type、revision、
+fingerprint、tombstone 和 cursor，不持有或生成 32-byte account root，也不读取明文。
+
+Envelope 固定且不允许额外字段：`version=1`、`algorithm=A256GCM`、
+`product=focus-guard`、与 entity type 一致的 `entityKind`、96-bit base64url `nonce`、
+base64url `ciphertext`、64 位十六进制 `aadHash`、`aadBaseRevision`、
+`operation=put|restore`、`createdAt`。AAD 固定绑定
+`product | entityType | entityId | aadBaseRevision | operation`；删除只使用 Sync v2 tombstone，
+不伪造“加密空对象”。
+
+解密后的 V1 明文字段冻结如下；这些字段只存在于受信客户端内存和设备安全存储，不进入
+authority 日志或服务端索引：
+
+| entity type | 稳定 entity id | V1 明文字段 |
+| --- | --- | --- |
+| `focus_guard_rule_v1` | `guard-rule:<uuid>` | `ruleId`、`ruleType=supervision|sleep`、`name`、`enabled`、`priority`、`schedule{timeZone,weekdays,startMinute,endMinute}`、`limits{continuousUseMs,cumulativeUseMs,lockMs}`、`applicationPolicies[]`、`whitelistPackages[]`、`lockMode=normal|strong|brick`、`allowSkip`、`maxPauseMs`、`expiresAt`、`updatedAt` |
+| `focus_guard_state_v1` | `guard-state-focuslink-live` | `state=idle|running|paused`、`sessionId`、`revision`、`observedAt`、`expiresAt`；TTL 默认 90 秒、最大 300 秒，只供短期展示，永不作为永久锁机授权 |
+| `focus_guard_completion_v1` | `guard-completion:<uuid>` | `completionId`、`ruleId`、`ruleType`、`outcome=completed|skipped|interrupted`、`startedAt`、`endedAt`、`activeMs`、`lockedMs`、`sourceRevision` |
+| `focus_guard_config_v1` | `guard-config:global` | `supervisionEnabled`、`sleepEnabled`、`notificationsEnabled`、`ladder{enabled,thresholdMs,useMs,lockMs}`、`updatedAt` |
+
+字段级边界：`applicationPolicies` 只保存用户声明的可移植包名、模式和时长/次数阈值；
+`whitelistPackages` 只保存用户选择的包名。Android UID、应用是否已安装、权限结果、ROM
+能力、解析后的本机组件、Keystore 材料、token、root、当前锁机授权、日志和原数据库行均禁止
+进入明文。跨设备恢复必须把包不存在或能力不匹配保留为本机待处理状态，不能改写云端规则。
+
+冲突和兼容规则：
+
+- rule/config 使用 `expected baseRevision + baseFingerprint`；同字段双边变化在将来的解密桥中
+  进入显式冲突，不允许 last-write-wins。state 使用固定 ID、严格 revision 与短 TTL；过期、
+  rollback 或同 revision 异文全部 fail-closed。completion 以稳定 ID 幂等且写后不可覆盖。
+- 四类实体沿用现有 180 天 tombstone、水位、graveyard 和 purge 门禁。restore 必须引用当前
+  tombstone revision；旧副本不能复活已删除规则或配置。
+- 能识别 V1 但尚未持有 root 的 Electron、Web/PWA/Android reader 必须验证并原样保存
+  envelope，不得解密猜测或因 guard 类型拒绝整页；无效 envelope、未来未知 entity type、
+  非单调 changeSeq/cursor 或 revision rollback 必须在提交 cursor 前隔离/失败。
+- Android 原生 completed-ledger Worker 是 cursorless writer，不消费 change feed；它可以忽略
+  响应中的 guard change，但不得复制、解密或写入第二份 guard 缓存。移动 renderer 仍是唯一
+  Android Sync v2 reader。
+
 - 账本平面仍只复制 `finished` / `aborted` 会话；活动快照和控制命令绝不塞进 completed bundle，也不改变现有桌面端已结束会话补传语义。
 - `cloudFocusId`、第三方投递结果、CLI/OAuth 凭据、TomaToDo 路径、窗口/快捷键/小窗设置均不进入会话包。
 - 服务端以 `(account, opId)` 去重；稳定 `opId` 同时包含实体、正文与 `baseRevision`，相同 op 重放返回 `duplicate`，`baseRevision` 过期返回 `conflict`，不使用客户端 `updatedAt` 静默覆盖。

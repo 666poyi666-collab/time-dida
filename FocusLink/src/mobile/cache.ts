@@ -86,7 +86,14 @@ interface MetaRecord {
 }
 
 interface CachedLiveFocusRecord {
+  accountId: string;
   snapshot: LiveFocusSnapshotLike;
+  cachedAt: number;
+}
+
+interface CachedTaskSnapshotRecord {
+  accountId: string;
+  snapshot: TaskSnapshotResponse;
   cachedAt: number;
 }
 
@@ -363,7 +370,9 @@ export async function clearOfflineFocusRuntime(): Promise<void> {
   database.close();
 }
 
-export async function readCachedLiveFocusSnapshot(): Promise<LiveFocusSnapshotLike | null> {
+export async function readCachedLiveFocusSnapshot(
+  expectedAccountId: string | null,
+): Promise<LiveFocusSnapshotLike | null> {
   const database = await openDatabase();
   const transaction = database.transaction(META_STORE, 'readonly');
   const record = await requestValue<MetaRecord | undefined>(
@@ -371,7 +380,13 @@ export async function readCachedLiveFocusSnapshot(): Promise<LiveFocusSnapshotLi
   );
   await transactionDone(transaction);
   database.close();
-  if (!isCachedLiveFocusRecord(record?.value)) return null;
+  if (
+    !expectedAccountId ||
+    !isCachedLiveFocusRecord(record?.value) ||
+    record.value.accountId !== expectedAccountId
+  ) {
+    return null;
+  }
   const snapshot = record.value.snapshot;
   return {
     ...snapshot,
@@ -381,12 +396,16 @@ export async function readCachedLiveFocusSnapshot(): Promise<LiveFocusSnapshotLi
   };
 }
 
-export async function writeCachedLiveFocusSnapshot(snapshot: LiveFocusSnapshotLike): Promise<void> {
+export async function writeCachedLiveFocusSnapshot(
+  snapshot: LiveFocusSnapshotLike,
+  accountId: string,
+): Promise<void> {
+  if (!isAccountId(accountId)) throw new Error('实时缓存缺少账号 owner');
   const database = await openDatabase();
   const transaction = database.transaction(META_STORE, 'readwrite');
   transaction.objectStore(META_STORE).put({
     key: LIVE_FOCUS_KEY,
-    value: { snapshot, cachedAt: Date.now() } satisfies CachedLiveFocusRecord,
+    value: { accountId, snapshot, cachedAt: Date.now() } satisfies CachedLiveFocusRecord,
   } satisfies MetaRecord);
   await transactionDone(transaction);
   database.close();
@@ -400,7 +419,9 @@ export async function clearCachedLiveFocusSnapshot(): Promise<void> {
   database.close();
 }
 
-export async function readCachedTaskSnapshot(): Promise<TaskSnapshotResponse | null> {
+export async function readCachedTaskSnapshot(
+  expectedAccountId: string | null,
+): Promise<TaskSnapshotResponse | null> {
   const database = await openDatabase();
   const transaction = database.transaction(META_STORE, 'readonly');
   const record = await requestValue<MetaRecord | undefined>(
@@ -408,15 +429,23 @@ export async function readCachedTaskSnapshot(): Promise<TaskSnapshotResponse | n
   );
   await transactionDone(transaction);
   database.close();
-  return isCachedTaskSnapshot(record?.value) ? record.value : null;
+  return expectedAccountId &&
+    isCachedTaskSnapshotRecord(record?.value) &&
+    record.value.accountId === expectedAccountId
+    ? record.value.snapshot
+    : null;
 }
 
-export async function writeCachedTaskSnapshot(snapshot: TaskSnapshotResponse): Promise<void> {
+export async function writeCachedTaskSnapshot(
+  snapshot: TaskSnapshotResponse,
+  accountId: string,
+): Promise<void> {
+  if (!isAccountId(accountId)) throw new Error('任务缓存缺少账号 owner');
   const database = await openDatabase();
   const transaction = database.transaction(META_STORE, 'readwrite');
   transaction.objectStore(META_STORE).put({
     key: TASK_SNAPSHOT_KEY,
-    value: snapshot,
+    value: { accountId, snapshot, cachedAt: Date.now() } satisfies CachedTaskSnapshotRecord,
   } satisfies MetaRecord);
   await transactionDone(transaction);
   database.close();
@@ -541,6 +570,7 @@ function isCachedLiveFocusRecord(value: unknown): value is CachedLiveFocusRecord
   if (!isRecord(value) || !isRecord(value.snapshot)) return false;
   const snapshot = value.snapshot;
   return (
+    isAccountId(value.accountId) &&
     typeof value.cachedAt === 'number' &&
     Number.isFinite(value.cachedAt) &&
     (snapshot.state === 'idle' || snapshot.state === 'running' || snapshot.state === 'paused') &&
@@ -564,6 +594,16 @@ function isCachedLiveFocusRecord(value: unknown): value is CachedLiveFocusRecord
   );
 }
 
+function isCachedTaskSnapshotRecord(value: unknown): value is CachedTaskSnapshotRecord {
+  return (
+    isRecord(value) &&
+    isAccountId(value.accountId) &&
+    typeof value.cachedAt === 'number' &&
+    Number.isFinite(value.cachedAt) &&
+    isCachedTaskSnapshot(value.snapshot)
+  );
+}
+
 function isCachedTaskSnapshot(value: unknown): value is TaskSnapshotResponse {
   return (
     isRecord(value) &&
@@ -575,6 +615,10 @@ function isCachedTaskSnapshot(value: unknown): value is TaskSnapshotResponse {
     Number.isFinite(value.serverTime) &&
     (value.snapshot === null || validateTaskSnapshotPayload(value.snapshot))
   );
+}
+
+function isAccountId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 200;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

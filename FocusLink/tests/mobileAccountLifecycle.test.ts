@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   createMobileAccountLifecycle,
   mobileAccountConnectionKey,
+  runMobileAccountCommit,
+  runMobileAccountLogout,
 } from '../src/mobile/accountLifecycle';
 
 describe('mobile account operation lifecycle', () => {
@@ -59,5 +61,30 @@ describe('mobile account operation lifecycle', () => {
     expect(
       mobileAccountConnectionKey({ endpoint: 'https://other.test', token: 'token-a' }),
     ).not.toBe(current);
+  });
+
+  it('keeps a confirmed native login current when account-cache cleanup fails', async () => {
+    const lifecycle = createMobileAccountLifecycle();
+    const operation = lifecycle.issue();
+    const result = await runMobileAccountCommit(
+      lifecycle,
+      operation,
+      async () => undefined,
+      async () => {
+        throw new DOMException('IndexedDB unavailable', 'UnknownError');
+      },
+    );
+    expect(result).toEqual({ current: true, issues: ['account-cache'] });
+  });
+
+  it('rejects logout when the durable native clear fails and never authorizes renderer commit', async () => {
+    const lifecycle = createMobileAccountLifecycle();
+    const operation = lifecycle.invalidate();
+    await expect(
+      runMobileAccountLogout(lifecycle, operation, async () => {
+        throw new Error('Keystore commit failed');
+      }),
+    ).rejects.toThrow('Keystore commit failed');
+    expect(lifecycle.isCurrent(operation)).toBe(true);
   });
 });

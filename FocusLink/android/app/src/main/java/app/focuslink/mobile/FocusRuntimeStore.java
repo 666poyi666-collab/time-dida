@@ -71,7 +71,12 @@ final class FocusRuntimeStore {
 
     static void clearSnapshot(Context context) {
         synchronized (LOCK) {
-            preferences(context).edit().remove(KEY_SNAPSHOT).commit();
+            boolean committed = preferences(context)
+                .edit()
+                .remove(KEY_SNAPSHOT)
+                .remove(KEY_COMMANDS)
+                .commit();
+            if (!committed) throw new IllegalStateException("unable to clear account runtime state");
         }
     }
 

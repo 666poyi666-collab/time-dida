@@ -9,6 +9,8 @@ import {
   SYNC_V2_MAX_PULL,
   SYNC_V2_MAX_RESPONSE_BYTES,
   SYNC_V2_PROTOCOL_VERSION,
+  isSyncV2ChangePayload,
+  isSyncV2EntityType,
   splitBundleForSyncV2,
   type FocusLedgerCorrectionV2,
   type FocusLedgerV2,
@@ -726,7 +728,7 @@ function isChange(value: unknown): value is SyncV2Change {
     Number(value.revision) >= 1 &&
     isFingerprint(value.fingerprint) &&
     typeof value.deleted === 'boolean' &&
-    ((value.deleted && value.payload === null) || (!value.deleted && isRecord(value.payload))) &&
+    isSyncV2ChangePayload(value.entityType, value.deleted, value.payload) &&
     isId(value.sourceDeviceId)
   );
 }
@@ -817,11 +819,7 @@ function isEpoch(value: Record<string, unknown>): boolean {
 }
 
 function isEntityType(value: unknown): value is SyncV2EntityType {
-  return (
-    value === 'focus_ledger_v2' ||
-    value === 'focus_metadata_v2' ||
-    value === 'focus_ledger_correction_v2'
-  );
+  return isSyncV2EntityType(value);
 }
 
 function isFingerprint(value: unknown): value is string {

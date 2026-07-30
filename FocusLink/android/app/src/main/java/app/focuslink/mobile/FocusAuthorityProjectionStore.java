@@ -304,7 +304,9 @@ final class FocusAuthorityProjectionStore {
     }
 
     static synchronized void clear(Context context) {
-        preferences(context).edit().clear().commit();
+        if (!preferences(context).edit().clear().commit()) {
+            throw new IllegalStateException("unable to clear authority projection");
+        }
     }
 
     static JSONArray sanitizeHistory(JSONArray input) {

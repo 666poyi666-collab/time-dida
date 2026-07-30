@@ -17,6 +17,24 @@ export type SyncV2EntityType =
   | 'focus_guard_state_v1'
   | 'focus_guard_completion_v1'
   | 'focus_guard_config_v1';
+export type FocusGuardEntityType = Extract<SyncV2EntityType, `focus_guard_${string}`>;
+
+export const SYNC_V2_ENTITY_TYPES: readonly SyncV2EntityType[] = [
+  'focus_ledger_v2',
+  'focus_metadata_v2',
+  'focus_ledger_correction_v2',
+  'focus_guard_rule_v1',
+  'focus_guard_state_v1',
+  'focus_guard_completion_v1',
+  'focus_guard_config_v1',
+];
+
+export const FOCUS_GUARD_ENTITY_TYPES: readonly FocusGuardEntityType[] = [
+  'focus_guard_rule_v1',
+  'focus_guard_state_v1',
+  'focus_guard_completion_v1',
+  'focus_guard_config_v1',
+];
 export type SyncV2MutationKind = 'put' | 'delete' | 'restore' | 'purge';
 export type SyncV2AckStatus = 'applied' | 'duplicate' | 'conflict' | 'rejected';
 export type SyncV2BootstrapState =
@@ -390,6 +408,25 @@ export function isEncryptedFocusGuardEnvelopeV1(
 ): value is EncryptedFocusGuardEnvelopeV1 {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  const expectedKeys = [
+    'aadBaseRevision',
+    'aadHash',
+    'algorithm',
+    'ciphertext',
+    'createdAt',
+    'entityKind',
+    'nonce',
+    'operation',
+    'product',
+    'version',
+  ];
+  if (
+    keys.length !== expectedKeys.length ||
+    keys.some((key, index) => key !== expectedKeys[index])
+  ) {
+    return false;
+  }
   const expectedKind =
     entityType === 'focus_guard_rule_v1'
       ? 'rule'
@@ -419,6 +456,28 @@ export function isEncryptedFocusGuardEnvelopeV1(
     Number.isSafeInteger(record.createdAt) &&
     record.createdAt >= 0
   );
+}
+
+export function isSyncV2EntityType(value: unknown): value is SyncV2EntityType {
+  return typeof value === 'string' && (SYNC_V2_ENTITY_TYPES as readonly string[]).includes(value);
+}
+
+export function isFocusGuardEntityType(value: unknown): value is FocusGuardEntityType {
+  return (
+    typeof value === 'string' && (FOCUS_GUARD_ENTITY_TYPES as readonly string[]).includes(value)
+  );
+}
+
+export function isSyncV2ChangePayload(
+  entityType: SyncV2EntityType,
+  deleted: boolean,
+  payload: unknown,
+): payload is SyncV2Payload | null {
+  if (deleted) return payload === null;
+  if (isFocusGuardEntityType(entityType)) {
+    return isEncryptedFocusGuardEnvelopeV1(payload, entityType);
+  }
+  return typeof payload === 'object' && payload !== null && !Array.isArray(payload);
 }
 
 export function shouldForceBootstrap(

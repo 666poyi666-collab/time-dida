@@ -205,7 +205,7 @@ describe('mobile Sync v2 persistence', () => {
   it('archives old-device outbox rows and never leases them to a rebound credential', async () => {
     await enqueueMobileV2Mutation({ ...mutation, opId: 'old-op', deviceId: 'old-phone' }, 1);
     await enqueueMobileV2Mutation({ ...mutation, opId: 'current-op' }, 2);
-    await resetMobileV2Epoch(checkpoint('c0', 'phone'));
+    await resetMobileV2Epoch(checkpoint('c0', 'phone'), null);
 
     expect((await claimMobileV2Outbox('phone', 10, 3)).items.map((item) => item.opId)).toEqual([
       'current-op',
@@ -220,6 +220,38 @@ describe('mobile Sync v2 persistence', () => {
         }),
       ]),
     );
+  });
+
+  it('uses a transaction CAS so an old account cannot reset a newer bootstrap owner', async () => {
+    const observedOld = {
+      ...checkpoint('c9', 'device-old'),
+      boundAccountId: 'account-old',
+      updatedAt: 9,
+    };
+    await writeMobileV2Bootstrap(observedOld);
+    const currentNew = {
+      ...checkpoint('c2', 'device-new'),
+      boundAccountId: 'account-new',
+      syncEpoch: 'sync-new',
+      cursorEpoch: 'cursor-new',
+      updatedAt: 20,
+    };
+    await writeMobileV2Bootstrap(currentNew);
+
+    await expect(
+      resetMobileV2Epoch(
+        {
+          ...observedOld,
+          state: 'uninitialized',
+          cursor: null,
+          syncEpoch: 'sync-old-reset',
+          cursorEpoch: 'cursor-old-reset',
+          updatedAt: 21,
+        },
+        observedOld,
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(await readMobileV2Bootstrap()).toEqual(currentNew);
   });
 
   it('fails closed on same-revision different content and keeps both conflict candidates', async () => {

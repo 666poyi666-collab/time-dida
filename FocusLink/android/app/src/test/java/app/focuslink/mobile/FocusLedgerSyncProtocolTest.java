@@ -39,6 +39,27 @@ public class FocusLedgerSyncProtocolTest {
         assertRejected(record, mismatched);
     }
 
+    @Test
+    public void cursorlessNativeWriterIgnoresUnconsumedFocusGuardChanges() throws Exception {
+        FocusLedgerNativeOutboxStore.Record record = record();
+        JSONObject response = response(record, "applied");
+        response
+            .getJSONArray("changes")
+            .put(
+                new JSONObject()
+                    .put("changeSeq", 9)
+                    .put("entityType", "focus_guard_rule_v1")
+                    .put("entityId", "rule-study-hours")
+                    .put("revision", 1)
+                    .put("fingerprint", "b".repeat(32))
+                    .put("deleted", false)
+                    .put("payload", new JSONObject().put("opaque", true))
+                    .put("sourceDeviceId", "device-desktop")
+            );
+
+        FocusLedgerSyncProtocol.validateSuccessfulResponse(record, status(), response);
+    }
+
     private static void assertRejected(
         FocusLedgerNativeOutboxStore.Record record,
         JSONObject response

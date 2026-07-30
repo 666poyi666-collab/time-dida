@@ -111,6 +111,25 @@ describe('FocusLink authority deployment containment', () => {
     expect(source).toContain("'legacy_v1_completed_bundle_backfill_version', '1'");
   });
 
+  it('keeps every Focus Guard entity opaque behind the Account DO envelope validator', () => {
+    const source = fs.readFileSync(
+      path.join(projectRoot, 'cloudflare', 'accountDurableObject.ts'),
+      'utf8',
+    );
+
+    for (const entityType of [
+      'focus_guard_rule_v1',
+      'focus_guard_state_v1',
+      'focus_guard_completion_v1',
+      'focus_guard_config_v1',
+    ]) {
+      expect(source).toContain(`'${entityType}'`);
+    }
+    expect(source).toContain('isEncryptedFocusGuardEnvelopeV1');
+    expect(source).toContain('invalid_encrypted_focus_guard_envelope');
+    expect(source).not.toContain('focus_guard_plaintext');
+  });
+
   it('keeps the retired Node service from becoming a second production authority', () => {
     const server = fs.readFileSync(path.join(projectRoot, 'cloud', 'server.ts'), 'utf8');
     const dockerfile = fs.readFileSync(path.join(projectRoot, 'cloud', 'Dockerfile'), 'utf8');

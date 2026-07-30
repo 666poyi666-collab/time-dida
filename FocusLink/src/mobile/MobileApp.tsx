@@ -98,7 +98,12 @@ import {
   ownerAccountBootstrapApi,
   type OwnerAccountSession,
 } from './accountBootstrap';
-import { createMobileAccountLifecycle, mobileAccountConnectionKey } from './accountLifecycle';
+import {
+  createMobileAccountLifecycle,
+  mobileAccountConnectionKey,
+  runMobileAccountCommit,
+  runMobileAccountLogout,
+} from './accountLifecycle';
 import { TaskBrowser } from './TaskBrowser';
 import { MobileConfirmDialog } from './MobileConfirmDialog';
 import {
@@ -110,6 +115,7 @@ import {
 } from './liveSnapshotPolicy';
 import { remoteForkEvidence } from './authorityPolicy';
 import { runMobileSyncV2 } from './v2Sync';
+import { readMobileV2Bootstrap } from './v2Cache';
 import { persistCompletedOfflineFocus } from './offlineCompletion';
 import {
   createTaskSnapshotRequestLifecycle,
@@ -190,14 +196,50 @@ export function MobileApp() {
   const connectionKeyRef = useRef(mobileAccountConnectionKey(initialPreferences));
   const accountLifecycle = useRef(createMobileAccountLifecycle()).current;
 
-  const resetTaskSnapshotForAccount = useCallback(async () => {
+  const resetTaskSnapshotForAccount = useCallback(async (): Promise<string[]> => {
     taskRequests.invalidate();
     taskSnapshotRef.current = null;
     setTaskSnapshot(null);
     setSelectedTaskId('');
     setTitleDraft('');
-    await enqueueMutation(cacheMutationQueue, clearCachedTaskSnapshot);
+    try {
+      await enqueueMutation(cacheMutationQueue, clearCachedTaskSnapshot);
+      return [];
+    } catch {
+      return ['task-cache'];
+    }
   }, [taskRequests]);
+
+  const resetLiveSnapshotForAccount = useCallback(async (): Promise<string[]> => {
+    liveGeneration.current += 1;
+    liveRequest.current?.abort();
+    liveRequest.current = null;
+    liveSnapshotRef.current = null;
+    setLiveSnapshot(null);
+    setLiveSnapshotSource('none');
+    try {
+      await enqueueMutation(cacheMutationQueue, clearCachedLiveFocusSnapshot);
+      return [];
+    } catch {
+      return ['live-cache'];
+    }
+  }, []);
+
+  const resetAccountScopedState = useCallback(async (): Promise<string[]> => {
+    ledgerGeneration.current += 1;
+    ledgerRequest.current?.abort();
+    ledgerRequest.current = null;
+    cacheRef.current = EMPTY_CACHE;
+    setCache(EMPTY_CACHE);
+    setPendingUploadCount(0);
+    setPullState('idle');
+    setLedgerNotice('账号已切换，正在重新读取同步账本…');
+    const [taskIssues, liveIssues] = await Promise.all([
+      resetTaskSnapshotForAccount(),
+      resetLiveSnapshotForAccount(),
+    ]);
+    return [...taskIssues, ...liveIssues];
+  }, [resetLiveSnapshotForAccount, resetTaskSnapshotForAccount]);
 
   useEffect(
     () => () => {
@@ -236,8 +278,10 @@ export function MobileApp() {
           token: connection.accessToken,
           rememberToken: true,
         };
+        let accountStateIssues: string[] = [];
         if (mobileAccountConnectionKey(next) !== connectionKeyRef.current) {
-          await resetTaskSnapshotForAccount();
+          connectionKeyRef.current = mobileAccountConnectionKey(next);
+          accountStateIssues = await resetAccountScopedState();
         }
         if (disposed || !accountLifecycle.isCurrent(operation)) return;
         // The helper has confirmed the Keystore copy. Keep the token only in
@@ -249,7 +293,7 @@ export function MobileApp() {
         setPreferences(next);
         setConfigOpen(false);
         setConnectionEpoch((value) => value + 1);
-        if (persistenceIssues.length > 0) {
+        if (persistenceIssues.length > 0 || accountStateIssues.length > 0) {
           setCommandNotice('账号已从 Android 安全存储恢复，但本机资料持久化仍需下次重试');
         }
       })
@@ -261,7 +305,7 @@ export function MobileApp() {
     return () => {
       disposed = true;
     };
-  }, [accountLifecycle, deviceId, resetTaskSnapshotForAccount]);
+  }, [accountLifecycle, deviceId, resetAccountScopedState]);
 
   const applyOwnerAccountSession = useCallback(
     async (session: OwnerAccountSession, operation: number): Promise<boolean> => {
@@ -280,21 +324,24 @@ export function MobileApp() {
         token: session.accessToken.trim(),
         rememberToken: true,
       };
-      await accountLifecycle.enqueueNative(() =>
-        configureNativeFocusConnection(next.endpoint, next.token, session.deviceId),
+      const transition = await runMobileAccountCommit(
+        accountLifecycle,
+        operation,
+        () => configureNativeFocusConnection(next.endpoint, next.token, session.deviceId),
+        async () => {
+          connectionKeyRef.current = mobileAccountConnectionKey(next);
+          return resetAccountScopedState();
+        },
       );
-      if (!accountLifecycle.isCurrent(operation)) return false;
-      await resetTaskSnapshotForAccount();
-      if (!accountLifecycle.isCurrent(operation)) return false;
+      if (!transition.current) return false;
       const profile = {
         accountId: session.accountId,
         accountLabel: session.accountLabel,
       };
-      const persistenceIssues = persistMobileAccountSessionBestEffort(
-        next,
-        session.deviceId,
-        profile,
-      );
+      const persistenceIssues = [
+        ...transition.issues,
+        ...persistMobileAccountSessionBestEffort(next, session.deviceId, profile),
+      ];
       setDeviceId(session.deviceId);
       preferencesRef.current = next;
       connectionKeyRef.current = mobileAccountConnectionKey(next);
@@ -309,7 +356,7 @@ export function MobileApp() {
       );
       return true;
     },
-    [accountLifecycle, resetTaskSnapshotForAccount],
+    [accountLifecycle, resetAccountScopedState],
   );
 
   const bootstrapOwnerAccount = useCallback(
@@ -428,7 +475,12 @@ export function MobileApp() {
       setLiveSnapshot(mapped);
       setLiveSnapshotSource('server');
       try {
-        await enqueueMutation(cacheMutationQueue, () => writeCachedLiveFocusSnapshot(mapped));
+        const accountId = mobileAccountId(preferencesRef.current);
+        if (accountId) {
+          await enqueueMutation(cacheMutationQueue, () =>
+            writeCachedLiveFocusSnapshot(mapped, accountId),
+          );
+        }
       } catch (error) {
         setCommandNotice(`实时状态已更新，但本机缓存失败：${errorMessage(error)}`);
       }
@@ -455,8 +507,11 @@ export function MobileApp() {
         }
         taskSnapshotRef.current = reconciliation.snapshot;
         setTaskSnapshot(reconciliation.snapshot);
+        const accountId = mobileAccountId(connection);
         await enqueueMutation(cacheMutationQueue, async () => {
-          if (request.isCurrent()) await writeCachedTaskSnapshot(reconciliation.snapshot);
+          if (request.isCurrent() && accountId) {
+            await writeCachedTaskSnapshot(reconciliation.snapshot, accountId);
+          }
         });
       } catch (error) {
         if (!request.isCurrent() || isAbortError(error)) return;
@@ -553,57 +608,83 @@ export function MobileApp() {
     let active = true;
     const generation = ledgerGeneration.current;
     const taskCacheGeneration = taskRequests.generation();
+    const cachePreferences = preferencesRef.current;
+    const cacheAccountId = mobileAccountId(cachePreferences);
+    const cacheConnectionKey = mobileAccountConnectionKey(cachePreferences);
+    const cacheConnectionConfigured = Boolean(
+      cachePreferences.endpoint && cachePreferences.token && cacheAccountId,
+    );
     void Promise.all([
       readMobileCache(),
-      readCachedLiveFocusSnapshot(),
-      readCachedTaskSnapshot(),
+      readCachedLiveFocusSnapshot(cacheAccountId),
+      readCachedTaskSnapshot(cacheAccountId),
       readOfflineFocusRuntime(),
       readPendingDeviceSyncBundles(),
+      readMobileV2Bootstrap(),
     ])
-      .then(([ledger, cachedLive, cachedTasks, savedOfflineRuntime, pendingUploads]) => {
-        if (!active || ledgerGeneration.current !== generation) return;
-        void updateNativeAuthorityProjectionHistory({
-          records: ledger.bundles,
-          lastVerifiedAt: ledger.lastSyncAt,
-          lastAttemptAt: ledger.lastSyncAt ?? 0,
-          pendingCount: pendingUploads.length,
-          lastErrorCode: '',
-        }).catch(() => false);
-        cacheRef.current = ledger;
-        setCache(ledger);
-        const restoredLive = savedOfflineRuntime
-          ? offlineRuntimeSnapshot(savedOfflineRuntime, deviceId)
-          : restoreCachedLiveSnapshot(cachedLive, initialConnectionConfigured);
-        if (savedOfflineRuntime) {
-          offlineRuntimeRef.current = savedOfflineRuntime;
-          setOfflineRuntime(savedOfflineRuntime);
-          void readLocalSessionSyncMeta(savedOfflineRuntime.id).then((meta) => {
-            const mode = meta?.authorityMode ?? 'local-offline';
-            authorityModeRef.current = mode;
-            setAuthorityMode(mode);
-          });
-          setLiveSnapshotSource('local');
-        }
-        if (restoredLive) {
-          liveSnapshotRef.current = restoredLive;
-          setLiveSnapshot(restoredLive);
-          if (!savedOfflineRuntime) setLiveSnapshotSource('cache');
-        }
-        setPendingUploadCount(pendingUploads.length);
-        if (
-          cachedTasks &&
-          initialConnectionConfigured &&
-          taskRequests.generation() === taskCacheGeneration
-        ) {
-          taskSnapshotRef.current = cachedTasks;
-          setTaskSnapshot(cachedTasks);
-        }
-        setLedgerNotice(
-          ledger.bundles.length > 0
-            ? `已从本机缓存载入 ${ledger.bundles.length} 场会话`
-            : '本机还没有已结束会话',
-        );
-      })
+      .then(
+        ([
+          storedLedger,
+          cachedLive,
+          cachedTasks,
+          savedOfflineRuntime,
+          pendingUploads,
+          checkpoint,
+        ]) => {
+          if (
+            !active ||
+            ledgerGeneration.current !== generation ||
+            connectionKeyRef.current !== cacheConnectionKey
+          ) {
+            return;
+          }
+          const ledger =
+            !cacheConnectionConfigured || checkpoint?.boundAccountId === cacheAccountId
+              ? storedLedger
+              : EMPTY_CACHE;
+          void updateNativeAuthorityProjectionHistory({
+            records: ledger.bundles,
+            lastVerifiedAt: ledger.lastSyncAt,
+            lastAttemptAt: ledger.lastSyncAt ?? 0,
+            pendingCount: pendingUploads.length,
+            lastErrorCode: '',
+          }).catch(() => false);
+          cacheRef.current = ledger;
+          setCache(ledger);
+          const restoredLive = savedOfflineRuntime
+            ? offlineRuntimeSnapshot(savedOfflineRuntime, deviceId)
+            : restoreCachedLiveSnapshot(cachedLive, cacheConnectionConfigured);
+          if (savedOfflineRuntime) {
+            offlineRuntimeRef.current = savedOfflineRuntime;
+            setOfflineRuntime(savedOfflineRuntime);
+            void readLocalSessionSyncMeta(savedOfflineRuntime.id).then((meta) => {
+              const mode = meta?.authorityMode ?? 'local-offline';
+              authorityModeRef.current = mode;
+              setAuthorityMode(mode);
+            });
+            setLiveSnapshotSource('local');
+          }
+          if (restoredLive) {
+            liveSnapshotRef.current = restoredLive;
+            setLiveSnapshot(restoredLive);
+            if (!savedOfflineRuntime) setLiveSnapshotSource('cache');
+          }
+          setPendingUploadCount(pendingUploads.length);
+          if (
+            cachedTasks &&
+            cacheConnectionConfigured &&
+            taskRequests.generation() === taskCacheGeneration
+          ) {
+            taskSnapshotRef.current = cachedTasks;
+            setTaskSnapshot(cachedTasks);
+          }
+          setLedgerNotice(
+            ledger.bundles.length > 0
+              ? `已从本机缓存载入 ${ledger.bundles.length} 场会话`
+              : '本机还没有已结束会话',
+          );
+        },
+      )
       .catch((error: unknown) => {
         if (!active) return;
         setPullState('error');
@@ -620,7 +701,13 @@ export function MobileApp() {
       ledgerRequest.current?.abort();
       liveRequest.current?.abort();
     };
-  }, [deviceId, initialConnectionConfigured, taskRequests]);
+  }, [
+    deviceId,
+    initialConnectionConfigured,
+    preferences.endpoint,
+    preferences.token,
+    taskRequests,
+  ]);
 
   useEffect(() => {
     const handleOnline = () => setOnline(true);
@@ -1083,36 +1170,56 @@ export function MobileApp() {
     }
   };
 
-  const handleForgetToken = () => {
+  const handleForgetToken = async () => {
     if (offlineRuntimeRef.current || pendingUploadCount > 0) {
       setCommandNotice('还有本机离线会话未补传，暂不能退出登录');
       return;
     }
-    accountLifecycle.invalidate();
+    const operation = accountLifecycle.invalidate();
     invalidateOwnerAccountBootstrap();
     setAccountLoginPolling(false);
-    setAccountBusy(false);
+    setAccountBusy(true);
+    setCommandNotice('正在从 Android 安全存储退出登录…');
     ledgerGeneration.current += 1;
     liveGeneration.current += 1;
     taskRequests.invalidate();
     ledgerRequest.current?.abort();
     liveRequest.current?.abort();
-    clearSavedToken();
-    clearMobileAccountProfile();
-    const next = { ...preferencesRef.current, token: '', rememberToken: false };
-    preferencesRef.current = next;
-    connectionKeyRef.current = mobileAccountConnectionKey(next);
-    setPreferences(next);
-    setAccountProfile(null);
-    liveSnapshotRef.current = null;
-    setLiveSnapshot(null);
-    setLiveSnapshotSource('none');
-    setConnectionState('unconfigured');
-    setConfigOpen(true);
-    setCommandNotice('已退出登录；这台设备的历史缓存仍保留');
-    void enqueueMutation(cacheMutationQueue, clearCachedLiveFocusSnapshot);
-    void resetTaskSnapshotForAccount();
-    void accountLifecycle.enqueueNative(clearNativeFocusConnection);
+    try {
+      if (
+        !(await runMobileAccountLogout(accountLifecycle, operation, clearNativeFocusConnection))
+      ) {
+        return;
+      }
+      const next = { ...preferencesRef.current, token: '', rememberToken: false };
+      connectionKeyRef.current = mobileAccountConnectionKey(next);
+      const accountStateIssues = await resetAccountScopedState();
+      if (!accountLifecycle.isCurrent(operation)) return;
+      let browserPersistenceFailed = false;
+      try {
+        clearSavedToken();
+        clearMobileAccountProfile();
+      } catch {
+        browserPersistenceFailed = true;
+      }
+      preferencesRef.current = next;
+      setPreferences(next);
+      setAccountProfile(null);
+      setConnectionState('unconfigured');
+      setConfigOpen(true);
+      setCommandNotice(
+        browserPersistenceFailed || accountStateIssues.length > 0
+          ? '已从 Android 安全存储退出；本机缓存清理未完全落盘，下次启动会继续隔离旧账号'
+          : '已退出登录；这台设备的历史缓存仍保留',
+      );
+    } catch (error) {
+      if (accountLifecycle.isCurrent(operation)) {
+        setConnectionEpoch((value) => value + 1);
+        setCommandNotice(`退出登录失败，账号仍保持登录：${errorMessage(error)}`);
+      }
+    } finally {
+      if (accountLifecycle.isCurrent(operation)) setAccountBusy(false);
+    }
   };
 
   const handleClearCache = async () => {
@@ -1383,6 +1490,10 @@ async function sendNativeCommand(
       sessionId: nativeCommand.sessionId,
     },
   });
+}
+
+function mobileAccountId(connection: MobileConnectionPreferences): string | null {
+  return parseDeviceToken(connection.token.trim())?.accountPublicId ?? null;
 }
 
 function enqueueMutation(

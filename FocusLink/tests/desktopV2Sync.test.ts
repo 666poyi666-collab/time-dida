@@ -21,6 +21,7 @@ const harness = vi.hoisted(() => ({
   discarded: [] as string[],
   enqueued: [] as Array<Record<string, unknown>>,
   remoteConflicts: [] as Array<Record<string, unknown>>,
+  stored: [] as Array<Record<string, unknown>>,
   repairCalls: 0,
   paths: [] as string[],
   connectionCurrent: true,
@@ -76,7 +77,9 @@ vi.mock('../electron/sync/v2OutboxStore.js', () => ({
       harness.remoteConflicts.push({ change, rest });
     },
   ),
-  writeV2EntityState: vi.fn(),
+  writeV2EntityState: vi.fn((_scope: string, value: Record<string, unknown>) => {
+    harness.stored.push(value);
+  }),
 }));
 
 import {
@@ -97,6 +100,7 @@ describe('desktop canonical Sync v2 boundary', () => {
     harness.discarded = [];
     harness.enqueued = [];
     harness.remoteConflicts = [];
+    harness.stored = [];
     harness.repairCalls = 0;
     harness.paths = [];
     harness.connectionCurrent = true;
@@ -224,6 +228,79 @@ describe('desktop canonical Sync v2 boundary', () => {
     expect(harness.remoteConflicts).toHaveLength(1);
     const recorded = harness.remoteConflicts[0] as { rest: unknown[] };
     expect(recorded.rest[recorded.rest.length - 1]).toEqual(['same_revision_fingerprint_mismatch']);
+  });
+
+  it('isolates an opaque Focus Guard entity without rejecting the mixed-version page', async () => {
+    const envelope = focusGuardEnvelope('rule');
+    let exchanges = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input)).pathname;
+        if (path === '/sync/v2/status') return json(status(1));
+        exchanges += 1;
+        return json(
+          exchanges === 1
+            ? {
+                ...page('c1'),
+                changes: [
+                  {
+                    changeSeq: 1,
+                    entityType: 'focus_guard_rule_v1',
+                    entityId: 'rule-study-hours',
+                    revision: 1,
+                    fingerprint: fingerprintDeviceSyncValue({ deleted: false, payload: envelope }),
+                    deleted: false,
+                    payload: envelope,
+                    sourceDeviceId: 'device-phone1',
+                  },
+                ],
+              }
+            : page('c1'),
+        );
+      }),
+    );
+
+    await expect(runDesktopSyncV2()).resolves.toMatchObject({ pulled: 1, cursor: 'c1' });
+    expect(harness.stored).toContainEqual(
+      expect.objectContaining({
+        entityType: 'focus_guard_rule_v1',
+        entityId: 'rule-study-hours',
+        payload: envelope,
+      }),
+    );
+    expect(harness.remoteConflicts).toEqual([]);
+  });
+
+  it('rejects a malformed Focus Guard envelope before advancing the cursor', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input)).pathname;
+        if (path === '/sync/v2/status') return json(status(1));
+        return json({
+          ...page('c1'),
+          changes: [
+            {
+              changeSeq: 1,
+              entityType: 'focus_guard_rule_v1',
+              entityId: 'rule-invalid',
+              revision: 1,
+              fingerprint: 'a'.repeat(64),
+              deleted: false,
+              payload: { ...focusGuardEnvelope('rule'), plaintext: { leaked: true } },
+              sourceDeviceId: 'device-phone1',
+            },
+          ],
+        });
+      }),
+    );
+
+    await expect(runDesktopSyncV2()).rejects.toMatchObject({ code: 'contract_error' });
+    expect(harness.stored).toEqual([]);
+    expect(
+      JSON.parse(harness.meta.get('syncV2.desktop.checkpointV2.scope-1') ?? '{}'),
+    ).toMatchObject({ state: 'uninitialized', cursor: null, lastChangeSeq: 0 });
   });
 
   it('writes paired tombstones before removing a locally confirmed session', () => {
@@ -392,4 +469,19 @@ function json(value: unknown, statusCode = 200): Response {
     status: statusCode,
     headers: { 'content-type': 'application/json' },
   });
+}
+
+function focusGuardEnvelope(entityKind: 'rule' | 'state' | 'completion' | 'config') {
+  return {
+    version: 1,
+    algorithm: 'A256GCM',
+    product: 'focus-guard',
+    entityKind,
+    nonce: 'abcdefghijklmnop',
+    ciphertext: 'abcdefghijklmnop',
+    aadHash: 'a'.repeat(64),
+    aadBaseRevision: 0,
+    operation: 'put',
+    createdAt: 1,
+  };
 }

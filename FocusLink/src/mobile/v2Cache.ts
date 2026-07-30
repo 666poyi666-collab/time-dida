@@ -583,7 +583,10 @@ export async function writeMobileV2BootstrapIfOwned(
   }
 }
 
-export async function resetMobileV2Epoch(checkpoint: MobileV2BootstrapCheckpoint): Promise<void> {
+export async function resetMobileV2Epoch(
+  checkpoint: MobileV2BootstrapCheckpoint,
+  expectedCheckpoint: MobileV2BootstrapCheckpoint | null,
+): Promise<void> {
   const database = await openMobileDatabase();
   const transaction = database.transaction(
     [OUTBOX, ENTITY_STATE, CONFLICTS, HISTORY, 'bundles', META],
@@ -599,6 +602,7 @@ export async function resetMobileV2Epoch(checkpoint: MobileV2BootstrapCheckpoint
       meta.get(BOOTSTRAP_KEY),
       (records: SyncV2OutboxItem[], previousRecord) => {
         const previous = previousRecord as { value?: MobileV2BootstrapCheckpoint } | undefined;
+        assertResetCheckpointUnchanged(previous?.value, expectedCheckpoint);
         const accountOwnerChanged =
           previous?.value?.boundAccountId !== undefined &&
           previous.value.boundAccountId !== checkpoint.boundAccountId;
@@ -824,6 +828,21 @@ function assertCheckpointOwner(
     stored.accountGeneration !== expected.accountGeneration
   ) {
     throw new DOMException('Sync v2 account connection changed', 'AbortError');
+  }
+}
+
+function assertResetCheckpointUnchanged(
+  stored: MobileV2BootstrapCheckpoint | undefined,
+  expected: MobileV2BootstrapCheckpoint | null,
+): void {
+  if (
+    (!stored && expected) ||
+    (stored && !expected) ||
+    (stored &&
+      expected &&
+      fingerprintDeviceSyncValue(stored) !== fingerprintDeviceSyncValue(expected))
+  ) {
+    throw new DOMException('Sync v2 account connection changed before epoch reset', 'AbortError');
   }
 }
 

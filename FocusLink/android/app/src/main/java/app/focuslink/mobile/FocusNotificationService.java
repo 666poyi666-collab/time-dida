@@ -31,6 +31,16 @@ public final class FocusNotificationService extends Service {
         FocusCloudClient create();
     }
 
+    static final class CloudSnapshotCommit {
+        final FocusRuntimeSnapshot snapshot;
+        final boolean committed;
+
+        CloudSnapshotCommit(FocusRuntimeSnapshot snapshot, boolean committed) {
+            this.snapshot = snapshot;
+            this.committed = committed;
+        }
+    }
+
     private static final String TAG = "FocusRuntime";
     private static final String CHANNEL_ID = "focus_runtime_v1";
     private static final String HUAWEI_LIVE_CHANNEL_ID = "focus_runtime_huawei_live_v1";
@@ -207,11 +217,13 @@ public final class FocusNotificationService extends Service {
         FocusRuntimeSnapshot current = FocusRuntimeStore.getSnapshot(this);
         if (!current.localAuthority) uploadPendingCommand(connection);
         try {
-            FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromCloudResponse(
-                this,
-                cloudClient.fetchLive(connection)
-            );
-            if (!FocusRuntimeStore.putCloudSnapshotIfNoLocalAuthority(this, snapshot)) {
+            CloudSnapshotCommit result = fetchCloudSnapshotIfCurrent(this, cloudClient, connection);
+            if (result == null) {
+                Log.i(TAG, "Discarded cloud focus response for a replaced account connection");
+                return;
+            }
+            FocusRuntimeSnapshot snapshot = result.snapshot;
+            if (!result.committed) {
                 if (!current.localAuthority) {
                     throw new IllegalArgumentException("cloud revision rollback or conflict");
                 }
@@ -221,7 +233,11 @@ public final class FocusNotificationService extends Service {
             }
             recordPollSuccess(snapshot.stateRevision);
             Log.i(TAG, "Background cloud focus snapshot confirmed at revision " + snapshot.stateRevision);
-            handler.post(() -> applyCloudSnapshot(snapshot));
+            handler.post(() -> {
+                if (FocusRuntimeConnectionStore.isCurrent(this, connection)) {
+                    applyCloudSnapshot(snapshot);
+                }
+            });
         } catch (Throwable exception) {
             String errorCode = pollErrorCode(exception);
             recordPollFailure(errorCode);
@@ -230,6 +246,7 @@ public final class FocusNotificationService extends Service {
     }
 
     private void uploadPendingCommand(FocusRuntimeConnectionStore.Connection connection) {
+        if (!FocusRuntimeConnectionStore.isCurrent(this, connection)) return;
         if (FocusRuntimeStore.getSnapshot(this).localAuthority) return;
         java.util.List<FocusRuntimeCommand> pending = FocusRuntimeStore.drainPendingCommands(this);
         if (pending.isEmpty()) return;
@@ -237,16 +254,51 @@ public final class FocusNotificationService extends Service {
         try {
             JSONObject response = cloudClient.sendCommand(connection, command);
             FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromCloudResponse(this, response);
-            if (!FocusRuntimeStore.putCloudSnapshotIfNoLocalAuthority(this, snapshot)) {
+            Boolean committed = FocusRuntimeConnectionStore.runIfCurrent(
+                this,
+                connection,
+                () -> {
+                    if (!FocusRuntimeStore.putCloudSnapshotIfNoLocalAuthority(this, snapshot)) {
+                        return false;
+                    }
+                    FocusRuntimeStore.completeCommand(this, command.id);
+                    return true;
+                }
+            );
+            if (committed == null) {
+                Log.i(TAG, "Discarded native command response for a replaced account connection");
+                return;
+            }
+            if (!committed) {
                 throw new IllegalArgumentException("cloud revision rollback or conflict");
             }
-            FocusRuntimeStore.completeCommand(this, command.id);
-            handler.post(() -> applyCloudSnapshot(snapshot));
+            handler.post(() -> {
+                if (FocusRuntimeConnectionStore.isCurrent(this, connection)) {
+                    applyCloudSnapshot(snapshot);
+                }
+            });
         } catch (Throwable exception) {
             String errorCode = pollErrorCode(exception);
             recordPollFailure(errorCode);
             Log.w(TAG, "Unable to upload pending native focus command [" + errorCode + "]");
         }
+    }
+
+    static CloudSnapshotCommit fetchCloudSnapshotIfCurrent(
+        Context context,
+        FocusCloudClient client,
+        FocusRuntimeConnectionStore.Connection connection
+    ) throws FocusCloudClient.CloudException {
+        FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromCloudResponse(
+            context,
+            client.fetchLive(connection)
+        );
+        Boolean committed = FocusRuntimeConnectionStore.runIfCurrent(
+            context,
+            connection,
+            () -> FocusRuntimeStore.putCloudSnapshotIfNoLocalAuthority(context, snapshot)
+        );
+        return committed == null ? null : new CloudSnapshotCommit(snapshot, committed);
     }
 
     static JSONObject pollDiagnostics(Context context) {

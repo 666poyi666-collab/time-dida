@@ -20,16 +20,32 @@ final class FocusRuntimeConnectionStore {
     private static final String KEY_DEVICE_ID = "deviceId";
     private static final String KEY_ALIAS = "focuslink_runtime_connection_v1";
     private static final int GCM_TAG_BITS = 128;
+    private static long connectionGeneration = 0L;
+
+    interface CurrentConnectionOperation<T> {
+        T run();
+    }
 
     static final class Connection {
         final String endpoint;
         final String accessToken;
         final String deviceId;
+        final long generation;
 
         Connection(String endpoint, String accessToken, String deviceId) {
+            this(endpoint, accessToken, deviceId, -1L);
+        }
+
+        private Connection(
+            String endpoint,
+            String accessToken,
+            String deviceId,
+            long generation
+        ) {
             this.endpoint = validateEndpoint(endpoint);
             this.accessToken = validateAccessToken(accessToken);
             this.deviceId = validateDeviceId(deviceId);
+            this.generation = generation;
         }
     }
 
@@ -51,6 +67,7 @@ final class FocusRuntimeConnectionStore {
             .putString(KEY_DEVICE_ID, validatedDeviceId)
             .commit();
         if (!committed) throw new IllegalStateException("unable to save cloud credential");
+        connectionGeneration += 1L;
     }
 
     static synchronized Connection get(Context context) {
@@ -72,13 +89,14 @@ final class FocusRuntimeConnectionStore {
                     .putString(KEY_TOKEN, encrypt(token))
                     .commit();
                 if (!committed) throw new IllegalStateException("unable to migrate cloud credential");
+                connectionGeneration += 1L;
             } else {
                 token = decrypt(encryptedToken);
             }
             if (token.length() == 0 || token.length() > 4096) {
                 throw new IllegalStateException("cloud credential is invalid");
             }
-            return new Connection(normalizedEndpoint, token, deviceId);
+            return new Connection(normalizedEndpoint, token, deviceId, connectionGeneration);
         } catch (RuntimeException exception) {
             // Keep the unreadable record for explicit recovery/forensics.  A
             // transient Keystore failure must not silently delete endpoint,
@@ -91,6 +109,27 @@ final class FocusRuntimeConnectionStore {
         if (!preferences(context).edit().clear().commit()) {
             throw new IllegalStateException("unable to clear cloud credential");
         }
+        connectionGeneration += 1L;
+    }
+
+    static synchronized boolean isCurrent(Context context, Connection expected) {
+        if (expected == null || expected.generation < 0L) return false;
+        Connection current = get(context);
+        return current != null &&
+            current.generation == expected.generation &&
+            connectionGeneration == expected.generation &&
+            current.endpoint.equals(expected.endpoint) &&
+            current.accessToken.equals(expected.accessToken) &&
+            current.deviceId.equals(expected.deviceId);
+    }
+
+    static synchronized <T> T runIfCurrent(
+        Context context,
+        Connection expected,
+        CurrentConnectionOperation<T> operation
+    ) {
+        if (!isCurrent(context, expected)) return null;
+        return operation.run();
     }
 
     private static String validateEndpoint(String raw) {

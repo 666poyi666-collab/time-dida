@@ -1,5 +1,18 @@
 # FocusLink 实施日志
 
+## 2026-07-30 · Focus Guard 阶段 A 本地兼容层
+
+- 冻结四类 `focus_guard_*` 的 entity ID、V1 明文字段白名单、A256GCM envelope、AAD、
+  tombstone、revision、冲突和设备专属字段边界；Account DO 仍只保存 opaque envelope。
+- `shared/sync/v2Protocol.ts` 成为七类 Sync v2 entity type 的唯一运行时判定；Electron 和
+  mobile reader 不再各自维护只含 ledger/metadata/correction 的旧白名单。无 root 客户端只
+  验证/保存 guard envelope，不解密、不物化规则，也不创建第二 authority。
+- mixed-version 自动化覆盖四类 guard kind、附带明文/额外字段拒绝、Electron 与 IndexedDB
+  持久化、cursor 不前进、byte pagination、tombstone、Account DO validator 绑定，以及
+  Android cursorless completed-ledger writer 忽略不消费的 guard change。
+- 本条是未发布的阶段 A 本地实现：未改版本、未打包、未安装设备、未部署、未读取 secret。
+  同账号 root provisioning、全端解密 parser、冲突预览和生产 publisher 继续阻断。
+
 ## 2026-07-30 · v0.12.73 单账号 bootstrap 与任务快照 freshness
 
 - 新设备登录合同收紧为严格 start/poll：独立短期 `flb_*` poll credential、canonical owner URL、流程绑定、响应精确字段和 credential 脱敏；Electron 拒绝未经过 owner 登录直接下发的 device token。公网 probe 当前实测 404 时明确报告 `not-deployed`，不冒充新设备登录已上线；旧 `fl2` 原位升级链保持不变。

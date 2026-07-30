@@ -7,6 +7,8 @@ import {
   SYNC_V2_MAX_PUSH,
   SYNC_V2_MAX_PULL,
   SYNC_V2_PROTOCOL_VERSION,
+  isSyncV2ChangePayload,
+  isSyncV2EntityType,
   parseDeviceToken,
   splitBundleForSyncV2,
   type SyncV2Ack,
@@ -101,7 +103,8 @@ async function runMobileSyncV2Internal(input: MobileSyncV2Input): Promise<Mobile
   };
   const status = await getEpochStatus(connection);
   assertNotAborted(connection.signal);
-  let checkpoint = normalizeCheckpoint(await readMobileV2Bootstrap());
+  const storedCheckpoint = await readMobileV2Bootstrap();
+  let checkpoint = normalizeCheckpoint(storedCheckpoint);
   assertNotAborted(connection.signal);
   if (
     !checkpoint ||
@@ -121,7 +124,7 @@ async function runMobileSyncV2Internal(input: MobileSyncV2Input): Promise<Mobile
       accountGeneration: status.accountGeneration,
       updatedAt: Date.now(),
     };
-    await resetMobileV2Epoch(checkpoint);
+    await resetMobileV2Epoch(checkpoint, storedCheckpoint);
     assertNotAborted(connection.signal);
   } else if (checkpoint.cursor !== null && parseCursor(checkpoint.cursor) > status.changeSeq) {
     throw new SyncV2ClientError('cursor_ahead');
@@ -515,7 +518,8 @@ export function validateMobileSyncV2ExchangeRequest(
         prefix,
       );
       if (!isId(candidate.opId)) issues.push(`${prefix}opId`);
-      if (!isEntityType(candidate.entityType)) issues.push(`${prefix}entityType`);
+      const entityTypeValid = isEntityType(candidate.entityType);
+      if (!entityTypeValid) issues.push(`${prefix}entityType`);
       if (!isId(candidate.entityId)) issues.push(`${prefix}entityId`);
       if (!['put', 'delete', 'restore', 'purge'].includes(String(candidate.kind))) {
         issues.push(`${prefix}kind`);
@@ -540,7 +544,11 @@ export function validateMobileSyncV2ExchangeRequest(
         issues.push(`${prefix}accountGeneration`);
       }
       const deletes = candidate.kind === 'delete' || candidate.kind === 'purge';
-      if ((deletes && candidate.payload !== null) || (!deletes && !isRecord(candidate.payload))) {
+      if (
+        isEntityType(candidate.entityType)
+          ? !isSyncV2ChangePayload(candidate.entityType, deletes, candidate.payload)
+          : (deletes && candidate.payload !== null) || (!deletes && !isRecord(candidate.payload))
+      ) {
         issues.push(`${prefix}payload`);
       }
     });
@@ -685,7 +693,7 @@ function isChange(value: unknown): value is SyncV2Change {
     Number(value.revision) >= 1 &&
     isFingerprint(value.fingerprint) &&
     typeof value.deleted === 'boolean' &&
-    ((value.deleted && value.payload === null) || (!value.deleted && isRecord(value.payload))) &&
+    isSyncV2ChangePayload(value.entityType, value.deleted, value.payload) &&
     isId(value.sourceDeviceId)
   );
 }
@@ -718,12 +726,8 @@ function isEpoch(value: Record<string, unknown>): boolean {
   );
 }
 
-function isEntityType(value: unknown): boolean {
-  return (
-    value === 'focus_ledger_v2' ||
-    value === 'focus_metadata_v2' ||
-    value === 'focus_ledger_correction_v2'
-  );
+function isEntityType(value: unknown): value is SyncV2Change['entityType'] {
+  return isSyncV2EntityType(value);
 }
 
 function isFingerprint(value: unknown): boolean {

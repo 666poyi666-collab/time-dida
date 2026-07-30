@@ -110,8 +110,22 @@ public final class FocusRuntimePlugin extends Plugin {
                 getContext()
             );
             if (!sameConnection(previous, configured)) {
-                FocusRuntimeStore.clearSnapshot(getContext());
-                FocusAuthorityProjectionStore.clear(getContext());
+                try {
+                    FocusRuntimeStore.clearSnapshot(getContext());
+                    FocusAuthorityProjectionStore.clear(getContext());
+                } catch (IllegalStateException exception) {
+                    if (previous == null) {
+                        FocusRuntimeConnectionStore.clear(getContext());
+                    } else {
+                        FocusRuntimeConnectionStore.put(
+                            getContext(),
+                            previous.endpoint,
+                            previous.accessToken,
+                            previous.deviceId
+                        );
+                    }
+                    throw exception;
+                }
             }
             if (
                 configured != null &&
@@ -131,12 +145,18 @@ public final class FocusRuntimePlugin extends Plugin {
 
     @PluginMethod
     public void clearConnection(PluginCall call) {
-        FocusRuntimeConnectionStore.clear(getContext());
-        FocusLedgerSyncScheduler.cancel(getContext());
-        FocusRuntimeStore.clearSnapshot(getContext());
-        FocusAuthorityProjectionStore.clear(getContext());
-        FocusNotificationService.synchronize(getContext());
-        call.resolve();
+        try {
+            // Clear account-scoped responses and commands before the credential. If the
+            // durable credential clear fails, the renderer keeps the account logged in.
+            FocusRuntimeStore.clearSnapshot(getContext());
+            FocusAuthorityProjectionStore.clear(getContext());
+            FocusRuntimeConnectionStore.clear(getContext());
+            FocusLedgerSyncScheduler.cancel(getContext());
+            FocusNotificationService.synchronize(getContext());
+            call.resolve();
+        } catch (IllegalStateException exception) {
+            call.reject(exception.getMessage(), "clear_connection_failed");
+        }
     }
 
     @PluginMethod

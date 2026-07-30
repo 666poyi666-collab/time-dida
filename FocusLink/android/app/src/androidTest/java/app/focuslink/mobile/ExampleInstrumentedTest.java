@@ -712,6 +712,107 @@ public class ExampleInstrumentedTest {
     }
 
     @Test
+    public void discardsBlockedOldAccountPollAndPendingCommandAfterConnectionSwitch()
+        throws Exception {
+        Context context = isolatedRuntimeContext();
+        FocusRuntimeStore.clearForTests(context);
+        FocusRuntimeConnectionStore.clear(context);
+        CountDownLatch transportStarted = new CountDownLatch(1);
+        CountDownLatch releaseTransport = new CountDownLatch(1);
+        AtomicReference<FocusNotificationService.CloudSnapshotCommit> result =
+            new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        try {
+            FocusRuntimeConnectionStore.put(
+                context,
+                BuildConfig.CANONICAL_SYNC_ORIGIN,
+                "fl2_accounta_devicea_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "device-a"
+            );
+            FocusRuntimeConnectionStore.Connection oldConnection =
+                FocusRuntimeConnectionStore.get(context);
+            assertNotNull(oldConnection);
+            long now = System.currentTimeMillis();
+            FocusRuntimeSnapshot oldSnapshot = FocusRuntimeSnapshot.fromPlugin(
+                context,
+                activeSnapshot(now, 1L, "old-account-session")
+            );
+            assertTrue(FocusRuntimeStore.putSnapshot(context, oldSnapshot));
+            assertNotNull(
+                FocusRuntimeStore.enqueueCommand(
+                    context,
+                    FocusRuntimeContract.COMMAND_PAUSE,
+                    FocusRuntimeContract.SOURCE_NOTIFICATION,
+                    oldSnapshot.sessionId,
+                    oldSnapshot.stateRevision
+                )
+            );
+            assertEquals(1, FocusRuntimeStore.pendingCount(context));
+
+            FocusCloudClient blockedClient = new FocusCloudClient(
+                (method, url, token, body) -> {
+                    transportStarted.countDown();
+                    try {
+                        if (!releaseTransport.await(5, TimeUnit.SECONDS)) {
+                            throw new java.io.IOException("blocked transport timed out");
+                        }
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new java.io.IOException("blocked transport interrupted", exception);
+                    }
+                    String response =
+                        "{\"protocolVersion\":1,\"snapshot\":{\"state\":\"idle\",\"revision\":36}," +
+                        "\"serverTime\":" + System.currentTimeMillis() + "}";
+                    return new FocusCloudClient.Response(
+                        200,
+                        response.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                    );
+                }
+            );
+            Thread oldPoll = new Thread(() -> {
+                try {
+                    result.set(
+                        FocusNotificationService.fetchCloudSnapshotIfCurrent(
+                            context,
+                            blockedClient,
+                            oldConnection
+                        )
+                    );
+                } catch (Throwable throwable) {
+                    failure.set(throwable);
+                }
+            });
+            oldPoll.start();
+            assertTrue(
+                "old poll failed before transport: " + failure.get() + ", alive=" + oldPoll.isAlive() +
+                ", stack=" + Arrays.toString(oldPoll.getStackTrace()),
+                transportStarted.await(5, TimeUnit.SECONDS)
+            );
+
+            FocusRuntimeConnectionStore.put(
+                context,
+                BuildConfig.CANONICAL_SYNC_ORIGIN,
+                "fl2_accountb_deviceb_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "device-b"
+            );
+            FocusRuntimeStore.clearSnapshot(context);
+            assertEquals(0, FocusRuntimeStore.pendingCount(context));
+            releaseTransport.countDown();
+            oldPoll.join(5_000L);
+
+            assertFalse(oldPoll.isAlive());
+            assertNull(failure.get());
+            assertNull(result.get());
+            assertFalse(FocusRuntimeConnectionStore.isCurrent(context, oldConnection));
+            assertEquals(0L, FocusRuntimeStore.getSnapshot(context).stateRevision);
+        } finally {
+            releaseTransport.countDown();
+            FocusRuntimeConnectionStore.clear(context);
+            FocusRuntimeStore.clearForTests(context);
+        }
+    }
+
+    @Test
     public void backgroundServiceUploadsCommandsWithoutWebView() throws Exception {
         Bundle arguments = InstrumentationRegistry.getArguments();
         String endpoint = arguments.getString("focuslinkEndpoint", "");
