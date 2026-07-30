@@ -22,27 +22,46 @@ describe('mobile dashboard model', () => {
     expect((today.start - thirtyDays.start) / 86400000).toBe(29);
   });
 
-  it('reuses the shared analytics contract for subjects and hours', () => {
+  it('builds the mobile surface from the shared effective-day ledger', () => {
     const record = makeRecord();
     const result = buildMobileDashboard([record], 'today', now);
-    expect(result.totals.activeMs).toBe(25 * 60_000);
-    expect(result.subjects).toEqual([{ subject: '数学', activeMs: 25 * 60_000, segmentCount: 1 }]);
-    expect(result.hourly[9].activeMs).toBe(25 * 60_000);
+    expect(result.dayLedgers).toHaveLength(1);
+    expect(result.dayLedgers[0].totals).toMatchObject({
+      focusMs: 25 * 60_000,
+      pauseMs: 5 * 60_000,
+      gapMs: 150 * 60_000,
+      observationMs: 3 * 60 * 60_000,
+    });
+    expect(result.totals).toMatchObject({
+      focusMs: 25 * 60_000,
+      pauseMs: 5 * 60_000,
+      gapMs: 150 * 60_000,
+    });
+    expect(result.tasks).toEqual([
+      {
+        key: 'ticktick:task-1',
+        taskId: 'task-1',
+        title: '函数复习',
+        activeMs: 25 * 60_000,
+        segmentCount: 1,
+        estimated: false,
+      },
+    ]);
   });
 
-  it('recomputes every metric when a heatmap date is selected', () => {
+  it('keeps each day independent and aggregates exact focus, pause and gap', () => {
     const current = makeRecord();
     const previous = shiftRecord(current, -24 * 60 * 60_000, 'previous');
-    const selected = mobileStatsRange('today', now);
-    const result = buildMobileDashboardInRange([previous, current], selected, true);
+    const selected = mobileStatsRange('7d', now);
+    const result = buildMobileDashboardInRange([previous, current], selected, now);
 
     expect(result.totals).toMatchObject({
-      activeMs: 25 * 60_000,
-      pauseMs: 5 * 60_000,
-      sessionCount: 1,
+      focusMs: 50 * 60_000,
+      pauseMs: 10 * 60_000,
     });
-    expect(result.tasks.map((item) => item.title)).toEqual(['函数复习']);
-    expect(result.sessionActive).toEqual([{ sessionId: 'session-1', activeMs: 25 * 60_000 }]);
+    expect(result.dayLedgers).toHaveLength(7);
+    expect(result.dayLedgers.filter((ledger) => ledger.status === 'observed')).toHaveLength(2);
+    expect(result.tasks).toMatchObject([{ title: '函数复习', activeMs: 50 * 60_000 }]);
   });
 
   it('renders the analytics model in the mobile dashboard surface', () => {
@@ -57,19 +76,17 @@ describe('mobile dashboard model', () => {
       }),
     );
 
-    expect(markup).toContain('专注统计');
+    expect(markup).toContain('时间账本');
     expect(markup).toContain('近 7 天');
-    expect(markup).toContain('专注趋势');
-    expect(markup).toContain('数学');
-    expect(markup).toContain('24 小时时段');
+    expect(markup).toContain('24 小时时间轴');
+    expect(markup).toContain('07:00 至 22:00 为默认有效日');
+    expect(markup).toContain('精确空档');
     expect(markup).toContain('任务投入');
     expect(markup).toContain('任务专注时间构成，函数复习 100%');
-    expect(markup).toContain('日期热力');
-    expect(markup).toContain('暂停损耗与时间守恒');
-    expect(markup).toContain('有效专注 83%，暂停 17%');
-    expect(markup).toContain('每日专注与暂停趋势，详细数值见各日期标签');
+    expect(markup).toContain('专注、暂停与空档时间守恒');
+    expect(markup).toContain('专注 14%，暂停 3%，空档 83%');
+    expect(markup).toContain('09:30 至 12:00，空档 02:30:00');
     expect(markup).not.toContain('tabindex="0"');
-    expect(markup).toContain('09:00 至 10:00，专注 25:00，暂停 05:00');
     expect(markup).toContain('函数复习');
   });
 });

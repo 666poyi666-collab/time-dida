@@ -25,14 +25,20 @@ export interface SyncedTaskTreeEntry {
 
 export function buildSyncedTaskForest(tasks: readonly SyncedTask[]): SyncedTaskTreeNode[] {
   const nodes = new Map<string, SyncedTaskTreeNode>();
-  const taskKey = (task: Pick<SyncedTask, 'source' | 'id'>) => `${task.source}:${task.id}`;
-  for (const task of tasks) nodes.set(taskKey(task), { ...task, children: [] });
+  const orderedNodes: SyncedTaskTreeNode[] = [];
+  for (const task of tasks) {
+    const key = syncedTaskKey(task);
+    // The wire protocol rejects duplicate ids. Keep the renderer defensive as cached snapshots
+    // can outlive an older producer: one logical task must still render at most once.
+    if (nodes.has(key)) continue;
+    const node = { ...task, children: [] };
+    nodes.set(key, node);
+    orderedNodes.push(node);
+  }
 
   const roots: SyncedTaskTreeNode[] = [];
-  for (const task of tasks) {
-    const node = nodes.get(taskKey(task));
-    if (!node) continue;
-    const parent = task.parentId ? nodes.get(`${task.source}:${task.parentId}`) : undefined;
+  for (const node of orderedNodes) {
+    const parent = node.parentId ? nodes.get(`${node.source}:${node.parentId}`) : undefined;
     if (!parent || parent === node || wouldCreateTaskCycle(node, parent, nodes)) roots.push(node);
     else parent.children.push(node);
   }
@@ -86,6 +92,14 @@ export function groupSyncedTasks(
   tasks: readonly SyncedTask[],
   projects: readonly SyncedTaskProject[],
 ): SyncedTaskGroup[] {
+  return groupSyncedTaskForest(buildSyncedTaskForest(tasks), projects);
+}
+
+/** Group an already-built forest without flattening and rebuilding its parentId links. */
+export function groupSyncedTaskForest(
+  forest: readonly SyncedTaskTreeNode[],
+  projects: readonly SyncedTaskProject[],
+): SyncedTaskGroup[] {
   const groups = new Map<string, SyncedTaskGroup>();
   for (const project of projects) {
     groups.set(project.id, {
@@ -103,7 +117,7 @@ export function groupSyncedTasks(
     color: null,
     tasks: [],
   };
-  for (const task of buildSyncedTaskForest(tasks)) {
+  for (const task of forest) {
     if (!task.projectId) {
       noProject.tasks.push(task);
       continue;
@@ -130,8 +144,13 @@ export function filterSyncedTaskForest(
   const filter = (nodes: readonly SyncedTaskTreeNode[]): SyncedTaskTreeNode[] => {
     const result: SyncedTaskTreeNode[] = [];
     for (const node of nodes) {
-      if (node.isCompleted) continue;
       const children = filter(node.children);
+      // A completed or otherwise hidden parent must not make an open descendant disappear.
+      // Promote the surviving children while retaining their own parentId for diagnostics.
+      if (node.isCompleted) {
+        result.push(...children);
+        continue;
+      }
       const projectMatches =
         projectFilter === ALL_PROJECTS ||
         (projectFilter === NO_PROJECT ? node.projectId === null : node.projectId === projectFilter);
@@ -151,6 +170,24 @@ export function filterSyncedTaskForest(
 
 export function countSyncedTaskTree(tasks: readonly SyncedTaskTreeNode[]): number {
   return tasks.reduce((count, task) => count + 1 + countSyncedTaskTree(task.children), 0);
+}
+
+export function findSyncedTaskPath(
+  nodes: readonly SyncedTaskTreeNode[],
+  taskId: string,
+  ancestors: readonly SyncedTaskTreeNode[] = [],
+): SyncedTaskTreeNode[] | null {
+  for (const node of nodes) {
+    const path = [...ancestors, node];
+    if (node.id === taskId) return path;
+    const childPath = findSyncedTaskPath(node.children, taskId, path);
+    if (childPath) return childPath;
+  }
+  return null;
+}
+
+function syncedTaskKey(task: Pick<SyncedTask, 'source' | 'id'>): string {
+  return `${task.source}:${task.id}`;
 }
 
 function wouldCreateTaskCycle(

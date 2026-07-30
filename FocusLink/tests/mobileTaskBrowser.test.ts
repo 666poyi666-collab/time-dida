@@ -1,17 +1,27 @@
+import fs from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { SyncedTask, SyncedTaskProject } from '../shared/sync/taskSnapshotProtocol';
 import {
   ALL_PROJECTS,
   buildSyncedTaskForest,
+  countSyncedTaskTree,
+  filterSyncedTaskForest,
   filterSyncedTasks,
+  findSyncedTaskPath,
   flattenSyncedTaskTree,
+  groupSyncedTaskForest,
   groupSyncedTasks,
   NO_PROJECT,
   projectNameForTask,
 } from '../src/mobile/taskBrowserModel';
-import { TaskBrowser } from '../src/mobile/TaskBrowser';
+import { createTaskBranchActions, TaskBrowser } from '../src/mobile/TaskBrowser';
+import {
+  ANONYMOUS_BIOLOGY_EXPECTED_PREORDER,
+  ANONYMOUS_BIOLOGY_PARENT_ID_TASKS,
+  ANONYMOUS_BIOLOGY_PROJECTS,
+} from './fixtures/anonymousBiologyParentIdTree';
 
 const tasks: SyncedTask[] = [
   makeTask({ id: 'chemistry', title: '整理化学错题', projectId: 'study', tags: ['复习'] }),
@@ -80,6 +90,64 @@ describe('mobile task browser model', () => {
     ]);
   });
 
+  it('renders every anonymous real-shape parentId task exactly once with its full path', () => {
+    const forest = buildSyncedTaskForest(ANONYMOUS_BIOLOGY_PARENT_ID_TASKS);
+    const entries = flattenSyncedTaskTree(ANONYMOUS_BIOLOGY_PARENT_ID_TASKS);
+    const renderedIds = entries.map(({ task }) => task.id);
+
+    expect(renderedIds).toEqual(ANONYMOUS_BIOLOGY_EXPECTED_PREORDER);
+    expect(new Set(renderedIds).size).toBe(ANONYMOUS_BIOLOGY_PARENT_ID_TASKS.length);
+    expect(countSyncedTaskTree(forest)).toBe(ANONYMOUS_BIOLOGY_PARENT_ID_TASKS.length);
+    expect(findSyncedTaskPath(forest, 'anonymous-deep-a-1-a-i')?.map((task) => task.title)).toEqual(
+      ['匿名主任务 A', '匿名子任务 A-1', '匿名叶任务 A-1-a', '匿名叶任务 A-1-a-i'],
+    );
+
+    const groups = groupSyncedTaskForest(forest, ANONYMOUS_BIOLOGY_PROJECTS);
+    expect(groups).toHaveLength(1);
+    expect(countSyncedTaskTree(groups[0].tasks)).toBe(ANONYMOUS_BIOLOGY_PARENT_ID_TASKS.length);
+  });
+
+  it('retains the complete ancestor chain when a deep parentId descendant matches search', () => {
+    const filtered = filterSyncedTaskForest(
+      ANONYMOUS_BIOLOGY_PARENT_ID_TASKS,
+      'A-1-a-i',
+      ALL_PROJECTS,
+    );
+
+    expect(flattenForest(filtered).map((task) => task.id)).toEqual([
+      'anonymous-root-a',
+      'anonymous-child-a-1',
+      'anonymous-leaf-a-1-a',
+      'anonymous-deep-a-1-a-i',
+    ]);
+  });
+
+  it('promotes open descendants instead of losing them behind a completed parent', () => {
+    const filtered = filterSyncedTaskForest(
+      [
+        makeTask({ id: 'completed-parent', isCompleted: true }),
+        makeTask({ id: 'open-child', parentId: 'completed-parent' }),
+      ],
+      '',
+      ALL_PROJECTS,
+    );
+
+    expect(flattenForest(filtered).map((task) => task.id)).toEqual(['open-child']);
+  });
+
+  it('degrades missing and cyclic parent links to roots without duplicates or loss', () => {
+    const malformed = [
+      makeTask({ id: 'orphan', parentId: 'missing' }),
+      makeTask({ id: 'cycle-a', parentId: 'cycle-b' }),
+      makeTask({ id: 'cycle-b', parentId: 'cycle-a' }),
+      makeTask({ id: 'self-cycle', parentId: 'self-cycle' }),
+    ];
+    const renderedIds = flattenForest(buildSyncedTaskForest(malformed)).map((task) => task.id);
+
+    expect(renderedIds).toEqual(['orphan', 'cycle-a', 'cycle-b', 'self-cycle']);
+    expect(new Set(renderedIds).size).toBe(malformed.length);
+  });
+
   it('renders checklist children as nested rows instead of project-level peers', () => {
     const nestedTasks = [
       makeTask({ id: 'parent', title: '父任务', projectId: 'study' }),
@@ -100,6 +168,71 @@ describe('mobile task browser model', () => {
     expect(markup).toContain('task-children');
     expect(markup).toContain('data-depth="1"');
     expect(markup).toContain('1 项子任务');
+  });
+
+  it('shows the anonymous deep task with an explicit full parent path', () => {
+    const markup = renderToStaticMarkup(
+      createElement(TaskBrowser, {
+        tasks: ANONYMOUS_BIOLOGY_PARENT_ID_TASKS,
+        projects: ANONYMOUS_BIOLOGY_PROJECTS,
+        publishedAt: null,
+        revision: 8,
+        selectedTaskId: 'anonymous-deep-a-1-a-i',
+        canStart: true,
+        onSelect: () => undefined,
+        onStart: () => undefined,
+      }),
+    );
+
+    expect(markup).toContain(
+      '父路径：匿名生物清单 / 匿名主任务 A / 匿名子任务 A-1 / 匿名叶任务 A-1-a',
+    );
+    expect(markup).toContain(
+      '父级 匿名生物清单 / 匿名主任务 A / 匿名子任务 A-1 / 匿名叶任务 A-1-a',
+    );
+    expect(markup).toContain('data-depth="3"');
+  });
+
+  it('keeps expand, select and start as three isolated actions', () => {
+    const task = ANONYMOUS_BIOLOGY_PARENT_ID_TASKS[0];
+    const onToggle = vi.fn();
+    const onSelect = vi.fn();
+    const onStart = vi.fn();
+    const actions = createTaskBranchActions(task, 'local:anonymous-root-a', {
+      onToggle,
+      onSelect,
+      onStart,
+    });
+
+    actions.toggle();
+    expect(onToggle).toHaveBeenCalledWith('local:anonymous-root-a');
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onStart).not.toHaveBeenCalled();
+
+    actions.select();
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(task);
+    expect(onStart).not.toHaveBeenCalled();
+
+    actions.start();
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onStart).toHaveBeenCalledWith(task);
+  });
+
+  it('keeps selection on the task page while start alone returns to focus', () => {
+    const appSource = fs.readFileSync(
+      new URL('../src/mobile/MobileApp.tsx', import.meta.url),
+      'utf8',
+    );
+    expect(appSource).toContain(`onSelect={(task) => {
+                  setSelectedTaskId(task.id);
+                  setTitleDraft(task.title);
+                }}`);
+    expect(appSource).toContain(`onStart={(task) => {
+                  setSelectedTaskId(task.id);
+                  setTitleDraft(task.title);
+                  setActiveView('focus');`);
   });
 
   it('renders project groups collapsed before the user opens them', () => {
@@ -139,4 +272,10 @@ function makeTask(overrides: Partial<SyncedTask> = {}): SyncedTask {
     updatedAt: null,
     ...overrides,
   };
+}
+
+function flattenForest(
+  nodes: readonly ReturnType<typeof buildSyncedTaskForest>[number][],
+): SyncedTask[] {
+  return nodes.flatMap((node) => [node, ...flattenForest(node.children)]);
 }

@@ -1,14 +1,10 @@
-// 在真实设备视口下加载移动端构建产物，截图并断言字体真的落地。
-// 运行方式（在 FocusLink/ 下，需先 npm run build:web）：
+// Non-interactive responsive acceptance for the mobile build.
+// Run from FocusLink/ after `npm run build:web`:
 //   npx electron scripts/regression/mobile-viewport-screenshot-entry.cjs
 //
-// 为什么不用真机迭代：一次 adb 截图往返要十几秒，还要处理息屏、解锁、
-// 导航。这里用与设备等同的 CSS 视口和 DPR 在本地跑，秒级出图；真机只做最后验收。
-//
-// 视口取自本机三台设备的实测值（adb shell wm size / wm density）：
-//   华为 DBY-W09  1600×2560 @400dpi → 640×1024 dp
-//   小米 22041216C 1080×2460 @440dpi → 393×895 dp
-//   OPPO OWW221    378×496 物理；WebView 有 320px 视口下限 → 实际 320×420 CSS @1.18x
+// The driver never uses a review query or a temporary harness. It loads the
+// production mobile entry, walks all four product views, checks overflow,
+// control geometry and renderer console errors, then captures stable evidence.
 import { app, BrowserWindow } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,20 +15,47 @@ const projectRoot = path.resolve(__dirname, '..', '..');
 const outputDir = path.resolve(projectRoot, 'test-data', 'mobile-viewport-screenshots');
 
 const VIEWPORTS = [
-  { id: 'phone', label: '小米 22041216C', width: 393, height: 895, scale: 2.75 },
-  { id: 'tablet', label: '华为 DBY-W09', width: 640, height: 1024, scale: 2.5 },
-  // 同一块表在不同启动条件下报告过两种 CSS 视口，两种都必须过。
-  { id: 'watch', label: 'OPPO OWW221 (189×248 @2x)', width: 189, height: 248, scale: 2 },
+  { id: 'phone-360', label: '360px phone', width: 360, height: 800, scale: 3, shell: 'mobile' },
+  { id: 'phone-412', label: '412px phone', width: 412, height: 915, scale: 2.625, shell: 'mobile' },
+  {
+    id: 'tablet-640-portrait',
+    label: 'Huawei 640×1024 portrait',
+    width: 640,
+    height: 1024,
+    scale: 2.5,
+    shell: 'mobile',
+  },
+  {
+    id: 'tablet-760-portrait',
+    label: '760px split boundary',
+    width: 760,
+    height: 1024,
+    scale: 2,
+    shell: 'mobile',
+  },
+  {
+    id: 'phone-landscape',
+    label: '915×412 landscape',
+    width: 915,
+    height: 412,
+    scale: 2.625,
+    shell: 'mobile',
+  },
+  { id: 'watch', label: 'OPPO OWW221 189×248', width: 189, height: 248, scale: 2, shell: 'watch' },
   {
     id: 'watch-legacy',
-    label: 'OPPO OWW221 (320×420 @1.18x)',
+    label: 'OPPO OWW221 320×420',
     width: 320,
     height: 420,
     scale: 1.18,
+    shell: 'watch',
   },
 ] as const;
 
-/** 六个可选字族都必须真的能用；任何一个静默回退，选它的用户就永远看不到自己选的字。 */
+const MOBILE_THEMES = ['light', 'dark'] as const;
+const MOBILE_VIEWS = ['专注', '任务', '统计', '设置'] as const;
+
+/** Every locally selectable family must load rather than silently fall back. */
 const REQUIRED_FAMILIES = [
   'Noto Sans SC Variable',
   'LXGW WenKai',
@@ -49,8 +72,6 @@ if (!gotLock) {
   process.exit(0);
 }
 
-// 逐个视口开关窗口；不拦截的话销毁最后一个窗口会触发默认的 window-all-closed 退出，
-// 跑完第一个视口就静默结束，看起来像"卡住了"。
 app.on('window-all-closed', () => undefined);
 
 app
@@ -63,65 +84,232 @@ app
     }
 
     for (const viewport of VIEWPORTS) {
-      const win = new BrowserWindow({
-        width: viewport.width,
-        height: viewport.height,
-        show: false,
-        frame: false,
-        useContentSize: true,
-        backgroundColor: '#f4f3ed',
-        webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: false },
-      });
-      win.webContents.setZoomFactor(1);
-      await loadAndWait(win, indexPath);
-      win.show();
-      await sleep(2200);
-
-      // 未配置同步时会自动弹出全屏「连接同步服务」面板，挡住整个主界面。
-      // 要看的是主界面，先关掉它。（这个首启体验本身是待改的问题，另计。）
-      await win.webContents.executeJavaScript(`
-        document.querySelector('.connection-sheet .sheet-close')?.click()
-      `);
-      await sleep(900);
-
-      const metrics = await win.webContents.executeJavaScript(`(() => ({
-        innerWidth: window.innerWidth,
-        innerHeight: window.innerHeight,
-        // 横向溢出在小屏上是最常见的破版，先量出来。
-        scrollWidth: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
-        rootClasses: document.documentElement.className,
-        runtime: document.documentElement.dataset.runtime,
-      }))()`);
-      console.log(`[mobile] ${viewport.id} (${viewport.label}) ${JSON.stringify(metrics)}`);
-      if (metrics.scrollWidth > metrics.innerWidth + 1) {
-        throw new Error(`${viewport.id} 横向溢出：${metrics.scrollWidth} > ${metrics.innerWidth}`);
+      const themes = viewport.shell === 'watch' ? (['dark'] as const) : MOBILE_THEMES;
+      for (const theme of themes) {
+        await validateViewport(indexPath, viewport, theme);
       }
-      // 手表视口必须分流到手表壳层，绝不允许整套控制台被塞进 189dp。
-      if (viewport.id.startsWith('watch') && metrics.runtime !== 'watch-focus') {
-        throw new Error(`watch 视口未启用手表壳层：runtime=${String(metrics.runtime)}`);
-      }
-
-      await capture(`${viewport.id}-light`, win);
-
-      if (viewport.id === 'phone') {
-        await assertFonts(win);
-      }
-
-      win.destroy();
     }
 
-    console.log('[mobile] done');
+    console.log('[mobile] responsive acceptance done');
     app.exit(0);
   })
   .catch((error) => {
-    console.error('[mobile] failed', error);
+    console.error('[mobile] responsive acceptance failed', error);
     app.exit(1);
   });
 
-/**
- * document.fonts.load 会真正触发下载并解析字形；只用 check() 在字体尚未被任何
- * 元素引用时永远返回 false，测不出「文件缺失」和「还没用到」的区别。
- */
+async function validateViewport(
+  indexPath: string,
+  viewport: (typeof VIEWPORTS)[number],
+  theme: (typeof MOBILE_THEMES)[number],
+): Promise<void> {
+  const rendererErrors: string[] = [];
+  const win = new BrowserWindow({
+    width: viewport.width,
+    height: viewport.height,
+    show: false,
+    frame: false,
+    useContentSize: true,
+    backgroundColor: theme === 'dark' ? '#111714' : '#f4f3ed',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      backgroundThrottling: false,
+      partition: `mobile-smoke-${process.pid}-${viewport.id}-${theme}`,
+    },
+  });
+  win.webContents.setZoomFactor(1);
+  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    if (level >= 3) rendererErrors.push(`${sourceId}:${line} ${message}`);
+  });
+  win.webContents.on('render-process-gone', (_event, details) => {
+    rendererErrors.push(`render-process-gone ${details.reason}`);
+  });
+  win.webContents.on('preload-error', (_event, preloadPath, error) => {
+    rendererErrors.push(`preload-error ${preloadPath} ${error.message}`);
+  });
+
+  try {
+    await loadAndWait(win, indexPath);
+    if (viewport.shell === 'mobile') {
+      await setThemeAndReload(win, theme);
+    }
+    await sleep(500);
+    await closeAccountSheet(win);
+    win.showInactive();
+    await sleep(160);
+
+    const shell = await readShellMetrics(win);
+    console.log(`[mobile] ${viewport.id}/${theme} ${JSON.stringify(shell)}`);
+    assert(
+      Math.abs(shell.innerWidth - viewport.width) <= 1,
+      `${viewport.id} width ${shell.innerWidth}`,
+    );
+    assert(
+      Math.abs(shell.innerHeight - viewport.height) <= 1,
+      `${viewport.id} height ${shell.innerHeight}`,
+    );
+    assert(shell.scrollWidth <= shell.innerWidth + 1, `${viewport.id} shell overflow`);
+
+    if (viewport.shell === 'watch') {
+      assert(shell.runtime === 'watch-focus', `${viewport.id} did not keep watch renderer`);
+      await capture(`${viewport.id}-dark-watch`, win);
+      assertNoRendererErrors(viewport.id, rendererErrors);
+      return;
+    }
+
+    assert(shell.runtime === 'mobile-focus', `${viewport.id} unexpectedly entered watch renderer`);
+    assert(shell.theme === theme, `${viewport.id} expected ${theme}, got ${shell.theme}`);
+    const expectedNavigation =
+      viewport.width >= 760 || viewport.width > viewport.height ? 'sidebar' : 'bottom-tabs';
+    assert(
+      shell.navigation === expectedNavigation,
+      `${viewport.id} expected ${expectedNavigation}, got ${shell.navigation}`,
+    );
+    assert(shell.smallestNavigationTarget >= 44, `${viewport.id} navigation target below 44px`);
+
+    for (const view of MOBILE_VIEWS) {
+      await openView(win, view);
+      const metrics = await readViewMetrics(win, view);
+      console.log(`[mobile] ${viewport.id}/${theme}/${view} ${JSON.stringify(metrics)}`);
+      assert(metrics.scrollWidth <= metrics.innerWidth + 1, `${viewport.id}/${view} overflow`);
+      assert(
+        metrics.offenders.length === 0,
+        `${viewport.id}/${view} offscreen ${metrics.offenders.join(', ')}`,
+      );
+      assert(metrics.smallestInteractiveTarget >= 44, `${viewport.id}/${view} target below 44px`);
+      await capture(`${viewport.id}-${theme}-${view}`, win);
+    }
+
+    if (viewport.id === 'phone-412' && theme === 'light') await assertFonts(win);
+    assertNoRendererErrors(`${viewport.id}/${theme}`, rendererErrors);
+  } finally {
+    win.destroy();
+  }
+}
+
+async function setThemeAndReload(
+  win: BrowserWindow,
+  theme: (typeof MOBILE_THEMES)[number],
+): Promise<void> {
+  await win.webContents.executeJavaScript(`
+    localStorage.setItem(
+      'focuslink.mobile.appearance.v1',
+      JSON.stringify({ theme: ${JSON.stringify(theme)}, focusColor: 'emerald', fontProfile: 'noto' })
+    );
+    localStorage.setItem('focuslink.mobile.endpoint', 'https://127.0.0.1:1');
+    localStorage.setItem('focuslink.mobile.remember-token', 'true');
+    localStorage.setItem('focuslink.mobile.token.local', 'mobile-smoke-token');
+    localStorage.setItem('focuslink.mobile.account-id', 'mobile-smoke-account');
+    localStorage.setItem('focuslink.mobile.account-label', '本地验收账号');
+  `);
+  await reloadAndWait(win);
+}
+
+async function closeAccountSheet(win: BrowserWindow): Promise<void> {
+  await win.webContents.executeJavaScript(`
+    document.querySelector('.connection-sheet .sheet-close')?.click()
+  `);
+  await sleep(160);
+}
+
+async function openView(win: BrowserWindow, label: (typeof MOBILE_VIEWS)[number]): Promise<void> {
+  const clicked = await win.webContents.executeJavaScript(`(() => {
+    const button = [...document.querySelectorAll('.app-navigation button')]
+      .find((candidate) => candidate.textContent?.includes(${JSON.stringify(label)}));
+    if (!(button instanceof HTMLButtonElement)) return false;
+    button.click();
+    return true;
+  })()`);
+  assert(clicked === true, `missing navigation entry ${label}`);
+  const expectedSelector: Record<(typeof MOBILE_VIEWS)[number], string> = {
+    专注: '.focus-console',
+    任务: '.task-browser',
+    统计: '.dashboard-view',
+    设置: '.settings-view',
+  };
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const ready = await win.webContents.executeJavaScript(`(() => {
+      const active = document.querySelector('.app-navigation button[aria-current="page"]');
+      return active?.textContent?.includes(${JSON.stringify(label)}) === true &&
+        document.querySelector(${JSON.stringify(expectedSelector[label])}) !== null;
+    })()`);
+    if (ready === true) {
+      await sleep(80);
+      return;
+    }
+    await sleep(50);
+  }
+  throw new Error(`view did not settle: ${label}`);
+}
+
+async function readShellMetrics(win: BrowserWindow): Promise<{
+  innerWidth: number;
+  innerHeight: number;
+  scrollWidth: number;
+  runtime?: string;
+  theme: string;
+  navigation: string;
+  smallestNavigationTarget: number;
+}> {
+  return win.webContents.executeJavaScript(`(() => {
+    const navigation = document.querySelector('.app-navigation');
+    const navigationStyle = navigation ? getComputedStyle(navigation) : null;
+    const targets = [...document.querySelectorAll('.app-navigation button')]
+      .map((element) => element.getBoundingClientRect())
+      .map((rect) => Math.min(rect.width, rect.height));
+    return {
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      scrollWidth: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
+      runtime: document.documentElement.dataset.runtime,
+      theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+      navigation: navigationStyle?.position === 'sticky' ? 'sidebar' : navigation ? 'bottom-tabs' : 'none',
+      smallestNavigationTarget: targets.length ? Math.min(...targets) : 0,
+    };
+  })()`);
+}
+
+async function readViewMetrics(
+  win: BrowserWindow,
+  label: string,
+): Promise<{
+  label: string;
+  innerWidth: number;
+  scrollWidth: number;
+  offenders: string[];
+  smallestInteractiveTarget: number;
+}> {
+  return win.webContents.executeJavaScript(`(() => {
+    const tolerance = 1;
+    const offenders = [...document.querySelectorAll('main *')]
+      .filter((element) => {
+        const style = getComputedStyle(element);
+        if (style.position === 'fixed' || style.display === 'none' || style.visibility === 'hidden') return false;
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && (rect.left < -tolerance || rect.right > window.innerWidth + tolerance);
+      })
+      .slice(0, 8)
+      .map((element) => element.className || element.tagName.toLowerCase());
+    const visibleTargets = [...document.querySelectorAll('main button, main input, main select, main [role="button"]')]
+      .filter((element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+      })
+      .map((element) => element.getBoundingClientRect())
+      .map((rect) => Math.min(rect.width, rect.height));
+    return {
+      label: ${JSON.stringify(label)},
+      innerWidth: window.innerWidth,
+      scrollWidth: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
+      offenders,
+      smallestInteractiveTarget: visibleTargets.length ? Math.min(...visibleTargets) : 44,
+    };
+  })()`);
+}
+
 async function assertFonts(win: BrowserWindow): Promise<void> {
   const result = await win.webContents.executeJavaScript(`(async () => {
     const out = {};
@@ -139,27 +327,49 @@ async function assertFonts(win: BrowserWindow): Promise<void> {
   for (const [family, state] of Object.entries(result)) {
     console.log(`[mobile] font ${state === true ? 'OK  ' : 'FAIL'} ${family}`);
   }
-  if (failed.length > 0) {
-    throw new Error(`字体未落地：${failed.map(([f]) => f).join(', ')}`);
-  }
+  if (failed.length > 0)
+    throw new Error(`字体未落地：${failed.map(([family]) => family).join(', ')}`);
 }
 
 function loadAndWait(win: BrowserWindow, indexPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     win.webContents.once('did-finish-load', () => resolve());
-    win.webContents.once('did-fail-load', (_e, code, desc) =>
-      reject(new Error(`加载失败 ${code} ${desc}`)),
+    win.webContents.once('did-fail-load', (_event, code, description) =>
+      reject(new Error(`加载失败 ${code} ${description}`)),
     );
     void win.loadFile(indexPath);
   });
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function reloadAndWait(win: BrowserWindow): Promise<void> {
+  return new Promise((resolve, reject) => {
+    win.webContents.once('did-finish-load', () => resolve());
+    win.webContents.once('did-fail-load', (_event, code, description) =>
+      reject(new Error(`重载失败 ${code} ${description}`)),
+    );
+    win.webContents.reload();
+  });
+}
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function capture(tag: string, win: BrowserWindow): Promise<void> {
+  // Hidden BrowserWindows can expose the previous compositor frame on the
+  // first capture even after React's DOM has settled. Prime once, then persist
+  // the next frame so filenames and visible active navigation stay aligned.
+  await win.capturePage();
+  win.webContents.invalidate();
+  await sleep(24);
   const shot = await win.capturePage();
   fs.writeFileSync(path.join(outputDir, `${tag}.png`), shot.toPNG());
-  console.log(`[mobile] captured ${tag}`);
+}
+
+function assertNoRendererErrors(scope: string, errors: readonly string[]): void {
+  if (errors.length > 0) throw new Error(`${scope} console: ${errors.join(' | ')}`);
+}
+
+function assert(condition: boolean, message: string): asserts condition {
+  if (!condition) throw new Error(message);
 }

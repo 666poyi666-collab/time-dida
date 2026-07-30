@@ -13,8 +13,9 @@ import type { SyncedTask, SyncedTaskProject } from '@shared/sync/taskSnapshotPro
 import {
   ALL_PROJECTS,
   countSyncedTaskTree,
+  findSyncedTaskPath,
   filterSyncedTaskForest,
-  groupSyncedTasks,
+  groupSyncedTaskForest,
   NO_PROJECT,
   projectNameForTask,
   type TaskProjectFilter,
@@ -52,22 +53,18 @@ export function TaskBrowser({
     [projectFilter, query, tasks],
   );
   const totalOpen = useMemo(() => tasks.filter((task) => !task.isCompleted).length, [tasks]);
-  const groups = useMemo(
-    () => groupSyncedTasks(flattenTree(taskForest), projects),
-    [projects, taskForest],
-  );
+  const groups = useMemo(() => groupSyncedTaskForest(taskForest, projects), [projects, taskForest]);
   const forceGroupsOpen = query.trim().length > 0 || projectFilter !== ALL_PROJECTS;
-  const selectedTask = useMemo(
-    () => findTaskInForest(taskForest, selectedTaskId),
+  const selectedTaskPath = useMemo(
+    () => findSyncedTaskPath(taskForest, selectedTaskId),
     [selectedTaskId, taskForest],
   );
-  const selectedPath = useMemo(
-    () =>
-      findTaskPath(taskForest, selectedTaskId)
-        ?.map((task) => task.title)
-        .filter(Boolean) ?? [],
-    [selectedTaskId, taskForest],
-  );
+  const selectedTask = selectedTaskPath?.[selectedTaskPath.length - 1] ?? null;
+  const selectedParentPath =
+    selectedTaskPath
+      ?.slice(0, -1)
+      .map((task) => task.title)
+      .filter(Boolean) ?? [];
 
   const toggleGroup = (key: string) => {
     setExpandedGroups((current) => {
@@ -200,7 +197,10 @@ export function TaskBrowser({
               <>
                 <div className="task-selection-kicker">SELECTED TASK</div>
                 <strong>{selectedTask.title || '未命名任务'}</strong>
-                <p>{selectedPath.join(' / ') || projectNameForTask(selectedTask, projects)}</p>
+                <p>
+                  父路径：
+                  {[projectNameForTask(selectedTask, projects), ...selectedParentPath].join(' / ')}
+                </p>
                 {selectedTask.tags.length > 0 && (
                   <div className="task-selection-tags">
                     {selectedTask.tags.slice(0, 4).map((tag) => (
@@ -253,7 +253,10 @@ function TaskBranch({
   const hasChildren = task.children.length > 0;
   const open = forceOpen || !collapsedTasks.has(key);
   const visibleDepth = Math.min(depth, 2);
-  const parentPath = ancestorTitles.filter(Boolean).slice(-2).join(' / ');
+  const parentPath = [projectNameForTask(task, projects), ...ancestorTitles]
+    .filter(Boolean)
+    .join(' / ');
+  const actions = createTaskBranchActions(task, key, { onToggle, onSelect, onStart });
   return (
     <div className={`task-tree-branch ${hasChildren ? 'is-parent' : 'is-leaf'}`} data-depth={depth}>
       <article
@@ -266,19 +269,24 @@ function TaskBranch({
             type="button"
             aria-label={open ? `收起 ${task.title} 的子任务` : `展开 ${task.title} 的子任务`}
             aria-expanded={open}
-            onClick={() => onToggle(key)}
+            onClick={actions.toggle}
           >
             {open ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
           </button>
         ) : (
           <span className="task-status-mark" aria-hidden="true" />
         )}
-        <button className="task-row-main" type="button" onClick={() => onSelect(task)}>
+        <button
+          className="task-row-main"
+          type="button"
+          aria-label={`选择 ${task.title}`}
+          onClick={actions.select}
+        >
           <span className="task-row-copy">
             <strong>{task.title}</strong>
             <small>
-              {depth >= 2 && parentPath
-                ? parentPath
+              {depth > 0 && parentPath
+                ? `父级 ${parentPath}`
                 : hasChildren
                   ? `${countSyncedTaskTree(task.children)} 项子任务`
                   : projectNameForTask(task, projects)}
@@ -290,7 +298,8 @@ function TaskBranch({
         <button
           className="task-start-button"
           type="button"
-          onClick={() => onStart(task)}
+          aria-label={`关联 ${task.title} 并开始专注`}
+          onClick={actions.start}
           disabled={!canStart}
           title={canStart ? '关联并开始专注' : '仅在待机且实时连接已确认时可开始'}
         >
@@ -322,46 +331,24 @@ function TaskBranch({
   );
 }
 
+export function createTaskBranchActions(
+  task: SyncedTask,
+  key: string,
+  handlers: {
+    onToggle: (key: string) => void;
+    onSelect: (task: SyncedTask) => void;
+    onStart: (task: SyncedTask) => void;
+  },
+) {
+  return {
+    toggle: () => handlers.onToggle(key),
+    select: () => handlers.onSelect(task),
+    start: () => handlers.onStart(task),
+  };
+}
+
 function treeContainsTask(nodes: readonly SyncedTaskTreeNode[], taskId: string): boolean {
   return nodes.some((node) => node.id === taskId || treeContainsTask(node.children, taskId));
-}
-
-function findTaskInForest(
-  nodes: readonly SyncedTaskTreeNode[],
-  taskId: string,
-): SyncedTaskTreeNode | null {
-  for (const node of nodes) {
-    if (node.id === taskId) return node;
-    const child = findTaskInForest(node.children, taskId);
-    if (child) return child;
-  }
-  return null;
-}
-
-function findTaskPath(
-  nodes: readonly SyncedTaskTreeNode[],
-  taskId: string,
-  ancestors: readonly SyncedTaskTreeNode[] = [],
-): SyncedTaskTreeNode[] | null {
-  for (const node of nodes) {
-    const path = [...ancestors, node];
-    if (node.id === taskId) return path;
-    const childPath = findTaskPath(node.children, taskId, path);
-    if (childPath) return childPath;
-  }
-  return null;
-}
-
-function flattenTree(nodes: readonly SyncedTaskTreeNode[]): SyncedTask[] {
-  const tasks: SyncedTask[] = [];
-  const visit = (items: readonly SyncedTaskTreeNode[]) => {
-    for (const item of items) {
-      tasks.push(item);
-      visit(item.children);
-    }
-  };
-  visit(nodes);
-  return tasks;
 }
 
 function formatSnapshotTime(timestamp: number): string {

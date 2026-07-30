@@ -1181,7 +1181,6 @@ export function MobileApp() {
                 onSelect={(task) => {
                   setSelectedTaskId(task.id);
                   setTitleDraft(task.title);
-                  setActiveView('focus');
                 }}
                 onStart={(task) => {
                   setSelectedTaskId(task.id);
