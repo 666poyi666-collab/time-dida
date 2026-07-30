@@ -72,6 +72,7 @@ describe('desktop history insights presentation', () => {
     expect(markup).toContain('完成 1 轮');
     expect(markup).toContain('24 小时时间轴');
     expect(markup).toContain('当日没有真实 focus 起点');
+    expect(markup).not.toContain('跨午夜复习 · 20 分钟');
     expect(markup).not.toContain('这段时间还没有专注记录');
   });
 

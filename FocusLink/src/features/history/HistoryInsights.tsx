@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useInView, useReducedMotion } from 'framer-motion';
 import type { SessionAnalyticsResult } from '@shared/ipc/api';
-import type { DayLedgerAnalytics, DayLedgerInterval } from '@shared/dayLedgerAnalytics';
+import type {
+  DayLedgerAnalytics,
+  DayLedgerInterval,
+  DayLedgerTask,
+} from '@shared/dayLedgerAnalytics';
 import { buildDashboardTaskAllocation } from '@shared/dashboardPresentation';
 import { Icon } from '../../ui/Icon';
 import { formatClock, formatMinutes } from '../../lib/time';
@@ -84,7 +88,7 @@ export function HistoryInsights({
   const singleDay = isSameLocalDay(range.start, range.end - 1);
   const isToday = singleDay && isSameLocalDay(range.start, Date.now());
   const tracked = Math.max(0, summary.active + summary.pause);
-  const dayLedgers = analytics?.dayLedgers ?? [];
+  const dayLedgers = useMemo(() => analytics?.dayLedgers ?? [], [analytics?.dayLedgers]);
   const selectedLedger = singleDay
     ? (dayLedgers.find(
         (item) => item.dayStartedAt === new Date(range.start).setHours(0, 0, 0, 0),
@@ -110,6 +114,27 @@ export function HistoryInsights({
   );
   const dashboardFocus = ledgerTotals.focusMs + ledgerTotals.estimatedFocusMs;
   const dashboardPause = ledgerTotals.pauseMs + ledgerTotals.estimatedPauseMs;
+  const effectiveTasks = useMemo(() => {
+    const taskMap = new Map<string, DayLedgerTask>();
+    for (const ledger of dayLedgers) {
+      for (const task of ledger.tasks) {
+        const current = taskMap.get(task.key);
+        taskMap.set(
+          task.key,
+          current
+            ? {
+                ...current,
+                activeMs: current.activeMs + task.activeMs,
+                segmentCount: current.segmentCount + task.segmentCount,
+              }
+            : { ...task },
+        );
+      }
+    }
+    return Array.from(taskMap.values()).sort(
+      (left, right) => right.activeMs - left.activeMs || left.title.localeCompare(right.title),
+    );
+  }, [dayLedgers]);
   const focusRate =
     ledgerTotals.observationMs > 0
       ? percentage(ledgerTotals.focusMs, ledgerTotals.observationMs)
@@ -211,7 +236,7 @@ export function HistoryInsights({
         ) : (
           <DailyActivityChart daily={analytics?.daily ?? []} />
         )}
-        <TaskAllocation analytics={analytics} totalActive={summary.active} />
+        <TaskAllocation tasks={effectiveTasks} totalActive={ledgerTotals.focusMs} />
       </div>
 
       <GapLedger ledger={selectedLedger} />
@@ -558,16 +583,10 @@ function DailyActivityChart({ daily }: { daily: SessionAnalyticsResult['daily'] 
   );
 }
 
-function TaskAllocation({
-  analytics,
-  totalActive,
-}: {
-  analytics: SessionAnalyticsResult | null;
-  totalActive: number;
-}) {
+function TaskAllocation({ tasks, totalActive }: { tasks: DayLedgerTask[]; totalActive: number }) {
   const allocation = useMemo(
-    () => buildDashboardTaskAllocation(analytics?.tasks ?? [], totalActive),
-    [analytics?.tasks, totalActive],
+    () => buildDashboardTaskAllocation(tasks, totalActive),
+    [tasks, totalActive],
   );
 
   return (

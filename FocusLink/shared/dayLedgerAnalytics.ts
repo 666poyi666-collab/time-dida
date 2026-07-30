@@ -17,6 +17,15 @@ export interface DayLedgerInterval {
   estimated: false;
 }
 
+export interface DayLedgerTask {
+  key: string;
+  taskId: string | null;
+  title: string;
+  activeMs: number;
+  segmentCount: number;
+  estimated: false;
+}
+
 export interface DayLedgerAnalytics {
   date: string;
   isToday: boolean;
@@ -29,6 +38,7 @@ export interface DayLedgerAnalytics {
   observationEndedAt: number;
   intervals: DayLedgerInterval[];
   gaps: DayLedgerInterval[];
+  tasks: DayLedgerTask[];
   totals: {
     focusMs: number;
     pauseMs: number;
@@ -199,7 +209,16 @@ function mergeIntervals(intervals: DayLedgerInterval[]): DayLedgerInterval[] {
   const merged: DayLedgerInterval[] = [];
   for (const interval of intervals) {
     const previous = merged.at(-1);
-    if (previous && previous.kind === interval.kind && previous.endedAt === interval.startedAt) {
+    const sameSources =
+      previous &&
+      previous.sourceIds.length === interval.sourceIds.length &&
+      previous.sourceIds.every((sourceId, index) => sourceId === interval.sourceIds[index]);
+    if (
+      previous &&
+      previous.kind === interval.kind &&
+      previous.endedAt === interval.startedAt &&
+      (interval.kind === 'gap' || sameSources)
+    ) {
       previous.endedAt = interval.endedAt;
       previous.durationMs += interval.durationMs;
       previous.sessionIds = Array.from(new Set([...previous.sessionIds, ...interval.sessionIds]));
@@ -209,6 +228,51 @@ function mergeIntervals(intervals: DayLedgerInterval[]): DayLedgerInterval[] {
     merged.push({ ...interval });
   }
   return merged;
+}
+
+function buildTaskAllocation(
+  intervals: readonly DayLedgerInterval[],
+  segments: readonly FocusSegment[],
+): DayLedgerTask[] {
+  const segmentsById = new Map(segments.map((segment) => [segment.id, segment] as const));
+  const taskMap = new Map<
+    string,
+    DayLedgerTask & {
+      segmentIds: Set<string>;
+    }
+  >();
+  for (const interval of intervals) {
+    if (interval.kind !== 'focus') continue;
+    const sources = interval.sourceIds
+      .map((sourceId) => segmentsById.get(sourceId))
+      .filter((segment): segment is FocusSegment => Boolean(segment));
+    if (sources.length === 0) continue;
+    const sourceShare = interval.durationMs / sources.length;
+    for (const segment of sources) {
+      const title = segment.title?.trim() || '未关联任务';
+      const key = segment.taskId
+        ? `${segment.taskSource ?? 'unknown'}:${segment.taskId}`
+        : `unlinked:${title}`;
+      const item =
+        taskMap.get(key) ??
+        ({
+          key,
+          taskId: segment.taskId,
+          title,
+          activeMs: 0,
+          segmentCount: 0,
+          estimated: false,
+          segmentIds: new Set<string>(),
+        } satisfies DayLedgerTask & { segmentIds: Set<string> });
+      item.activeMs += sourceShare;
+      item.segmentIds.add(segment.id);
+      item.segmentCount = item.segmentIds.size;
+      taskMap.set(key, item);
+    }
+  }
+  return Array.from(taskMap.values())
+    .map(({ segmentIds: _segmentIds, ...item }) => item)
+    .sort((left, right) => right.activeMs - left.activeMs || left.title.localeCompare(right.title));
 }
 
 function partitionObservation(
@@ -325,6 +389,7 @@ export function buildDayLedger(
   const estimated = estimatedFocusMs > 0 || estimatedPauseMs > 0;
   const status: DayLedgerStatus =
     observationStartedAt !== null ? 'observed' : estimated ? 'estimated-only' : 'not-started';
+  const tasks = buildTaskAllocation(intervals, source.segments);
   return {
     date: localDateKey(dayStartedAt),
     isToday,
@@ -337,6 +402,7 @@ export function buildDayLedger(
     observationEndedAt,
     intervals,
     gaps: intervals.filter((interval) => interval.kind === 'gap'),
+    tasks,
     totals,
     estimated,
   };

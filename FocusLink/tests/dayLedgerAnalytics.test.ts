@@ -86,6 +86,16 @@ describe('buildDayLedger effective-day contract', () => {
       ['gap', 2 * HOUR],
     ]);
     expect(result.gaps).toHaveLength(1);
+    expect(result.tasks).toEqual([
+      {
+        key: 'unlinked:未关联任务',
+        taskId: null,
+        title: '未关联任务',
+        activeMs: 50 * MINUTE,
+        segmentCount: 1,
+        estimated: false,
+      },
+    ]);
     expect(result.totals).toEqual({
       focusMs: 50 * MINUTE,
       pauseMs: 10 * MINUTE,
@@ -153,6 +163,7 @@ describe('buildDayLedger effective-day contract', () => {
 
     expect(result.observationStartedAt).toBe(at(7));
     expect(result.totals.focusMs).toBe(HOUR);
+    expect(result.tasks.reduce((total, task) => total + task.activeMs, 0)).toBe(HOUR);
     expect(result.intervals.at(-1)).toMatchObject({ kind: 'focus', endedAt: at(22) });
   });
 });
@@ -214,6 +225,7 @@ describe('buildDayLedger interval normalization', () => {
     expect(result.observationStartedAt).toBe(at(7));
     expect(result.totals.focusMs).toBe(30 * MINUTE);
     expect(result.totals.gapMs).toBe(14.5 * HOUR);
+    expect(result.tasks[0].activeMs).toBe(30 * MINUTE);
   });
 
   it('extends a real running segment to now and an open pause to now when paused', () => {
@@ -255,6 +267,7 @@ describe('buildDayLedger interval normalization', () => {
     expect(result.estimated).toBe(true);
     expect(result.observationStartedAt).toBeNull();
     expect(result.intervals).toEqual([]);
+    expect(result.tasks).toEqual([]);
     expect(result.totals).toMatchObject({
       focusMs: 0,
       pauseMs: 0,
