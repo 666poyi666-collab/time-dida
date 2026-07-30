@@ -13,6 +13,7 @@ const serviceState = vi.hoisted(() => ({
   oauthProjects: [] as Project[],
   oauthTasks: [] as Task[],
   oauthSetCompleted: vi.fn(),
+  publishTaskSnapshot: vi.fn(async () => true),
 }));
 
 vi.mock('../electron/settingsStore.js', () => ({
@@ -57,6 +58,10 @@ vi.mock('../electron/integrations/ticktick/oauthAdapter.js', () => ({
   },
 }));
 
+vi.mock('../electron/sync/deviceSyncService.js', () => ({
+  publishDeviceTaskSnapshot: serviceState.publishTaskSnapshot,
+}));
+
 import { refreshTaskWorkspace, setTaskCompleted } from '../electron/tasks/workspaceService';
 import { ticktickCliProvider } from '../electron/tasks/cliProvider';
 
@@ -89,6 +94,7 @@ beforeEach(() => {
   serviceState.oauthProjects = [];
   serviceState.oauthTasks = [];
   serviceState.oauthSetCompleted.mockReset();
+  serviceState.publishTaskSnapshot.mockClear();
 });
 
 describe('task workspace service', () => {
@@ -127,6 +133,11 @@ describe('task workspace service', () => {
       completedDays: 14,
       force: true,
     });
+    expect(serviceState.publishTaskSnapshot).toHaveBeenCalledWith(
+      serviceState.cliProjects,
+      serviceState.cliTasks,
+      expect.any(Number),
+    );
   });
 
   it('returns an explicit CLI detection failure instead of an empty task list', async () => {
@@ -148,6 +159,11 @@ describe('task workspace service', () => {
       ok: true,
       data: { provider: 'ticktick-oauth', tasks: serviceState.oauthTasks },
     });
+    expect(serviceState.publishTaskSnapshot).toHaveBeenCalledWith(
+      serviceState.oauthProjects,
+      serviceState.oauthTasks,
+      expect.any(Number),
+    );
   });
 
   it('keeps the provider error detail when a CLI refresh fails', async () => {

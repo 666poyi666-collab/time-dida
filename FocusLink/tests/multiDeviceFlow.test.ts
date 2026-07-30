@@ -132,19 +132,26 @@ describe('PC-off multi-device focus flow', () => {
     ).json()) as LiveFocusCommandResponse;
     expect(resume.ack.status).toBe('applied');
 
+    const finishBody = {
+      protocolVersion: 1,
+      deviceId: 'tablet',
+      command: {
+        commandId: 'finish-tablet',
+        action: 'finish',
+        expectedRevision: 3,
+        sessionId: 'session-phone',
+      },
+    };
     const finish = (await (
-      await request('/v1/live/command', 'POST', {
-        protocolVersion: 1,
-        deviceId: 'tablet',
-        command: {
-          commandId: 'finish-tablet',
-          action: 'finish',
-          expectedRevision: 3,
-          sessionId: 'session-phone',
-        },
-      })
+      await request('/v1/live/command', 'POST', finishBody)
     ).json()) as LiveFocusCommandResponse;
     expect(finish.ack).toMatchObject({ status: 'applied', completedEntityId: 'session-phone' });
+    expect(finish.snapshot).toMatchObject({ revision: 4, state: 'idle' });
+
+    const duplicateFinish = (await (
+      await request('/v1/live/command', 'POST', finishBody)
+    ).json()) as LiveFocusCommandResponse;
+    expect(duplicateFinish.ack).toMatchObject({ status: 'duplicate', revision: 4 });
 
     const ledger = (await (
       await request('/v1/sync', 'POST', {
@@ -161,11 +168,24 @@ describe('PC-off multi-device focus flow', () => {
       defaultTaskId: 'task-chemistry',
       defaultTaskSource: 'ticktick',
     });
-    expect(ledger.changes[0]?.payload?.segments.length).toBeGreaterThan(0);
+    expect(ledger.changes[0]?.payload?.segments).toHaveLength(2);
+    expect(ledger.changes[0]?.payload?.pauses).toHaveLength(1);
     expect(
       ledger.changes[0]?.payload?.segments.every(
         (segment) => segment.taskId === 'task-chemistry' && segment.taskSource === 'ticktick',
       ),
     ).toBe(true);
+
+    const caughtUp = (await (
+      await request('/v1/sync', 'POST', {
+        protocolVersion: DEVICE_SYNC_PROTOCOL_VERSION,
+        deviceId: 'pc-after-restart',
+        cursor: ledger.nextCursor,
+        mutations: [],
+        pullLimit: 500,
+      })
+    ).json()) as DeviceSyncResponse;
+    expect(caughtUp.changes).toEqual([]);
+    expect(caughtUp.nextCursor).toBe(ledger.nextCursor);
   });
 });
