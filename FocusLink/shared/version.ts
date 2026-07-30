@@ -2,6 +2,6 @@
 // commit/buildTime 由 scripts/build/gen-version.js 在 build 时生成到 version.generated.ts
 import { APP_COMMIT, APP_BUILD_TIME } from './version.generated';
 
-export const APP_VERSION = '0.12.72';
-export const APP_RELEASE_DIR = 'release-v01272';
+export const APP_VERSION = '0.12.73';
+export const APP_RELEASE_DIR = 'release-v01273';
 export { APP_COMMIT, APP_BUILD_TIME };
