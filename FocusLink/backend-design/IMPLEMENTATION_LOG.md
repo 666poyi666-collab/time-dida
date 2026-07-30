@@ -5,10 +5,10 @@
 - 桌面 correction 使用已结束账本时间生成稳定 payload/opId；同步前只修复旧缺陷留下的 correction outbox/ACK conflict，保留操作审计。Account DO 仅把 createdAt 漂移视为 semantic duplicate，并要求历史 conflict 同时满足无 base、纯 revision 和双侧内容匹配才关闭。
 - Electron 运行期不再启动内嵌同步服务、ADB reverse 或 Android 自动配对。手机/平板仍直接连接 canonical HTTPS Account DO；独立 staging Android identity 和硬编码 staging endpoint 已移除，候选 endpoint 只能由构建参数注入。
 - 私有 Account DO records DTO 返回已校正 session、任务、segments、pauses、结束时间及 cloud live，删除 deviceId、note、tags、reason 和凭据。cloud MCP 的 status/today/list 工具直接读取该 DTO；D1 保留为同步诊断。
-- FocusLink-only OAuth 轮换使用临时 capability：OAuth Worker 内计算并登记新 HMAC，脚本只更新 `foxlink-cloud-mcp` secret，验证 introspection/readyz 后删除 capability；不轮换 Journal、Watch、Gateway 或 App。
+- FocusLink-only OAuth 轮换使用临时 capability：OAuth Worker 内计算并登记新 HMAC，脚本只更新 `foxlink-cloud-mcp` secret，验证 introspection/readyz 后删除 capability；不轮换 Journal、Watch、Gateway 或 App。生产 OAuth 恢复到健康版本 `c5be709d-c084-49d2-8e54-23760a06b51e`，轮换端点在 capability 销毁后返回 404。
 - Account DO 冷启动增加 `account_schema_version` 常量行快路径，避免大账户每次唤醒重放 schema/index DDL而触发 Cloudflare 免费层行读取上限；live 完成同时发布 v1 bundle 与 v2 ledger/metadata，并有界补迁移历史 v1-only 完成账本。生产 Version ID 为 `c17d90b8-2501-4e0a-b578-cd0505b8e9db`。
 - 生产实机闭环在 Windows FocusLink 关闭时完成：小米发起、华为暂停、小米继续、华为结束；华为再发起、小米观察并结束。最终 live 为 idle、revision 62；两端看到同一两条账本（小米 2 segments/1 pause，华为 1 segment/0 pause）。Windows 重启和第二轮自动同步后两条记录各导入一次，既有 correction outbox/open conflict 基线不增长。
-- ChatGPT 经 FocusLink 云端 OAuth 实际调用 status/today/list；在本地 FocusLink、两个 Foxlink 服务及 8770/8878 监听全部关闭时，三个工具仍从 `focuslink-account-do` 返回 fresh、revision 62、live idle 和当天 2 条完整记录。验证后独立 Foxlink 服务恢复 Running/Automatic。Windows、小米、华为与 OPPO 手表均实装并回读 `0.12.70/1270`；物理关闭整台 Windows 的验收未执行，不能把桌面进程关闭描述为整机关机。
+- ChatGPT 经 FocusLink 云端 OAuth 实际调用 status/today/list；在本地 FocusLink、两个 Foxlink 服务及 8770/8878 监听全部关闭时，三个工具仍从 `focuslink-account-do` 返回 fresh、revision 62、live idle 和当天 2 条完整记录。生产移动域名 cloud MCP Worker Version ID 为 `5ce44467-e209-4780-8cc4-72297470ed48`。验证后独立 Foxlink 服务恢复 Running/Automatic。Windows、小米、华为与 OPPO 手表均实装并回读 `0.12.70/1270`；物理关闭整台 Windows 的验收未执行，不能把桌面进程关闭描述为整机关机。
 
 ## 2026-07-29 · v0.12.69 中央 canonical identity-focus 对齐
 

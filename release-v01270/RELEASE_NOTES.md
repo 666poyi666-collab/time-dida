@@ -1,6 +1,6 @@
 # FocusLink v0.12.70
 
-- 发布类型：本地安装候选
+- 发布类型：生产云已验收的本地安装候选（未创建 GitHub Release）
 - 验证状态：自动化、生产部署、四端安装、跨设备实机闭环与云端 MCP 已通过；物理关机验收未执行
 - 对应源码：`1fadcf9`
 
@@ -9,7 +9,7 @@
 - Cloudflare Account Durable Object 成为电脑、手机和平板的唯一同步 authority；Electron 不再运行 ADB reverse、自动 Android 配对或本机回环同步中继。
 - correction payload、correctionId 与 opId 固定为稳定值；重复 correction 不再制造 revision conflict，历史缺陷只精确关闭可确认的合成冲突。
 - 手机和平板打开且在线时直接读写云端 live；离线完成账本保存在本机并在联网后补传，云端已有其他 live 时保留明确 fork conflict。
-- ChatGPT 的 FocusLink MCP 直接读取 Account DO 的已校正记录与 live，返回 task、segments、pauses、暂停时长和结束时间；OAuth 继续只授予 `focuslink:read`。
+- ChatGPT 的 FocusLink MCP 直接读取 Account DO 的已校正记录与 live，返回 task、segments、pauses、暂停时长和结束时间；FocusLink resource-server 凭据完成定向轮换，`oauth_introspection_unavailable` 已恢复，OAuth 继续只授予 `focuslink:read`，没有写工具。
 - 移除独立 staging 产品身份和验收阶段；本版本所有剩余验证直接针对生产云端执行。
 
 ## 验证摘要

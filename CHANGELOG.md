@@ -5,7 +5,7 @@
 - **稳定 correction 与精确修复**：桌面 correction 的 `createdAt`、`correctionId` 和 `opId` 改为稳定值；已确认 correction 不再重复入队。启动同步时只清理旧缺陷生成的 `baseRevision=0` revision-conflict 行，保留操作审计、账本和真实冲突。
 - **Account DO 唯一 authority**：Account DO 将除 `createdAt` 外完全一致的历史 correction 识别为 duplicate，并只关闭无 base、纯 revision、内容匹配的历史合成冲突；metadata、删除、账本字段差异和跨设备 fork 继续保留冲突。
 - **电脑不再是中继**：移除 Electron 运行期 ADB reverse、Android 自动配对和内嵌回环同步服务；旧 loopback 配置不会迁移凭据，必须重新走云端配对。手机和平板继续直接读写 canonical HTTPS authority，离线完成账本保持本机 pending，联网后补传。
-- **ChatGPT 云端 MCP**：新增私有 Account DO 记录接口，直接提供已校正 session、任务、segments、pauses、暂停时长、结束时间与当前 live；状态、今日汇总和记录列表不再读取 D1 投影，且不输出 deviceId、note、tags 或凭据。OAuth 仍仅授权 `focuslink:read`，没有写工具。
+- **ChatGPT 云端 MCP**：新增私有 Account DO 记录接口，直接提供已校正 session、任务、segments、pauses、暂停时长、结束时间与当前 live；状态、今日汇总和记录列表不再读取 D1 投影，且不输出 deviceId、note、tags 或凭据。修复 FocusLink resource-server 凭据不一致导致的 `oauth_introspection_unavailable`，OAuth 仍仅授权 `focuslink:read`，没有写工具；轮换用临时 capability 已在验证后销毁。
 - **单一云端版本**：版本提升为 `0.12.70/1270`，移除 Android 独立 staging 应用身份和硬编码 staging 数据面；本版本不设置 staging 验收阶段，所有验证直接针对生产云端。Account DO 冷启动使用常量行 schema 标记，不再因重复扫描全部索引触发免费层行数限制；live 结束同时写 v1 兼容账本和 v2 ledger/metadata，并有界补迁移历史 v1-only 记录。
 - **生产验收**：Windows FocusLink 关闭时，小米发起、华为暂停、小米继续、华为结束，以及华为发起、小米观察并结束均通过；云端最终 `live=idle`、revision `62`，两端各看到同一两条账本。Windows 重启并连续同步后两条记录各导入一次，既有 correction outbox/open conflict 基线不增长。ChatGPT 在本地 FocusLink/Foxlink 服务及 8770/8878 监听全部关闭时，仍通过 OAuth 从 Account DO 读到当天 2 条完整 records、segments、pauses 与 live。Windows、小米、华为和 OPPO 手表均实际安装并回读 `0.12.70/1270`；整机物理断电验收未执行，不把“桌面进程关闭”写成“电脑已关机”。
 
