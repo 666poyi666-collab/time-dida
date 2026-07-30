@@ -1,5 +1,11 @@
 # FocusLink 实施日志
 
+## 2026-07-30 · v0.12.72 桌面开始专注与仪表完整显示收口
+
+- 0.12.71 首次干净 `win-unpacked` smoke 精确测得游标标尺 dial `189.24px`、frame `179.50px`，右溢出 `9.74px`；该候选未安装。预览宽度收至 `176px`，smoke 保存九卡 frame/dial 坐标并要求全部在界内。
+- UI smoke 的 STOP 由直接 CDP/contextBridge Promise 调用改为点击真实 `.btn-stop-action`；主进程已成功 STOP 时不再因桥 Promise 悬挂误判产品失败。Android emulator 显式安装 target/test APK、授予 overlay 后 18/18 instrumentation 通过。
+- 0.12.72 继承 0.12.71 移动端重构及 Windows `fl2` device binding、本地开始降级、全状态磨砂时间之带和结构化日志修复；最终安装矩阵在正式包生成后补录。
+
 ## 2026-07-30 · v0.12.71 手机与平板工业时间仪器重构
 
 - 移动 renderer 改为深墨设备框架、暖白连续工作面与翡翠校准线；四入口、真实计时/账本/任务/同步语义均未改变。手机首屏按主读数、任务输入、112px 时间之带顺读，深色粘底操作条固定在 68px 底部导航之上。

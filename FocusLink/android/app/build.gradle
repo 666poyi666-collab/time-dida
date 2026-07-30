@@ -10,8 +10,8 @@ android {
         applicationId "app.focuslink.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1271
-        versionName "0.12.71"
+        versionCode 1272
+        versionName "0.12.72"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "DEFAULT_SYNC_ENDPOINT", '""'
         manifestPlaceholders = [pairScheme: "focuslink"]
