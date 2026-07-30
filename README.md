@@ -94,11 +94,15 @@ Android 壳只提供可见前台通知、暂停/继续/结束动作、快捷设�
 或番茄 To-do 投递，也没有接管 Electron 桌面计时；结束账本同步回桌面后，第三方投递仍需在桌面端
 真实操作并确认。
 
-`FocusLink/cloud/` 目前是 loopback-first 测试后端，不具备生产账号、备份、监控或多实例能力；
-启动必须显式设置测试 token，禁止公开部署。当前多端控制通过回环测试服务验证，不等于公共云已
-上线，也不能替代桌面端的本地账本、任务关联和第三方同步能力。
+`FocusLink/cloud/` 只保留 loopback-first 合同测试后端，启动必须显式设置测试 token，禁止公开部署。
+生产客户端固定访问 canonical HTTPS gateway 与私有 Account DO authority，不运行内嵌同步服务、ADB
+reverse 或 LAN bearer。现有 `fl2` 设备凭据可继续同步；全新设备的公网账号 bootstrap 在 gateway 真正
+部署前会明确报告 `not-deployed`，不能把本地合同测试冒充为已经上线。
 
-如果安装后看到 `timer:start-with-task` / `TypeError: fetch failed`，通常是开启了「PC 参与实时专注」但本地测试服务没有启动。本机测试服务默认地址是 `http://127.0.0.1:18787`，Windows 安装包不会自动启动它；首次实时握手成功前桌面计时会保持本地可用，已确认云端为空闲而后续断线时也会自动回到本机计时，活动云端会话则继续锁定云端事实源。地址、健康检查和错误编号见 [同步错误索引](FocusLink/backend-design/SYNC_TROUBLESHOOTING.md)。
+如果安装后看到 `timer:start-with-task` / `TypeError: fetch failed`，应先确认设备仍登录同一 FocusLink
+管理员账号并运行 `npm run probe:account-bootstrap` 区分连接故障与 gateway 未部署。首次实时握手成功前
+桌面计时保持本地可用；已确认云端为空闲而后续传输失败时也会自动回到本机计时，活动云端会话则继续
+锁定云端事实源。状态、健康检查和错误编号见 [同步错误索引](FocusLink/backend-design/SYNC_TROUBLESHOOTING.md)。
 
 三个同步域互相独立。本地任务关联、FocusLink 多端账本、滴答投递和番茄上传在界面上使用不同状态文案。
 
@@ -112,7 +116,7 @@ Android 壳只提供可见前台通知、暂停/继续/结束动作、快捷设�
 - 统计页重构为顺读日报：结论与四项 KPI、带全天定位的活跃时段双车道、多日专注/暂停堆叠日柱、百分比守恒的任务构成带和暂停损耗；最近会话只保留下方唯一账本。
 - 沉浸模式以原生全屏呈现当前任务、仪表、累计三项、控制与占屏 36% 的时间之带，进入使用 520ms 收束展开过渡，Esc 退出。
 - renderer 无响应时在有界预算内受控重载，主进程计时不中断；日志保留 Error 的 name/message/stack/cause，托盘与 snapshot 监听只初始化一次。
-- 小窗尺寸保持收起 `184×35`、展开 `256×70`；展开态以主时间/60 格秒轨和三项累计/控制组成紧密双区，完整任务与窗口操作保留在上栏。暂停粒子复用主时间之带的确定性消散模型，从真实秒轨前沿分批漂移、缩小并熄灭；长任务名在字体切换后重新测量。拖拽释放后先吸附，再播放 320ms 收束过渡后折叠。
+- 小窗尺寸保持收起 `184×44`、展开 `256×70`；展开态以主时间/60 格秒轨和三项累计/控制组成紧密双区，完整任务与窗口操作保留在上栏。暂停粒子复用主时间之带的确定性消散模型，从真实秒轨前沿分批漂移、缩小并熄灭；长任务名在字体切换后重新测量。拖拽释放后先吸附，再播放 320ms 收束过渡后折叠。
 
 ## 项目结构
 
@@ -180,13 +184,11 @@ RELEASE_NOTES.md
 
 | 版本 | 本地安装版 | 版本说明 |
 | --- | --- | --- |
-| 0.12.61 | Foxlink 独立 MCP 打包收口；Windows 业务 API 随桌面应用启动 | [v0.12.61](release-v01261/RELEASE_NOTES.md) |
-| 0.12.60 | 本地 Sync v2 候选；Outbox、合并、设备身份、冲突/回收站、Queue 与灾备协议 | [v0.12.60](release-v01260/RELEASE_NOTES.md) |
-| 0.12.53 | 本地验收版本；公网同步、三端验收与原位覆盖安装已完成 | [v0.12.53](release-v01253/RELEASE_NOTES.md) |
-| 0.12.47 | 本地中间版本；发现覆盖安装缺陷，已由 0.12.53 取代 | [v0.12.47](release-v01247/RELEASE_NOTES.md) |
-| 0.12.46 | 本地候选；真机完整门禁未完成 | [v0.12.46](release-v01246/RELEASE_NOTES.md) |
+| 0.12.73 | 账号同步竞态加固、任务快照 freshness、共享有效日账本与移动端界面收口 | [v0.12.73](release-v01273/RELEASE_NOTES.md) |
+| 0.12.72 | 单账号 canonical 同步与 Windows/Android 四端实装 | [v0.12.72](release-v01272/RELEASE_NOTES.md) |
+| 0.12.70 | 云端三端实时控制、MCP 投影与真实 PC 进程关闭验收 | [v0.12.70](release-v01270/RELEASE_NOTES.md) |
 
-每次版本迭代必须同步更新 `CHANGELOG.md`、本地 `RELEASE_NOTES.md` 和 GitHub Release，并上传安装版、便携版与 SHA256。只推送代码或 tag 不算发布完成。
+每次版本迭代必须同步更新 `CHANGELOG.md`、本地 `RELEASE_NOTES.md`、四文件发布目录与 Android APK 备份，并推送 GitHub `main`。只有用户明确要求时才创建公开 tag、上传资产和 GitHub Release；该正式发布流程中只推送代码或 tag 不算发布完成。
 
 v0.12.11 因校验表格式被阻断；v0.12.12 的源码、回归和便携版门禁已通过，但 GitHub Windows runner 上 NSIS 连续两次出现已知的瞬时访问冲突。公开 tag 均保持不移动，v0.12.13 保留真实安装验收并增加有界重试与递增退避。线上状态以 GitHub Releases 回读结果为准。
 
@@ -208,7 +210,7 @@ v0.12.11 因校验表格式被阻断；v0.12.12 的源码、回归和便携版�
 
 ### 当前发布
 
-- [v0.12.61 Foxlink 独立 MCP 本地版本说明](release-v01261/RELEASE_NOTES.md)
+- [v0.12.73 账号同步加固与有效日账本版本说明](release-v01273/RELEASE_NOTES.md)
 - [版本历史](CHANGELOG.md)
 
 ## License

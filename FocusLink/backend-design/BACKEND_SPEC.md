@@ -209,8 +209,8 @@ revision、服务端单调 change sequence 与不透明 cursor。规则如下：
 - 服务端以 `(account, opId)` 去重；稳定 `opId` 同时包含实体、正文与 `baseRevision`，相同 op 重放返回 `duplicate`，`baseRevision` 过期返回 `conflict`，不使用客户端 `updatedAt` 静默覆盖。
 - Electron 以 SQLite 完成会话为耐久事实源，网络失败后下次重新扫描补传；cursor、每个会话的已确认 revision/fingerprint 与未解决冲突写入同一个原子 `app_meta` 检查点。检查点按“规范化 endpoint + token 的不可逆摘要”分区，切换服务/账号不得复用旧状态；服务明确返回 `invalid_cursor` 时清理当前分区并完整重试一次。Web/PWA/Android 若从旧安装或旧账号缓存恢复出无效 cursor，也必须识别结构化 `invalid_cursor` 错误码，清空该设备的旧账本缓存并从空 cursor 重建一次；禁止保留旧账号会话或按错误文本无限重试。
 - Android/Web 的本机离线会话使用同一 completed bundle 协议，不新增移动端业务服务。活动草稿和待上传 bundle 分开存入 IndexedDB；结束操作必须在一个事务中写入稳定 `opId` 的 pending 记录并删除活动草稿。每次在线账本拉取前先串行补传 pending，只有 `applied/duplicate` 删除，`conflict/rejected` 或网络失败保留；普通“清缓存”不得删除 pending。移动端应用沙箱保护账本，Android token 仍只存 Keystore，Electron token 仍只存 `safeStorage`，日志、overlay 和通知均不得输出令牌或 endpoint。
-- Windows 登录项的有效策略为“用户显式自动启动”或“跨设备同步已启用且 autoSync 已启用”。后一种情况必须隐藏启动并常驻托盘；睡眠恢复后重新确认回环服务、ADB bridge 并立即跑一次同步。回环开发后端只监听 `127.0.0.1:18787`，不得为了手机发现而开放 LAN。
-- 对已授权且当前 `adb devices` 状态为 `device` 的 Android 设备，Electron 可用 `execFile` 参数数组每 30 秒及恢复后刷新 `adb -s <serial> reverse tcp:18787 tcp:18787`；不得扫描局域网、自动授权未知设备或把该桥接描述为异地生产同步。异地同步仍要求 HTTPS 个人云。
+- Windows 登录项的有效策略为“用户显式自动启动”或“跨设备同步已启用且 autoSync 已启用”。后一种情况必须隐藏启动并常驻托盘；睡眠恢复后重新确认 canonical HTTPS 连接并立即跑一次同步。回环开发后端只允许测试进程显式启动并监听 `127.0.0.1:18787`，不得由 Electron 自动启动或开放 LAN。
+- ADB 只用于显式构建、安装、版本回读和 instrumentation；Electron 运行期不得枚举设备、维护 `adb reverse`、自动配对或把手机流量中继到本机测试后端。生产移动端始终直连 canonical HTTPS authority。
 - 拉回的全新会话在一个 SQLite 事务中插入 session/segments/pauses；不会自动触发 dida 或 TomaToDo 副作用。同一次 cursor catch-up 的所有响应页先在内存按实体折叠到最新 revision，完整收敛后才写 SQLite 与原子检查点；中途断网不会暴露旧 revision。拉取完成后的既有记录或已改动的同 ID 正文写入耐久冲突箱。冲突未解决时界面不得清空错误或宣称完全收敛。
 - 服务端对 cursor 之后同一实体的多次历史 revision 先折叠为最新状态，再按 change sequence、条数与响应字节预算分页；全新设备不得先导入旧 revision 再把同一批历史误判为本地冲突。
 - 当前桌面端不执行远端删除，也不自动覆盖已有会话；删除/编辑冲突需要后续显式清理与合并流程。
@@ -325,4 +325,4 @@ Account DO 保存实体、revision、reservation/result、change feed、任务�
 - 番茄变化：分别验证后台不启动外部应用、手动同步在未运行时用参数数组和端口 0 按需启动、已普通运行时绝不杀进程、身份校验、上传接口确认、学科修改和本地 marker 删除；独立云端回读/远端删除只有 API 真正提供后才能加入门禁。
 - 小窗变化：同步 shared 常量、settings 迁移、Electron bounds、CSS 和 smoke；不把数字复制到文档以外的多处代码。
 - 统计/生命周期变化：覆盖详情 request id、tick 渲染边界、renderer 恢复预算、Error 序列化和托盘监听幂等性。
-- 发布变化：执行 [TEST_AND_RELEASE.md](TEST_AND_RELEASE.md) 的全部门禁并创建 GitHub Release。
+- 发布变化：执行 [TEST_AND_RELEASE.md](TEST_AND_RELEASE.md) 的全部门禁并推送 `main`；只有用户明确要求时才创建公开 tag 和 GitHub Release。

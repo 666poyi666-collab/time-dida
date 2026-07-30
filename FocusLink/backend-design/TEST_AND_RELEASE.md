@@ -131,7 +131,7 @@ adb -s <serial> shell am instrument -w -r \
 一份完整会话，前台通知消失。断开一台网络后应保留缓存并标为离线推算，恢复后收敛；最后检查 logcat 无 crash、
 ANR、ForegroundServiceStartNotAllowedException 或通知通道错误。
 
-Android 真机还必须分别在手机和平板验证：任务父子叠层及 44px 展开命中、开始前树序任务选择、running/paused 时间之带在首分钟不会铺满且刻度可读；显式授予 overlay 后回到系统桌面，左上角计时逐秒更新并可点击回到 App，结束后消失。拒绝或撤销 overlay 权限时应用应继续通过通知工作且不崩溃。PC 服务停止期间完成一场本机离线会话，重启 PC/恢复 reverse 后必须自动补传并在两端账本中只出现一次。
+Android 真机还必须分别在手机和平板验证：任务父子叠层及 44px 展开命中、开始前树序任务选择、running/paused 时间之带在首分钟不会铺满且刻度可读；显式授予 overlay 后回到系统桌面，左上角计时逐秒更新并可点击回到 App，结束后消失。拒绝或撤销 overlay 权限时应用应继续通过通知工作且不崩溃。Windows FocusLink 进程停止期间，手机开始、平板暂停、手机继续、平板结束必须仍由 canonical authority 收敛为一份 `2 segments + 1 pause` 账本；Windows 重启并同步后只能导入一次，不得配置或恢复 ADB reverse。
 
 ### UI smoke
 
