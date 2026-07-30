@@ -130,6 +130,8 @@ Provider 的稳定能力应包括：
 - 慢请求使用 request id 或版本防止旧响应覆盖新状态。
 - `sessions.analytics(range)` 是严格只读、范围有界的统计接口。数据库必须选择与范围相交的会话，而不是只按 `started_at` 落点筛选；共享聚合器按自然日裁切 Session、Segment 与 PauseEvent，跨午夜/跨月/跨年数据不得整段归到开始日。该接口不得修改计时、同步队列或外部服务状态。
 - `shared/dayLedgerAnalytics.ts` 是有效日与空档分析的唯一纯函数真值，结果通过 `SessionAnalyticsResult.dayLedgers` 暴露给桌面与移动 renderer。默认有效日为 07:00–22:00；观察起点只认真实 segment 边界，pause 以真实 `PauseEvent` 为准并在重叠时优先分类，gap 只在内存中由观察区间内 focus/pause 并集的补集推导，禁止新增 gap 表或同步实体。三类精确时长必须满足 `focus + pause + gap = observation`。
+- `DayLedgerAnalytics.tasks` 必须从同一批已裁切、pause 优先的 focus 区间聚合，任务总量与有效专注 KPI 使用同一窗口；缺少可定位 segment 的旧记录只能作为 `estimated` legacy 余量展示，不能把自然日整段时长重新混入任务分配。
+- `DayLedgerAnalytics.sessionFocus` 提供同一有效日窗口内的逐会话 focus，供“最长一轮”等 KPI 跨日合并；精确行来自已分区 focus，旧会话只保留按有效窗口裁切的 estimated share。estimated 不得与精确 gap 相加后伪装成同一观察区间或三分类柱高。
 - 当天 open segment 可在活动 Session 中延伸到 `min(now, 22:00)`，open PauseEvent 代表 paused 尾段；历史 open 行和缺少 Segment/PauseEvent 的旧会话不得伪造起止，只输出 `estimatedFocusMs/estimatedPauseMs` 与 `estimated=true`。跨午夜、重叠、DST 本地日、历史/今天均由共享纯函数裁切；00–07 与 22–24 不进入统计区间。
 - 统计会话详情同时核对 request id 和当前展开 session id；路由卸载会使所有未完成详情请求失效。失败必须清理当前 loading 并保留行内可重试错误，不得产生 unhandled rejection。
 - 统计 renderer 只订阅当前 session id 和 timer state 等原子值，不因 `activeElapsedMs` 每秒变化而重渲染整份历史列表。

@@ -68,7 +68,18 @@ describe('buildDayLedger effective-day contract', () => {
     expect(result.status).toBe('not-started');
     expect(result.observationStartedAt).toBeNull();
     expect(result.intervals).toEqual([]);
+    expect(result.sessionFocus).toEqual([]);
     expect(result.totals).toMatchObject({ focusMs: 0, pauseMs: 0, gapMs: 0, observationMs: 0 });
+  });
+
+  it('keeps the literal today endpoint before 07:00 without creating a negative window', () => {
+    const result = buildDayLedger({ day, now: at(6) }, { sessions: [], segments: [], pauses: [] });
+
+    expect(result.effectiveStartedAt).toBe(at(7));
+    expect(result.effectiveEndedAt).toBe(at(6));
+    expect(result.observationEndedAt).toBe(at(6));
+    expect(result.status).toBe('not-started');
+    expect(result.intervals).toEqual([]);
   });
 
   it('starts at the first real focus and ends at now today, including trailing gap', () => {
@@ -95,6 +106,9 @@ describe('buildDayLedger effective-day contract', () => {
         segmentCount: 1,
         estimated: false,
       },
+    ]);
+    expect(result.sessionFocus).toEqual([
+      { sessionId: 'session-1', focusMs: 50 * MINUTE, estimated: false },
     ]);
     expect(result.totals).toEqual({
       focusMs: 50 * MINUTE,
@@ -164,7 +178,75 @@ describe('buildDayLedger effective-day contract', () => {
     expect(result.observationStartedAt).toBe(at(7));
     expect(result.totals.focusMs).toBe(HOUR);
     expect(result.tasks.reduce((total, task) => total + task.activeMs, 0)).toBe(HOUR);
+    expect(result.sessionFocus).toEqual([
+      { sessionId: 'early', focusMs: 30 * MINUTE, estimated: false },
+      { sessionId: 'late', focusMs: 30 * MINUTE, estimated: false },
+    ]);
     expect(result.intervals.at(-1)).toMatchObject({ kind: 'focus', endedAt: at(22) });
+  });
+
+  it('treats exact 07:00 and 22:00 as hard inclusion and exclusion boundaries', () => {
+    const sessions = [
+      session({
+        id: 'before',
+        startedAt: at(6, 30),
+        endedAt: at(7),
+        activeElapsedMs: 30 * MINUTE,
+        pauseElapsedMs: 0,
+        wallElapsedMs: 30 * MINUTE,
+      }),
+      session({
+        id: 'opening',
+        startedAt: at(7),
+        endedAt: at(7, 30),
+        activeElapsedMs: 30 * MINUTE,
+        pauseElapsedMs: 0,
+        wallElapsedMs: 30 * MINUTE,
+      }),
+      session({
+        id: 'closing',
+        startedAt: at(21, 30),
+        endedAt: at(22),
+        activeElapsedMs: 30 * MINUTE,
+        pauseElapsedMs: 0,
+        wallElapsedMs: 30 * MINUTE,
+      }),
+      session({
+        id: 'after',
+        startedAt: at(22),
+        endedAt: at(22, 30),
+        activeElapsedMs: 30 * MINUTE,
+        pauseElapsedMs: 0,
+        wallElapsedMs: 30 * MINUTE,
+      }),
+    ];
+    const result = buildDayLedger(
+      { day, now: day + 24 * HOUR },
+      {
+        sessions,
+        segments: sessions.map((item) =>
+          segment({
+            id: `${item.id}-segment`,
+            sessionId: item.id,
+            startedAt: item.startedAt,
+            endedAt: item.endedAt,
+            activeElapsedMs: 30 * MINUTE,
+          }),
+        ),
+        pauses: [],
+      },
+    );
+
+    expect(result.observationStartedAt).toBe(at(7));
+    expect(result.observationEndedAt).toBe(at(22));
+    expect(result.totals).toMatchObject({
+      focusMs: HOUR,
+      pauseMs: 0,
+      gapMs: 14 * HOUR,
+      observationMs: 15 * HOUR,
+    });
+    expect(result.sessionFocus.map((item) => item.sessionId)).toEqual(['closing', 'opening']);
+    expect(result.tasks.reduce((total, task) => total + task.activeMs, 0)).toBe(HOUR);
   });
 });
 
@@ -268,6 +350,9 @@ describe('buildDayLedger interval normalization', () => {
     expect(result.observationStartedAt).toBeNull();
     expect(result.intervals).toEqual([]);
     expect(result.tasks).toEqual([]);
+    expect(result.sessionFocus).toEqual([
+      { sessionId: 'session-1', focusMs: 40 * MINUTE, estimated: true },
+    ]);
     expect(result.totals).toMatchObject({
       focusMs: 0,
       pauseMs: 0,

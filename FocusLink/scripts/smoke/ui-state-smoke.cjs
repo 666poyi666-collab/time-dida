@@ -595,7 +595,7 @@ async function main() {
     dashboardTitle: document.querySelector('.stats-brief-copy h2')?.textContent?.trim() || null,
     kpiCount: document.querySelectorAll('.stats-metric').length,
     panelCount: document.querySelectorAll('.stats-panel').length,
-    hasTimeline: Boolean(document.querySelector('.stats-timeline-detail')),
+    hasTimeline: Boolean(document.querySelector('.stats-ledger-chart')),
     hasTaskRanking: Boolean(document.querySelector('.stats-task-list')),
     taskRowCount: document.querySelectorAll('.stats-task-row').length,
     hasPauseCost: Boolean(document.querySelector('.stats-pause-cost')),
@@ -611,9 +611,9 @@ async function main() {
   results.historyMinimum = await inspectMainWindowSize(980, 660);
   results.historyMinimum.dashboard = await evaluate(`(() => {
     const dashboard = document.querySelector('.stats-dashboard');
-    const focusGauge = document.querySelector('.stats-focus-gauge');
+    const donut = document.querySelector('.stats-time-donut');
     const rect = dashboard?.getBoundingClientRect();
-    const focusGaugeRect = focusGauge?.getBoundingClientRect();
+    const donutRect = donut?.getBoundingClientRect();
     return {
       present: Boolean(dashboard),
       left: rect?.left ?? null,
@@ -621,11 +621,11 @@ async function main() {
       width: rect?.width ?? null,
       viewportWidth: window.innerWidth,
       scrollWidth: document.documentElement.scrollWidth,
-      focusGaugeVisible:
-        Boolean(focusGauge) &&
-        getComputedStyle(focusGauge).display !== 'none' &&
-        (focusGaugeRect?.width ?? 0) > 0 &&
-        (focusGaugeRect?.height ?? 0) > 0,
+      donutVisible:
+        Boolean(donut) &&
+        getComputedStyle(donut).display !== 'none' &&
+        (donutRect?.width ?? 0) > 0 &&
+        (donutRect?.height ?? 0) > 0,
     };
   })()`);
   await evaluate(`window.resizeTo(${originalWindowSize[0]}, ${originalWindowSize[1]})`);
@@ -678,7 +678,7 @@ async function main() {
       .find((button) => button.getAttribute('aria-pressed') === 'true')?.textContent?.trim() || null,
     label: document.querySelector('.history-day-current strong')?.textContent?.trim() || null,
     nextDisabled: Boolean(document.querySelector('.history-day-navigator > button:last-child')?.disabled),
-    hasTimeline: Boolean(document.querySelector('.stats-timeline-detail')),
+    hasTimeline: Boolean(document.querySelector('.stats-ledger-chart')),
     hasTrend: Boolean(document.querySelector('.stats-trend-chart')),
   }))()`);
   const historySessionOpened = await evaluate(`(() => {
@@ -1017,8 +1017,8 @@ async function main() {
       'dashboard stays inside the 980px minimum viewport without horizontal overflow',
     ],
     [
-      results.historyMinimum.dashboard.focusGaugeVisible,
-      'dashboard keeps the focus-rate gauge visible at the 980px minimum viewport',
+      results.historyMinimum.dashboard.donutVisible,
+      'dashboard keeps the time donut visible at the 980px minimum viewport',
     ],
     [!results.historyInspection.hasRing, 'history removes decorative focus composition ring'],
     [

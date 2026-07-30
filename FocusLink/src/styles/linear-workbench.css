@@ -1985,8 +1985,8 @@
 .history-rail-empty {
   padding: 26px 18px;
 }
-/* 1200 以下：双区回落为单列顺读，整页统一滚动 */
-@media (max-width: 1199px) {
+/* 1240 以下：给 Dashboard 留出完整 header 宽度，双区回落为单列顺读。 */
+@media (max-width: 1239px) {
   .history-body {
     display: block;
     overflow-y: auto;
@@ -3285,12 +3285,6 @@ button.stats-ledger-block:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-.stats-gap-ledger li:focus-visible {
-  border-radius: 8px;
-  outline: 2px solid rgb(var(--app-accent) / 0.72);
-  outline-offset: 2px;
-}
-
 .stats-gap-ledger li i {
   height: 1px;
   background: linear-gradient(90deg, rgb(var(--app-muted) / 0.55), transparent);
@@ -3327,6 +3321,10 @@ button.stats-ledger-block:focus-visible {
   background: rgb(var(--app-pause));
 }
 
+.stats-legend i.gap {
+  background: rgb(var(--app-muted) / 0.34);
+}
+
 .stats-trend-chart {
   display: block;
   width: 100%;
@@ -3347,7 +3345,8 @@ button.stats-ledger-block:focus-visible {
 }
 
 .stats-trend-chart .active-bar,
-.stats-trend-chart .pause-bar {
+.stats-trend-chart .pause-bar,
+.stats-trend-chart .gap-bar {
   shape-rendering: crispEdges;
   transition:
     opacity var(--motion-fast),
@@ -3369,10 +3368,16 @@ button.stats-ledger-block:focus-visible {
   fill: rgb(var(--app-pause));
 }
 
+.stats-trend-chart .gap-bar {
+  fill: rgb(var(--app-muted) / 0.34);
+}
+
 .stats-day-column:hover .active-bar,
 .stats-day-column:hover .pause-bar,
+.stats-day-column:hover .gap-bar,
 .stats-day-column:focus .active-bar,
-.stats-day-column:focus .pause-bar {
+.stats-day-column:focus .pause-bar,
+.stats-day-column:focus .gap-bar {
   filter: brightness(1.08);
   stroke: rgb(var(--app-text));
   stroke-width: 0.75;
@@ -3547,6 +3552,10 @@ button.stats-ledger-block:focus-visible {
 
 .stats-cost-track .pause {
   background: rgb(var(--app-pause));
+}
+
+.stats-cost-track .gap {
+  background: rgb(var(--app-muted) / 0.34);
 }
 
 @media (max-width: 1060px) {

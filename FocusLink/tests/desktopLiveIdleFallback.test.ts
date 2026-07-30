@@ -165,4 +165,65 @@ describe('desktop live idle fallback', () => {
     controller.dispose();
     fetchSpy.mockRestore();
   });
+
+  it('preserves the selected task when a 403 startWithTask falls back locally', async () => {
+    let current = idle();
+    let longPollAborted = false;
+    const local = {
+      getSnapshot: vi.fn(() => current),
+      onSnapshot: vi.fn(),
+      startWithTask: vi.fn((taskId: string, taskSource: string, taskTitle?: string) => {
+        current = {
+          ...idle(),
+          state: 'running',
+          currentTaskId: taskId,
+          currentTaskSource: taskSource as TimerSnapshot['currentTaskSource'],
+          currentTaskTitle: taskTitle ?? null,
+        };
+        return current;
+      }),
+      dispose: vi.fn(),
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input);
+      if (url.endsWith('/sync/v2/live')) return Promise.resolve(liveIdle());
+      if (url.includes('/sync/v2/live/wait')) {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => {
+              longPollAborted = true;
+              reject(new DOMException('aborted', 'AbortError'));
+            },
+            { once: true },
+          );
+        });
+      }
+      if (url.includes('/sync/v2/live/command')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: { code: 'scope_denied' } }), { status: 403 }),
+        );
+      }
+      return Promise.reject(new Error(`unexpected URL: ${url}`));
+    });
+    const controller = new FocusTimerController(local as never);
+    controller.reloadConfiguration();
+    await vi.waitFor(() => {
+      expect((controller as unknown as { liveMode: boolean }).liveMode).toBe(true);
+    });
+
+    const result = await controller.startWithTask('task-1', 'local', '数学');
+
+    expect(result).toMatchObject({
+      state: 'running',
+      currentTaskId: 'task-1',
+      currentTaskSource: 'local',
+      currentTaskTitle: '数学',
+    });
+    expect(local.startWithTask).toHaveBeenCalledWith('task-1', 'local', '数学');
+    expect(longPollAborted).toBe(true);
+    expect((controller as unknown as { liveMode: boolean }).liveMode).toBe(false);
+    controller.dispose();
+    fetchSpy.mockRestore();
+  });
 });

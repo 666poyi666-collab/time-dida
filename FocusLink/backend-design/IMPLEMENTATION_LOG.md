@@ -10,7 +10,7 @@
 
 - 新增 `shared/dayLedgerAnalytics.ts`：默认有效日 07:00–22:00，观察起点只认当天第一段真实 focus，今天截止 now、历史日截止 22:00；pause 使用真实 `PauseEvent`，重叠时 pause 优先，focus/pause/gap 以边界切片后严格守恒。gap 只在读取时派生，不写 SQLite、同步队列或云端。
 - 进行中 Session 的 open segment/pause 可延伸到当前观察终点；历史 open 行、缺 Segment/PauseEvent 的旧账本只输出 estimated 汇总，绝不伪造分钟级区间。纯函数回归覆盖无 focus、尾部空档、跨午夜、重叠、running/paused、今天/历史日与旧数据边界。
-- `SessionAnalyticsResult.dayLedgers` 成为桌面/移动共享 IPC 结果。Windows Dashboard 消费该结果，增加可动画 SVG focus/pause/gap 甜甜圈、突出 07–22 的 24h 轴、精确空档列表、键盘/ARIA 和 reduced-motion；内容层保持连续，Liquid Glass 只用于日期浮层、甜甜圈和 estimated 状态徽标。
+- `SessionAnalyticsResult.dayLedgers` 成为桌面/移动共享 IPC 结果。Windows Dashboard 消费该结果，增加可动画 SVG focus/pause/gap 甜甜圈、突出 07–22 的 24h 轴、精确空档列表与多日三段堆叠柱；任务投入与“最长一轮”按同一有效日窗口裁切，estimated 只补 KPI/任务 legacy 并单独标记，不与精确 gap 共用分母。多日图外层/日柱采用分层 ARIA，页尾轨保持三分类，只读 gap 行不进入 Tab 序列；内容层保持连续，Liquid Glass 只用于日期浮层、甜甜圈和 estimated 状态徽标，并完整支持 reduced-motion。
 - 桌面定向验证覆盖共享分析、renderer、九仪表、完整状态机与空闲 403 本地安全回退；本条不改版本元数据、不打包、不安装、不发布。
 
 ## 2026-07-30 · v0.12.72 单账号登录与四端候选收口

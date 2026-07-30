@@ -26,6 +26,13 @@ export interface DayLedgerTask {
   estimated: false;
 }
 
+export interface DayLedgerSessionFocus {
+  sessionId: string;
+  focusMs: number;
+  /** Duration-only legacy sessions keep their effective-day share, but never gain fake bounds. */
+  estimated: boolean;
+}
+
 export interface DayLedgerAnalytics {
   date: string;
   isToday: boolean;
@@ -39,6 +46,8 @@ export interface DayLedgerAnalytics {
   intervals: DayLedgerInterval[];
   gaps: DayLedgerInterval[];
   tasks: DayLedgerTask[];
+  /** Per-session effective-day focus for range KPIs; concurrent sessions may overlap. */
+  sessionFocus: DayLedgerSessionFocus[];
   totals: {
     focusMs: number;
     pauseMs: number;
@@ -337,14 +346,14 @@ export function buildDayLedger(
   );
   const isToday = isSameLocalDay(dayStartedAt, now);
   const effectiveEndedAt = isToday ? Math.min(now, effectiveDayEnd) : effectiveDayEnd;
-  const validWindowEnd = Math.max(effectiveStartedAt, effectiveEndedAt);
-  const exact = collectExactIntervals(source, isToday, effectiveStartedAt, validWindowEnd);
+  const calculationWindowEnd = Math.max(effectiveStartedAt, effectiveEndedAt);
+  const exact = collectExactIntervals(source, isToday, effectiveStartedAt, calculationWindowEnd);
   const exactFocus = exact.filter((interval) => interval.kind === 'focus');
   const observationStartedAt =
     exactFocus.length > 0
       ? Math.max(effectiveStartedAt, Math.min(...exactFocus.map((interval) => interval.startedAt)))
       : null;
-  const observationEndedAt = validWindowEnd;
+  const observationEndedAt = effectiveEndedAt;
   const intervals =
     observationStartedAt !== null && observationEndedAt > observationStartedAt
       ? partitionObservation(observationStartedAt, observationEndedAt, exact)
@@ -353,12 +362,28 @@ export function buildDayLedger(
   const sessionIdsWithExactPause = new Set(
     exact.filter((interval) => interval.kind === 'pause').map((interval) => interval.sessionId),
   );
-  const estimatedFocusMs = source.sessions.reduce(
-    (total, session) =>
-      total +
-      (sessionIdsWithExactFocus.has(session.id)
-        ? 0
-        : estimatedShare(session, session.activeElapsedMs, effectiveStartedAt, validWindowEnd)),
+  const exactSessionFocus = new Map<string, number>();
+  for (const interval of intervals) {
+    if (interval.kind !== 'focus') continue;
+    for (const sessionId of interval.sessionIds) {
+      exactSessionFocus.set(
+        sessionId,
+        (exactSessionFocus.get(sessionId) ?? 0) + interval.durationMs,
+      );
+    }
+  }
+  const estimatedSessionFocus = source.sessions.flatMap((session): DayLedgerSessionFocus[] => {
+    if (sessionIdsWithExactFocus.has(session.id)) return [];
+    const focusMs = estimatedShare(
+      session,
+      session.activeElapsedMs,
+      effectiveStartedAt,
+      calculationWindowEnd,
+    );
+    return focusMs > 0 ? [{ sessionId: session.id, focusMs, estimated: true }] : [];
+  });
+  const estimatedFocusMs = estimatedSessionFocus.reduce(
+    (total, session) => total + session.focusMs,
     0,
   );
   const estimatedPauseMs = source.sessions.reduce(
@@ -366,7 +391,12 @@ export function buildDayLedger(
       total +
       (sessionIdsWithExactPause.has(session.id)
         ? 0
-        : estimatedShare(session, session.pauseElapsedMs, effectiveStartedAt, validWindowEnd)),
+        : estimatedShare(
+            session,
+            session.pauseElapsedMs,
+            effectiveStartedAt,
+            calculationWindowEnd,
+          )),
     0,
   );
   const totals = intervals.reduce(
@@ -390,6 +420,16 @@ export function buildDayLedger(
   const status: DayLedgerStatus =
     observationStartedAt !== null ? 'observed' : estimated ? 'estimated-only' : 'not-started';
   const tasks = buildTaskAllocation(intervals, source.segments);
+  const sessionFocus = [
+    ...Array.from(exactSessionFocus, ([sessionId, focusMs]) => ({
+      sessionId,
+      focusMs,
+      estimated: false as const,
+    })),
+    ...estimatedSessionFocus,
+  ].sort(
+    (left, right) => right.focusMs - left.focusMs || left.sessionId.localeCompare(right.sessionId),
+  );
   return {
     date: localDateKey(dayStartedAt),
     isToday,
@@ -397,12 +437,13 @@ export function buildDayLedger(
     dayStartedAt,
     dayEndedAt,
     effectiveStartedAt,
-    effectiveEndedAt: validWindowEnd,
+    effectiveEndedAt,
     observationStartedAt,
     observationEndedAt,
     intervals,
     gaps: intervals.filter((interval) => interval.kind === 'gap'),
     tasks,
+    sessionFocus,
     totals,
     estimated,
   };
