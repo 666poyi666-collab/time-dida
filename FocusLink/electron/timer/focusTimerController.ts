@@ -33,6 +33,13 @@ const MAX_RECONNECT_DELAY_MS = 60_000;
 const REQUEST_RETRY_DELAY_MS = 250;
 const REQUEST_MAX_ATTEMPTS = 2;
 
+class LiveFocusHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`实时同步服务返回 HTTP ${status}`);
+    this.name = 'LiveFocusHttpError';
+  }
+}
+
 export class FocusTimerController {
   private snapshot: TimerSnapshot;
   private liveRevision = 0;
@@ -164,8 +171,13 @@ export class FocusTimerController {
     if (
       this.snapshot.state !== 'idle' ||
       this.local.getSnapshot().state !== 'idle' ||
-      !isTransportFailure(error)
+      !isLocalStartFallbackFailure(error)
     ) {
+      logger.warn('liveFocus', 'start command failed; local fallback not permitted', {
+        error: error instanceof Error ? error : String(error),
+        liveState: this.snapshot.state,
+        localState: this.local.getSnapshot().state,
+      });
       throw error;
     }
     // Cancel the old long-poll before changing fact sources. Otherwise a late
@@ -176,7 +188,11 @@ export class FocusTimerController {
     this.markLiveDisconnected();
     this.publish(this.local.getSnapshot());
     logger.warn('liveFocus', 'start command unavailable; falling back to local timer', {
-      error: error instanceof Error ? error.message : String(error),
+      error: error instanceof Error ? error : String(error),
+      reason:
+        error instanceof LiveFocusHttpError && (error.status === 401 || error.status === 403)
+          ? 'credential-rejected'
+          : 'transport-unavailable',
     });
     return startLocal();
   }
@@ -539,7 +555,7 @@ export class FocusTimerController {
       }
     }
     if (!response) throw new Error(`实时同步请求未返回响应（${url}）`);
-    if (!response.ok) throw new Error(`实时同步服务返回 HTTP ${response.status}`);
+    if (!response.ok) throw new LiveFocusHttpError(response.status);
     return response;
   }
 
@@ -578,6 +594,13 @@ function isTransportFailure(error: unknown): boolean {
   return (
     error instanceof Error &&
     /fetch failed|network error|无法连接实时同步服务|连接被拒绝/i.test(error.message)
+  );
+}
+
+function isLocalStartFallbackFailure(error: unknown): boolean {
+  return (
+    isTransportFailure(error) ||
+    (error instanceof LiveFocusHttpError && (error.status === 401 || error.status === 403))
   );
 }
 

@@ -3421,6 +3421,48 @@
   width: 190px;
   min-width: 190px;
 }
+.instrument-choice .ic-preview .dial-counter {
+  min-width: 0;
+  font-size: 38px;
+  transform: none;
+}
+.instrument-choice .ic-preview .dial-analog {
+  min-width: 0;
+  transform: none;
+}
+.instrument-choice .ic-preview .dial-analog .analog-face {
+  width: 68px;
+}
+.instrument-choice .ic-preview .dial-analog .analog-readout {
+  bottom: 17%;
+  font-size: 10px;
+}
+.instrument-choice .ic-preview .dial-vernier {
+  width: 190px;
+  min-width: 190px;
+  gap: 5px;
+  transform: none;
+}
+.instrument-choice .ic-preview .dial-vernier .vernier-readout {
+  font-size: 32px;
+}
+.instrument-choice .ic-preview .dial-vernier .vernier-window {
+  height: 22px;
+}
+.instrument-choice .ic-preview .dial-vernier .vt-label::after {
+  display: none;
+}
+.instrument-choice .ic-preview .dial-draft {
+  min-width: 176px;
+  gap: 4px;
+  padding: 5px 8px;
+  font-size: 32px;
+  transform: none;
+}
+.instrument-choice .ic-preview .dial-draft .draft-dim {
+  gap: 5px;
+  font-size: 7px;
+}
 .instrument-choice .ic-preview .pixel-core {
   display: none;
 }

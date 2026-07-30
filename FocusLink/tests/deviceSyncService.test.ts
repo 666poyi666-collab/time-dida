@@ -6,12 +6,18 @@ import type {
   DeviceSyncResponse,
   DeviceSyncSessionBundle,
 } from '@shared/sync/deviceProtocol';
+import type { TaskSnapshotPublishRequest } from '@shared/sync/taskSnapshotProtocol';
 
 const harness = vi.hoisted(() => ({
   meta: new Map<string, string>(),
   token: null as string | null,
   settings: {
-    deviceSync: { enabled: true, endpoint: 'https://sync-a.example', autoSync: true },
+    deviceSync: {
+      enabled: true,
+      endpoint: 'https://sync-a.example',
+      autoSync: true,
+      liveControlEnabled: false,
+    },
   },
   sessions: [] as FocusSession[],
   inserted: [] as DeviceSyncSessionBundle[],
@@ -55,6 +61,7 @@ vi.mock('../electron/sync/deviceSyncCredentials.js', () => ({
 
 import {
   configureDeviceSync,
+  getDeviceSyncRuntimeConnection,
   publishDeviceTaskSnapshot,
   runLegacyDeviceSyncForContractTest as runDeviceSync,
 } from '../electron/sync/deviceSyncService';
@@ -120,7 +127,12 @@ describe('desktop device sync checkpoints', () => {
     harness.meta.clear();
     harness.token = null;
     harness.settings = {
-      deviceSync: { enabled: true, endpoint: 'https://sync-a.example', autoSync: true },
+      deviceSync: {
+        enabled: true,
+        endpoint: 'https://sync-a.example',
+        autoSync: true,
+        liveControlEnabled: false,
+      },
     };
     harness.sessions = [finishedSession()];
     harness.inserted = [];
@@ -132,7 +144,8 @@ describe('desktop device sync checkpoints', () => {
       enabled: true,
       endpoint: 'https://sync-a.example',
       autoSync: true,
-      accessToken: 'token-a-with-enough-entropy',
+      liveControlEnabled: false,
+      accessToken: `fl2_account1_desktop1_${'x'.repeat(32)}`,
     });
     const projects: Project[] = [
       {
@@ -185,6 +198,42 @@ describe('desktop device sync checkpoints', () => {
     expect(
       [...harness.meta.entries()].find(([key]) => key.includes('pendingTaskSnapshot'))?.[1],
     ).toBe('');
+  });
+
+  it('uses the fl2 credential-bound device id for live commands and task snapshots', async () => {
+    const token = `fl2_account1_desktop1_${'x'.repeat(32)}`;
+    configureDeviceSync({
+      enabled: true,
+      endpoint: 'https://sync-a.example',
+      autoSync: true,
+      liveControlEnabled: true,
+      accessToken: token,
+    });
+
+    expect(getDeviceSyncRuntimeConnection()).toMatchObject({
+      endpoint: 'https://sync-a.example',
+      accessToken: token,
+      deviceId: 'device-desktop1',
+    });
+
+    let publishedDeviceId: string | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as TaskSnapshotPublishRequest;
+        publishedDeviceId = body.deviceId;
+        return jsonResponse({
+          protocolVersion: 1,
+          revision: 1,
+          sourceDeviceId: body.deviceId,
+          snapshot: body.snapshot,
+          serverTime: Date.now(),
+        });
+      }),
+    );
+
+    await expect(publishDeviceTaskSnapshot([], [], Date.now())).resolves.toBe(true);
+    expect(publishedDeviceId).toBe('device-desktop1');
   });
 
   it('keeps cursor and revision checkpoints isolated by endpoint and token', async () => {

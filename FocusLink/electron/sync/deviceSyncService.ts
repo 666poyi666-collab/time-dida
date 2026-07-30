@@ -141,6 +141,14 @@ export function getDeviceSyncStatus(): DeviceSyncStatus {
   const settings = getSettings().deviceSync;
   const connection = resolveDeviceSyncConnection(settings.endpoint);
   const tokenConfigured = hasDeviceSyncToken();
+  let deviceId = getOrCreateDeviceId();
+  if (connection) {
+    try {
+      deviceId = makeRuntimeConnection(connection.endpoint, connection.accessToken).deviceId;
+    } catch {
+      // Keep the legacy local id visible while Settings reports the invalid credential.
+    }
+  }
   const checkpoint = connection ? readCanonicalCheckpoint(connection.scope) : null;
   let unresolvedConflicts = 0;
   try {
@@ -158,7 +166,7 @@ export function getDeviceSyncStatus(): DeviceSyncStatus {
     ...liveTelemetry,
     configured: connection !== null,
     tokenConfigured,
-    deviceId: getOrCreateDeviceId(),
+    deviceId,
     cursor: checkpoint?.cursor ?? null,
     running: Boolean(connection && inFlight?.scope === connection.scope),
     lastSyncAt: connection
@@ -197,12 +205,14 @@ export function getDeviceSyncRuntimeConnection(): DeviceSyncRuntimeConnection | 
   const endpoint = normalizeDeviceSyncEndpoint(settings.endpoint);
   const accessToken = getDeviceSyncToken();
   if (!accessToken) return null;
-  return {
-    endpoint,
-    accessToken,
-    deviceId: getOrCreateDeviceId(),
-    scope: makeDeviceSyncConnectionScope(endpoint, accessToken),
-  };
+  try {
+    return makeRuntimeConnection(endpoint, accessToken);
+  } catch (error) {
+    logger.warn('liveFocus', 'live connection credential is not canonical', {
+      error: error instanceof Error ? error : String(error),
+    });
+    return null;
+  }
 }
 
 /** Main-process Sync v2 transport; unlike live control it only requires data sync to be enabled. */
@@ -212,6 +222,10 @@ export function getDeviceSyncDataConnection(): DeviceSyncRuntimeConnection | nul
   const endpoint = normalizeDeviceSyncEndpoint(settings.endpoint);
   const accessToken = getDeviceSyncToken();
   if (!accessToken) return null;
+  return makeRuntimeConnection(endpoint, accessToken);
+}
+
+function makeRuntimeConnection(endpoint: string, accessToken: string): DeviceSyncRuntimeConnection {
   const routed = parseDeviceToken(accessToken);
   const loopback = ['localhost', '127.0.0.1'].includes(new URL(endpoint).hostname);
   if (!routed && !loopback) {
@@ -313,14 +327,20 @@ async function flushPendingTaskSnapshotInternal(): Promise<boolean> {
 }
 
 async function postTaskSnapshot(snapshot: TaskSnapshotPayload): Promise<boolean> {
-  const settings = getSettings().deviceSync;
-  if (!settings?.enabled || !hasDeviceSyncToken()) return false;
-  const endpoint = normalizeDeviceSyncEndpoint(settings.endpoint);
-  const accessToken = getDeviceSyncToken();
-  if (!accessToken) return false;
+  let connection: DeviceSyncRuntimeConnection | null;
+  try {
+    connection = getDeviceSyncDataConnection();
+  } catch (error) {
+    logger.warn('deviceSync', 'desktop task snapshot connection invalid', {
+      error: error instanceof Error ? error : String(error),
+    });
+    return false;
+  }
+  if (!connection) return false;
+  const { endpoint, accessToken, deviceId } = connection;
   const request: TaskSnapshotPublishRequest = {
     protocolVersion: TASK_SNAPSHOT_PROTOCOL_VERSION,
-    deviceId: getOrCreateDeviceId(),
+    deviceId,
     snapshot,
   };
   const controller = new AbortController();
@@ -337,7 +357,14 @@ async function postTaskSnapshot(snapshot: TaskSnapshotPayload): Promise<boolean>
       body: JSON.stringify(request),
       signal: controller.signal,
     });
-    if (!response.ok) throw await readDeviceSyncHttpError(response);
+    if (!response.ok) {
+      const detail = await readDeviceSyncHttpError(response);
+      throw new DeviceSyncHttpError(
+        response.status,
+        detail.code,
+        `任务快照服务返回 ${response.status}${detail.message ? `：${detail.message}` : ''}`,
+      );
+    }
     const value = (await readDeviceSyncJsonResponse(response)) as Partial<TaskSnapshotResponse>;
     if (
       value.protocolVersion !== TASK_SNAPSHOT_PROTOCOL_VERSION ||

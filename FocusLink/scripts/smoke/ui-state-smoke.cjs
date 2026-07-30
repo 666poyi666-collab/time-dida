@@ -808,6 +808,19 @@ async function main() {
         ),
         draft: Boolean(document.querySelector('.dial-draft .draft-digits')),
         previewCount: document.querySelectorAll('.instrument-choice .timer-dial').length,
+        previewBounds: [...document.querySelectorAll('.instrument-choice')].map((choice) => {
+          const frame = choice.querySelector('.ic-preview')?.getBoundingClientRect();
+          const dial = choice.querySelector('.timer-dial')?.getBoundingClientRect();
+          return {
+            label: choice.querySelector('.ic-name')?.textContent?.trim() || '',
+            inside:
+              Boolean(frame && dial) &&
+              dial.left >= frame.left - 0.75 &&
+              dial.top >= frame.top - 0.75 &&
+              dial.right <= frame.right + 0.75 &&
+              dial.bottom <= frame.bottom + 0.75,
+          };
+        }),
       };
     })()`);
     await captureScreen(`settings-instrument-${style}`);
@@ -1094,6 +1107,11 @@ async function main() {
     [
       results.instrumentFonts.standard?.previewCount === 9,
       'settings renders live previews for all nine timer instruments',
+    ],
+    [
+      results.instrumentFonts.standard?.previewBounds?.length === 9 &&
+        results.instrumentFonts.standard.previewBounds.every((preview) => preview.inside),
+      'all nine timer instrument previews fit completely inside their fixed preview stages',
     ],
     [
       results.instrumentFonts.standard?.counter > 0 &&

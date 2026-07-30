@@ -65,7 +65,9 @@ npm run smoke:live-fallback -- <本次构建的 win-unpacked\FocusLink.exe>
 
 ## FL-SYNC-003：HTTP 401/403 或“令牌无效”
 
-服务可达但鉴权失败。确认 PC、网页和 Android 使用同一账号的 endpoint 与 token；必要时在设置页重新输入令牌并保存。切换 endpoint/token 后，客户端只清理旧连接的本机 cursor/实时缓存，不删除 SQLite 会话。
+服务可达但鉴权或设备绑定失败。确认 PC、网页和 Android 使用同一账号的 endpoint 与 `fl2` token；必要时在设置页重新配对并保存。切换 endpoint/token 后，客户端只清理旧连接的本机 cursor/实时缓存，不删除 SQLite 会话。
+
+v0.12.71 起，Electron 从 `fl2` token 解析与 authority 一致的 `deviceId`，live command 和任务快照不再发送 legacy 本机 UUID。若空闲状态下仍收到 401/403，“开始专注”会退回本地计时并在 `liveFocus` 日志写入 `credential-rejected`；已经进行中的云端会话不会降级。任务快照日志应显示具体 HTTP 状态/消息，不应只出现 `[object Object]`。
 
 ## FL-SYNC-004：`pause 引用了不存在的 segment`
 

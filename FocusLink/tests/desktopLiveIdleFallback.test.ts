@@ -120,4 +120,49 @@ describe('desktop live idle fallback', () => {
     controller.dispose();
     fetchSpy.mockRestore();
   });
+
+  it('starts the local timer when an idle cloud rejects the start credential', async () => {
+    let current = idle();
+    const local = {
+      getSnapshot: vi.fn(() => current),
+      onSnapshot: vi.fn(),
+      toggle: vi.fn(() => {
+        current = { ...idle(), state: 'running' };
+        return current;
+      }),
+      dispose: vi.fn(),
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input);
+      if (url.endsWith('/sync/v2/live')) return Promise.resolve(liveIdle());
+      if (url.includes('/sync/v2/live/wait')) {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('aborted', 'AbortError')),
+            { once: true },
+          );
+        });
+      }
+      if (url.includes('/sync/v2/live/command')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: { code: 'scope_denied' } }), { status: 403 }),
+        );
+      }
+      return Promise.reject(new Error(`unexpected URL: ${url}`));
+    });
+    const controller = new FocusTimerController(local as never);
+    controller.reloadConfiguration();
+    await vi.waitFor(() => {
+      expect((controller as unknown as { liveMode: boolean }).liveMode).toBe(true);
+    });
+
+    const result = await controller.toggle();
+
+    expect(result.state).toBe('running');
+    expect(local.toggle).toHaveBeenCalledOnce();
+    expect((controller as unknown as { liveMode: boolean }).liveMode).toBe(false);
+    controller.dispose();
+    fetchSpy.mockRestore();
+  });
 });
