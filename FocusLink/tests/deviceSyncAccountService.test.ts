@@ -5,6 +5,7 @@ const harness = vi.hoisted(() => ({
   token: null as string | null,
   settingsPatches: [] as unknown[],
   openedUrls: [] as string[],
+  logs: [] as unknown[][],
 }));
 
 vi.mock('electron', () => ({
@@ -21,7 +22,12 @@ vi.mock('../electron/db/index.js', () => ({
 }));
 
 vi.mock('../electron/logger.js', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  logger: {
+    info: (...args: unknown[]) => harness.logs.push(args),
+    warn: (...args: unknown[]) => harness.logs.push(args),
+    error: (...args: unknown[]) => harness.logs.push(args),
+    debug: (...args: unknown[]) => harness.logs.push(args),
+  },
 }));
 
 vi.mock('../electron/settingsStore.js', () => ({
@@ -67,39 +73,61 @@ describe('desktop owner account enrollment', () => {
     harness.token = null;
     harness.settingsPatches = [];
     harness.openedUrls = [];
+    harness.logs = [];
+    vi.useRealTimers();
   });
 
   it('opens owner login once, then stores the issued device credential and enables sync', async () => {
+    vi.useFakeTimers();
     const token = `fl2_account1_desktop1_${'x'.repeat(32)}`;
+    const flowId = `flow_${'f'.repeat(40)}`;
+    const pollToken = `flb_${'p'.repeat(48)}`;
+    const now = Date.now();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
         Response.json({
+          protocolVersion: 1,
           status: 'login-required',
-          loginUrl: 'https://identity.example/owner/sign-in?request=abc',
-          retryAfterMs: 1,
+          flowId,
+          pollToken,
+          loginUrl:
+            'https://poyi-oauth-as.focuslink-poyi-6465e9.workers.dev/owner/focuslink-device?flow=public',
+          retryAfterMs: 750,
+          expiresAt: now + 300_000,
+          serverTime: now,
         }),
       )
       .mockResolvedValueOnce(
         Response.json({
           protocolVersion: 1,
-          accountPublicId: 'account1',
-          deviceId: 'device-desktop1',
-          accessToken: token,
-          tokenType: 'Bearer',
-          scopes: ['sync:read', 'sync:write', 'live:read', 'live:write'],
-          expiresAt: Date.now() + 60_000,
-          serverTime: Date.now(),
+          status: 'authenticated',
+          endpoint: OFFICIAL_FOCUSLINK_ENDPOINT,
+          accountLabel: 'Poyi',
+          device: {
+            protocolVersion: 1,
+            accountPublicId: 'account1',
+            deviceId: 'device-desktop1',
+            accessToken: token,
+            tokenType: 'Bearer',
+            scopes: ['sync:read', 'sync:write', 'live:read', 'live:write'],
+            expiresAt: now + 60_000,
+            serverTime: now,
+          },
         }),
       );
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(loginDeviceSyncAccount()).resolves.toMatchObject({
+    const login = loginDeviceSyncAccount();
+    await vi.advanceTimersByTimeAsync(750);
+    await expect(login).resolves.toMatchObject({
       status: { signedIn: true, accountLabel: 'Poyi' },
       syncError: null,
     });
 
-    expect(harness.openedUrls).toEqual(['https://identity.example/owner/sign-in?request=abc']);
+    expect(harness.openedUrls).toEqual([
+      'https://poyi-oauth-as.focuslink-poyi-6465e9.workers.dev/owner/focuslink-device?flow=public',
+    ]);
     expect(harness.token).toBe(token);
     expect(harness.settingsPatches.at(-1)).toEqual({
       deviceSync: {
@@ -112,11 +140,63 @@ describe('desktop owner account enrollment', () => {
     const sent = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
     expect(sent).toMatchObject({
       protocolVersion: 1,
-      platform: 'windows',
-      deviceKind: 'desktop',
+      action: 'start',
+      registration: { platform: 'windows', deviceKind: 'desktop' },
     });
-    expect(String(sent.installationId)).toMatch(/^windows-[A-Za-z0-9_-]{32}$/);
-    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(fetchMock.mock.calls[0]?.[1]?.body);
+    expect(String((sent.registration as Record<string, unknown>).installationId)).toMatch(
+      /^windows-[A-Za-z0-9_-]{32}$/,
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      protocolVersion: 1,
+      action: 'poll',
+      flowId,
+      pollToken,
+    });
+    expect(JSON.stringify(harness.logs)).not.toContain(token);
+    expect(JSON.stringify(harness.logs)).not.toContain(pollToken);
+  });
+
+  it('rejects a credential issued before the owner login flow completes', async () => {
+    const now = Date.now();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        Response.json({
+          protocolVersion: 1,
+          status: 'authenticated',
+          endpoint: OFFICIAL_FOCUSLINK_ENDPOINT,
+          accountLabel: 'Poyi',
+          device: {
+            protocolVersion: 1,
+            accountPublicId: 'account1',
+            deviceId: 'device-desktop1',
+            accessToken: `fl2_account1_desktop1_${'x'.repeat(32)}`,
+            tokenType: 'Bearer',
+            scopes: ['sync:read', 'sync:write', 'live:read', 'live:write'],
+            expiresAt: now + 60_000,
+            serverTime: now,
+          },
+        }),
+      ),
+    );
+
+    await expect(loginDeviceSyncAccount()).rejects.toThrow('未完成管理员授权');
+    expect(harness.token).toBeNull();
+    expect(harness.openedUrls).toEqual([]);
+  });
+
+  it('reports an undeployed canonical gateway without exposing the response body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json({ error: { message: `secret flb_${'p'.repeat(48)}` } }, { status: 404 }),
+        ),
+    );
+
+    await expect(loginDeviceSyncAccount()).rejects.toThrow('账号登录网关尚未部署');
+    expect(JSON.stringify(harness.logs)).not.toContain('flb_');
   });
 
   it('does not reopen login when this installation already has a valid fl2 credential', async () => {

@@ -5,10 +5,17 @@ import { APP_VERSION } from '@shared/version';
 import {
   FOCUSLINK_CANONICAL_SYNC_ORIGIN,
   FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
-  validateFocusLinkDeviceRegistrationResponse,
   type FocusLinkDeviceRegistrationRequest,
-  type FocusLinkDeviceRegistrationResponse,
 } from '@shared/sync/identityProtocol';
+import {
+  FOCUSLINK_ACCOUNT_BOOTSTRAP_PATH,
+  FOCUSLINK_ACCOUNT_BOOTSTRAP_PROTOCOL_VERSION,
+  parseFocusLinkAccountBootstrapResponse,
+  redactFocusLinkAccountBootstrapResponse,
+  type FocusLinkAccountBootstrapPollRequest,
+  type FocusLinkAccountBootstrapRequest,
+  type FocusLinkAccountBootstrapResponse,
+} from '@shared/sync/accountBootstrapProtocol';
 import type { DeviceSyncAccountLoginResult } from '@shared/ipc/api';
 import { getMeta, setMeta } from '../db/index.js';
 import { logger } from '../logger.js';
@@ -17,33 +24,11 @@ import { getDeviceSyncStatus, runDeviceSync } from './deviceSyncService.js';
 import { getDeviceSyncToken, setDeviceSyncToken } from './deviceSyncCredentials.js';
 
 export const OFFICIAL_FOCUSLINK_ENDPOINT = FOCUSLINK_CANONICAL_SYNC_ORIGIN;
-export const FOCUSLINK_ACCOUNT_BOOTSTRAP_PATH = '/account/v1/device/bootstrap';
+export { FOCUSLINK_ACCOUNT_BOOTSTRAP_PATH };
 
 const META_INSTALLATION_ID = 'deviceSync.ownerInstallationIdV1';
 const LOGIN_TIMEOUT_MS = 5 * 60_000;
 const REQUEST_TIMEOUT_MS = 15_000;
-
-type BootstrapResponse =
-  | FocusLinkDeviceRegistrationResponse
-  | {
-      status: 'login-required';
-      loginUrl: string;
-      retryAfterMs?: number;
-    }
-  | {
-      status: 'pending' | 'waiting-for-phone';
-      retryAfterMs?: number;
-    }
-  | {
-      status: 'authenticated';
-      session: {
-        accountId: string;
-        accountLabel: string;
-        endpoint: string;
-        accessToken: string;
-        deviceId: string;
-      };
-    };
 
 let loginInFlight: Promise<DeviceSyncAccountLoginResult> | null = null;
 
@@ -93,27 +78,59 @@ async function loginDeviceSyncAccountInternal(): Promise<DeviceSyncAccountLoginR
 
   const registration = registrationRequest();
   const deadline = Date.now() + LOGIN_TIMEOUT_MS;
+  let request: FocusLinkAccountBootstrapRequest = {
+    protocolVersion: FOCUSLINK_ACCOUNT_BOOTSTRAP_PROTOCOL_VERSION,
+    action: 'start',
+    registration,
+  };
+  let poll: FocusLinkAccountBootstrapPollRequest | null = null;
   let openedLogin = false;
   while (Date.now() < deadline) {
-    const response = await requestBootstrap(registration);
-    const credential = extractCredential(response);
-    if (credential) {
-      setDeviceSyncToken(credential.accessToken);
+    const response = await requestBootstrap(request);
+    logger.debug(
+      'deviceSyncAccount',
+      'owner bootstrap response received',
+      redactFocusLinkAccountBootstrapResponse(response),
+    );
+    if (response.status === 'authenticated') {
+      if (!openedLogin || !poll) {
+        throw new Error('登录服务未完成管理员授权，已拒绝设备凭据');
+      }
+      setDeviceSyncToken(response.device.accessToken);
       enableOfficialSync();
       logger.info('deviceSyncAccount', 'owner device credential enrolled', {
-        accountPublicId: credential.accountPublicId,
-        deviceId: credential.deviceId,
-        expiresAt: credential.expiresAt,
+        accountPublicId: response.device.accountPublicId,
+        deviceId: response.device.deviceId,
+        expiresAt: response.device.expiresAt,
       });
       return finishLogin();
     }
-    if ('status' in response && response.status === 'login-required' && !openedLogin) {
-      const loginUrl = validateLoginUrl(response.loginUrl);
-      await shell.openExternal(loginUrl);
-      openedLogin = true;
-      logger.info('deviceSyncAccount', 'owner sign-in opened in system browser');
+    if (response.status === 'login-required') {
+      if (poll && (poll.flowId !== response.flowId || poll.pollToken !== response.pollToken)) {
+        throw new Error('登录服务在轮询中更换了授权流程');
+      }
+      poll = {
+        protocolVersion: FOCUSLINK_ACCOUNT_BOOTSTRAP_PROTOCOL_VERSION,
+        action: 'poll',
+        flowId: response.flowId,
+        pollToken: response.pollToken,
+      };
+      request = poll;
+      if (!openedLogin) {
+        await shell.openExternal(response.loginUrl);
+        openedLogin = true;
+        logger.info('deviceSyncAccount', 'owner sign-in opened in system browser', {
+          loginOrigin: new URL(response.loginUrl).origin,
+          flowId: response.flowId,
+        });
+      }
+    } else {
+      if (!poll || response.flowId !== poll.flowId) {
+        throw new Error('登录服务返回了不匹配的授权流程');
+      }
+      request = poll;
     }
-    await wait(clampRetryAfter('retryAfterMs' in response ? response.retryAfterMs : undefined));
+    await wait(response.retryAfterMs);
   }
   throw new Error('登录等待超时，请重新点击登录');
 }
@@ -171,8 +188,8 @@ function cleanDeviceName(value: string): string {
 }
 
 async function requestBootstrap(
-  registration: FocusLinkDeviceRegistrationRequest,
-): Promise<BootstrapResponse> {
+  request: FocusLinkAccountBootstrapRequest,
+): Promise<FocusLinkAccountBootstrapResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -184,46 +201,21 @@ async function requestBootstrap(
           accept: 'application/json',
           'content-type': 'application/json',
         },
-        body: JSON.stringify(registration),
+        body: JSON.stringify(request),
         redirect: 'error',
         signal: controller.signal,
       },
     );
     const value = (await response.json().catch(() => null)) as unknown;
     if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('账号登录网关尚未部署，请保留当前设备登录态并稍后重试');
+      }
       throw new Error(readBootstrapError(value) || `登录服务返回 HTTP ${response.status}`);
     }
-    if (validateFocusLinkDeviceRegistrationResponse(value)) return value;
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      throw new Error('登录服务响应无效');
-    }
-    const candidate = value as Record<string, unknown>;
-    if (candidate.status === 'login-required' && typeof candidate.loginUrl === 'string') {
-      return {
-        status: 'login-required',
-        loginUrl: candidate.loginUrl,
-        ...(typeof candidate.retryAfterMs === 'number'
-          ? { retryAfterMs: candidate.retryAfterMs }
-          : {}),
-      };
-    }
-    if (candidate.status === 'pending' || candidate.status === 'waiting-for-phone') {
-      return {
-        status: candidate.status,
-        ...(typeof candidate.retryAfterMs === 'number'
-          ? { retryAfterMs: candidate.retryAfterMs }
-          : {}),
-      };
-    }
-    if (
-      candidate.status === 'authenticated' &&
-      candidate.session &&
-      typeof candidate.session === 'object' &&
-      !Array.isArray(candidate.session)
-    ) {
-      return value as BootstrapResponse;
-    }
-    throw new Error('登录服务响应无效');
+    const parsed = parseFocusLinkAccountBootstrapResponse(value);
+    if (!parsed) throw new Error('登录服务响应无效');
+    return parsed;
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('登录服务请求超时');
@@ -232,40 +224,6 @@ async function requestBootstrap(
   } finally {
     clearTimeout(timeout);
   }
-}
-
-function extractCredential(value: BootstrapResponse):
-  | (Pick<FocusLinkDeviceRegistrationResponse, 'accountPublicId' | 'deviceId' | 'accessToken'> & {
-      expiresAt: number | null;
-    })
-  | null {
-  if (validateFocusLinkDeviceRegistrationResponse(value)) return value;
-  const session = (value as unknown as Record<string, unknown>).session;
-  if (!session || typeof session !== 'object' || Array.isArray(session)) return null;
-  const record = session as Record<string, unknown>;
-  const accessToken = typeof record.accessToken === 'string' ? record.accessToken.trim() : '';
-  const deviceId = typeof record.deviceId === 'string' ? record.deviceId.trim() : '';
-  const tokenMatch = accessToken.match(
-    /^fl2_([A-Za-z0-9-]{6,80})_([A-Za-z0-9-]{6,80})_[A-Za-z0-9_-]{32,160}$/,
-  );
-  if (!tokenMatch || deviceId !== `device-${tokenMatch[2]}`) return null;
-  return {
-    accountPublicId: tokenMatch[1],
-    deviceId,
-    accessToken,
-    expiresAt: null,
-  };
-}
-
-function validateLoginUrl(value: string): string {
-  const url = new URL(value);
-  if (url.protocol !== 'https:') throw new Error('登录服务返回了无效地址');
-  return url.toString();
-}
-
-function clampRetryAfter(value: number | undefined): number {
-  if (!Number.isFinite(value)) return 1_500;
-  return Math.max(750, Math.min(Math.floor(value!), 10_000));
 }
 
 function wait(ms: number): Promise<void> {

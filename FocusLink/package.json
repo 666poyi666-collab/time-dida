@@ -20,6 +20,7 @@
     "deploy:cloudflare": "wrangler deploy",
     "typecheck:cloudflare": "tsc -p tsconfig.worker.json",
     "test:cloudflare": "tsx scripts/test/cloudflare-worker-protocol.ts",
+    "probe:account-bootstrap": "tsx scripts/test/account-bootstrap-probe.ts",
     "cloud:container:build": "docker build -f cloud/Web.Dockerfile -t focuslink-web:local .",
     "cloud:container:test": "docker compose --env-file cloud/.env.validation -f cloud/docker-compose.yml config --quiet",
     "cloud:environment:test": "vitest run tests/personalCloudServer.test.ts tests/cloudflareDeploymentContainment.test.ts",
