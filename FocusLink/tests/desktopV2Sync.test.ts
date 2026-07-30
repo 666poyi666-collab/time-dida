@@ -23,6 +23,7 @@ const harness = vi.hoisted(() => ({
   remoteConflicts: [] as Array<Record<string, unknown>>,
   repairCalls: 0,
   paths: [] as string[],
+  connectionCurrent: true,
 }));
 
 vi.mock('../electron/db/index.js', () => ({
@@ -38,7 +39,11 @@ vi.mock('../electron/db/index.js', () => ({
 }));
 
 vi.mock('../electron/sync/deviceSyncService.js', () => ({
+  assertDeviceSyncConnectionCurrent: () => {
+    if (!harness.connectionCurrent) throw new Error('stale connection');
+  },
   getDeviceSyncDataConnection: () => harness.connection,
+  isDeviceSyncConnectionCurrent: () => harness.connectionCurrent,
 }));
 
 vi.mock('../electron/sync/v2OutboxStore.js', () => ({
@@ -94,6 +99,7 @@ describe('desktop canonical Sync v2 boundary', () => {
     harness.remoteConflicts = [];
     harness.repairCalls = 0;
     harness.paths = [];
+    harness.connectionCurrent = true;
   });
 
   it('uses only canonical v2 status/exchange routes and never falls back', async () => {
@@ -122,6 +128,33 @@ describe('desktop canonical Sync v2 boundary', () => {
     expect(error).toMatchObject({ code: 'authentication_failed' });
     expect(String(error)).not.toContain(harness.connection.accessToken);
     expect(harness.meta.get('deviceSync.lastErrorV2.scope-1')).toBe('authentication_failed');
+  });
+
+  it('discards a page that returns after the captured connection is invalidated', async () => {
+    let resolveExchange: ((response: Response) => void) | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input)).pathname;
+        if (path === '/sync/v2/status') return json(status(0));
+        return new Promise<Response>((resolve) => {
+          resolveExchange = resolve;
+        });
+      }),
+    );
+
+    const syncing = runDesktopSyncV2();
+    await vi.waitFor(() => expect(resolveExchange).not.toBeNull());
+    harness.connectionCurrent = false;
+    resolveExchange!(json(page('c9')));
+
+    await expect(syncing).rejects.toMatchObject({ code: 'sync_failed' });
+    const checkpoint = JSON.parse(
+      harness.meta.get('syncV2.desktop.checkpointV2.scope-1') ?? '{}',
+    ) as Record<string, unknown>;
+    expect(checkpoint).toMatchObject({ state: 'uninitialized', cursor: null });
+    expect(harness.meta.has('deviceSync.lastErrorV2.scope-1')).toBe(false);
+    expect(harness.remoteConflicts).toEqual([]);
   });
 
   it('stores a same-revision different-fingerprint response as a conflict', async () => {

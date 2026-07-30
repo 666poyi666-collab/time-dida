@@ -58,7 +58,9 @@ import {
   writeV2EntityState,
 } from './v2OutboxStore.js';
 import {
+  assertDeviceSyncConnectionCurrent,
   getDeviceSyncDataConnection,
+  isDeviceSyncConnectionCurrent,
   type DeviceSyncRuntimeConnection,
 } from './deviceSyncService.js';
 
@@ -97,7 +99,9 @@ export async function runDesktopSyncV2(): Promise<DeviceSyncRunResult | null> {
     return await runDesktopSyncV2WithConnection(connection);
   } catch (error) {
     const safe = safeSyncV2Error(error);
-    setMeta(`${LAST_ERROR_PREFIX}.${connection.scope}`, safe.code);
+    if (isDeviceSyncConnectionCurrent(connection)) {
+      setMeta(`${LAST_ERROR_PREFIX}.${connection.scope}`, safe.code);
+    }
     throw safe;
   }
 }
@@ -105,10 +109,12 @@ export async function runDesktopSyncV2(): Promise<DeviceSyncRunResult | null> {
 async function runDesktopSyncV2WithConnection(
   connection: DeviceSyncRuntimeConnection,
 ): Promise<DeviceSyncRunResult> {
+  assertDeviceSyncConnectionCurrent(connection);
   migrateLegacyV2State(connection.scope);
 
   let checkpoint = readCheckpoint(connection.scope);
   const status = await getEpochStatus(connection);
+  assertDeviceSyncConnectionCurrent(connection);
   if (!sameEpoch(checkpoint, status) || checkpoint.boundDeviceId !== connection.deviceId) {
     requeueStaleGenerationV2Outbox(connection.scope, status.accountGeneration);
     checkpoint = {
@@ -144,13 +150,16 @@ async function runDesktopSyncV2WithConnection(
     // first writer merely because this client started first.
     if (checkpoint.state !== 'v2-active') {
       checkpoint = await drainPages(connection, checkpoint, result, false);
+      assertDeviceSyncConnectionCurrent(connection);
       checkpoint = { ...checkpoint, state: 'v2-active', updatedAt: Date.now() };
       writeCheckpoint(connection.scope, checkpoint);
     }
 
+    assertDeviceSyncConnectionCurrent(connection);
     repairSyntheticCorrectionConflicts(connection.scope);
     getDb().transaction(() => enqueueChangedEntities(connection, checkpoint.accountGeneration))();
     checkpoint = await drainPages(connection, checkpoint, result, true);
+    assertDeviceSyncConnectionCurrent(connection);
     const localStatus = readDesktopV2Status(connection.scope);
     result.unresolvedConflicts = localStatus.conflicts;
     setMeta(`${LAST_SYNC_PREFIX}.${connection.scope}`, String(Date.now()));
@@ -165,7 +174,9 @@ async function runDesktopSyncV2WithConnection(
     return result;
   } catch (error) {
     const safe = safeSyncV2Error(error);
-    setMeta(`${LAST_ERROR_PREFIX}.${connection.scope}`, safe.code);
+    if (isDeviceSyncConnectionCurrent(connection)) {
+      setMeta(`${LAST_ERROR_PREFIX}.${connection.scope}`, safe.code);
+    }
     throw safe;
   }
 }
@@ -230,6 +241,7 @@ async function drainPages(
 ): Promise<Checkpoint> {
   let checkpoint = initial;
   for (let page = 0; page < MAX_PAGES_PER_RUN; page += 1) {
+    assertDeviceSyncConnectionCurrent(connection);
     const claimed = allowPush ? claimV2Outbox(connection.scope, 1) : { leaseId: '', items: [] };
     const request: SyncV2Request = {
       protocolVersion: SYNC_V2_PROTOCOL_VERSION,
@@ -279,6 +291,7 @@ function applyPageAtomically(
 ): Checkpoint {
   const db = getDb();
   return db.transaction(() => {
+    assertDeviceSyncConnectionCurrent(connection);
     for (const ack of response.acks) {
       const item = claimed.find((candidate) => candidate.opId === ack.opId);
       if (!item || !settleV2Ack(connection.scope, leaseId, ack, item.payload, response)) {

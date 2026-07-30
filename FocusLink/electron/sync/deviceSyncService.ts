@@ -33,7 +33,8 @@ import {
   type TaskSnapshotPublishRequest,
 } from '@shared/sync/taskSnapshotProtocol';
 import { parseDeviceToken } from '@shared/sync/v2Protocol';
-import { classifySyncV2Error } from '@shared/sync/v2ClientError';
+import { FOCUSLINK_CANONICAL_SYNC_ORIGIN } from '@shared/sync/identityProtocol';
+import { classifySyncV2Error, SyncV2ClientError } from '@shared/sync/v2ClientError';
 import {
   getSession,
   getMeta,
@@ -115,6 +116,7 @@ export interface DeviceSyncRuntimeConnection {
   accessToken: string;
   deviceId: string;
   scope: string;
+  generation: number;
 }
 
 let liveTelemetry: Pick<DeviceSyncStatus, 'liveConnected' | 'liveRevision' | 'liveState'> = {
@@ -122,6 +124,7 @@ let liveTelemetry: Pick<DeviceSyncStatus, 'liveConnected' | 'liveRevision' | 'li
   liveRevision: null,
   liveState: 'disconnected',
 };
+let connectionGeneration = 0;
 
 class DeviceSyncHttpError extends Error {
   constructor(
@@ -166,7 +169,7 @@ export function getDeviceSyncStatus(): DeviceSyncStatus {
     accountId: accountMatch?.[1] ?? null,
     accountLabel: accountMatch ? 'Poyi' : null,
     enabled: settings.enabled,
-    endpoint: settings.endpoint,
+    endpoint: connection?.endpoint ?? FOCUSLINK_CANONICAL_SYNC_ORIGIN,
     autoSync: settings.autoSync,
     liveControlEnabled: settings.liveControlEnabled,
     ...liveTelemetry,
@@ -190,6 +193,7 @@ export function configureDeviceSync(input: DeviceSyncConfigureInput): DeviceSync
     throw new Error('跨设备同步配置无效');
   }
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
+  invalidateDeviceSyncConnection();
   if (input.accessToken !== undefined) {
     setDeviceSyncToken(input.accessToken?.trim() || null);
   }
@@ -221,6 +225,28 @@ export function getDeviceSyncRuntimeConnection(): DeviceSyncRuntimeConnection | 
   }
 }
 
+/** Invalidate responses captured under an old token/endpoint before rotating local credentials. */
+export function invalidateDeviceSyncConnection(): void {
+  connectionGeneration += 1;
+}
+
+export function isDeviceSyncConnectionCurrent(connection: DeviceSyncRuntimeConnection): boolean {
+  if (connection.generation !== connectionGeneration) return false;
+  const current = resolveDeviceSyncConnection(getSettings().deviceSync.endpoint);
+  return Boolean(
+    current &&
+    current.scope === connection.scope &&
+    current.endpoint === connection.endpoint &&
+    current.accessToken === connection.accessToken,
+  );
+}
+
+export function assertDeviceSyncConnectionCurrent(connection: DeviceSyncRuntimeConnection): void {
+  if (!isDeviceSyncConnectionCurrent(connection)) {
+    throw new SyncV2ClientError('aborted', '同步连接已变更，旧响应已丢弃');
+  }
+}
+
 /** Main-process Sync v2 transport; unlike live control it only requires data sync to be enabled. */
 export function getDeviceSyncDataConnection(): DeviceSyncRuntimeConnection | null {
   const settings = getSettings().deviceSync;
@@ -233,15 +259,13 @@ export function getDeviceSyncDataConnection(): DeviceSyncRuntimeConnection | nul
 
 function makeRuntimeConnection(endpoint: string, accessToken: string): DeviceSyncRuntimeConnection {
   const routed = parseDeviceToken(accessToken);
-  const loopback = ['localhost', '127.0.0.1'].includes(new URL(endpoint).hostname);
-  if (!routed && !loopback) {
-    throw new Error('canonical Sync v2 只接受通过设备配对签发的 fl2 凭据');
-  }
+  const effectiveEndpoint = routeDeviceSyncEndpoint(endpoint, accessToken);
   return {
-    endpoint,
+    endpoint: effectiveEndpoint,
     accessToken,
     deviceId: routed ? `device-${routed.devicePublicId}` : getOrCreateDeviceId(),
-    scope: makeDeviceSyncConnectionScope(endpoint, accessToken),
+    scope: makeDeviceSyncConnectionScope(effectiveEndpoint, accessToken),
+    generation: connectionGeneration,
   };
 }
 
@@ -372,6 +396,7 @@ async function postTaskSnapshot(snapshot: TaskSnapshotPayload): Promise<boolean>
       );
     }
     const value = parseTaskSnapshotResponse(await readDeviceSyncJsonResponse(response));
+    assertDeviceSyncConnectionCurrent(connection);
     if (!value) {
       throw new Error('任务快照服务返回了无效响应');
     }
@@ -862,7 +887,7 @@ function resolveDeviceSyncConnection(rawEndpoint: string): DeviceSyncConnection 
   try {
     const accessToken = getDeviceSyncToken();
     if (!accessToken) return null;
-    const endpoint = normalizeDeviceSyncEndpoint(rawEndpoint);
+    const endpoint = routeDeviceSyncEndpoint(rawEndpoint, accessToken);
     return {
       endpoint,
       accessToken,
@@ -871,6 +896,14 @@ function resolveDeviceSyncConnection(rawEndpoint: string): DeviceSyncConnection 
   } catch {
     return null;
   }
+}
+
+function routeDeviceSyncEndpoint(rawEndpoint: string, accessToken: string): string {
+  const endpoint = normalizeDeviceSyncEndpoint(rawEndpoint);
+  if (parseDeviceToken(accessToken)) return FOCUSLINK_CANONICAL_SYNC_ORIGIN;
+  const host = new URL(endpoint).hostname;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return endpoint;
+  throw new Error('canonical Sync v2 只接受通过账号登录签发的 fl2 凭据');
 }
 
 function checkpointMetaKey(scope: string): string {

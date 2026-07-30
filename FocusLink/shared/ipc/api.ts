@@ -480,10 +480,7 @@ export interface FocusLinkAPI {
     status(): Promise<DeviceSyncStatus>;
     login(): Promise<DeviceSyncAccountLoginResult>;
     logout(): Promise<DeviceSyncStatus>;
-    configure(input: DeviceSyncConfigureInput): Promise<DeviceSyncStatus>;
-    quickSetup(): Promise<DeviceSyncQuickSetupResult>;
     syncNow(): Promise<DeviceSyncRunResult>;
-    createPairingOffer(): Promise<DeviceSyncPairingOffer>;
   };
   tomatodo: {
     syncSegment(segmentId: string): Promise<TomatodoSyncSegmentResult>;

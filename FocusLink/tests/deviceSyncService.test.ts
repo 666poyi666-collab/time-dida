@@ -7,6 +7,7 @@ import type {
   DeviceSyncSessionBundle,
 } from '@shared/sync/deviceProtocol';
 import type { TaskSnapshotPublishRequest } from '@shared/sync/taskSnapshotProtocol';
+import { FOCUSLINK_CANONICAL_SYNC_ORIGIN } from '@shared/sync/identityProtocol';
 
 const harness = vi.hoisted(() => ({
   meta: new Map<string, string>(),
@@ -60,8 +61,10 @@ vi.mock('../electron/sync/deviceSyncCredentials.js', () => ({
 }));
 
 import {
+  assertDeviceSyncConnectionCurrent,
   configureDeviceSync,
   getDeviceSyncRuntimeConnection,
+  invalidateDeviceSyncConnection,
   publishDeviceTaskSnapshot,
   runLegacyDeviceSyncForContractTest as runDeviceSync,
 } from '../electron/sync/deviceSyncService';
@@ -212,7 +215,7 @@ describe('desktop device sync checkpoints', () => {
     });
 
     expect(getDeviceSyncRuntimeConnection()).toMatchObject({
-      endpoint: 'https://sync-a.example',
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
       accessToken: token,
       deviceId: 'device-desktop1',
     });
@@ -235,6 +238,67 @@ describe('desktop device sync checkpoints', () => {
 
     await expect(publishDeviceTaskSnapshot([], [], Date.now())).resolves.toBe(true);
     expect(publishedDeviceId).toBe('device-desktop1');
+  });
+
+  it('pins every fl2 runtime connection to the canonical origin and invalidates old captures', () => {
+    const token = `fl2_account1_desktop1_${'x'.repeat(32)}`;
+    configureDeviceSync({
+      enabled: true,
+      endpoint: 'https://credential-capture.example',
+      autoSync: true,
+      liveControlEnabled: true,
+      accessToken: token,
+    });
+
+    const captured = getDeviceSyncRuntimeConnection();
+    expect(captured).toMatchObject({
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+      accessToken: token,
+    });
+    expect(() => assertDeviceSyncConnectionCurrent(captured!)).not.toThrow();
+
+    invalidateDeviceSyncConnection();
+    expect(() => assertDeviceSyncConnectionCurrent(captured!)).toThrow('旧响应已丢弃');
+  });
+
+  it('keeps a pending task snapshot when its response belongs to an invalidated connection', async () => {
+    const token = `fl2_account1_desktop1_${'x'.repeat(32)}`;
+    configureDeviceSync({
+      enabled: true,
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+      autoSync: true,
+      liveControlEnabled: true,
+      accessToken: token,
+    });
+    let request: TaskSnapshotPublishRequest | null = null;
+    let resolveFetch: ((response: Response) => void) | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_input: string | URL | Request, init?: RequestInit) => {
+        request = JSON.parse(String(init?.body)) as TaskSnapshotPublishRequest;
+        return new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        });
+      }),
+    );
+
+    const publishing = publishDeviceTaskSnapshot([], [], Date.now());
+    invalidateDeviceSyncConnection();
+    expect(request).not.toBeNull();
+    resolveFetch!(
+      jsonResponse({
+        protocolVersion: 1,
+        revision: 1,
+        sourceDeviceId: request!.deviceId,
+        snapshot: request!.snapshot,
+        serverTime: Date.now(),
+      }),
+    );
+
+    await expect(publishing).resolves.toBe(false);
+    expect(
+      [...harness.meta.entries()].find(([key]) => key.includes('pendingTaskSnapshot'))?.[1],
+    ).toBeTruthy();
   });
 
   it('keeps cursor and revision checkpoints isolated by endpoint and token', async () => {

@@ -6,6 +6,7 @@ import {
   detectSettingsChangedDomains,
   mergeSettings,
   resolveTickTickTaskProvider,
+  sanitizeRendererSettingsPatch,
 } from '../shared/settingsPolicy';
 import {
   FOCUS_COLORS,
@@ -75,6 +76,20 @@ describe('settings partial update policy', () => {
     expect(migrated.deviceSync).toEqual(DEFAULT_SETTINGS.deviceSync);
     expect(enabled.deviceSync).toEqual({ ...DEFAULT_SETTINGS.deviceSync, enabled: true });
     expect(detectSettingsChangedDomains(migrated, enabled)).toEqual(['deviceSync']);
+  });
+
+  it('strips device authority changes from ordinary renderer settings writes', () => {
+    const requested: Partial<AppSettings> = {
+      theme: 'dark',
+      deviceSync: {
+        ...DEFAULT_SETTINGS.deviceSync,
+        enabled: true,
+        endpoint: 'https://credential-capture.example',
+      },
+    };
+
+    expect(sanitizeRendererSettingsPatch(requested)).toEqual({ theme: 'dark' });
+    expect(requested.deviceSync?.endpoint).toBe('https://credential-capture.example');
   });
 
   it('adds the single-theme defaults to legacy settings and preserves appearance changes', () => {

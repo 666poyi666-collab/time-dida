@@ -47,11 +47,7 @@ import {
   ensureTomatodoBridge,
   getTomatodoBridgeStatus,
 } from './integrations/tomatodo/bridgeLifecycle.js';
-import {
-  configureDeviceSync,
-  getDeviceSyncStatus,
-  runDeviceSync,
-} from './sync/deviceSyncService.js';
+import { getDeviceSyncStatus, runDeviceSync } from './sync/deviceSyncService.js';
 import {
   loginDeviceSyncAccount,
   logoutDeviceSyncAccount,
@@ -70,14 +66,6 @@ import {
 } from './db/index.js';
 import { exportSessionById } from './export.js';
 
-function isLoopbackEndpoint(value: string): boolean {
-  try {
-    const host = new URL(value).hostname;
-    return host === '127.0.0.1' || host === 'localhost' || host === '::1';
-  } catch {
-    return false;
-  }
-}
 import { buildSessionAnalytics } from '@shared/sessionAnalytics';
 import { logger } from './logger.js';
 import type {
@@ -91,7 +79,10 @@ import type {
 import type { SessionAnalyticsRange } from '@shared/ipc/api';
 import { DEFAULT_SETTINGS } from '@shared/types';
 import { shouldDeleteDidaFocusRecord } from '@shared/autoSyncPolicy';
-import { detectSettingsChangedDomains } from '@shared/settingsPolicy';
+import {
+  detectSettingsChangedDomains,
+  sanitizeRendererSettingsPatch,
+} from '@shared/settingsPolicy';
 
 async function deleteExternalRecordsForSegment(segment: FocusSegment): Promise<{
   didaDeleted: boolean;
@@ -521,7 +512,11 @@ export function registerIpc(
     // Renderer callers intentionally send partial settings (for example the task drawer only
     // changes taskSource). Persisting that object directly temporarily returned a one-field
     // settings object to Zustand and made timer/theme code lose hotkeys and nested config.
-    const next = updateSettings(settings as Partial<AppSettings>);
+    const requested = settings as Partial<AppSettings>;
+    const next = updateSettings(sanitizeRendererSettingsPatch(requested));
+    if (requested.deviceSync !== undefined) {
+      logger.warn('ipc', 'renderer device authority settings write was ignored');
+    }
     const domains = detectSettingsChangedDomains(prev, next);
     // 按域分流副作用：只有 hotkeys 域变更才重新注册快捷键
     onSettingsChanged(domains, next);
@@ -632,55 +627,7 @@ export function registerIpc(
     }
     return getDeviceSyncStatus();
   });
-  ipcMain.handle('device-sync:configure', async (_e, input) => {
-    configureDeviceSync(input);
-    const next = getSettings();
-    onSettingsChanged(['deviceSync'], next);
-    for (const w of BrowserWindow.getAllWindows()) {
-      if (!w.isDestroyed()) {
-        w.webContents.send('settings:changed', next);
-        w.webContents.send('settings:domain-changed', ['deviceSync']);
-      }
-    }
-    return getDeviceSyncStatus();
-  });
-  ipcMain.handle('device-sync:quick-setup', async () => {
-    const status = getDeviceSyncStatus();
-    if (!status.configured) {
-      throw new Error('请先配置云端同步地址和设备凭据；桌面端不再提供本机中继');
-    }
-    if (isLoopbackEndpoint(status.endpoint)) {
-      throw new Error('本机回环同步已退役，请重新通过云端配对配置此设备');
-    }
-    let sync: Awaited<ReturnType<typeof runDeviceSync>> | null = null;
-    let syncError: string | null = null;
-    try {
-      sync = await runDeviceSync();
-    } catch (error) {
-      syncError = error instanceof Error ? error.message : String(error);
-      logger.warn('deviceSync', 'quick setup completed but initial sync remains pending', {
-        error: syncError,
-      });
-    }
-    const next = getSettings();
-    onSettingsChanged(['deviceSync'], next);
-    for (const w of BrowserWindow.getAllWindows()) {
-      if (!w.isDestroyed()) {
-        w.webContents.send('settings:changed', next);
-        w.webContents.send('settings:domain-changed', ['deviceSync']);
-      }
-    }
-    return {
-      status: getDeviceSyncStatus(),
-      sync,
-      syncError,
-      connectedAndroidDevices: [],
-    };
-  });
   ipcMain.handle('device-sync:run', () => runDeviceSync());
-  ipcMain.handle('device-sync:create-pairing-offer', () => {
-    throw new Error('本机配对码已退役，请使用云端账号配对流程');
-  });
 
   // ============ 番茄 Todo 同步（独立并行通道） ============
   /** 手动同步单个 segment 到番茄 Todo */

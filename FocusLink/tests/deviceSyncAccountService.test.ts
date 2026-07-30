@@ -6,6 +6,7 @@ const harness = vi.hoisted(() => ({
   settingsPatches: [] as unknown[],
   openedUrls: [] as string[],
   logs: [] as unknown[][],
+  invalidations: 0,
 }));
 
 vi.mock('electron', () => ({
@@ -42,6 +43,9 @@ vi.mock('../electron/sync/deviceSyncCredentials.js', () => ({
 }));
 
 vi.mock('../electron/sync/deviceSyncService.js', () => ({
+  invalidateDeviceSyncConnection: () => {
+    harness.invalidations += 1;
+  },
   getDeviceSyncStatus: () => ({
     signedIn: Boolean(harness.token),
     accountId: harness.token ? 'account1' : null,
@@ -74,6 +78,7 @@ describe('desktop owner account enrollment', () => {
     harness.settingsPatches = [];
     harness.openedUrls = [];
     harness.logs = [];
+    harness.invalidations = 0;
     vi.useRealTimers();
   });
 
@@ -129,6 +134,7 @@ describe('desktop owner account enrollment', () => {
       'https://poyi-oauth-as.focuslink-poyi-6465e9.workers.dev/owner/focuslink-device?flow=public',
     ]);
     expect(harness.token).toBe(token);
+    expect(harness.invalidations).toBe(1);
     expect(harness.settingsPatches.at(-1)).toEqual({
       deviceSync: {
         enabled: true,
@@ -182,6 +188,7 @@ describe('desktop owner account enrollment', () => {
 
     await expect(loginDeviceSyncAccount()).rejects.toThrow('未完成管理员授权');
     expect(harness.token).toBeNull();
+    expect(harness.invalidations).toBe(0);
     expect(harness.openedUrls).toEqual([]);
   });
 
@@ -305,6 +312,7 @@ describe('desktop owner account enrollment', () => {
     logoutDeviceSyncAccount();
 
     expect(harness.token).toBeNull();
+    expect(harness.invalidations).toBe(1);
     expect(harness.settingsPatches.at(-1)).toEqual({
       deviceSync: {
         enabled: false,

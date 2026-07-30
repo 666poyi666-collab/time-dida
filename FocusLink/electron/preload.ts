@@ -124,11 +124,7 @@ const api = {
     status: () => ipcRenderer.invoke('device-sync:status'),
     login: () => ipcRenderer.invoke('device-sync:login'),
     logout: () => ipcRenderer.invoke('device-sync:logout'),
-    configure: (input: Parameters<FocusLinkAPI['deviceSync']['configure']>[0]) =>
-      ipcRenderer.invoke('device-sync:configure', input),
-    quickSetup: () => ipcRenderer.invoke('device-sync:quick-setup'),
     syncNow: () => ipcRenderer.invoke('device-sync:run'),
-    createPairingOffer: () => ipcRenderer.invoke('device-sync:create-pairing-offer'),
   },
   tomatodo: {
     syncSegment: (segmentId: string) => ipcRenderer.invoke('tomatodo:sync-segment', segmentId),

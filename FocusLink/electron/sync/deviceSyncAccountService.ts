@@ -20,7 +20,11 @@ import type { DeviceSyncAccountLoginResult } from '@shared/ipc/api';
 import { getMeta, setMeta } from '../db/index.js';
 import { logger } from '../logger.js';
 import { updateSettings } from '../settingsStore.js';
-import { getDeviceSyncStatus, runDeviceSync } from './deviceSyncService.js';
+import {
+  getDeviceSyncStatus,
+  invalidateDeviceSyncConnection,
+  runDeviceSync,
+} from './deviceSyncService.js';
 import { getDeviceSyncToken, setDeviceSyncToken } from './deviceSyncCredentials.js';
 
 export const OFFICIAL_FOCUSLINK_ENDPOINT = FOCUSLINK_CANONICAL_SYNC_ORIGIN;
@@ -57,6 +61,7 @@ export function loginDeviceSyncAccount(): Promise<DeviceSyncAccountLoginResult> 
 }
 
 export function logoutDeviceSyncAccount(): void {
+  invalidateDeviceSyncConnection();
   setDeviceSyncToken(null);
   updateSettings({
     deviceSync: {
@@ -96,6 +101,7 @@ async function loginDeviceSyncAccountInternal(): Promise<DeviceSyncAccountLoginR
       if (!openedLogin || !poll) {
         throw new Error('登录服务未完成管理员授权，已拒绝设备凭据');
       }
+      invalidateDeviceSyncConnection();
       setDeviceSyncToken(response.device.accessToken);
       enableOfficialSync();
       logger.info('deviceSyncAccount', 'owner device credential enrolled', {

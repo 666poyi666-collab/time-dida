@@ -279,6 +279,9 @@ export class FocusTimerController {
     const value = (await response.json()) as LiveFocusSnapshotResponse & {
       ack: { status: string; errorCode: string | null; completedEntityId: string | null };
     };
+    if (!this.isCurrentConnection(connection)) {
+      throw new Error('实时同步连接已变更，旧响应已丢弃');
+    }
     if (value.ack.status !== 'applied' && value.ack.status !== 'duplicate') {
       this.accept(value);
       throw new Error(this.commandError(value.ack.errorCode));
@@ -335,6 +338,7 @@ export class FocusTimerController {
         const next = (await (
           await this.request(query, connection, {}, controller.signal)
         ).json()) as LiveFocusSnapshotResponse;
+        if (generation !== this.generation || !this.isCurrentConnection(connection)) return;
         const previous = this.snapshot;
         if (
           next.snapshot.state === 'idle' &&

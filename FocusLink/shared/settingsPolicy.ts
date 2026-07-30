@@ -30,6 +30,17 @@ export function mergeSettings<T>(base: T, override: DeepPartial<T>): T {
   return result as T;
 }
 
+/**
+ * The ordinary renderer may change presentation and integration preferences, but it must never
+ * rewrite the main-process device authority. Account login/logout own that branch so a compromised
+ * renderer cannot redirect a protected device credential to another endpoint.
+ */
+export function sanitizeRendererSettingsPatch(input: Partial<AppSettings>): Partial<AppSettings> {
+  const sanitized = { ...input };
+  delete sanitized.deviceSync;
+  return sanitized;
+}
+
 /** Map a settings update to the smallest side-effect domains that must react. */
 export function detectSettingsChangedDomains(
   prev: AppSettings,
