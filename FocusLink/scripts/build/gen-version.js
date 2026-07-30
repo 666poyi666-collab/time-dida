@@ -1,6 +1,6 @@
 // 生成版本信息到 shared/version.generated.ts
 // 供主进程日志和渲染进程 UI 共用，build/dist 前自动执行
-const { execSync } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -12,8 +12,30 @@ const APP_RELEASE_DIR = `release-v${APP_VERSION.replace(/\./g, '')}`;
 
 let commit = 'unknown';
 try {
-  commit = execSync('git rev-parse --short HEAD').toString().trim();
-  const dirtyEntries = execSync('git status --porcelain --untracked-files=normal', { cwd: root })
+  const repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd: root,
+    encoding: 'utf8',
+  }).trim();
+  commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  }).trim();
+  const dirtyEntries = execFileSync(
+    'git',
+    [
+      '-c',
+      'filter.lfs.process=',
+      '-c',
+      'filter.lfs.required=false',
+      'status',
+      '--porcelain',
+      '--untracked-files=normal',
+      '--',
+      '.',
+      ':(exclude)release-v*/FocusLink-*-x64*.exe',
+    ],
+    { cwd: repoRoot, encoding: 'utf8' },
+  )
     .toString()
     .split(/\r?\n/)
     .filter(Boolean)
