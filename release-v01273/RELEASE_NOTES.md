@@ -8,9 +8,12 @@
 
 - 保持“登录一个 FocusLink 管理员账号即可同步”，普通界面没有服务地址、访问令牌、配对码或“编辑连接”；旧设备 `fl2` 原位升级继续使用。
 - 新设备 bootstrap 使用严格 start/poll、短期独立 poll credential、canonical owner 登录 URL 与脱敏诊断；未完成 owner 登录时不接受设备凭据。
+- Electron 普通 renderer 不再拥有 configure、quick setup、pairing 或 `deviceSync` 设置写面；生产凭据固定 canonical origin，账号/连接变化会取消并废弃旧 live、任务与账本响应。
 - 手机和平板在前台每 15 秒自动刷新任务快照，强制绕过 HTTP cache，旧 revision 不回退、同 revision 异文不覆盖。
 - PC 只有在云端回读同一设备与同一任务快照正文后才确认发布，失败时保留耐久 pending 供下轮自动重试。
 - Windows Dashboard 增加共享 07:00–22:00 有效日、focus/pause/gap 甜甜圈、24h 轴与精确空档；旧记录缺边界时明确标为 estimated。
+- 手机和平板换为原创 Liquid Glass 控制层，统计直接消费共享有效日账本，任务页按真实 `parentId` 展示父子树；手机、平板、横屏、亮暗主题与四入口 viewport 已自动验收，手表 renderer 保持原路径。
+- PC-off 自动化固定四步 revision `1→2→3→4`，最终只允许 `2 segments + 1 pause`；finish 重放必须 duplicate，第二次 cursor 拉取必须为空。生产真机证据只在本版实装后回填。
 
 ## 保留能力
 

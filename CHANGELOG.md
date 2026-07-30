@@ -3,9 +3,12 @@
 ## v0.12.73 - 2026-07-30（账号同步加固、任务快照收敛与有效日账本）
 
 - **登录还是只登账号**：Windows、手机、平板继续不显示服务地址、访问令牌、配对码或“编辑连接”；既有 `fl2` 凭据原位升级不掉线。新设备 bootstrap 收紧为 start/poll 两阶段，使用短期独立 `flb_*` poll credential、canonical owner 登录 URL、精确字段与全链脱敏；未完成管理员登录时直接下发 device token 会被拒绝。
+- **canonical 权限边界闭环**：Electron preload/IPC 不再向普通 renderer 暴露 configure、quick setup 或 pairing 写面，`settings:set` 会剥离 `deviceSync`；生产 `fl2` 运行期固定 canonical origin。退出登录、凭据或连接 epoch 变化会取消并废弃旧 live、任务与账本响应，旧账号数据不能在新连接上落库。
 - **公网边界不冒充**：新增 `probe:account-bootstrap` 只输出结构化部署状态。当前 canonical 实测 `/account/v1/device/bootstrap` 为 404，明确记为 `not-deployed`；本仓已完成客户端、私有 registration、合同、诊断与部署清单，真实上线仍需 foxlink gateway 的 owner session/CSRF、flow store、独立 `fia_*` secret 和单次消费负测。
 - **任务快照自动追新**：手机/平板可见态每 15 秒使用 `no-store` 拉取任务快照，并在恢复前台/连接变化时立即刷新；revision 只允许前进，延迟旧响应不覆盖新缓存，同 revision 异文直接拒绝。PC 只有收到 authority 对同一 device/payload 的回读确认后才清除耐久 pending snapshot。
 - **共享有效日账本**：新增 07:00–22:00 有效日纯函数，真实 Segment/PauseEvent 切出 focus/pause/gap 且严格守恒；Dashboard 提供甜甜圈、24h 轴和精确空档，历史缺边界数据只显示 estimated，不写第二份 gap 事实。
+- **移动 Liquid Glass 与任务树**：手机、平板只在导航、切换器、浮动操作与弹层使用有边界玻璃控制层，正文保持清楚连续；统计直接消费共享 `dayLedgers`，任务页按匿名 `parentId` 重建父子树。360/412/640/760 与横屏、亮暗主题、四入口和 a11y viewport 门禁已通过，手表 renderer、华为 capsule、小米系统表面与 Windows 两态 mini 保持原路径。
+- **PC-off 收敛门禁**：自动化精确锁定“小米开始 → 华为暂停 → 小米继续 → 华为结束”的 revision `1→2→3→4` 合同，最终只生成 `2 segments + 1 pause`；相同 finish command 重放必须为 duplicate，第二次 cursor 拉取必须为空。0.12.73 真机证据仍只在四端实装后回填。
 - **交付边界**：版本统一为 `0.12.73/1273`。完整门禁、四设备覆盖安装、最终哈希与源码提交在候选生成后回填；不创建公开 GitHub Release 或 tag。
 
 ## v0.12.72 - 2026-07-30（单账号云同步与四端候选收口）

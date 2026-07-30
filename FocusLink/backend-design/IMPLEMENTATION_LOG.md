@@ -3,7 +3,10 @@
 ## 2026-07-30 · v0.12.73 单账号 bootstrap 与任务快照 freshness
 
 - 新设备登录合同收紧为严格 start/poll：独立短期 `flb_*` poll credential、canonical owner URL、流程绑定、响应精确字段和 credential 脱敏；Electron 拒绝未经过 owner 登录直接下发的 device token。公网 probe 当前实测 404 时明确报告 `not-deployed`，不冒充新设备登录已上线；旧 `fl2` 原位升级链保持不变。
+- 手机、平板与手表共用同一严格 bootstrap 解析：start 只提交精确 registration，poll 只提交绑定的 `flowId + flb_*`；首次响应直接夹带 credential、legacy session、非 canonical owner/origin、额外字段或身份不一致全部失败。普通 Electron renderer 的 configure/quickSetup/pairing API 已移除，`settings:set` 忽略 `deviceSync`，生产 `fl2` 连接固定 canonical origin。
+- 账号退出、credential/endpoint generation 变化会先 abort 旧请求；live、task snapshot 与 Sync v2 在应用响应前再次核对 generation/scope，失效响应不得写入缓存、SQLite 或推进 cursor。诊断只保留状态、分类和脱敏后的错误，不记录 token、poll token、installationId 或完整设备身份。
 - 任务快照增加单调 freshness 合同：PC 仅在 authority 回读相同 device/payload 后确认发布，手机可见态每 15 秒自动 GET 且强制 `no-store`，旧 revision 不回退、同 revision 异文不覆盖。回归 fixture 不包含私人任务正文。
+- 精确 PC-off fixture 固定 revision `1→2→3→4`，最终 `2 segments + 1 pause` 且三时间守恒；相同 finish commandId 重放返回 duplicate，第一轮 cursor 只收一份 completed change、第二轮为空。该项是自动化合同，不替代 0.12.73 四端实装后的生产真机证据。
 - 公网真正上线仍需按顺序配置独立 `fia_*`、部署私有 registration、在 foxlink gateway 实现 owner session/CSRF 与 start/poll flow store、执行 poll token 单次消费负测；本仓 dry-run 与合同测试不替代该外部部署。
 
 ## 2026-07-30 · FL-REQ-20260730-DAY-LEDGER 共享有效日与 Windows Dashboard
@@ -12,6 +15,7 @@
 - 进行中 Session 的 open segment/pause 可延伸到当前观察终点；历史 open 行、缺 Segment/PauseEvent 的旧账本只输出 estimated 汇总，绝不伪造分钟级区间。纯函数回归覆盖无 focus、尾部空档、跨午夜、重叠、running/paused、今天/历史日与旧数据边界。
 - `SessionAnalyticsResult.dayLedgers` 成为桌面/移动共享 IPC 结果。Windows Dashboard 消费该结果，增加可动画 SVG focus/pause/gap 甜甜圈、突出 07–22 的 24h 轴、精确空档列表与多日三段堆叠柱；任务投入与“最长一轮”按同一有效日窗口裁切，estimated 只补 KPI/任务 legacy 并单独标记，不与精确 gap 共用分母。多日图外层/日柱采用分层 ARIA，页尾轨保持三分类，只读 gap 行不进入 Tab 序列；内容层保持连续，Liquid Glass 只用于日期浮层、甜甜圈和 estimated 状态徽标，并完整支持 reduced-motion。
 - 桌面定向验证覆盖共享分析、renderer、九仪表、完整状态机与空闲 403 本地安全回退；本条不改版本元数据、不打包、不安装、不发布。
+- 移动 Dashboard 直接消费共享 `dayLedgers`，没有复制 gap 算法；任务页以匿名 `parentId` fixture 验证父摘要、子组、孤儿/循环降级和选择/开始分离。Liquid Glass 只落在控制层，360/412/640/760 与横屏的亮暗四入口 viewport、44px 命中区、无横向溢出及 reduced-motion/a11y 合同均已通过；WatchApp 与原生华为/小米系统表面未改。
 
 ## 2026-07-30 · v0.12.72 单账号登录与四端候选收口
 
