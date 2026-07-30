@@ -7,7 +7,12 @@ import { AppNavigation, type MobileView } from './AppNavigation';
 import { normalizeDeviceSyncEndpoint } from '@shared/sync/deviceProtocol';
 import { classifySyncV2Error } from '@shared/sync/v2ClientError';
 import type { LiveFocusCommand, LiveFocusSnapshotResponse } from '@shared/sync/liveFocusProtocol';
-import type { SyncedTask, TaskSnapshotResponse } from '@shared/sync/taskSnapshotProtocol';
+import {
+  TASK_SNAPSHOT_REFRESH_INTERVAL_MS,
+  reconcileTaskSnapshot,
+  type SyncedTask,
+  type TaskSnapshotResponse,
+} from '@shared/sync/taskSnapshotProtocol';
 import {
   clearCachedLiveFocusSnapshot,
   clearMobileCache,
@@ -163,6 +168,7 @@ export function MobileApp() {
   const preferencesRef = useRef(preferences);
   const cacheRef = useRef(cache);
   const liveSnapshotRef = useRef(liveSnapshot);
+  const taskSnapshotRef = useRef<TaskSnapshotResponse | null>(null);
   const offlineRuntimeRef = useRef<OfflineFocusRuntime | null>(null);
   const authorityModeRef = useRef<MobileAuthorityMode>('cloud-live');
   const liveConnectionRef = useRef(liveConnection);
@@ -385,9 +391,16 @@ export function MobileApp() {
         signal: controller.signal,
       });
       if (!isCurrent()) return;
-      setTaskSnapshot(response);
+      const reconciliation = reconcileTaskSnapshot(taskSnapshotRef.current, response);
+      if (reconciliation.freshness === 'stale') return;
+      if (reconciliation.freshness === 'inconsistent') {
+        setCommandNotice('任务清单 revision 内容不一致，已保留本机较可信快照并继续重试');
+        return;
+      }
+      taskSnapshotRef.current = reconciliation.snapshot;
+      setTaskSnapshot(reconciliation.snapshot);
       await enqueueMutation(cacheMutationQueue, async () => {
-        if (isCurrent()) await writeCachedTaskSnapshot(response);
+        if (isCurrent()) await writeCachedTaskSnapshot(reconciliation.snapshot);
       });
     } catch (error) {
       if (!isCurrent() || isAbortError(error)) return;
@@ -523,7 +536,10 @@ export function MobileApp() {
           if (!savedOfflineRuntime) setLiveSnapshotSource('cache');
         }
         setPendingUploadCount(pendingUploads.length);
-        if (cachedTasks) setTaskSnapshot(cachedTasks);
+        if (cachedTasks) {
+          taskSnapshotRef.current = cachedTasks;
+          setTaskSnapshot(cachedTasks);
+        }
         setLedgerNotice(
           ledger.bundles.length > 0
             ? `已从本机缓存载入 ${ledger.bundles.length} 场会话`
@@ -583,6 +599,15 @@ export function MobileApp() {
     void pullLedger(preferences, cacheRef.current.cursor);
     void refreshTasks(preferences);
   }, [cacheReady, connectionEpoch, online, preferences, pullLedger, refreshTasks]);
+
+  useEffect(() => {
+    if (!cacheReady || !online || !preferences.endpoint || !preferences.token) return;
+    const refreshVisibleTasks = () => {
+      if (document.visibilityState === 'visible') void refreshTasks(preferencesRef.current);
+    };
+    const timer = window.setInterval(refreshVisibleTasks, TASK_SNAPSHOT_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [cacheReady, online, preferences.endpoint, preferences.token, refreshTasks]);
 
   useEffect(() => {
     liveRequest.current?.abort();
@@ -1045,6 +1070,7 @@ export function MobileApp() {
       setCache(EMPTY_CACHE);
       setLiveSnapshot(null);
       setLiveSnapshotSource('none');
+      taskSnapshotRef.current = null;
       setTaskSnapshot(null);
       setSelectedTaskId('');
       setPullState('idle');

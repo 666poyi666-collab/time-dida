@@ -1,10 +1,12 @@
 import type { Project, Task, TaskSource } from '../types';
+import { fingerprintDeviceSyncValue } from './deviceProtocol';
 
 export const TASK_SNAPSHOT_PROTOCOL_VERSION = 1 as const;
 export const TASK_SNAPSHOT_PATH = '/sync/v2/tasks' as const;
 export const TASK_SNAPSHOT_MAX_BODY_BYTES = 512 * 1024;
 export const TASK_SNAPSHOT_MAX_TASKS = 5_000;
 export const TASK_SNAPSHOT_MAX_PROJECTS = 500;
+export const TASK_SNAPSHOT_REFRESH_INTERVAL_MS = 15_000;
 const MAX_TEXT_LENGTH = 1_000;
 
 export interface SyncedTaskProject {
@@ -46,6 +48,13 @@ export interface TaskSnapshotResponse {
   sourceDeviceId: string | null;
   snapshot: TaskSnapshotPayload | null;
   serverTime: number;
+}
+
+export type TaskSnapshotFreshness = 'advance' | 'refresh' | 'stale' | 'inconsistent';
+
+export interface TaskSnapshotReconciliation {
+  freshness: TaskSnapshotFreshness;
+  snapshot: TaskSnapshotResponse;
 }
 
 export function toTaskSnapshotPayload(
@@ -156,6 +165,60 @@ export function validateTaskSnapshotPublishRequest(
   );
 }
 
+export function parseTaskSnapshotResponse(value: unknown): TaskSnapshotResponse | null {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'protocolVersion',
+      'revision',
+      'sourceDeviceId',
+      'snapshot',
+      'serverTime',
+    ]) ||
+    value.protocolVersion !== TASK_SNAPSHOT_PROTOCOL_VERSION ||
+    !Number.isSafeInteger(value.revision) ||
+    Number(value.revision) < 0 ||
+    !(value.sourceDeviceId === null || isId(value.sourceDeviceId)) ||
+    !(value.snapshot === null || validateTaskSnapshotPayload(value.snapshot)) ||
+    !isTimestamp(value.serverTime)
+  ) {
+    return null;
+  }
+  return value as unknown as TaskSnapshotResponse;
+}
+
+/**
+ * Task snapshots are a server-owned monotonic register. A slow or cached response may refresh
+ * timing metadata, but it must never replace a newer local revision. Equal revisions must carry
+ * the same source and payload; otherwise the authority response is inconsistent and is ignored.
+ */
+export function reconcileTaskSnapshot(
+  current: TaskSnapshotResponse | null,
+  incoming: TaskSnapshotResponse,
+): TaskSnapshotReconciliation {
+  if (!current || incoming.revision > current.revision) {
+    return { freshness: 'advance', snapshot: incoming };
+  }
+  if (incoming.revision < current.revision) {
+    return { freshness: 'stale', snapshot: current };
+  }
+  const currentFingerprint = fingerprintDeviceSyncValue({
+    sourceDeviceId: current.sourceDeviceId,
+    snapshot: current.snapshot,
+  });
+  const incomingFingerprint = fingerprintDeviceSyncValue({
+    sourceDeviceId: incoming.sourceDeviceId,
+    snapshot: incoming.snapshot,
+  });
+  if (currentFingerprint !== incomingFingerprint) {
+    return { freshness: 'inconsistent', snapshot: current };
+  }
+  return {
+    freshness: 'refresh',
+    snapshot: incoming.serverTime >= current.serverTime ? incoming : current,
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -163,6 +226,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
   const allowed = new Set(keys);
   return Object.keys(value).every((key) => allowed.has(key));
+}
+
+function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).length === keys.length && hasOnlyKeys(value, keys);
 }
 
 function isId(value: unknown): value is string {

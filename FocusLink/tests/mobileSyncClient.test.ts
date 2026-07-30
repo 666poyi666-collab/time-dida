@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   exchangeDeviceSyncPairingCode,
   fetchLiveFocusSnapshot,
+  fetchTaskSnapshot,
   pullDeviceSyncPage,
   pushPendingDeviceSyncBundle,
 } from '../src/mobile/syncClient';
@@ -124,6 +125,27 @@ describe('mobile sync client request recovery', () => {
     });
     controller.abort();
     await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('always bypasses HTTP caches when converging the task snapshot revision', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        protocolVersion: 1,
+        revision: 37,
+        sourceDeviceId: 'device-desktop',
+        snapshot: { publishedAt: 37_000, projects: [], tasks: [] },
+        serverTime: 38_000,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      fetchTaskSnapshot({ endpoint: 'https://sync.example.test', token: 'test-token' }),
+    ).resolves.toMatchObject({ revision: 37 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://sync.example.test/sync/v2/tasks',
+      expect.objectContaining({ cache: 'no-store', credentials: 'omit' }),
+    );
   });
 
   it('retires the legacy ledger route locally and never sends a fallback request', async () => {

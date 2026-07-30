@@ -26,11 +26,11 @@ import type { Project, Task } from '@shared/types';
 import {
   TASK_SNAPSHOT_PATH,
   TASK_SNAPSHOT_PROTOCOL_VERSION,
+  parseTaskSnapshotResponse,
   toTaskSnapshotPayload,
   validateTaskSnapshotPayload,
   type TaskSnapshotPayload,
   type TaskSnapshotPublishRequest,
-  type TaskSnapshotResponse,
 } from '@shared/sync/taskSnapshotProtocol';
 import { parseDeviceToken } from '@shared/sync/v2Protocol';
 import { classifySyncV2Error } from '@shared/sync/v2ClientError';
@@ -371,12 +371,17 @@ async function postTaskSnapshot(snapshot: TaskSnapshotPayload): Promise<boolean>
         `任务快照服务返回 ${response.status}${detail.message ? `：${detail.message}` : ''}`,
       );
     }
-    const value = (await readDeviceSyncJsonResponse(response)) as Partial<TaskSnapshotResponse>;
-    if (
-      value.protocolVersion !== TASK_SNAPSHOT_PROTOCOL_VERSION ||
-      !Number.isSafeInteger(value.revision)
-    ) {
+    const value = parseTaskSnapshotResponse(await readDeviceSyncJsonResponse(response));
+    if (!value) {
       throw new Error('任务快照服务返回了无效响应');
+    }
+    if (
+      value.revision < 1 ||
+      value.sourceDeviceId !== deviceId ||
+      value.snapshot === null ||
+      fingerprintDeviceSyncValue(value.snapshot) !== fingerprintDeviceSyncValue(snapshot)
+    ) {
+      throw new Error('任务快照服务未确认本次发布内容');
     }
     logger.info('deviceSync', 'desktop task snapshot published', {
       revision: value.revision,

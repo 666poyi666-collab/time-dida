@@ -22,8 +22,7 @@ import {
 } from '@shared/sync/liveFocusProtocol';
 import {
   TASK_SNAPSHOT_PATH,
-  TASK_SNAPSHOT_PROTOCOL_VERSION,
-  validateTaskSnapshotPayload,
+  parseTaskSnapshotResponse,
   type TaskSnapshotResponse,
 } from '@shared/sync/taskSnapshotProtocol';
 
@@ -134,19 +133,9 @@ export async function fetchTaskSnapshot(
   input: LiveFocusConnectionInput,
 ): Promise<TaskSnapshotResponse> {
   const response = await liveFocusFetch(input, TASK_SNAPSHOT_PATH);
-  const value = await readDeviceSyncJsonResponse(response);
-  if (
-    !isRecord(value) ||
-    value.protocolVersion !== TASK_SNAPSHOT_PROTOCOL_VERSION ||
-    !Number.isSafeInteger(value.revision) ||
-    Number(value.revision) < 0 ||
-    !(value.sourceDeviceId === null || isNonEmptyText(value.sourceDeviceId, 200)) ||
-    !(value.snapshot === null || validateTaskSnapshotPayload(value.snapshot)) ||
-    !isFiniteTimestamp(value.serverTime)
-  ) {
-    throw new Error('任务快照响应无效');
-  }
-  return value as unknown as TaskSnapshotResponse;
+  const value = parseTaskSnapshotResponse(await readDeviceSyncJsonResponse(response));
+  if (!value) throw new Error('任务快照响应无效');
+  return value;
 }
 
 export async function waitForLiveFocusSnapshot(

@@ -177,11 +177,12 @@ describe('desktop device sync checkpoints', () => {
         if (String(input).endsWith('/sync/v2/tasks')) {
           taskCalls += 1;
           if (taskCalls === 1) throw new Error('offline');
+          const body = JSON.parse(String(init?.body)) as TaskSnapshotPublishRequest;
           return jsonResponse({
             protocolVersion: 1,
             revision: 1,
-            sourceDeviceId: 'desktop',
-            snapshot: JSON.parse(String(init?.body)).snapshot,
+            sourceDeviceId: body.deviceId,
+            snapshot: body.snapshot,
             serverTime: Date.now(),
           });
         }
