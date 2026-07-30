@@ -5,6 +5,7 @@
 - **登录即同步**：Windows、手机、平板只显示 FocusLink 账号、同步状态、最近同步、立即同步与退出登录；普通界面彻底移除服务地址、访问令牌、一次性配对码、“编辑连接”和高级连接开关。既有合法 `fl2` 凭据原位识别为已登录，不要求当前三端重新配对。
 - **唯一 owner 自动登记**：私有 Account DO 新增身份网关专用设备登记接口，只接受 `poyi-owner` 与独立 `fia_*` authority；按本机稳定 `installationId` 为 Windows、手机、平板、手表签发各自独立 `fl2`，客户端不能申请管理 scope，日志不记录令牌。OPPO 手表只提供“从手机登录/等待确认”，不复制手机凭据。
 - **部署边界**：本仓完成客户端、私有 authority 与合同测试；公网 `/account/v1/device/bootstrap` 仍必须由 `foxlink-cloud-mcp` 校验 owner 登录后转发，并配置独立 identity authority secret。本轮未获该外部仓远端部署授权，因此不得把新设备公网登录写成已上线；旧凭据同步保持可用。
+- **本地交付验收**：format/typecheck/lint、93 个 Vitest 文件/605 项、Electron 隔离回归、Web/Cloud/跨端合同、Cloudflare dry-run、Android unit/lint/assemble 与 emulator instrumentation 全部通过；干净源码提交 `cf779db` 的主窗、两态 mini、live fallback smoke 通过。Windows、小米、华为和 OPPO 手表均实装并回读 `0.12.72/1272`；手机/平板旧凭据升级后仍显示实时与账本已连接，手表未登录首屏只显示“从手机登录”。
 
 - **正式替代 0.12.71 候选**：0.12.71 的首次 UI smoke 发现游标标尺预览比固定舞台宽 9.74px，未进入任何设备安装；本版将预览收至 176px，并让 smoke 记录每张卡的 frame/dial 边界且真实点击“结束”，不再因 contextBridge Promise 把已成功的 STOP 卡成假超时。
 - **Windows 403 根修复**：实时命令、任务快照与 Sync v2 统一使用 `fl2` 凭据绑定的设备 ID；空闲云端遇到 401/403 或传输不可达时本地计时仍可开始，活动云端会话继续保持权威锁定。失败原因完整写入日志，不再退化为 `[object Object]`。

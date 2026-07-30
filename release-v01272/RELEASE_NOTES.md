@@ -1,8 +1,8 @@
 # FocusLink v0.12.72
 
 - 发布类型：正式版
-- 验证状态：构建与四端安装待完成
-- 对应源码：`<SOURCE_COMMIT>`
+- 验证状态：本地候选构建、smoke 与四端同版安装完成；公网新设备登录网关待独立部署
+- 对应源码：`cf779db`
 
 ## 主要变化
 
@@ -22,8 +22,8 @@
 
 ## 验证摘要
 
-- format、typecheck、lint、全量 Vitest、Electron 隔离回归、Web/Cloud/跨端合同、Android unit/lint/assemble 与 emulator 18 项 instrumentation 已通过。
-- Windows 主窗/mini/live fallback smoke、正式打包与四端实装结果将在最终构建后填写。
+- format、typecheck、lint、93 个 Vitest 文件/605 项、Electron 隔离回归、Web/Cloud/38 项跨端合同、Android unit/lint/assemble 与 emulator instrumentation（26 项完成、8 skipped、0 failed）已通过。
+- 干净提交 `cf779db` 的 Windows 主窗、两态 mini 与 live fallback smoke 通过；Windows、小米、华为和 OPPO 手表均实装并回读 `0.12.72/1272`。
 
 ## 升级提示
 
@@ -33,12 +33,14 @@
 
 - 手机、平板和 OPPO 手表共用同一响应式 Android APK；当前仍使用与既有设备一致的调试签名。
 - 移动端只控制 FocusLink 云端活动会话；滴答清单与番茄 To-do 的第三方投递仍由桌面端执行并确认。
+- 新设备“登录即同步”还需要 canonical `foxlink-cloud-mcp` 公网 bootstrap 与独立 identity secret 上线；本地候选没有部署外部仓或读取远端 secret。OPPO 手表的“从手机登录”还需要 companion 授权通道，当前只验收了 UI 与轮询状态机。
+- Android APK 备份位于 `.tmp/android-apk-backups/FocusLink-0.12.72-1272-debug.apk`，SHA-256 为 `A269F37761B0070661836B00112CD270B79222F00C802CC61688357F7B5D91CC`。
 
 ## SHA256
 
 | 文件 | SHA256 |
 | --- | --- |
-| `FocusLink-0.12.72-x64.exe` | `<SHA256>` |
-| `FocusLink-0.12.72-x64-portable.exe` | `<SHA256>` |
+| `FocusLink-0.12.72-x64.exe` | `4C3A681A0DB9F47DE2579AD26C9020680CBC8D610642AAA725F111FB7C3B178F` |
+| `FocusLink-0.12.72-x64-portable.exe` | `1B9C7423143D29FB310AB6C42C8DB63187DC33E9383085BAF80E2AFF257184E0` |
 
 同时提供 `SHA256SUMS.txt`。
