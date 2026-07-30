@@ -1,4 +1,4 @@
-import { Cloud, Database, KeyRound, SlidersHorizontal } from 'lucide-react';
+import { Cloud, Database, SlidersHorizontal, UserRound } from 'lucide-react';
 import { APP_COMMIT, APP_VERSION } from '@shared/version';
 import type { LiveConnectionState } from './runtimeModel';
 import { NativeSystemControls } from './NativeSystemControls';
@@ -14,26 +14,28 @@ import {
 
 interface SettingsViewProps {
   connection: LiveConnectionState;
+  accountLabel: string | null;
+  authenticated: boolean;
   endpoint: string;
-  hasToken: boolean;
   token: string;
   taskCount: number;
   taskRevision: number;
   ledgerCount: number;
-  onOpenConnection: () => void;
+  onOpenAccount: () => void;
   appearance: MobileAppearance;
   onAppearanceChange: (value: MobileAppearance) => void;
 }
 
 export function SettingsView({
   connection,
+  accountLabel,
+  authenticated,
   endpoint,
-  hasToken,
   token,
   taskCount,
   taskRevision,
   ledgerCount,
-  onOpenConnection,
+  onOpenAccount,
   appearance,
   onAppearanceChange,
 }: SettingsViewProps) {
@@ -42,26 +44,26 @@ export function SettingsView({
       <header className="view-heading">
         <div>
           <p className="eyebrow">DEVICE & CLOUD</p>
-          <h2 id="settings-view-title">连接与系统</h2>
+          <h2 id="settings-view-title">账号与系统</h2>
         </div>
-        <button className="settings-edit-button" type="button" onClick={onOpenConnection}>
-          <SlidersHorizontal aria-hidden="true" />
-          <span>编辑连接</span>
+        <button className="settings-edit-button" type="button" onClick={onOpenAccount}>
+          <UserRound aria-hidden="true" />
+          <span>{authenticated ? '管理账号' : '登录账号'}</span>
         </button>
       </header>
 
       <div className="settings-status-grid">
         <StatusLine
           icon={Cloud}
-          label="实时连接"
+          label="云同步"
           value={connectionLabel(connection)}
           tone={connection === 'live' ? 'ok' : 'warning'}
         />
         <StatusLine
-          icon={KeyRound}
-          label="访问令牌"
-          value={hasToken ? '已保存于本机' : '未配置'}
-          tone={hasToken ? 'ok' : 'warning'}
+          icon={UserRound}
+          label="FocusLink 账号"
+          value={authenticated ? (accountLabel ?? '已登录') : '未登录'}
+          tone={authenticated ? 'ok' : 'warning'}
         />
         <StatusLine
           icon={Database}
@@ -69,11 +71,6 @@ export function SettingsView({
           value={`${taskCount} 项 · rev ${taskRevision}`}
         />
         <StatusLine icon={Database} label="本机会话" value={`${ledgerCount} 场`} />
-      </div>
-
-      <div className="endpoint-readout">
-        <span>同步服务地址</span>
-        <code>{endpoint || '尚未配置'}</code>
       </div>
 
       <section className="mobile-appearance-panel" aria-labelledby="mobile-appearance-title">
@@ -196,5 +193,5 @@ function connectionLabel(connection: LiveConnectionState): string {
   if (connection === 'connecting') return '连接中';
   if (connection === 'offline') return '设备离线';
   if (connection === 'error') return '需要重试';
-  return '未配置';
+  return '未登录';
 }

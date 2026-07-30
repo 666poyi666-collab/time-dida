@@ -4,23 +4,19 @@
 // 连接面板），在 189dp 上压缩它只会得到一屏折行。手表要的是一块「远程表盘」：
 // 大读数 + 一两个按钮，其余全部不进屏幕。
 //
-// 配对方式：与手机相同的 focuslink://pair 深链（electron 端生成、二维码/adb 皆可
-// 投递），换取令牌后存在本机。手表上不提供手动填地址/令牌的表单——那个表单在
-// 这块屏幕上物理上不可用。
+// 登录方式：由配对手机确认，云端为手表签发独立设备凭据。手表不显示地址、令牌
+// 或配对码，只显示“从手机登录”和等待确认状态。
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { App as CapacitorApp, type URLOpenListenerEvent } from '@capacitor/app';
-import { Capacitor } from '@capacitor/core';
 import { normalizeDeviceSyncEndpoint } from '@shared/sync/deviceProtocol';
-import { parseDeviceSyncPairingUrl } from '@shared/sync/pairingProtocol';
 import type { LiveFocusCommand } from '@shared/sync/liveFocusProtocol';
 import type { SyncedTask } from '@shared/sync/taskSnapshotProtocol';
 import {
-  exchangeDeviceSyncPairingCode,
   fetchLiveFocusSnapshot,
   fetchTaskSnapshot,
   sendLiveFocusCommand,
   waitForLiveFocusSnapshot,
 } from './syncClient';
+import { ownerAccountBootstrapApi, type OwnerAccountSession } from './accountBootstrap';
 import {
   configureNativeFocusConnection,
   isNativeFocusRuntimeAvailable,
@@ -28,6 +24,7 @@ import {
 } from './nativeFocusRuntime';
 import {
   getOrCreateDeviceId,
+  getOrCreateInstallationId,
   loadConnectionPreferences,
   rememberAssignedDeviceId,
   saveConnectionPreferences,
@@ -91,13 +88,14 @@ export function WatchApp() {
   const [view, setView] = useState<WatchView>('main');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [waitingForPhone, setWaitingForPhone] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
-  const consumedNoncesRef = useRef(new Set<string>());
 
   // Restore the Keystore credential on every native launch. For an upgrade
   // from an older build, migrate the legacy WebView copy first and purge it
@@ -132,7 +130,7 @@ export function WatchApp() {
         setConnection('connecting');
       })
       .catch(() => {
-        if (!disposed) setNotice('Android 安全凭据恢复失败，请重新配对');
+        if (!disposed) setNotice('账号恢复失败，请重新从手机登录');
       });
     return () => {
       disposed = true;
@@ -202,61 +200,55 @@ export function WatchApp() {
     if (connection === 'live') refreshTasks();
   }, [connection, refreshTasks]);
 
-  // 与手机端相同的 focuslink://pair 深链配对；手表上这是唯一的配置入口。
-  useEffect(() => {
-    let disposed = false;
-    let removeListener: (() => Promise<void>) | undefined;
-    const acceptPairingUrl = (rawUrl: string) => {
-      const pairing = parseDeviceSyncPairingUrl(rawUrl);
-      if (!pairing) {
-        setNotice('配对信息无效或已过期');
+  const applyOwnerSession = useCallback(async (session: OwnerAccountSession) => {
+    const next = {
+      endpoint: normalizeDeviceSyncEndpoint(session.endpoint),
+      token: session.accessToken,
+      rememberToken: true,
+    };
+    await configureNativeFocusConnection(next.endpoint, next.token, session.deviceId);
+    saveConnectionPreferences(next);
+    rememberAssignedDeviceId(session.deviceId);
+    setDeviceId(session.deviceId);
+    preferencesRef.current = next;
+    setPreferences(next);
+    setConnection('connecting');
+    setWaitingForPhone(false);
+    setNotice(null);
+  }, []);
+
+  const requestPhoneLogin = useCallback(async () => {
+    if (accountBusy) return;
+    setAccountBusy(true);
+    try {
+      const result = await ownerAccountBootstrapApi().bootstrap({
+        installationId: getOrCreateInstallationId(),
+        deviceKind: 'watch',
+        displayName: 'FocusLink OPPO Watch',
+      });
+      if (result.status === 'authenticated') {
+        await applyOwnerSession(result.session);
         return;
       }
-      if (consumedNoncesRef.current.has(pairing.nonce)) return;
-      consumedNoncesRef.current.add(pairing.nonce);
-      setNotice('正在配对…');
-      void exchangeDeviceSyncPairingCode({
-        endpoint: pairing.endpoint,
-        code: pairing.nonce,
-        device: {
-          platform: Capacitor.isNativePlatform() ? 'android' : 'web',
-          appVersion: 'focuslink-watch-v2',
-          displayName: 'FocusLink Watch',
-        },
-      })
-        .then(async (paired) => {
-          const next = {
-            endpoint: pairing.endpoint,
-            token: paired.accessToken,
-            rememberToken: true,
-          };
-          await configureNativeFocusConnection(next.endpoint, next.token, paired.deviceId);
-          saveConnectionPreferences(next);
-          rememberAssignedDeviceId(paired.deviceId);
-          setDeviceId(paired.deviceId);
-          setPreferences(next);
-          setConnection('connecting');
-          setNotice(null);
-        })
-        .catch(() => {
-          consumedNoncesRef.current.delete(pairing.nonce);
-          setNotice('配对失败，请在电脑端重新生成');
-        });
-    };
-    void CapacitorApp.addListener('appUrlOpen', (event: URLOpenListenerEvent) => {
-      acceptPairingUrl(event.url);
-    }).then((handle) => {
-      if (disposed) void handle.remove();
-      else removeListener = () => handle.remove();
-    });
-    void CapacitorApp.getLaunchUrl().then((result) => {
-      if (!disposed && result?.url) acceptPairingUrl(result.url);
-    });
-    return () => {
-      disposed = true;
-      if (removeListener) void removeListener();
-    };
-  }, [deviceId]);
+      setWaitingForPhone(true);
+      setNotice(
+        result.status === 'waiting-for-phone'
+          ? '等待手机确认…'
+          : '请在手机上打开 FocusLink 并确认登录',
+      );
+    } catch {
+      setWaitingForPhone(false);
+      setNotice('暂时无法申请登录，请重试');
+    } finally {
+      setAccountBusy(false);
+    }
+  }, [accountBusy, applyOwnerSession]);
+
+  useEffect(() => {
+    if (!waitingForPhone || configured || accountBusy) return;
+    const timer = window.setTimeout(() => void requestPhoneLogin(), 3_000);
+    return () => window.clearTimeout(timer);
+  }, [accountBusy, configured, requestPhoneLogin, waitingForPhone]);
 
   const sendCommand = useCallback(
     async (action: 'start' | 'pause' | 'resume' | 'finish') => {
@@ -361,7 +353,7 @@ export function WatchApp() {
       <p className="watch-state-line">
         <i className={`watch-dot conn-${connection}`} aria-hidden="true" />
         {connection === 'unconfigured'
-          ? '未配对'
+          ? '未登录'
           : connection === 'error'
             ? '连接中断'
             : liveStateLabel(state)}
@@ -377,12 +369,19 @@ export function WatchApp() {
         )}
       </div>
 
-      {notice ? (
+      {notice && connection !== 'unconfigured' ? (
         <p className="watch-notice" role="status" aria-live="polite">
           {notice}
         </p>
       ) : connection === 'unconfigured' ? (
-        <p className="watch-hint">等待扫码或 ADB 打开一次性配对链接</p>
+        <div className="watch-login">
+          <p className="watch-hint" role="status" aria-live="polite">
+            {notice ?? '用已登录的手机确认一次即可'}
+          </p>
+          <button type="button" disabled={accountBusy} onClick={() => void requestPhoneLogin()}>
+            {accountBusy ? '正在申请…' : waitingForPhone ? '重新申请' : '从手机登录'}
+          </button>
+        </div>
       ) : (
         <button
           type="button"

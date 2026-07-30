@@ -1064,6 +1064,38 @@ code {
   color: var(--danger);
 }
 
+.account-sheet-summary {
+  display: grid;
+  gap: 8px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.account-sheet-summary strong {
+  color: var(--focus);
+  font-size: 17px;
+}
+
+.account-sheet-summary p,
+.account-sheet-notice {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.account-sheet-notice {
+  padding: 12px 14px;
+  border-left: 2px solid var(--focus);
+  background: var(--canvas);
+}
+
+.account-sheet-actions {
+  margin-top: 4px;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

@@ -33,6 +33,7 @@ describe('FocusLink authority deployment containment', () => {
       'FOCUSLINK_DEVICE_PEPPER',
       'FOCUSLINK_MCP_SERVICE_TOKEN',
       'FOCUSLINK_PAIR_AUTHORITY_TOKEN',
+      'FOCUSLINK_IDENTITY_AUTHORITY_TOKEN',
       'FOCUSLINK_AUTHORITY_CAPABILITY',
     ]) {
       expect(source).toContain(secret);
@@ -51,7 +52,9 @@ describe('FocusLink authority deployment containment', () => {
       'https://personal-mcp-authority-staging.focuslink-poyi-6465e9.workers.dev/authority/identity-focus',
     );
     expect(source).toContain('FOCUSLINK_AUTHORITY_CAPABILITY');
+    expect(source).toContain('FOCUSLINK_IDENTITY_AUTHORITY_TOKEN');
     expect(vars).not.toHaveProperty('FOCUSLINK_AUTHORITY_CAPABILITY');
+    expect(vars).not.toHaveProperty('FOCUSLINK_IDENTITY_AUTHORITY_TOKEN');
   });
 
   it('allows an expired unchanged state to advance through an atomic DO checkpoint', () => {

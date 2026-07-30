@@ -207,7 +207,7 @@ export function NativeSystemControls() {
       <div className="native-system-health" aria-live="polite">
         <span className="is-ok">{systemSurfaceLabel(status)}</span>
         <span className={status?.nativeConnectionConfigured ? 'is-ok' : 'is-warning'}>
-          {status?.nativeConnectionConfigured ? '原生后台连接已加密保存' : '原生后台连接未配置'}
+          {status?.nativeConnectionConfigured ? '后台同步凭据已安全保存' : '登录后启用后台同步'}
         </span>
         <span className={status?.batteryOptimizationExempt ? 'is-ok' : 'is-warning'}>
           {status?.batteryOptimizationExempt ? '省电限制已豁免' : '仍受系统省电限制'}

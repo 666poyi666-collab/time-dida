@@ -163,6 +163,7 @@ interface FocusRuntimePlugin {
   openBackgroundSettings(): Promise<{ opened?: boolean }>;
   openAutoStartSettings(): Promise<{ opened?: boolean }>;
   openOverlayPermissionSettings(): Promise<{ opened?: boolean; granted?: boolean }>;
+  openExternalUrl(options: { url: string }): Promise<{ opened?: boolean }>;
   setOverlayEnabled(options: { enabled: boolean }): Promise<{
     enabled?: boolean;
     granted?: boolean;
@@ -479,6 +480,11 @@ export async function openNativeBackgroundSettings(): Promise<boolean> {
 export async function openNativeAutoStartSettings(): Promise<boolean> {
   if (!isNativeFocusRuntimeAvailable()) return false;
   return (await FocusRuntime.openAutoStartSettings()).opened === true;
+}
+
+export async function openNativeExternalUrl(url: string): Promise<boolean> {
+  if (!isNativeFocusRuntimeAvailable()) return false;
+  return (await FocusRuntime.openExternalUrl({ url })).opened === true;
 }
 
 export async function openNativeOverlayPermissionSettings(): Promise<{

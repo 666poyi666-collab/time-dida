@@ -12,6 +12,7 @@ import {
   ProtocolError,
   assertV2DeviceBinding,
   authorizeV2CredentialRecord,
+  deriveRegisteredDevicePublicId,
   encodeDevicePublicId,
   parseV2DeviceCredential,
   readJson,
@@ -34,6 +35,25 @@ describe('device public id encoding', () => {
     expect(() => encodeDevicePublicId(new Uint8Array(11))).toThrow(
       'device public id requires 12 random bytes',
     );
+  });
+});
+
+describe('identity-backed device ids', () => {
+  it('keeps one installation on one device id without exposing the installation id', async () => {
+    const pepper = 'device-pepper-with-at-least-32-characters';
+    const installationId = 'install_0123456789abcdefghijklmnop';
+    const first = await deriveRegisteredDevicePublicId(pepper, 'primary', installationId);
+    const second = await deriveRegisteredDevicePublicId(pepper, 'primary', installationId);
+    const other = await deriveRegisteredDevicePublicId(
+      pepper,
+      'primary',
+      'install_abcdefghijklmnopqrstuvwxyz012345',
+    );
+
+    expect(first).toBe(second);
+    expect(first).not.toBe(other);
+    expect(first).toMatch(/^[a-f0-9]{24}$/);
+    expect(first).not.toContain(installationId);
   });
 });
 

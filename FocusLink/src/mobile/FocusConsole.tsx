@@ -217,7 +217,7 @@ export function FocusConsole({
                     ? `有效专注 ${formatClockDuration(durations.activeElapsedMs)} 已冻结`
                     : current.state === 'running'
                       ? 'LIVE · 状态按服务端确认时刻逐秒外推'
-                      : 'IDLE · 连接云端后由任一设备控制'}
+                      : 'IDLE · 登录后由任一设备控制'}
             </small>
           </div>
 
@@ -300,7 +300,7 @@ export function FocusConsole({
                 type="button"
                 onClick={onOpenConnection}
               >
-                连接云端
+                登录并同步
               </button>
             )}
             {(current.state === 'idle' || cachedRemoteOnly) && (

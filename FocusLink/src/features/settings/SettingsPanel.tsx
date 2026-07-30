@@ -175,7 +175,6 @@ export function SettingsPanel() {
   const [tomatodoUploading, setTomatodoUploading] = useState(false);
   const [didaSyncRunning, setDidaSyncRunning] = useState(false);
   const [deviceSyncStatus, setDeviceSyncStatus] = useState<DeviceSyncStatus | null>(null);
-  const [deviceSyncToken, setDeviceSyncToken] = useState('');
   const [deviceSyncSaving, setDeviceSyncSaving] = useState(false);
   const [deviceSyncRunning, setDeviceSyncRunning] = useState(false);
   useEffect(() => {
@@ -283,45 +282,35 @@ export function SettingsPanel() {
     ]);
   };
 
-  const handleSaveDeviceSync = async () => {
-    const currentSettings = useStore.getState().settings;
-    if (!currentSettings) return;
+  const handleDeviceSyncLogin = async () => {
     setDeviceSyncSaving(true);
     try {
-      const status = await window.focuslink.deviceSync.configure({
-        enabled: currentSettings.deviceSync.enabled,
-        endpoint: currentSettings.deviceSync.endpoint,
-        autoSync: currentSettings.deviceSync.autoSync,
-        liveControlEnabled: currentSettings.deviceSync.liveControlEnabled,
-        accessToken: deviceSyncToken.trim() || undefined,
-      });
-      setDeviceSyncStatus(status);
-      setDeviceSyncToken('');
+      const result = await window.focuslink.deviceSync.login();
+      setDeviceSyncStatus(result.status);
       setSettings(await window.focuslink.settings.get());
-      if (status.enabled && status.configured) {
-        try {
-          const result = await window.focuslink.deviceSync.syncNow();
-          await refreshDeviceSyncStatus();
-          if (result.unresolvedConflicts > 0 || result.rejected > 0) {
-            addToast(
-              `连接已保存；同步仍有 ${result.unresolvedConflicts} 个冲突、${result.rejected} 个拒绝项`,
-              'error',
-            );
-          } else {
-            addToast(
-              `连接并同步成功：上传 ${result.pushed}，导入 ${result.imported}${status.liveControlEnabled ? '，实时连接正在建立' : ''}`,
-              'success',
-            );
-          }
-        } catch (error) {
-          await refreshDeviceSyncStatus();
-          addToast(`连接配置已保存；${ipcErrorMessage(error)}`, 'info');
-        }
+      if (result.syncError) {
+        addToast('账号已登录；本机记录会在网络恢复后自动同步', 'info');
+      } else if ((result.sync?.unresolvedConflicts ?? 0) > 0) {
+        addToast('账号已登录；现有差异记录已安全保留', 'info');
       } else {
-        addToast('跨设备同步连接已保存', 'success');
+        addToast('登录成功，云同步已开启', 'success');
       }
     } catch (error) {
-      addToast(`保存失败：${ipcErrorMessage(error)}`, 'error');
+      addToast(`登录失败：${ipcErrorMessage(error)}`, 'error');
+      await refreshDeviceSyncStatus();
+    } finally {
+      setDeviceSyncSaving(false);
+    }
+  };
+
+  const handleDeviceSyncLogout = async () => {
+    setDeviceSyncSaving(true);
+    try {
+      setDeviceSyncStatus(await window.focuslink.deviceSync.logout());
+      setSettings(await window.focuslink.settings.get());
+      addToast('已退出 FocusLink 账号；本机记录仍保留', 'success');
+    } catch (error) {
+      addToast(`退出失败：${ipcErrorMessage(error)}`, 'error');
     } finally {
       setDeviceSyncSaving(false);
     }
@@ -345,28 +334,6 @@ export function SettingsPanel() {
       await refreshDeviceSyncStatus();
     } finally {
       setDeviceSyncRunning(false);
-    }
-  };
-
-  const handleQuickDeviceSyncSetup = async () => {
-    setDeviceSyncSaving(true);
-    try {
-      const result = await window.focuslink.deviceSync.quickSetup();
-      setDeviceSyncStatus(result.status);
-      setDeviceSyncToken('');
-      setSettings(await window.focuslink.settings.get());
-      if (result.syncError) {
-        addToast('云端同步连接已检查；账本将在后台继续重试', 'info');
-      } else if ((result.sync?.unresolvedConflicts ?? 0) > 0 || (result.sync?.rejected ?? 0) > 0) {
-        addToast('云端同步连接已检查；现有冲突记录已保留，未自动覆盖', 'info');
-      } else {
-        addToast('云端同步连接已确认', 'success');
-      }
-    } catch (error) {
-      addToast(`自动连接失败：${ipcErrorMessage(error)}`, 'error');
-      await refreshDeviceSyncStatus();
-    } finally {
-      setDeviceSyncSaving(false);
     }
   };
 
@@ -1287,24 +1254,35 @@ export function SettingsPanel() {
       tab: 'devices',
       title: '手机 / 平板同步',
       desc: '电脑、手机和平板直接连接同一云端账号；电脑关闭不会中断移动端同步。',
-      keywords:
-        '手机 平板 安卓 android 移动端 跨设备 配对 二维码 扫码 短码 令牌 服务地址 endpoint ' +
-        '实时 云端 device sync pairing token',
+      keywords: '手机 平板 安卓 android 移动端 跨设备 账号 登录 实时 云端 device sync account',
       render: () => (
         <>
-          <Row
-            label={deviceSyncStatus?.configured ? '云端同步连接' : '配置云端同步'}
-            desc="检查已保存的云端连接并同步；本机服务和 USB 中继不再参与"
-          >
-            <button
-              type="button"
-              className="btn-accent text-[11px]"
-              onClick={() => void handleQuickDeviceSyncSetup()}
-              disabled={deviceSyncSaving}
-            >
-              {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Refresh size="xs" />}
-              {deviceSyncStatus?.configured ? '检查云端连接' : '检查配置'}
-            </button>
+          <Row label="FocusLink 账号" desc="电脑、手机和平板登录同一个账号后自动同步">
+            {deviceSyncStatus?.signedIn ? (
+              <div className="flex items-center gap-2">
+                <span className="settings-status-badge tone-success">
+                  {deviceSyncStatus.accountLabel ?? '已登录'}
+                </span>
+                <button
+                  type="button"
+                  className="btn-outline text-[11px]"
+                  onClick={() => void handleDeviceSyncLogout()}
+                  disabled={deviceSyncSaving}
+                >
+                  退出登录
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn-accent text-[11px]"
+                onClick={() => void handleDeviceSyncLogin()}
+                disabled={deviceSyncSaving}
+              >
+                {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Link size="xs" />}
+                登录 FocusLink 账号
+              </button>
+            )}
           </Row>
           <div
             className={`settings-status-strip ${
@@ -1341,7 +1319,9 @@ export function SettingsPanel() {
                     ? '账本已完成跨设备同步'
                     : deviceSyncStatus?.configured
                       ? '连接已配置，等待首次同步'
-                      : '尚未配置访问令牌'}
+                      : deviceSyncStatus?.signedIn
+                        ? '账号已登录，等待首次同步'
+                        : '登录后开启云同步'}
                 <span
                   className={`settings-status-badge ${
                     deviceSyncStatus?.enabled ? 'tone-success' : 'tone-neutral'
@@ -1353,7 +1333,7 @@ export function SettingsPanel() {
               <p className="settings-status-strip-desc">
                 {deviceSyncConflictOnly
                   ? `${deviceSyncStatus?.unresolvedConflicts ?? 0} 条记录存在设备间差异，已安全保留，不会自动覆盖`
-                  : deviceSyncStatus?.lastError
+                  : deviceSyncStatus?.lastError && deviceSyncStatus?.signedIn
                     ? deviceSyncStatus.lastError
                     : deviceSyncStatus?.liveControlEnabled
                       ? deviceSyncStatus.liveConnected
@@ -1361,27 +1341,27 @@ export function SettingsPanel() {
                         : `实时连接未确认；${deviceSyncStatus.lastSyncAt ? `上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')} · ` : ''}本机计时仍可使用，第三方凭据与本地路径不会上传`
                       : deviceSyncStatus?.lastSyncAt
                         ? `上次同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}`
-                        : '当前只同步已结束会话；第三方凭据与本地路径不会上传'}
+                        : deviceSyncStatus?.signedIn
+                          ? '账号已登录，等待首次同步；本机计时不受网络影响'
+                          : '登录后自动同步专注状态、任务和历史记录'}
               </p>
             </div>
             <div className="flex shrink-0 gap-2">
               <button
                 type="button"
                 className="btn-outline text-[11px]"
-                onClick={() => void handleQuickDeviceSyncSetup()}
+                onClick={() => void refreshDeviceSyncStatus()}
                 disabled={deviceSyncSaving}
               >
                 {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Refresh size="xs" />}
-                自动修复
+                刷新状态
               </button>
               <button
                 type="button"
                 className="btn-accent text-[11px]"
                 onClick={handleRunDeviceSync}
                 disabled={
-                  deviceSyncRunning ||
-                  !settings.deviceSync.enabled ||
-                  !deviceSyncStatus?.tokenConfigured
+                  deviceSyncRunning || !settings.deviceSync.enabled || !deviceSyncStatus?.signedIn
                 }
               >
                 {deviceSyncRunning ? <Icon.Loader size="xs" spin /> : <Icon.Refresh size="xs" />}
@@ -1389,80 +1369,6 @@ export function SettingsPanel() {
               </button>
             </div>
           </div>
-          <details className="settings-disclosure mt-2.5">
-            <summary>高级设置</summary>
-            <div className="space-y-3 pt-2">
-              <Row label="启用同步">
-                <Toggle
-                  label="启用同步"
-                  checked={settings.deviceSync.enabled}
-                  onChange={(enabled) =>
-                    update({ deviceSync: { ...settings.deviceSync, enabled } })
-                  }
-                />
-              </Row>
-              <Row label="PC 实时专注">
-                <Toggle
-                  label="PC 实时专注"
-                  checked={settings.deviceSync.liveControlEnabled}
-                  onChange={(liveControlEnabled) =>
-                    update({
-                      deviceSync: { ...settings.deviceSync, liveControlEnabled },
-                    })
-                  }
-                />
-              </Row>
-              <Row label="自动同步">
-                <Toggle
-                  label="自动同步"
-                  checked={settings.deviceSync.autoSync}
-                  onChange={(autoSync) =>
-                    update({ deviceSync: { ...settings.deviceSync, autoSync } })
-                  }
-                />
-              </Row>
-              <Row label="服务地址" desc="远程地址必须使用 HTTPS">
-                <input
-                  className="input min-w-[320px] font-mono text-xs"
-                  value={settings.deviceSync.endpoint}
-                  onChange={(event) =>
-                    updateDebounced({
-                      deviceSync: { ...settings.deviceSync, endpoint: event.target.value },
-                    })
-                  }
-                  onBlur={() => void persistDebouncedSettings()}
-                />
-              </Row>
-              <Row
-                label="访问令牌"
-                desc={
-                  deviceSyncStatus?.tokenConfigured
-                    ? '已由 Windows 安全存储保护；留空保持不变'
-                    : '仅自定义服务需要手动填写'
-                }
-              >
-                <input
-                  className="input min-w-[260px] font-mono text-xs"
-                  type="password"
-                  value={deviceSyncToken}
-                  onChange={(event) => setDeviceSyncToken(event.target.value)}
-                  autoComplete="off"
-                  placeholder={deviceSyncStatus?.tokenConfigured ? '已安全保存' : '输入访问令牌'}
-                />
-              </Row>
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  className="btn-outline text-[11px]"
-                  onClick={handleSaveDeviceSync}
-                  disabled={deviceSyncSaving}
-                >
-                  <Icon.Check size="xs" />
-                  保存高级设置
-                </button>
-              </div>
-            </div>
-          </details>
         </>
       ),
     },

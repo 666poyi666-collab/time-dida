@@ -24,6 +24,7 @@ const CANONICAL_AUTHORITY_ROUTES = new Map([
   ['/sync/v2/live/command', '/v1/live/command'],
   ['/sync/v1/pair/offers', '/v2/pair/offers'],
   ['/sync/v1/pair/exchange', '/v2/pair/exchange'],
+  ['/sync/v1/devices/register', '/v2/devices/register'],
 ]);
 
 export default {
@@ -59,8 +60,11 @@ export default {
           env.FOCUSLINK_DEVICE_PEPPER,
           env.FOCUSLINK_MCP_SERVICE_TOKEN,
           env.FOCUSLINK_PAIR_AUTHORITY_TOKEN,
+          env.FOCUSLINK_IDENTITY_AUTHORITY_TOKEN,
         ]) ||
-        !isPairAuthorityToken(env.FOCUSLINK_PAIR_AUTHORITY_TOKEN)
+        !isPairAuthorityToken(env.FOCUSLINK_PAIR_AUTHORITY_TOKEN) ||
+        !isIdentityAuthorityToken(env.FOCUSLINK_IDENTITY_AUTHORITY_TOKEN) ||
+        !isOwnerSubject(env.FOCUSLINK_OWNER_SUBJECT)
       ) {
         return errorJson(503, 'not_configured', 'worker account binding is incomplete');
       }
@@ -134,12 +138,23 @@ export default {
     const authorization = request.headers.get('authorization');
     const pairOffer = url.pathname === '/sync/v1/pair/offers';
     const pairingExchange = url.pathname === '/sync/v1/pair/exchange';
+    const deviceRegistration = url.pathname === '/sync/v1/devices/register';
     const presentedPairAuthority = request.headers.get('x-focuslink-pair-authority');
+    const presentedIdentityAuthority = request.headers.get('x-focuslink-identity-authority');
+    const presentedOwnerSubject = request.headers.get('x-focuslink-owner-subject');
     const pairAuthority =
       pairOffer &&
       isPairAuthorityToken(presentedPairAuthority) &&
       isPairAuthorityToken(env.FOCUSLINK_PAIR_AUTHORITY_TOKEN) &&
       constantTimeEqual(presentedPairAuthority, env.FOCUSLINK_PAIR_AUTHORITY_TOKEN);
+    const identityAuthority =
+      deviceRegistration &&
+      isIdentityAuthorityToken(presentedIdentityAuthority) &&
+      isIdentityAuthorityToken(env.FOCUSLINK_IDENTITY_AUTHORITY_TOKEN) &&
+      constantTimeEqual(presentedIdentityAuthority, env.FOCUSLINK_IDENTITY_AUTHORITY_TOKEN) &&
+      isOwnerSubject(presentedOwnerSubject) &&
+      isOwnerSubject(env.FOCUSLINK_OWNER_SUBJECT) &&
+      constantTimeEqual(presentedOwnerSubject, env.FOCUSLINK_OWNER_SUBJECT);
     const isDevice =
       /^Bearer fl2_[A-Za-z0-9-]{6,80}_[A-Za-z0-9-]{6,80}_[A-Za-z0-9_-]{32,160}$/.test(
         authorization ?? '',
@@ -151,7 +166,13 @@ export default {
     // credential is a device token or accepted by any data route.
     if (
       (presentedPairAuthority !== null && !pairOffer) ||
-      (pairOffer ? !pairAuthority : !pairingExchange && !isDevice)
+      (presentedIdentityAuthority !== null && !deviceRegistration) ||
+      (presentedOwnerSubject !== null && !deviceRegistration) ||
+      (pairOffer
+        ? !pairAuthority
+        : deviceRegistration
+          ? !identityAuthority
+          : !pairingExchange && !isDevice)
     ) {
       return withCors(
         request,
@@ -182,8 +203,13 @@ export default {
     if (pairAuthority) {
       headers.set('x-focuslink-authorization', `Bearer ${env.FOCUSLINK_SYNC_TOKEN}`);
     }
+    if (identityAuthority) {
+      headers.set('x-focuslink-enrollment-authority', env.FOCUSLINK_IDENTITY_AUTHORITY_TOKEN!);
+      headers.set('x-focuslink-owner-subject', env.FOCUSLINK_OWNER_SUBJECT!);
+    }
     headers.delete('authorization');
     headers.delete('x-focuslink-pair-authority');
+    headers.delete('x-focuslink-identity-authority');
     headers.set('x-focuslink-account', env.FOCUSLINK_ACCOUNT_ID);
     const authorityUrl = new URL(request.url);
     authorityUrl.pathname = authorityPath;
@@ -338,6 +364,14 @@ function validAuthorityCapability(value: string | undefined): value is string {
 
 function isPairAuthorityToken(value: string | null | undefined): value is string {
   return typeof value === 'string' && /^fla_[A-Za-z0-9_-]{43,160}$/.test(value);
+}
+
+function isIdentityAuthorityToken(value: string | null | undefined): value is string {
+  return typeof value === 'string' && /^fia_[A-Za-z0-9_-]{43,160}$/.test(value);
+}
+
+function isOwnerSubject(value: string | null | undefined): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9._~-]{3,128}$/.test(value);
 }
 
 function constantTimeEqual(left: string, right: string): boolean {

@@ -1,6 +1,10 @@
 # FocusLink 实施日志
 
-## 2026-07-30 · v0.12.72 桌面开始专注与仪表完整显示收口
+## 2026-07-30 · v0.12.72 单账号登录与四端候选收口
+
+- 账号模型固定为管理员派发的唯一 owner `poyi-owner`。普通 UI 不再编辑 endpoint/token/pairing；Windows、手机和平板从旧 `fl2` 无损识别登录态，新安装通过 canonical `/account/v1/device/bootstrap` 进入系统浏览器登录，成功后自动保存各设备独立凭据并开启实时与账本同步。手表只显示“从手机登录”和等待确认。
+- Account DO 新增 `/v2/devices/register`，私有 adapter 映射 `/sync/v1/devices/register`；只有独立 `fia_*` identity authority 与精确 owner subject 可调用。稳定 `installationId` 经 HMAC 派生稳定 deviceId，重复登记只轮换 secret；设备 scope 固定为 sync/live read/write，登记审计不含 installationId、secret 或 token。
+- 公网 bootstrap 不在 FocusLink 私有 Worker 暴露。`foxlink-cloud-mcp` 仍需验证 owner 会话并转发登记，且要与私有 Worker同时配置独立 identity secret；本轮没有跨仓部署或读取远端 secret。故验收必须区分“旧凭据升级后继续同步”与“新设备公网登录尚待网关上线”，禁止把本地合同测试写成生产已部署。
 
 - 0.12.71 首次干净 `win-unpacked` smoke 精确测得游标标尺 dial `189.24px`、frame `179.50px`，右溢出 `9.74px`；该候选未安装。预览宽度收至 `176px`，smoke 保存九卡 frame/dial 坐标并要求全部在界内。
 - UI smoke 的 STOP 由直接 CDP/contextBridge Promise 调用改为点击真实 `.btn-stop-action`；主进程已成功 STOP 时不再因桥 Promise 悬挂误判产品失败。Android emulator 显式安装 target/test APK、授予 overlay 后 18/18 instrumentation 通过。

@@ -122,6 +122,8 @@ const api = {
   },
   deviceSync: {
     status: () => ipcRenderer.invoke('device-sync:status'),
+    login: () => ipcRenderer.invoke('device-sync:login'),
+    logout: () => ipcRenderer.invoke('device-sync:logout'),
     configure: (input: Parameters<FocusLinkAPI['deviceSync']['configure']>[0]) =>
       ipcRenderer.invoke('device-sync:configure', input),
     quickSetup: () => ipcRenderer.invoke('device-sync:quick-setup'),

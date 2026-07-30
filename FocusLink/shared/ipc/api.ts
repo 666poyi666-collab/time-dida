@@ -191,6 +191,11 @@ export interface DeviceSyncConfigureInput {
 }
 
 export interface DeviceSyncStatus {
+  signedIn: boolean;
+  /** Stable public account id; never a bearer credential. */
+  accountId: string | null;
+  /** Human-facing single-owner label. */
+  accountLabel: string | null;
   enabled: boolean;
   endpoint: string;
   autoSync: boolean;
@@ -232,6 +237,12 @@ export interface DeviceSyncQuickSetupResult {
   sync: DeviceSyncRunResult | null;
   syncError: string | null;
   connectedAndroidDevices: string[];
+}
+
+export interface DeviceSyncAccountLoginResult {
+  status: DeviceSyncStatus;
+  sync: DeviceSyncRunResult | null;
+  syncError: string | null;
 }
 
 export interface ResyncSegmentResult {
@@ -464,6 +475,8 @@ export interface FocusLinkAPI {
   /** FocusLink ledger replication. This is intentionally separate from dida `sync`. */
   deviceSync: {
     status(): Promise<DeviceSyncStatus>;
+    login(): Promise<DeviceSyncAccountLoginResult>;
+    logout(): Promise<DeviceSyncStatus>;
     configure(input: DeviceSyncConfigureInput): Promise<DeviceSyncStatus>;
     quickSetup(): Promise<DeviceSyncQuickSetupResult>;
     syncNow(): Promise<DeviceSyncRunResult>;

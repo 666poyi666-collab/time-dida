@@ -197,6 +197,26 @@ html.watch-runtime {
   color: rgb(var(--app-danger));
 }
 
+.watch-login {
+  display: grid;
+  gap: min(7px, 1.5vh);
+  width: 100%;
+  justify-items: center;
+}
+.watch-login button {
+  min-height: min(44px, 10vh);
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(var(--app-accent));
+  color: rgb(var(--app-accent-fg));
+  font-size: min(15px, 4.2vw);
+  font-weight: 600;
+}
+.watch-login button:disabled {
+  opacity: 0.55;
+}
+
 .watch-actions {
   display: grid;
   gap: min(10px, 2.4vw);

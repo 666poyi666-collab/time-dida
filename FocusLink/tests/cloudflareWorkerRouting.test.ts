@@ -28,6 +28,8 @@ interface ForwardedCall {
   mcpService: string | null;
   internalService: string | null;
   pairAuthority: string | null;
+  enrollmentAuthority: string | null;
+  ownerSubject: string | null;
   account: string | null;
 }
 
@@ -41,6 +43,8 @@ function makeEnv(forwarded: ForwardedCall[]): WorkerEnv {
         mcpService: request.headers.get('x-focuslink-mcp-service'),
         internalService: request.headers.get('x-focuslink-internal'),
         pairAuthority: request.headers.get('x-focuslink-pair-authority'),
+        enrollmentAuthority: request.headers.get('x-focuslink-enrollment-authority'),
+        ownerSubject: request.headers.get('x-focuslink-owner-subject'),
         account: request.headers.get('x-focuslink-account'),
       });
       const ready = new URL(request.url).pathname === '/internal/readyz';
@@ -67,6 +71,8 @@ function makeEnv(forwarded: ForwardedCall[]): WorkerEnv {
     FOCUSLINK_DEVICE_PEPPER: 'device-pepper-with-at-least-32-characters',
     FOCUSLINK_MCP_SERVICE_TOKEN: 'mcp-service-token-which-is-not-a-device-token',
     FOCUSLINK_PAIR_AUTHORITY_TOKEN: `fla_${'p'.repeat(48)}`,
+    FOCUSLINK_IDENTITY_AUTHORITY_TOKEN: `fia_${'i'.repeat(48)}`,
+    FOCUSLINK_OWNER_SUBJECT: 'poyi-owner',
     FOCUSLINK_ALLOWED_ORIGINS: ALLOWED_ORIGIN,
   } as unknown as WorkerEnv;
 }
@@ -79,12 +85,16 @@ function call(
     origin,
     mcpService,
     pairAuthority,
+    identityAuthority,
+    ownerSubject,
   }: {
     method?: string;
     authorization?: string;
     origin?: string;
     mcpService?: string;
     pairAuthority?: string;
+    identityAuthority?: string;
+    ownerSubject?: string;
   } = {},
   env: WorkerEnv = makeEnv([]),
 ): Promise<Response> {
@@ -93,6 +103,8 @@ function call(
   if (origin) headers.set('origin', origin);
   if (mcpService) headers.set('x-focuslink-mcp-service', mcpService);
   if (pairAuthority) headers.set('x-focuslink-pair-authority', pairAuthority);
+  if (identityAuthority) headers.set('x-focuslink-identity-authority', identityAuthority);
+  if (ownerSubject) headers.set('x-focuslink-owner-subject', ownerSubject);
   const request = new Request(`https://foxlink-cloud-mcp.example${path}`, { method, headers });
   return worker.fetch(request, env);
 }
@@ -163,6 +175,65 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
       );
       expect(response.status).toBe(401);
     }
+    expect(forwarded).toHaveLength(0);
+  });
+
+  it('registers a device only after the identity gateway authenticates the sole owner', async () => {
+    const forwarded: ForwardedCall[] = [];
+    const response = await call(
+      '/sync/v1/devices/register',
+      {
+        method: 'POST',
+        identityAuthority: `fia_${'i'.repeat(48)}`,
+        ownerSubject: 'poyi-owner',
+      },
+      makeEnv(forwarded),
+    );
+    expect(response.status).toBe(200);
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]).toMatchObject({
+      authorization: null,
+      forwardedAuthorization: null,
+      pairAuthority: null,
+      enrollmentAuthority: `fia_${'i'.repeat(48)}`,
+      ownerSubject: 'poyi-owner',
+      account: 'account-public',
+    });
+    expect(forwarded[0].url).toContain('/v2/devices/register');
+  });
+
+  it('rejects missing identity authority, a wrong owner, and identity headers on data routes', async () => {
+    const forwarded: ForwardedCall[] = [];
+    const env = makeEnv(forwarded);
+    for (const options of [
+      { method: 'POST' as const, ownerSubject: 'poyi-owner' },
+      {
+        method: 'POST' as const,
+        identityAuthority: `fia_${'i'.repeat(48)}`,
+        ownerSubject: 'another-owner',
+      },
+      {
+        method: 'POST' as const,
+        identityAuthority: `fia_${'x'.repeat(48)}`,
+        ownerSubject: 'poyi-owner',
+      },
+    ]) {
+      expect((await call('/sync/v1/devices/register', options, env)).status).toBe(401);
+    }
+    expect(
+      (
+        await call(
+          '/sync/v2/exchange',
+          {
+            method: 'POST',
+            authorization: `Bearer ${VALID_DEVICE_TOKEN}`,
+            identityAuthority: `fia_${'i'.repeat(48)}`,
+            ownerSubject: 'poyi-owner',
+          },
+          env,
+        )
+      ).status,
+    ).toBe(401);
     expect(forwarded).toHaveLength(0);
   });
 
@@ -278,6 +349,10 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
     delete missingPairAuthority.FOCUSLINK_PAIR_AUTHORITY_TOKEN;
     expect((await call('/readyz', {}, missingPairAuthority)).status).toBe(503);
 
+    const missingIdentityAuthority = makeEnv([]);
+    delete missingIdentityAuthority.FOCUSLINK_IDENTITY_AUTHORITY_TOKEN;
+    expect((await call('/readyz', {}, missingIdentityAuthority)).status).toBe(503);
+
     const failedProbe = makeEnv([]);
     failedProbe.FOCUSLINK_ACCOUNT = {
       idFromName: () => ({ name: 'account' }),
@@ -307,6 +382,10 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
 
     reused.FOCUSLINK_DEVICE_PEPPER = 'device-pepper-with-at-least-32-characters';
     reused.FOCUSLINK_PAIR_AUTHORITY_TOKEN = reused.FOCUSLINK_MCP_SERVICE_TOKEN;
+    expect((await call('/readyz', {}, reused)).status).toBe(503);
+
+    reused.FOCUSLINK_PAIR_AUTHORITY_TOKEN = `fla_${'p'.repeat(48)}`;
+    reused.FOCUSLINK_IDENTITY_AUTHORITY_TOKEN = reused.FOCUSLINK_MCP_SERVICE_TOKEN;
     expect((await call('/readyz', {}, reused)).status).toBe(503);
   });
 

@@ -160,6 +160,27 @@ public final class FocusRuntimePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void openExternalUrl(PluginCall call) {
+        String rawUrl = call.getString("url");
+        try {
+            Uri url = Uri.parse(rawUrl == null ? "" : rawUrl);
+            if (!"https".equalsIgnoreCase(url.getScheme()) || url.getHost() == null) {
+                call.reject("login URL must use HTTPS", "invalid_url");
+                return;
+            }
+            Intent intent = new Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (intent.resolveActivity(getContext().getPackageManager()) == null) {
+                call.resolve(new JSObject().put("opened", false));
+                return;
+            }
+            getContext().startActivity(intent);
+            call.resolve(new JSObject().put("opened", true));
+        } catch (RuntimeException exception) {
+            call.reject("unable to open login URL", "open_url_failed", exception);
+        }
+    }
+
+    @PluginMethod
     public void enqueueCompletedLedgerBundle(PluginCall call) {
         FocusRuntimeConnectionStore.Connection connection = FocusRuntimeConnectionStore.get(
             getContext()

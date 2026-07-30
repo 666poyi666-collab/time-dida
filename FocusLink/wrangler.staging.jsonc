@@ -7,10 +7,12 @@
   "preview_urls": false,
   "vars": {
     "FOCUSLINK_ACCOUNT_ID": "staging-primary",
+    "FOCUSLINK_OWNER_SUBJECT": "poyi-owner",
     "FOCUSLINK_ALLOWED_ORIGINS": "https://localhost,capacitor://localhost,http://localhost",
     "FOCUSLINK_AUTHORITY_AUDIENCE": "https://personal-mcp-authority-staging.focuslink-poyi-6465e9.workers.dev/authority/identity-focus"
   },
-  // FOCUSLINK_AUTHORITY_CAPABILITY is provisioned as a secret and must match
+  // FOCUSLINK_AUTHORITY_CAPABILITY and FOCUSLINK_IDENTITY_AUTHORITY_TOKEN are
+  // provisioned as secrets. The observation capability must match
   // the central signer's FOCUSLINK_OBSERVATION_CAPABILITY without entering Git.
   "durable_objects": {
     "bindings": [{ "name": "FOCUSLINK_ACCOUNT", "class_name": "FocusLinkAccount" }]

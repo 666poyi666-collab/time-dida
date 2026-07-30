@@ -29,6 +29,8 @@
 - Bootstrap 固定为 `uninitialized → inventory-uploaded → manifest-received → base-established → v2-active`。generation 或 epoch 改变时保留 Outbox 并重新建立 base。
 - 设备 90 天未上线标 stale；tombstone 至少保留 180 天并等待全部活跃设备水位；graveyard 继续阻止旧副本复活。
 - 设备令牌使用 `fl2_` 路由格式；账号 DO 只保存 pepper HMAC、scope、过期和撤销状态，token 正文不落日志。
+- FocusLink 账号当前只接受管理员派发的唯一 subject `poyi-owner`。新设备不再走用户可见 pairing：canonical identity gateway 验证 owner 登录后，使用独立 `fia_*` authority 调用设备登记；Account DO 按 `(accountId, installationId)` 的 HMAC 派生稳定 deviceId，并为 Windows、手机、平板、手表分别签发独立 `fl2`。客户端只能获得固定 sync/live read/write scope，不能自报 owner 或 devices:manage。
+- endpoint、authority secret、owner subject 和配对兼容层都属于基础设施细节，不进入 renderer 表单。旧合法 `fl2` 原位迁移为已登录；退出只删除本机凭据，不删除账本。移动端必须把稳定 installationId 与 authority 分配的 deviceId 分开保存，重新登录不得制造幽灵设备。
 - 推送只传 needSync hint，HTTPS/cursor 始终是数据真相。当前厂商凭据缺失，状态为 `credential-missing`。
 - R2 恢复进入 maintenance 并切换 generation 与 epoch。当前账户未启用 R2，Wrangler API `10042` 代表真实备份门禁未通过。
 
@@ -232,6 +234,7 @@ canonical adapter 与私有 authority 的路由表如下。`/v1/*`、`/v2/*` 和
 | `/sync/v2/live/command` | POST | device token · `live:write` | `/v1/live/command`（仅 DO 内部） |
 | `/sync/v1/pair/offers` | POST | adapter 先验 owner session + CSRF；fl2 token 仍由 DO 校验 `devices:manage` | `/v2/pair/offers` |
 | `/sync/v1/pair/exchange` | POST | 一次性高熵 nonce；不得要求已有 bearer | `/v2/pair/exchange` |
+| `/sync/v1/devices/register` | POST | 仅 identity gateway 的独立 `fia_*` + 精确 `poyi-owner`；公网客户端不得直连 | `/v2/devices/register` |
 | `/internal/mcp/v1/focus/summary` | GET | 仅 MCP service binding credential；公网 OAuth 由 `foxlink-cloud-mcp` 校验 `focuslink:read` | 同名内部投影 |
 
 Account DO 保存实体、revision、reservation/result、change feed、任务快照、实时会话、commandId 与设备 credential HMAC；每个请求在 DO 内执行真实 scope、过期、撤销、跨账号和 `deviceId` 绑定检查。任何日志、响应或同步实体都不得返回 token。`/healthz` 只证明进程存活；`/readyz` 必须验证必需 secrets 与 Account DO SQLite probe，不能把配置存在冒充 authority 可写。

@@ -48,8 +48,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="${pairScheme}"
-                    android:host="pair" />
+                    android:scheme="${appScheme}"
+                    android:host="auth" />
             </intent-filter>
 
         </activity>

@@ -5,7 +5,6 @@ import { Capacitor } from '@capacitor/core';
 
 import { AppNavigation, type MobileView } from './AppNavigation';
 import { normalizeDeviceSyncEndpoint } from '@shared/sync/deviceProtocol';
-import { parseDeviceSyncPairingUrl } from '@shared/sync/pairingProtocol';
 import { classifySyncV2Error } from '@shared/sync/v2ClientError';
 import type { LiveFocusCommand, LiveFocusSnapshotResponse } from '@shared/sync/liveFocusProtocol';
 import type { SyncedTask, TaskSnapshotResponse } from '@shared/sync/taskSnapshotProtocol';
@@ -58,10 +57,14 @@ import {
   type NativeFocusCommand,
 } from './nativeFocusRuntime';
 import {
+  clearMobileAccountProfile,
   clearSavedToken,
   getOrCreateDeviceId,
+  getOrCreateInstallationId,
+  loadMobileAccountProfile,
   loadConnectionPreferences,
   rememberAssignedDeviceId,
+  saveMobileAccountProfile,
   saveConnectionPreferences,
   type MobileConnectionPreferences,
 } from './preferences';
@@ -79,11 +82,16 @@ import {
 } from './appearance';
 import {
   fetchLiveFocusSnapshot,
-  exchangeDeviceSyncPairingCode,
   fetchTaskSnapshot,
   sendLiveFocusCommand,
   waitForLiveFocusSnapshot,
 } from './syncClient';
+import {
+  isOwnerAccountCallback,
+  openOwnerLogin,
+  ownerAccountBootstrapApi,
+  type OwnerAccountSession,
+} from './accountBootstrap';
 import { TaskBrowser } from './TaskBrowser';
 import { MobileConfirmDialog } from './MobileConfirmDialog';
 import {
@@ -112,14 +120,15 @@ export function MobileApp() {
     Boolean(initialPreferences.endpoint && initialPreferences.token),
   ).current;
   const [preferences, setPreferences] = useState(initialPreferences);
-  const [draft, setDraft] = useState(initialPreferences);
+  const [accountProfile, setAccountProfile] = useState(() => loadMobileAccountProfile());
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountLoginPolling, setAccountLoginPolling] = useState(false);
   const [cache, setCache] = useState<MobileCacheSnapshot>(EMPTY_CACHE);
   const [cacheReady, setCacheReady] = useState(false);
   // Android ships with a loopback endpoint default, so endpoint presence alone
   // does not mean the device is paired. Keep the first-run pairing entry
   // reachable whenever either half of the credential is missing.
   const [configOpen, setConfigOpen] = useState(() => !initialConnectionConfigured);
-  const [pendingPairingCode, setPendingPairingCode] = useState('');
   const [online, setOnline] = useState(() => navigator.onLine);
   const [pullState, setPullState] = useState<PullState>('idle');
   const [ledgerNotice, setLedgerNotice] = useState('正在读取本机会话账本…');
@@ -168,7 +177,6 @@ export function MobileApp() {
   const nativeQueueRunning = useRef(false);
   const lastResumeRefreshAt = useRef(0);
   const connectionKeyRef = useRef(connectionKey(initialPreferences));
-  const consumedPairingNoncesRef = useRef(new Set<string>());
 
   useEffect(() => {
     applyMobileAppearance(appearance);
@@ -205,7 +213,6 @@ export function MobileApp() {
         preferencesRef.current = next;
         connectionKeyRef.current = connectionKey(next);
         setPreferences(next);
-        setDraft(next);
         setConfigOpen(false);
         setConnectionEpoch((value) => value + 1);
       })
@@ -217,68 +224,100 @@ export function MobileApp() {
     };
   }, [deviceId]);
 
+  const applyOwnerAccountSession = useCallback(async (session: OwnerAccountSession) => {
+    const next: MobileConnectionPreferences = {
+      endpoint: normalizeDeviceSyncEndpoint(session.endpoint),
+      token: session.accessToken,
+      rememberToken: true,
+    };
+    await configureNativeFocusConnection(next.endpoint, next.token, session.deviceId);
+    saveConnectionPreferences(next);
+    saveMobileAccountProfile({
+      accountId: session.accountId,
+      accountLabel: session.accountLabel,
+    });
+    rememberAssignedDeviceId(session.deviceId);
+    setDeviceId(session.deviceId);
+    preferencesRef.current = next;
+    connectionKeyRef.current = connectionKey(next);
+    setPreferences(next);
+    setAccountProfile({ accountId: session.accountId, accountLabel: session.accountLabel });
+    setConfigOpen(false);
+    setConnectionEpoch((value) => value + 1);
+    setCommandNotice('账号已登录，正在同步这台设备');
+  }, []);
+
+  const bootstrapOwnerAccount = useCallback(
+    async (callbackUrl?: string, polling = false) => {
+      setAccountBusy(true);
+      setCommandNotice(callbackUrl ? '正在完成登录…' : '正在登录 FocusLink 账号…');
+      try {
+        const result = await ownerAccountBootstrapApi().bootstrap({
+          installationId: getOrCreateInstallationId(),
+          deviceKind:
+            window.innerWidth >= 600 ? 'tablet' : Capacitor.isNativePlatform() ? 'phone' : 'web',
+          displayName: Capacitor.isNativePlatform() ? 'FocusLink Android' : 'FocusLink Web',
+          callbackUrl,
+        });
+        if (result.status === 'login-required') {
+          if (!polling) await openOwnerLogin(result.loginUrl);
+          setAccountLoginPolling(true);
+          setCommandNotice('请在系统浏览器完成登录，完成后会自动继续');
+          return;
+        }
+        if (result.status === 'waiting-for-phone') {
+          setAccountLoginPolling(true);
+          setCommandNotice('请在已登录设备上确认登录');
+          return;
+        }
+        setAccountLoginPolling(false);
+        await applyOwnerAccountSession(result.session);
+      } catch (error) {
+        setAccountLoginPolling(false);
+        setCommandNotice(errorMessage(error));
+        liveConnectionRef.current = 'error';
+        setLiveConnection('error');
+      } finally {
+        setAccountBusy(false);
+      }
+    },
+    [applyOwnerAccountSession],
+  );
+
+  useEffect(() => {
+    if (!accountLoginPolling || accountBusy || (preferences.endpoint && preferences.token)) return;
+    const timer = window.setTimeout(() => void bootstrapOwnerAccount(undefined, true), 1_500);
+    return () => window.clearTimeout(timer);
+  }, [
+    accountBusy,
+    accountLoginPolling,
+    bootstrapOwnerAccount,
+    preferences.endpoint,
+    preferences.token,
+  ]);
+
   useEffect(() => {
     let disposed = false;
     let removeListener: (() => Promise<void>) | undefined;
-    const acceptPairingUrl = (rawUrl: string) => {
-      const pairing = parseDeviceSyncPairingUrl(rawUrl);
-      if (!pairing) {
-        setCommandNotice('配对二维码无效或已过期，请在电脑端重新生成');
-        return;
-      }
-      if (consumedPairingNoncesRef.current.has(pairing.nonce)) return;
-      consumedPairingNoncesRef.current.add(pairing.nonce);
-      setCommandNotice('已读取电脑配对信息，正在保存并连接');
-      void exchangeDeviceSyncPairingCode({
-        endpoint: pairing.endpoint,
-        code: pairing.nonce,
-        device: {
-          platform: Capacitor.isNativePlatform() ? 'android' : 'web',
-          appVersion: 'focuslink-mobile-v2',
-          displayName: 'FocusLink Mobile',
-        },
-      })
-        .then(async (paired) => {
-          const next: MobileConnectionPreferences = {
-            endpoint: pairing.endpoint,
-            token: paired.accessToken,
-            rememberToken: true,
-          };
-          await configureNativeFocusConnection(next.endpoint, next.token, paired.deviceId);
-          saveConnectionPreferences(next);
-          rememberAssignedDeviceId(paired.deviceId);
-          setDeviceId(paired.deviceId);
-          preferencesRef.current = next;
-          connectionKeyRef.current = connectionKey(next);
-          setPreferences(next);
-          setDraft(next);
-          setPendingPairingCode('');
-          setConfigOpen(false);
-          setConnectionEpoch((value) => value + 1);
-          setCommandNotice('电脑配对已完成，正在确认多端实时状态');
-        })
-        .catch((error) => {
-          consumedPairingNoncesRef.current.delete(pairing.nonce);
-          setDraft((current) => ({ ...current, endpoint: pairing.endpoint }));
-          setPendingPairingCode(pairing.nonce);
-          setConfigOpen(true);
-          setCommandNotice(errorMessage(error));
-        });
+    const acceptAccountCallback = (rawUrl: string) => {
+      if (disposed || !isOwnerAccountCallback(rawUrl)) return;
+      setConfigOpen(true);
+      void bootstrapOwnerAccount(rawUrl);
     };
     void CapacitorApp.addListener('appUrlOpen', (event: URLOpenListenerEvent) => {
-      acceptPairingUrl(event.url);
+      acceptAccountCallback(event.url);
     }).then((handle) => {
       if (disposed) void handle.remove();
       else removeListener = () => handle.remove();
     });
     void CapacitorApp.getLaunchUrl().then((result) => {
-      if (!disposed && result?.url) acceptPairingUrl(result.url);
+      if (!disposed && result?.url) acceptAccountCallback(result.url);
     });
     return () => {
       disposed = true;
       if (removeListener) void removeListener();
     };
-  }, [deviceId]);
+  }, [bootstrapOwnerAccount]);
 
   const setConnectionState = useCallback((state: LiveConnectionState) => {
     liveConnectionRef.current = state;
@@ -431,7 +470,7 @@ export function MobileApp() {
     connectionKeyRef.current = connectionKey(preferences);
     if (preferences.endpoint && preferences.token) {
       void configureNativeFocusConnection(preferences.endpoint, preferences.token, deviceId).catch(
-        () => setCommandNotice('Android 后台连接配置失败；前台同步仍可继续'),
+        () => setCommandNotice('Android 后台同步初始化失败；前台同步仍可继续'),
       );
     }
     // A non-remembered WebView token lives in sessionStorage and can disappear when
@@ -913,58 +952,10 @@ export function MobileApp() {
     [commitLiveSnapshot, deviceId, online, pullLedger, selectedTaskId, taskSnapshot, titleDraft],
   );
 
-  const handleSaveAndConnect = async () => {
-    try {
-      const next = {
-        ...draft,
-        endpoint: normalizeDeviceSyncEndpoint(draft.endpoint),
-        token: draft.token.trim(),
-      };
-      if (!next.token) throw new Error('请填写访问令牌');
-      const connectionChanged =
-        preferencesRef.current.endpoint !== next.endpoint ||
-        preferencesRef.current.token !== next.token;
-      if (connectionChanged && (offlineRuntimeRef.current || pendingUploadCount > 0)) {
-        throw new Error('还有本机离线会话未补传，请先恢复原连接并完成同步后再更换账号或地址');
-      }
-      if (connectionChanged) {
-        connectionKeyRef.current = `switching:${crypto.randomUUID()}`;
-        ledgerGeneration.current += 1;
-        liveGeneration.current += 1;
-        taskGeneration.current += 1;
-        ledgerRequest.current?.abort();
-        liveRequest.current?.abort();
-        taskRequest.current?.abort();
-        await enqueueMutation(cacheMutationQueue, clearMobileCache);
-        cacheRef.current = EMPTY_CACHE;
-        liveSnapshotRef.current = null;
-        setCache(EMPTY_CACHE);
-        setLiveSnapshot(null);
-        setLiveSnapshotSource('none');
-        setTaskSnapshot(null);
-        setSelectedTaskId('');
-      }
-      await configureNativeFocusConnection(next.endpoint, next.token, deviceId);
-      saveConnectionPreferences(next);
-      preferencesRef.current = next;
-      connectionKeyRef.current = connectionKey(next);
-      setPreferences(next);
-      setDraft(next);
-      setPendingPairingCode('');
-      setConfigOpen(false);
-      setCommandNotice('连接参数已保存，正在确认实时状态');
-      setConnectionEpoch((value) => value + 1);
-    } catch (error) {
-      connectionKeyRef.current = connectionKey(preferencesRef.current);
-      setCommandNotice(errorMessage(error));
-      setConnectionState('error');
-    }
-  };
-
   const handleRetry = () => {
     if (!preferences.endpoint || !preferences.token) {
       setConfigOpen(true);
-      setCommandNotice('请先配置同步服务');
+      setCommandNotice('登录后即可自动同步');
       return;
     }
     setConnectionEpoch((value) => value + 1);
@@ -1010,7 +1001,7 @@ export function MobileApp() {
 
   const handleForgetToken = () => {
     if (offlineRuntimeRef.current || pendingUploadCount > 0) {
-      setCommandNotice('还有本机离线会话未补传，暂不能移除访问令牌');
+      setCommandNotice('还有本机离线会话未补传，暂不能退出登录');
       return;
     }
     ledgerGeneration.current += 1;
@@ -1020,17 +1011,18 @@ export function MobileApp() {
     liveRequest.current?.abort();
     taskRequest.current?.abort();
     clearSavedToken();
+    clearMobileAccountProfile();
     const next = { ...preferencesRef.current, token: '', rememberToken: false };
     preferencesRef.current = next;
     connectionKeyRef.current = connectionKey(next);
     setPreferences(next);
-    setDraft(next);
+    setAccountProfile(null);
     liveSnapshotRef.current = null;
     setLiveSnapshot(null);
     setLiveSnapshotSource('none');
     setConnectionState('unconfigured');
     setConfigOpen(true);
-    setCommandNotice('访问令牌已移除；已结束账本缓存仍保留');
+    setCommandNotice('已退出登录；这台设备的历史缓存仍保留');
     void enqueueMutation(cacheMutationQueue, clearCachedLiveFocusSnapshot);
     void clearNativeFocusConnection();
   };
@@ -1185,13 +1177,14 @@ export function MobileApp() {
             {activeView === 'settings' && (
               <SettingsView
                 connection={liveConnection}
-                endpoint={preferences.endpoint}
-                hasToken={Boolean(preferences.token)}
+                accountLabel={accountProfile?.accountLabel ?? null}
+                authenticated={configured}
                 token={preferences.token}
+                endpoint={preferences.endpoint}
                 taskCount={taskSnapshot?.snapshot?.tasks.length ?? 0}
                 taskRevision={taskSnapshot?.revision ?? 0}
                 ledgerCount={cache.bundles.length}
-                onOpenConnection={() => setConfigOpen(true)}
+                onOpenAccount={() => setConfigOpen(true)}
                 appearance={appearance}
                 onAppearanceChange={setAppearance}
               />
@@ -1203,21 +1196,13 @@ export function MobileApp() {
       <AnimatePresence>
         {configOpen && (
           <ConnectionSheet
-            value={draft}
-            syncing={pullState === 'pulling' || liveConnection === 'connecting'}
-            hasSavedToken={Boolean(preferences.token)}
-            initialPairingCode={pendingPairingCode}
-            onChange={setDraft}
-            onPairedDeviceId={(assignedDeviceId) => {
-              rememberAssignedDeviceId(assignedDeviceId);
-              setDeviceId(assignedDeviceId);
-            }}
-            onClose={() => {
-              setPendingPairingCode('');
-              setConfigOpen(false);
-            }}
-            onSave={() => void handleSaveAndConnect()}
-            onForgetToken={handleForgetToken}
+            authenticated={configured}
+            accountLabel={accountProfile?.accountLabel ?? null}
+            busy={accountBusy || pullState === 'pulling' || liveConnection === 'connecting'}
+            notice={commandNotice}
+            onClose={() => setConfigOpen(false)}
+            onLogin={() => void bootstrapOwnerAccount()}
+            onLogout={handleForgetToken}
             onClearCache={() => setClearCacheDialogOpen(true)}
           />
         )}
@@ -1348,7 +1333,7 @@ function connectionTitle(state: LiveConnectionState): string {
   if (state === 'connecting') return '正在连接多端状态';
   if (state === 'offline') return '当前离线 · 本机专注可用';
   if (state === 'error') return '实时连接中断 · 自动重试中';
-  return '尚未配置多端连接';
+  return '尚未登录 FocusLink';
 }
 
 function connectionKey(

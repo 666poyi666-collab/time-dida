@@ -2,16 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { normalizePairingCodeInput } from '../src/mobile/pairingInput';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-describe('Android pairing entry', () => {
-  it('preserves case-sensitive base64url nonces entered manually', () => {
-    expect(normalizePairingCodeInput('  AbC_def-123  ')).toBe('AbC_def-123');
-  });
-
-  it('keeps one canonical browsable pair link without a second staging app identity', () => {
+describe('mobile owner account entry', () => {
+  it('keeps one canonical account callback and no public connection fields', () => {
     const manifest = fs.readFileSync(
       path.join(projectRoot, 'android', 'app', 'src', 'main', 'AndroidManifest.xml'),
       'utf8',
@@ -24,18 +19,23 @@ describe('Android pairing entry', () => {
       path.join(projectRoot, 'src', 'mobile', 'MobileApp.tsx'),
       'utf8',
     );
+    const sheet = fs.readFileSync(
+      path.join(projectRoot, 'src', 'mobile', 'ConnectionSheet.tsx'),
+      'utf8',
+    );
     const watch = fs.readFileSync(path.join(projectRoot, 'src', 'mobile', 'WatchApp.tsx'), 'utf8');
 
     expect(manifest).toContain('android:name="android.intent.category.BROWSABLE"');
-    expect(manifest).toContain('android:scheme="${pairScheme}"');
-    expect(manifest).toContain('android:host="pair"');
-    expect(gradle).toContain('manifestPlaceholders = [pairScheme: "focuslink"]');
+    expect(manifest).toContain('android:scheme="${appScheme}"');
+    expect(manifest).toContain('android:host="auth"');
+    expect(gradle).toContain('manifestPlaceholders = [appScheme: "focuslink"]');
     expect(gradle).not.toContain('applicationIdSuffix ".staging"');
-    expect(gradle).not.toContain('focuslink-mcp-staging');
-    for (const source of [mobile, watch]) {
-      expect(source).toContain("CapacitorApp.addListener('appUrlOpen'");
-      expect(source).toContain('CapacitorApp.getLaunchUrl()');
-      expect(source).toContain('exchangeDeviceSyncPairingCode');
+    expect(mobile).toContain("CapacitorApp.addListener('appUrlOpen'");
+    expect(mobile).toContain('ownerAccountBootstrapApi');
+    expect(watch).toContain('从手机登录');
+    for (const forbidden of ['服务地址', '访问令牌', '电脑一次性配对码', '保存并连接']) {
+      expect(sheet).not.toContain(forbidden);
+      expect(watch).not.toContain(forbidden);
     }
   });
 });

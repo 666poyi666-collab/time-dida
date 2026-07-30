@@ -153,7 +153,7 @@ export function liveConnectionCopy(
         : '可先使用本机专注，连接恢复后自动补传',
     };
   }
-  return { title: '尚未连接同步服务', detail: '配置服务地址与令牌后启用多端控制' };
+  return { title: '尚未登录 FocusLink', detail: '登录账号后启用多端控制与自动同步' };
 }
 
 export function formatClockDuration(milliseconds: number): string {

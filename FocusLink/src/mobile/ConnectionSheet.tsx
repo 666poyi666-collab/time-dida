@@ -1,53 +1,38 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { Capacitor } from '@capacitor/core';
-import type { MobileConnectionPreferences } from './preferences';
-import { exchangeDeviceSyncPairingCode } from './syncClient';
-import { normalizePairingCodeInput } from './pairingInput';
 
 export interface ConnectionSheetProps {
-  value: MobileConnectionPreferences;
-  syncing: boolean;
-  hasSavedToken: boolean;
-  initialPairingCode?: string;
-  onChange: (value: MobileConnectionPreferences) => void;
-  onPairedDeviceId: (deviceId: string) => void;
+  authenticated: boolean;
+  accountLabel: string | null;
+  busy: boolean;
+  notice: string | null;
   onClose: () => void;
-  onSave: () => void;
-  onForgetToken: () => void;
+  onLogin: () => void;
+  onLogout: () => void;
   onClearCache: () => void;
 }
 
 export function ConnectionSheet({
-  value,
-  syncing,
-  hasSavedToken,
-  initialPairingCode,
-  onChange,
-  onPairedDeviceId,
+  authenticated,
+  accountLabel,
+  busy,
+  notice,
   onClose,
-  onSave,
-  onForgetToken,
+  onLogin,
+  onLogout,
   onClearCache,
 }: ConnectionSheetProps) {
   const dialogRef = useRef<HTMLElement>(null);
-  const endpointRef = useRef<HTMLInputElement>(null);
+  const primaryRef = useRef<HTMLButtonElement>(null);
   const reduceMotion = useReducedMotion();
-  const [pairingCode, setPairingCode] = useState(initialPairingCode ?? '');
-  const [pairingBusy, setPairingBusy] = useState(false);
-  const [pairingNotice, setPairingNotice] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (initialPairingCode) setPairingCode(initialPairingCode);
-  }, [initialPairingCode]);
 
   useEffect(() => {
     const previousFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.documentElement.classList.add('connection-sheet-open');
-    endpointRef.current?.focus();
+    primaryRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape' && authenticated) onClose();
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => {
@@ -55,14 +40,12 @@ export function ConnectionSheet({
       document.documentElement.classList.remove('connection-sheet-open');
       previousFocus?.focus();
     };
-  }, [onClose]);
+  }, [authenticated, onClose]);
 
   const keepFocusInside = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== 'Tab') return;
     const focusable = Array.from(
-      dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
+      dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? [],
     );
     if (focusable.length === 0) return;
     const first = focusable[0];
@@ -80,7 +63,7 @@ export function ConnectionSheet({
     <motion.div
       className="sheet-backdrop"
       role="presentation"
-      onMouseDown={onClose}
+      onMouseDown={() => authenticated && onClose()}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -88,7 +71,7 @@ export function ConnectionSheet({
     >
       <motion.section
         ref={dialogRef}
-        className="connection-sheet"
+        className="connection-sheet account-sheet"
         role="dialog"
         aria-modal="true"
         aria-labelledby="connection-title"
@@ -106,152 +89,57 @@ export function ConnectionSheet({
         <div className="sheet-handle" aria-hidden="true" />
         <header>
           <div>
-            <p className="eyebrow">MULTI-DEVICE CONNECTION</p>
-            <h2 id="connection-title">连接同步服务</h2>
+            <p className="eyebrow">FOCUSLINK ACCOUNT</p>
+            <h2 id="connection-title">账号与云同步</h2>
           </div>
-          <button className="sheet-close" type="button" onClick={onClose} aria-label="关闭连接设置">
-            ×
-          </button>
+          {authenticated && (
+            <button
+              className="sheet-close"
+              type="button"
+              onClick={onClose}
+              aria-label="关闭账号设置"
+            >
+              ×
+            </button>
+          )}
         </header>
 
-        <div className="form-field">
-          <label htmlFor="sync-endpoint">服务地址</label>
-          <input
-            ref={endpointRef}
-            id="sync-endpoint"
-            type="url"
-            inputMode="url"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            placeholder="https://sync.example.com"
-            value={value.endpoint}
-            onChange={(event) => onChange({ ...value, endpoint: event.target.value })}
-          />
-          <small>
-            手机/平板仅连接 HTTPS 云端 authority；localhost、ADB reverse 和局域网 HTTP 已退役。
-          </small>
-        </div>
-
-        <div className="form-field">
-          <label htmlFor="sync-pairing-code">电脑一次性配对码</label>
-          <input
-            id="sync-pairing-code"
-            type="text"
-            inputMode="text"
-            autoCapitalize="none"
-            autoCorrect="off"
-            maxLength={128}
-            placeholder="粘贴完整一次性配对码"
-            value={pairingCode}
-            onChange={(event) => setPairingCode(normalizePairingCodeInput(event.target.value))}
-          />
-          <small>在电脑端“同步”设置中生成；成功换取令牌后立即失效。</small>
-          <button
-            className="field-quick-action"
-            type="button"
-            disabled={pairingBusy || pairingCode.length < 32}
-            onClick={() => {
-              setPairingBusy(true);
-              setPairingNotice(null);
-              void exchangeDeviceSyncPairingCode({
-                endpoint: value.endpoint,
-                code: pairingCode,
-                device: {
-                  platform: Capacitor.isNativePlatform() ? 'android' : 'web',
-                  appVersion: 'focuslink-mobile-v2',
-                  displayName: 'FocusLink Mobile',
-                },
-              })
-                .then((paired) => {
-                  onChange({ ...value, token: paired.accessToken });
-                  onPairedDeviceId(paired.deviceId);
-                  setPairingCode('');
-                  setPairingNotice('配对成功；请点击“保存并连接”完成设置。');
-                })
-                .catch((error) =>
-                  setPairingNotice(error instanceof Error ? error.message : String(error)),
-                )
-                .finally(() => setPairingBusy(false));
-            }}
-          >
-            {pairingBusy ? '正在配对…' : '使用一次性配对码'}
-          </button>
-          {pairingNotice && <small role="status">{pairingNotice}</small>}
-        </div>
-
-        <div className="form-field">
-          <label htmlFor="sync-token">访问令牌</label>
-          <input
-            id="sync-token"
-            type="password"
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            placeholder="粘贴访问令牌"
-            value={value.token}
-            onChange={(event) => onChange({ ...value, token: event.target.value })}
-          />
-          <small>令牌只放在请求头，不会写入会话 IndexedDB。</small>
-          <button
-            className="field-quick-action"
-            type="button"
-            onClick={() =>
-              void navigator.clipboard
-                .readText()
-                .then((token) => onChange({ ...value, token: token.trim() }))
-                .catch(() => undefined)
-            }
-          >
-            从剪贴板粘贴令牌
-          </button>
-        </div>
-
-        <label className="remember-row">
-          <input
-            type="checkbox"
-            checked={value.rememberToken}
-            onChange={(event) => onChange({ ...value, rememberToken: event.target.checked })}
-          />
-          <span>
-            <strong>在此设备记住令牌</strong>
-            <small>
-              关闭时 Web 仅保存到当前标签会话；Android 活动通知会用系统密钥加密保存后台连接。
-            </small>
-          </span>
-        </label>
-
-        <div className="security-note">
-          <LockIcon />
+        <div className="account-sheet-summary">
+          <strong>{authenticated ? '已登录' : '登录后自动同步'}</strong>
           <p>
-            连接后，此设备可以读取电脑任务快照、提交开始/暂停/继续/结束命令并拉取完成账本。滴答清单与番茄
-            To-do 的写入仍只在桌面端操作。
+            {authenticated
+              ? `${accountLabel ?? 'FocusLink 账号'} · 这台设备已加入云同步。`
+              : '手机、平板和电脑登录同一个账号后，专注状态、任务和历史记录会自动同步。'}
           </p>
         </div>
 
-        <button className="primary-button" type="button" onClick={onSave} disabled={syncing}>
-          {syncing ? '正在连接…' : '保存并连接'}
-        </button>
-        <div className="sheet-secondary-actions">
-          {hasSavedToken && (
-            <button type="button" onClick={onForgetToken}>
-              移除令牌
-            </button>
-          )}
-          <button type="button" onClick={onClearCache} disabled={syncing}>
-            清除本机缓存
+        {notice && (
+          <p className="account-sheet-notice" role="status">
+            {notice}
+          </p>
+        )}
+
+        {!authenticated ? (
+          <button
+            ref={primaryRef}
+            className="primary-button"
+            type="button"
+            onClick={onLogin}
+            disabled={busy}
+          >
+            {busy ? '正在登录…' : '登录 FocusLink 账号'}
           </button>
-        </div>
+        ) : (
+          <div className="sheet-secondary-actions account-sheet-actions">
+            <button ref={primaryRef} type="button" onClick={onClearCache} disabled={busy}>
+              清除本机缓存
+            </button>
+            <button type="button" onClick={onLogout} disabled={busy}>
+              退出登录
+            </button>
+          </div>
+        )}
       </motion.section>
     </motion.div>
-  );
-}
-
-function LockIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="5" y="10" width="14" height="10" />
-      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-    </svg>
   );
 }

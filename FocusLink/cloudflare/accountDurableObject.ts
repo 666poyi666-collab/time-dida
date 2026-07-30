@@ -16,6 +16,12 @@ import {
   type DeviceSyncSessionBundle,
 } from '../shared/sync/deviceProtocol';
 import {
+  FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
+  FOCUSLINK_ENROLLED_DEVICE_SCOPES,
+  parseFocusLinkDeviceRegistrationRequest,
+  type FocusLinkDeviceRegistrationResponse,
+} from '../shared/sync/identityProtocol';
+import {
   LIVE_FOCUS_MAX_TRANSITIONS,
   LIVE_FOCUS_MAX_WAIT_MS,
   LIVE_FOCUS_PROTOCOL_VERSION,
@@ -96,6 +102,10 @@ export interface WorkerEnv {
   FOCUSLINK_MCP_SERVICE_TOKEN?: string;
   /** Dedicated credential used only to mint one-time pair offers through a service binding. */
   FOCUSLINK_PAIR_AUTHORITY_TOKEN?: string;
+  /** Dedicated credential used only after the identity gateway authenticates the owner. */
+  FOCUSLINK_IDENTITY_AUTHORITY_TOKEN?: string;
+  /** Exact owner subject accepted from the identity gateway (currently poyi-owner). */
+  FOCUSLINK_OWNER_SUBJECT?: string;
   /** Dedicated capability used only by the named observation service binding. */
   FOCUSLINK_AUTHORITY_CAPABILITY?: string;
   /** Exact central-authority audience ending in /authority/identity-focus. */
@@ -312,6 +322,7 @@ export function assertV2DeviceBinding(
 
 export class FocusLinkAccount extends DurableObject<WorkerEnv> {
   private readonly sql: SqlStorage;
+  private registrationSchemaReady = false;
 
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
     super(ctx, env);
@@ -448,6 +459,28 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       }
       if (url.pathname === '/v2/pair/exchange' && request.method === 'POST') {
         return json(await this.exchangePairOffer(accountId, await readJson(request, 16 * 1024)));
+      }
+      if (url.pathname === '/v2/devices/register' && request.method === 'POST') {
+        rejectUnexpectedQuery(url);
+        if (
+          !isIdentityAuthorityToken(this.env.FOCUSLINK_IDENTITY_AUTHORITY_TOKEN) ||
+          !constantTimeEqual(
+            request.headers.get('x-focuslink-enrollment-authority') ?? '',
+            this.env.FOCUSLINK_IDENTITY_AUTHORITY_TOKEN,
+          ) ||
+          !isOwnerSubject(this.env.FOCUSLINK_OWNER_SUBJECT) ||
+          !constantTimeEqual(
+            request.headers.get('x-focuslink-owner-subject') ?? '',
+            this.env.FOCUSLINK_OWNER_SUBJECT,
+          )
+        ) {
+          throw new ProtocolError(
+            401,
+            'identity_authority_required',
+            'authenticated owner identity required',
+          );
+        }
+        return json(await this.registerOwnerDevice(accountId, await readJson(request, 16 * 1024)));
       }
       if (url.pathname === '/v2/devices' && request.method === 'GET') {
         await this.authorizeV2(request, 'devices:manage');
@@ -1799,11 +1832,132 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     };
   }
 
+  private async registerOwnerDevice(
+    accountId: string,
+    value: unknown,
+  ): Promise<FocusLinkDeviceRegistrationResponse> {
+    const request = parseFocusLinkDeviceRegistrationRequest(value);
+    if (!request) {
+      throw new ProtocolError(400, 'invalid_device_registration', 'invalid device registration');
+    }
+    const pepper = this.env.FOCUSLINK_DEVICE_PEPPER;
+    if (!pepper) {
+      throw new ProtocolError(503, 'credential_missing', 'device pepper is not configured');
+    }
+    this.ensureRegistrationSchema();
+    const accountPublicId = publicId(accountId);
+    const installationHmac = await registeredDeviceInstallationHmac(
+      pepper,
+      accountId,
+      request.installationId,
+    );
+    const devicePublicId = installationHmac.slice(0, 24);
+    const deviceId = `device-${devicePublicId}`;
+    const secret = randomToken(48);
+    const secretHmac = await hmacHex(pepper, secret);
+    const now = Date.now();
+    const expiresAt = now + 365 * DAY_MS;
+    const scopes = [...FOCUSLINK_ENROLLED_DEVICE_SCOPES];
+    const existing = this.sql
+      .exec<{ device_id: string }>(
+        'SELECT device_id FROM v2_device_registrations WHERE installation_hmac = ?',
+        installationHmac,
+      )
+      .toArray()[0];
+    if (existing && existing.device_id !== deviceId) {
+      throw new ProtocolError(409, 'installation_conflict', 'installation identity conflict');
+    }
+    this.ctx.storage.transactionSync(() => {
+      this.sql.exec(
+        `INSERT INTO v2_devices(device_id, device_public_id, account_public_id, display_name,
+         scopes_json, secret_hmac, pepper_version, expires_at, last_seen_at, stale, revoked_at)
+         VALUES (?, ?, ?, ?, ?, ?, 2, ?, ?, 0, NULL)
+         ON CONFLICT(device_id) DO UPDATE SET
+           device_public_id=excluded.device_public_id,
+           account_public_id=excluded.account_public_id,
+           display_name=excluded.display_name,
+           scopes_json=excluded.scopes_json,
+           secret_hmac=excluded.secret_hmac,
+           pepper_version=2,
+           expires_at=excluded.expires_at,
+           last_seen_at=excluded.last_seen_at,
+           stale=0,
+           revoked_at=NULL`,
+        deviceId,
+        devicePublicId,
+        accountPublicId,
+        request.displayName,
+        JSON.stringify(scopes),
+        secretHmac,
+        expiresAt,
+        now,
+      );
+      this.sql.exec(
+        `INSERT INTO v2_device_registrations(device_id, installation_hmac, platform, device_kind,
+         app_version, registered_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(device_id) DO UPDATE SET
+           installation_hmac=excluded.installation_hmac,
+           platform=excluded.platform,
+           device_kind=excluded.device_kind,
+           app_version=excluded.app_version,
+           updated_at=excluded.updated_at`,
+        deviceId,
+        installationHmac,
+        request.platform,
+        request.deviceKind,
+        request.appVersion ?? null,
+        now,
+        now,
+      );
+    });
+    console.info(
+      JSON.stringify({
+        event: 'focuslink.device.registered',
+        accountPublicId,
+        deviceId,
+        platform: request.platform,
+        deviceKind: request.deviceKind,
+        credentialRotated: Boolean(existing),
+      }),
+    );
+    return {
+      protocolVersion: FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
+      accountPublicId,
+      deviceId,
+      accessToken: `fl2_${accountPublicId}_${devicePublicId}_${secret}`,
+      tokenType: 'Bearer',
+      scopes,
+      expiresAt,
+      serverTime: now,
+    };
+  }
+
+  private ensureRegistrationSchema(): void {
+    if (this.registrationSchemaReady) return;
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS v2_device_registrations (
+        device_id TEXT PRIMARY KEY,
+        installation_hmac TEXT NOT NULL UNIQUE,
+        platform TEXT NOT NULL,
+        device_kind TEXT NOT NULL,
+        app_version TEXT,
+        registered_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+    this.registrationSchemaReady = true;
+  }
+
   private listV2Devices(): { devices: unknown[]; serverTime: number } {
+    this.ensureRegistrationSchema();
     const devices = this.sql
       .exec<Record<string, SqlStorageValue>>(
-        `SELECT device_id, device_public_id, display_name, scopes_json, expires_at, revoked_at,
-       last_seen_at, watermark, stale FROM v2_devices ORDER BY last_seen_at DESC`,
+        `SELECT d.device_id, d.device_public_id, d.display_name, d.scopes_json, d.expires_at,
+       d.revoked_at, d.last_seen_at, d.watermark, d.stale, r.platform, r.device_kind,
+       r.app_version, r.registered_at
+       FROM v2_devices d LEFT JOIN v2_device_registrations r ON r.device_id = d.device_id
+       ORDER BY d.last_seen_at DESC`,
       )
       .toArray()
       .map((row) => ({
@@ -1816,6 +1970,10 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         lastSeenAt: row.last_seen_at,
         watermark: row.watermark,
         stale: Boolean(row.stale),
+        platform: row.platform ?? null,
+        deviceKind: row.device_kind ?? null,
+        appVersion: row.app_version ?? null,
+        registeredAt: row.registered_at ?? null,
       }));
     return { devices, serverTime: Date.now() };
   }
@@ -3028,6 +3186,14 @@ function isDeviceScope(value: string): boolean {
   ].includes(value);
 }
 
+function isIdentityAuthorityToken(value: string | undefined): value is string {
+  return typeof value === 'string' && /^fia_[A-Za-z0-9_-]{43,160}$/.test(value);
+}
+
+function isOwnerSubject(value: string | undefined): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9._~-]{3,128}$/.test(value);
+}
+
 function randomToken(bytes: number): string {
   const value = new Uint8Array(bytes);
   crypto.getRandomValues(value);
@@ -3061,6 +3227,22 @@ async function hmacHex(pepper: string, secret: string): Promise<string> {
     ['sign'],
   );
   return hex(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(secret)));
+}
+
+export async function deriveRegisteredDevicePublicId(
+  pepper: string,
+  accountId: string,
+  installationId: string,
+): Promise<string> {
+  return (await registeredDeviceInstallationHmac(pepper, accountId, installationId)).slice(0, 24);
+}
+
+async function registeredDeviceInstallationHmac(
+  pepper: string,
+  accountId: string,
+  installationId: string,
+): Promise<string> {
+  return hmacHex(pepper, `focuslink-device-installation-v1:${accountId}:${installationId}`);
 }
 
 async function sha256Hex(value: ArrayBuffer | Uint8Array): Promise<string> {

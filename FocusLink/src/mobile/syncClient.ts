@@ -202,7 +202,7 @@ async function liveFocusFetch(
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
   requireMobileCloudEndpoint(endpoint);
   const token = input.token.trim();
-  if (!token) throw new Error('请填写访问令牌');
+  if (!token) throw new Error('请先登录 FocusLink 账号');
 
   let response: Response;
   try {
@@ -235,7 +235,7 @@ async function liveFocusFetch(
   if (!response.ok) {
     const detail = await readErrorDetail(response);
     if (response.status === 401 || response.status === 403) {
-      throw new Error(detail || '访问令牌无效或无权控制专注');
+      throw new Error(detail || '登录已失效，请重新登录');
     }
     throw new Error(detail || `实时同步服务返回 HTTP ${response.status}`);
   }

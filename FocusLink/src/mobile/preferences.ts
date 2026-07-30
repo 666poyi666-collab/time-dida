@@ -5,6 +5,9 @@ const TOKEN_SESSION_KEY = 'focuslink.mobile.token.session';
 const TOKEN_LOCAL_KEY = 'focuslink.mobile.token.local';
 const REMEMBER_TOKEN_KEY = 'focuslink.mobile.remember-token';
 const DEVICE_ID_KEY = 'focuslink.mobile.device-id';
+const INSTALLATION_ID_KEY = 'focuslink.mobile.installation-id';
+const ACCOUNT_ID_KEY = 'focuslink.mobile.account-id';
+const ACCOUNT_LABEL_KEY = 'focuslink.mobile.account-label';
 
 export function configuredNativeEndpoint(endpoint: string | undefined): string {
   return cloudOnlyMobileSyncEndpoint(endpoint ?? '');
@@ -14,6 +17,28 @@ export interface MobileConnectionPreferences {
   endpoint: string;
   token: string;
   rememberToken: boolean;
+}
+
+export interface MobileAccountProfile {
+  accountId: string;
+  accountLabel: string;
+}
+
+export function loadMobileAccountProfile(): MobileAccountProfile | null {
+  const accountId = localStorage.getItem(ACCOUNT_ID_KEY)?.trim();
+  const accountLabel = localStorage.getItem(ACCOUNT_LABEL_KEY)?.trim();
+  if (!accountId || !accountLabel) return null;
+  return { accountId, accountLabel };
+}
+
+export function saveMobileAccountProfile(profile: MobileAccountProfile): void {
+  localStorage.setItem(ACCOUNT_ID_KEY, profile.accountId);
+  localStorage.setItem(ACCOUNT_LABEL_KEY, profile.accountLabel);
+}
+
+export function clearMobileAccountProfile(): void {
+  localStorage.removeItem(ACCOUNT_ID_KEY);
+  localStorage.removeItem(ACCOUNT_LABEL_KEY);
 }
 
 export function loadConnectionPreferences(): MobileConnectionPreferences {
@@ -100,6 +125,16 @@ export function getOrCreateDeviceId(): string {
   if (existing) return existing;
   const created = `web_${crypto.randomUUID()}`;
   localStorage.setItem(DEVICE_ID_KEY, created);
+  return created;
+}
+
+/** Stable local installation identity; authority-assigned device IDs must never overwrite it. */
+export function getOrCreateInstallationId(): string {
+  const existing = localStorage.getItem(INSTALLATION_ID_KEY)?.trim();
+  if (existing && /^[A-Za-z0-9._~-]{20,160}$/.test(existing)) return existing;
+  const platform = Capacitor.isNativePlatform() ? 'android' : 'web';
+  const created = `${platform}-${crypto.randomUUID()}`;
+  localStorage.setItem(INSTALLATION_ID_KEY, created);
   return created;
 }
 

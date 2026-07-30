@@ -158,7 +158,13 @@ export function getDeviceSyncStatus(): DeviceSyncStatus {
     // later refresh reports the persisted canonical v2 state.
   }
   const storedError = connection ? getMeta(lastErrorMetaKey(connection.scope)) || null : null;
+  const accountMatch = connection?.accessToken.match(
+    /^fl2_([A-Za-z0-9-]{6,80})_[A-Za-z0-9-]{6,80}_/,
+  );
   return {
+    signedIn: Boolean(accountMatch),
+    accountId: accountMatch?.[1] ?? null,
+    accountLabel: accountMatch ? 'Poyi' : null,
     enabled: settings.enabled,
     endpoint: settings.endpoint,
     autoSync: settings.autoSync,

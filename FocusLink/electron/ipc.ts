@@ -53,6 +53,10 @@ import {
   runDeviceSync,
 } from './sync/deviceSyncService.js';
 import {
+  loginDeviceSyncAccount,
+  logoutDeviceSyncAccount,
+} from './sync/deviceSyncAccountService.js';
+import {
   listSessions,
   listSessionsInRange,
   getSession as getSessionDb,
@@ -604,6 +608,30 @@ export function registerIpc(
 
   // ============ FocusLink 跨设备同步（与 dida sync_queue 独立） ============
   ipcMain.handle('device-sync:status', () => getDeviceSyncStatus());
+  ipcMain.handle('device-sync:login', async () => {
+    const result = await loginDeviceSyncAccount();
+    const next = getSettings();
+    onSettingsChanged(['deviceSync'], next);
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) {
+        w.webContents.send('settings:changed', next);
+        w.webContents.send('settings:domain-changed', ['deviceSync']);
+      }
+    }
+    return result;
+  });
+  ipcMain.handle('device-sync:logout', () => {
+    logoutDeviceSyncAccount();
+    const next = getSettings();
+    onSettingsChanged(['deviceSync'], next);
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) {
+        w.webContents.send('settings:changed', next);
+        w.webContents.send('settings:domain-changed', ['deviceSync']);
+      }
+    }
+    return getDeviceSyncStatus();
+  });
   ipcMain.handle('device-sync:configure', async (_e, input) => {
     configureDeviceSync(input);
     const next = getSettings();
