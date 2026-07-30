@@ -3932,3 +3932,708 @@ code {
     padding-left: max(14px, env(safe-area-inset-left, 0px));
   }
 }
+
+/* Mobile / tablet instrument shell v0.12.71 ------------------------------
+ * One continuous work surface, framed like a physical timing instrument.
+ * Phone keeps time + action in the thumb zone; tablet opens a wider context
+ * rail only when the viewport can carry it without crushing the instrument. */
+
+.mobile-shell {
+  width: 100%;
+  max-width: 1440px;
+  border: 0;
+  background: var(--surface);
+}
+
+.mobile-topbar {
+  min-height: calc(64px + env(safe-area-inset-top));
+  align-items: center;
+  padding: calc(8px + env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 8px
+    max(18px, env(safe-area-inset-left));
+  border-bottom-color: color-mix(in srgb, var(--surface) 16%, transparent);
+  background: var(--text);
+  color: var(--surface);
+}
+
+.mobile-topbar .mobile-brand-mark .brand-mark-f,
+.mobile-topbar .mobile-brand-mark .brand-mark-cross {
+  stroke: var(--surface);
+}
+
+.mobile-topbar .eyebrow {
+  color: color-mix(in srgb, var(--surface) 62%, transparent);
+}
+
+.mobile-topbar .icon-button {
+  color: color-mix(in srgb, var(--surface) 72%, transparent);
+}
+
+.mobile-topbar .icon-button:hover {
+  border-color: color-mix(in srgb, var(--surface) 24%, transparent);
+  background: color-mix(in srgb, var(--surface) 9%, transparent);
+  color: var(--surface);
+}
+
+.brand-lockup {
+  gap: 12px;
+}
+
+.brand-lockup h1 {
+  font-size: 17px;
+  font-weight: 680;
+}
+
+.app-navigation {
+  border-color: color-mix(in srgb, var(--surface) 14%, transparent);
+  background: var(--text);
+}
+
+.app-navigation button {
+  color: color-mix(in srgb, var(--surface) 56%, transparent);
+}
+
+.app-navigation button small {
+  display: none;
+  color: color-mix(in srgb, var(--surface) 34%, transparent);
+  font-family: var(--number);
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-navigation button.is-active {
+  background: color-mix(in srgb, var(--focus) 12%, transparent);
+  color: var(--focus);
+}
+
+.sync-strip {
+  min-height: 58px;
+  padding: 9px clamp(16px, 3.6vw, 40px);
+  border-bottom-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.sync-status {
+  position: relative;
+  padding-left: 2px;
+}
+
+.sync-status .sync-copy strong {
+  color: var(--text);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+}
+
+.sync-button {
+  min-height: 40px;
+  border-radius: 2px;
+  background: var(--surface);
+}
+
+.view-surface,
+.focus-console {
+  background: var(--surface);
+}
+
+.view-heading,
+.focus-console-header {
+  min-height: 78px;
+  padding: 14px clamp(18px, 4vw, 40px);
+  background: var(--surface);
+}
+
+.view-heading > div:first-child,
+.focus-console-header > div:first-child {
+  padding-left: 14px;
+  border-left: 3px solid var(--focus);
+}
+
+.view-heading h2,
+.focus-console-header h2 {
+  font-size: 21px;
+  font-weight: 690;
+}
+
+.focus-console-body {
+  background: var(--surface);
+}
+
+.focus-instrument {
+  padding: clamp(22px, 4vw, 44px);
+}
+
+.focus-start-fields {
+  gap: 12px;
+  padding: 16px;
+  border-left: 3px solid var(--focus);
+  background: var(--surface-2);
+}
+
+.focus-title-field input,
+.focus-title-field select {
+  min-height: 50px;
+  border-radius: 2px;
+  background: var(--surface);
+}
+
+.focus-task-picker button {
+  border-radius: 2px;
+  background: var(--surface);
+}
+
+.active-title-block {
+  padding: 16px;
+  border-left: 3px solid var(--focus);
+  background: var(--surface-2);
+}
+
+.primary-readout {
+  position: relative;
+  min-height: 204px;
+  margin: 18px 0;
+  padding: 24px 16px;
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--canvas);
+  box-shadow: inset 4px 0 0 var(--focus);
+}
+
+.phase-paused .primary-readout {
+  box-shadow: inset 4px 0 0 var(--pause);
+}
+
+.phase-running .primary-readout::before,
+.phase-paused .primary-readout::before {
+  content: none;
+}
+
+.primary-readout > span {
+  font-family: var(--number);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+.primary-readout > strong {
+  font-size: clamp(60px, 12vw, 104px);
+  font-weight: 520;
+  line-height: 0.95;
+}
+
+.mobile-temporal-ribbon {
+  margin-top: 0;
+  padding-top: 14px;
+}
+
+.mobile-temporal-ribbon canvas {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.runtime-metrics {
+  background: var(--surface-2);
+}
+
+.runtime-metrics > div {
+  min-height: 76px;
+  align-content: center;
+}
+
+.focus-actions {
+  gap: 8px;
+  background: var(--text);
+}
+
+.focus-action {
+  min-height: 50px;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--surface);
+}
+
+.focus-action.connection-action {
+  border-color: color-mix(in srgb, var(--surface) 58%, transparent);
+  color: var(--surface);
+}
+
+.focus-action.finish-action {
+  border-color: color-mix(in srgb, var(--danger) 78%, var(--surface));
+  color: color-mix(in srgb, var(--danger) 66%, var(--surface));
+}
+
+.live-context {
+  background: var(--surface-2);
+}
+
+.connection-callout {
+  padding: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.runtime-facts,
+.desktop-delivery-note,
+.native-system-controls {
+  border-color: var(--border-strong);
+}
+
+.dashboard-hero {
+  background: var(--text);
+  color: var(--surface);
+}
+
+.dashboard-primary > span,
+.dashboard-primary p {
+  color: color-mix(in srgb, var(--surface) 64%, transparent);
+}
+
+.focus-rate {
+  border-color: color-mix(in srgb, var(--surface) 16%, transparent);
+  background: color-mix(in srgb, var(--surface) 6%, transparent);
+}
+
+.focus-rate span,
+.focus-rate small {
+  color: color-mix(in srgb, var(--surface) 64%, transparent);
+}
+
+.focus-rate-track {
+  background: color-mix(in srgb, var(--surface) 14%, transparent);
+}
+
+.dashboard-kpis,
+.dashboard-band,
+.task-toolbar,
+.settings-status-grid {
+  background: var(--surface);
+}
+
+.dashboard-metric,
+.dashboard-band,
+.task-snapshot-meta,
+.settings-status-line {
+  border-color: var(--border-strong);
+}
+
+.task-toolbar {
+  padding-block: 18px;
+  background: var(--surface-2);
+}
+
+.task-search input,
+.project-filter select {
+  min-height: 48px;
+  border-radius: 2px;
+  background: var(--surface);
+}
+
+.task-empty {
+  min-height: 430px;
+  margin: 20px clamp(18px, 4vw, 40px);
+  border: 1px solid var(--border);
+  background: var(--canvas);
+}
+
+.task-selection-detail {
+  background: var(--surface-2);
+}
+
+.settings-edit-button {
+  border-radius: 2px;
+}
+
+.mobile-appearance-panel,
+.settings-card {
+  margin: 0;
+  padding: 24px clamp(18px, 5vw, 48px);
+  border-top: 0;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--surface-2);
+}
+
+.settings-card > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.settings-card > header svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  color: var(--focus);
+}
+
+.settings-card > header h3,
+.settings-card > header p {
+  margin: 0;
+}
+
+.settings-card > header h3 {
+  font-size: 15px;
+}
+
+.settings-card > header p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.appearance-color-choice,
+.appearance-font-choice,
+.appearance-select-row select {
+  border-radius: 2px;
+  background: var(--surface);
+}
+
+.appearance-color-choice.is-selected,
+.appearance-font-choice.is-selected {
+  box-shadow: inset 0 -3px 0 rgb(var(--app-accent));
+}
+
+:root.dark .mobile-topbar,
+:root.dark .app-navigation,
+:root.dark .focus-actions,
+:root.dark .dashboard-hero {
+  background: var(--canvas);
+  color: var(--text);
+}
+
+:root.dark .mobile-topbar .mobile-brand-mark .brand-mark-f,
+:root.dark .mobile-topbar .mobile-brand-mark .brand-mark-cross {
+  stroke: var(--text);
+}
+
+:root.dark .mobile-topbar .eyebrow,
+:root.dark .mobile-topbar .icon-button,
+:root.dark .app-navigation button {
+  color: var(--muted);
+}
+
+:root.dark .app-navigation button small {
+  color: var(--subtle);
+}
+
+:root.dark .app-navigation button.is-active {
+  color: var(--focus);
+}
+
+:root.dark .focus-action {
+  color: var(--text);
+}
+
+:root.dark .focus-action.connection-action {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+:root.dark .dashboard-primary > span,
+:root.dark .dashboard-primary p,
+:root.dark .focus-rate span,
+:root.dark .focus-rate small {
+  color: var(--muted);
+}
+
+:root.dark .focus-rate {
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+
+:root.dark .focus-rate-track {
+  background: var(--border-strong);
+}
+
+@media (max-width: 619px) {
+  .mobile-topbar {
+    min-height: calc(58px + env(safe-area-inset-top));
+    padding-block: calc(7px + env(safe-area-inset-top)) 7px;
+  }
+
+  .mobile-topbar .brand-lockup svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .brand-lockup {
+    gap: 10px;
+  }
+
+  .brand-lockup h1 {
+    font-size: 16px;
+  }
+
+  .brand-lockup .eyebrow {
+    max-width: 220px;
+    overflow: hidden;
+    font-size: 7px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-navigation {
+    min-height: calc(68px + env(safe-area-inset-bottom));
+    padding-top: 6px;
+  }
+
+  .app-navigation button {
+    min-height: 56px;
+    gap: 4px;
+  }
+
+  .app-navigation button::after {
+    bottom: 1px;
+  }
+
+  .mobile-main {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+
+  .sync-strip {
+    min-height: 54px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 40px;
+    gap: 9px;
+    padding: 7px max(14px, env(safe-area-inset-right)) 7px max(14px, env(safe-area-inset-left));
+  }
+
+  .sync-status {
+    grid-template-columns: 7px minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .sync-status .sync-copy span {
+    display: block;
+    overflow: hidden;
+    font-size: 9px;
+    overflow-wrap: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sync-status-ledger.state-error .sync-copy span {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .sync-button {
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .focus-instrument {
+    gap: 0;
+    padding: 10px max(14px, env(safe-area-inset-right)) calc(142px + env(safe-area-inset-bottom))
+      max(14px, env(safe-area-inset-left));
+  }
+
+  .primary-readout {
+    min-height: 132px;
+    margin: 0 0 12px;
+    padding: 16px 10px;
+    box-shadow: inset 3px 0 0 var(--focus);
+  }
+
+  .phase-paused .primary-readout {
+    box-shadow: inset 3px 0 0 var(--pause);
+  }
+
+  .primary-readout > strong {
+    font-size: clamp(58px, 18vw, 76px);
+  }
+
+  .primary-readout > small {
+    max-width: 310px;
+    font-size: 9.5px;
+  }
+
+  .focus-start-fields,
+  .active-title-block {
+    padding: 13px;
+  }
+
+  .focus-title-field,
+  .active-title-block {
+    gap: 6px;
+  }
+
+  .focus-title-field input,
+  .focus-title-field select {
+    min-height: 46px;
+  }
+
+  .mobile-temporal-ribbon {
+    margin-bottom: 12px;
+    padding-top: 12px;
+  }
+
+  .mobile-temporal-ribbon canvas {
+    height: 112px;
+    min-height: 112px;
+  }
+
+  .runtime-metrics > div {
+    min-height: 68px;
+    padding: 10px 6px;
+  }
+
+  .focus-actions {
+    bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+    margin-right: calc(-1 * max(14px, env(safe-area-inset-right, 0px)));
+    margin-left: calc(-1 * max(14px, env(safe-area-inset-left, 0px)));
+    padding: 10px max(14px, env(safe-area-inset-right, 0px)) 10px
+      max(14px, env(safe-area-inset-left, 0px));
+  }
+
+  .view-heading {
+    min-height: 72px;
+  }
+
+  .view-heading > div:first-child {
+    padding-left: 10px;
+  }
+
+  .dashboard-primary {
+    min-height: 190px;
+    padding: 28px max(18px, env(safe-area-inset-right)) 28px max(18px, env(safe-area-inset-left));
+  }
+
+  .task-empty {
+    min-height: 340px;
+    margin: 14px;
+  }
+}
+
+@media (min-width: 620px) {
+  .mobile-topbar {
+    min-height: calc(72px + env(safe-area-inset-top));
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+
+  .app-frame {
+    grid-template-columns: 80px minmax(0, 1fr);
+  }
+
+  .app-navigation {
+    top: calc(72px + env(safe-area-inset-top));
+    min-height: calc(100dvh - 72px - env(safe-area-inset-top));
+    grid-auto-rows: 74px;
+    padding: 10px 7px;
+  }
+
+  .app-navigation button {
+    min-height: 68px;
+    grid-template-columns: 14px 22px;
+    grid-template-rows: 22px 16px;
+    align-content: center;
+    column-gap: 4px;
+    border-radius: 2px;
+  }
+
+  .app-navigation button small {
+    display: block;
+    grid-row: 1 / span 2;
+    align-self: center;
+    writing-mode: vertical-rl;
+  }
+
+  .app-navigation button svg {
+    grid-column: 2;
+  }
+
+  .app-navigation button span {
+    grid-column: 2;
+  }
+
+  .app-navigation button::after {
+    right: -7px;
+    width: 3px;
+    height: 28px;
+  }
+
+  .sync-strip {
+    min-height: 64px;
+  }
+
+  .focus-console-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .focus-instrument {
+    padding: clamp(26px, 4vw, 46px);
+  }
+
+  .focus-actions {
+    margin-right: calc(-1 * clamp(26px, 4vw, 46px));
+    margin-left: calc(-1 * clamp(26px, 4vw, 46px));
+    padding-right: clamp(26px, 4vw, 46px);
+    padding-left: clamp(26px, 4vw, 46px);
+  }
+
+  .live-context {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-top: 1px solid var(--border-strong);
+    border-left: 0;
+  }
+
+  .runtime-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .runtime-facts > div {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .runtime-facts > div:nth-child(even) {
+    border-right: 0;
+  }
+
+  .desktop-delivery-note {
+    align-content: center;
+  }
+
+  .dashboard-primary > strong {
+    font-size: clamp(58px, 9vw, 94px);
+  }
+}
+
+@media (min-width: 760px) {
+  .focus-console-body {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 0.32fr);
+  }
+
+  .live-context {
+    display: grid;
+    grid-template-columns: 1fr;
+    border-top: 0;
+    border-left: 1px solid var(--border-strong);
+  }
+
+  .runtime-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .runtime-facts > div,
+  .runtime-facts > div:nth-child(even) {
+    border-right: 0;
+  }
+}
+
+@media (min-width: 1120px) {
+  .app-frame {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .focus-console-body {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+
+  .focus-instrument {
+    padding-right: clamp(42px, 5vw, 72px);
+    padding-left: clamp(42px, 5vw, 72px);
+  }
+}

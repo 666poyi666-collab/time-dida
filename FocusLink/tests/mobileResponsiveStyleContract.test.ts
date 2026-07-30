@@ -33,7 +33,7 @@ describe('phone, tablet and watch responsive style contract', () => {
       /@media \(max-width:\s*619px\)[\s\S]*?\.sync-copy span\s*\{[^}]*overflow-wrap:\s*anywhere[^}]*text-overflow:\s*clip[^}]*white-space:\s*normal/,
     );
     expect(css).toMatch(
-      /@media \(min-width:\s*760px\)[\s\S]*?\.runtime-facts dd\s*\{[^}]*overflow-wrap:\s*anywhere[^}]*text-overflow:\s*clip[^}]*white-space:\s*normal/,
+      /@media \(min-width:\s*620px\)[\s\S]*?\.runtime-facts dd\s*\{[^}]*overflow-wrap:\s*anywhere[^}]*text-overflow:\s*clip[^}]*white-space:\s*normal/,
     );
     expect(css).toMatch(
       /@media \(max-width:\s*480px\)[\s\S]*?\.focus-actions\s*\{[^}]*margin-right:\s*calc\(-1 \* max\(14px,[^}]*margin-left:\s*calc\(-1 \* max\(14px/,
@@ -48,10 +48,13 @@ describe('phone, tablet and watch responsive style contract', () => {
     );
 
     expect(css).toMatch(
-      /@media \(min-width:\s*620px\)[\s\S]*?\.app-frame\s*\{[^}]*grid-template-columns:\s*64px minmax\(0,\s*1fr\)/,
+      /@media \(min-width:\s*620px\)[\s\S]*?\.app-frame\s*\{[^}]*grid-template-columns:\s*80px minmax\(0,\s*1fr\)/,
     );
     expect(css).toMatch(
-      /@media \(min-width:\s*620px\)[\s\S]*?\.focus-console-body\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(260px,\s*0\.34fr\)/,
+      /@media \(min-width:\s*620px\)[\s\S]*?\.focus-console-body\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/,
+    );
+    expect(css).toMatch(
+      /@media \(min-width:\s*760px\)[\s\S]*?\.focus-console-body\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(220px,\s*0\.32fr\)/,
     );
     expect(css).toMatch(
       /@media \(min-width:\s*620px\)[\s\S]*?\.focus-actions\s*\{[^}]*position:\s*sticky[^}]*bottom:\s*0/,

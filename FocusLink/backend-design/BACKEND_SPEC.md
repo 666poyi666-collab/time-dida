@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相；当前实现 v0.12.70
+> 状态：v0.12.x 后端单一真相；当前实现 v0.12.71
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -245,6 +245,8 @@ Account DO 保存实体、revision、reservation/result、change feed、任务�
 
 - 状态仅为 `idle / running / paused`，合法迁移是 `idle→running`、`running→paused`、`paused→running` 以及活动态经 `finish/abort` 回到 idle。服务端持有 revision 与时间边界，客户端只做显示外推。
 - 每个命令含随机稳定 `commandId`、发起 `deviceId`、目标 `sessionId` 与 `expectedRevision`；相同正文重放返回 duplicate，同 id 不同正文被拒绝，旧 revision 返回 conflict 和最新快照。
+- canonical HTTPS 下的 Electron live command、任务快照和 Sync v2 mutation 必须统一从 `fl2` 凭据解析 `device-<devicePublicId>`；不得把 legacy SQLite `deviceSync.deviceIdV1` UUID 填入受设备令牌绑定校验的写请求。回环合同测试允许继续使用本机 UUID。
+- 云端快照已确认 idle 后，start 若因传输不可达或 HTTP 401/403 未被确认，Electron 必须先取消长轮询、退出 live fact source、记录分类诊断，再启动本地 TimerManager；本地开始不能被失效凭据卡死。若云端或本地任一侧已经 running/paused，则禁止该降级，继续保留权威/冲突保护。
 - start 由客户端生成 session id，可携带有界标题与可选任务上下文；同一账号一次只能有一个活动会话。pause/resume/finish/abort 必须命中当前 session，陈旧通知或快捷设置动作不能作用于下一轮。
 - `GET /sync/v2/live` 返回当前快照；`GET /sync/v2/live/wait` 只在 revision 前进或有界超时后返回，HTTP 断开必须释放 waiter；`POST /sync/v2/live/command` 处理幂等命令。三者都经 canonical adapter，私有 authority 复验 device credential 与 scope。
 - 每个响应给出 `serverTime`，并把 active/pause/wall 三时间物化到该时刻。running 后只有 active 与 wall 增长，paused 后只有 pause 与 wall 增长；客户端从该基点逐秒显示，不能用本机时间改写云端事实。
@@ -285,6 +287,7 @@ Account DO 保存实体、revision、reservation/result、change feed、任务�
 - 主窗和小窗都监听 `unresponsive`、`responsive`、`render-process-gone` 和 `did-finish-load`。短暂阻塞先给 5 秒恢复窗口；仍无响应时用 `reloadIgnoringCache()` 重建 renderer。
 - 受控恢复每 60 秒最多 3 次，超限后等到时间窗重置，禁止无界重载循环。计时器、session 和 SQLite 事实留在主进程，renderer 恢复不能终止当前专注。
 - 日志元数据序列化必须保留 `Error.name/message/stack/cause`，支持 bigint 与循环对象降级；不得再把未捕获异常记成无信息的 `{}`，日志失败也不得触发第二次异常。
+- HTTP 错误必须先包装成 Error 再进入日志，至少保留 status、协议 code 与安全截断的 message；禁止 `throw { code, message }` 后退化为 `[object Object]`。实时 start 失败必须记录是否执行本地降级，且日志不得包含 bearer token。
 - 托盘、快捷键与主 snapshot 广播的运行时初始化必须幂等。窗口 `ready-to-show` 与已加载回退竞态只能创建一个托盘和一份 snapshot 监听；设置更新不重建托盘。退出时解除可解除监听并销毁托盘。
 
 ## 11. 数据安全与迁移

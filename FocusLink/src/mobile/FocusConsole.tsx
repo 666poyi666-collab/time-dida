@@ -129,7 +129,7 @@ export function FocusConsole({
     >
       <header className="focus-console-header">
         <div>
-          <p className="eyebrow">LIVE FOCUS</p>
+          <p className="eyebrow">FOCUS INSTRUMENT · LIVE</p>
           <h2 id="focus-console-title">当前专注</h2>
         </div>
         <span className="focus-state-chip" key={current.state}>

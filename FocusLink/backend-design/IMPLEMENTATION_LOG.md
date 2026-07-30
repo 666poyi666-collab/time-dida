@@ -1,5 +1,14 @@
 # FocusLink 实施日志
 
+## 2026-07-30 · v0.12.71 手机与平板工业时间仪器重构
+
+- 移动 renderer 改为深墨设备框架、暖白连续工作面与翡翠校准线；四入口、真实计时/账本/任务/同步语义均未改变。手机首屏按主读数、任务输入、112px 时间之带顺读，深色粘底操作条固定在 68px 底部导航之上。
+- 平板从 620px 起使用 80px 左侧导航轨；华为 DBY-W09 的 640 CSS-pixel 竖屏不再被实时上下文侧栏压缩，760px 起才展开双栏。统计结论舞台、任务空态与设置外观规格表共享同一仪器框架，亮暗主题均有独立映射。
+- Android 原生业务与系统表面未修改：保留华为 `huawei-live-capsule`、小米系统通知路径、OPPO 手表 renderer 和 Windows 两态 mini。响应式合同更新为 620px 单列/760px 双栏；本轮四端安装矩阵在构建后补录。
+- Windows 403 根因为 canonical GET 无命令正文而成功，但 live command 与 task snapshot 仍携带 legacy 本机 UUID；Account DO 将其识别为与 `fl2` 凭据不匹配的设备伪装并拒绝。`getDeviceSyncRuntimeConnection`、Sync v2 与任务快照现统一从 token 解析 `device-<publicId>`，单元回归同时断言实时连接和任务发布正文。
+- 空闲云端的 start 遇到网络失败或 401/403 时，桌面退出 live fact source 并启动本地 TimerManager；已有 running/paused 云端会话不允许降级。日志保留 Error name/message/stack 与 `credential-rejected` / `transport-unavailable` 分类，任务快照错误不再抛出普通对象。
+- 桌面时间之带彻底删除旧的 3px 锯齿列、齿端浮尘和内部颗粒分支，暂停/结束画面中的绿色历史段也固定为连续磨砂玻璃；设置九仪表 smoke 新增逐卡预览边界断言，覆盖指针表圈、游标标尺与制图描线的裁切回归。
+
 ## 2026-07-30 · v0.12.70 云端三端同步与 MCP 修复
 
 - 桌面 correction 使用已结束账本时间生成稳定 payload/opId；同步前只修复旧缺陷留下的 correction outbox/ACK conflict，保留操作审计。Account DO 仅把 createdAt 漂移视为 semantic duplicate，并要求历史 conflict 同时满足无 base、纯 revision 和双侧内容匹配才关闭。

@@ -3,10 +3,10 @@ import { BarChart3, ListTodo, Settings, Timer } from 'lucide-react';
 export type MobileView = 'focus' | 'tasks' | 'history' | 'settings';
 
 const ITEMS = [
-  { id: 'focus', label: '专注', icon: Timer },
-  { id: 'tasks', label: '任务', icon: ListTodo },
-  { id: 'history', label: '统计', icon: BarChart3 },
-  { id: 'settings', label: '设置', icon: Settings },
+  { id: 'focus', label: '专注', code: '01', icon: Timer },
+  { id: 'tasks', label: '任务', code: '02', icon: ListTodo },
+  { id: 'history', label: '统计', code: '03', icon: BarChart3 },
+  { id: 'settings', label: '设置', code: '04', icon: Settings },
 ] as const;
 
 interface AppNavigationProps {
@@ -27,6 +27,7 @@ export function AppNavigation({ activeView, onChange }: AppNavigationProps) {
             aria-current={activeView === item.id ? 'page' : undefined}
             onClick={() => onChange(item.id)}
           >
+            <small aria-hidden="true">{item.code}</small>
             <Icon aria-hidden="true" />
             <span>{item.label}</span>
           </button>
