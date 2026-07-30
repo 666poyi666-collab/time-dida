@@ -534,10 +534,16 @@ async function main() {
   await delay(500);
   process.stderr.write('[ui-smoke] capture paused\n');
   results.paused = await capture('paused', 'paused');
-  // CDP Runtime.evaluate may keep waiting on Electron's context-bridged Promise even after the
-  // main process has applied STOP and emitted the finished snapshot. Dispatch without adopting
-  // that thenable, then assert the authoritative renderer state below.
-  await evaluate('(() => { void window.focuslink.timer.stop(); return true; })()');
+  // Exercise the real renderer action. Calling the context-bridged Promise directly from CDP can
+  // remain pending after the main process has already applied STOP, which turns a passed product
+  // transition into a hung smoke process.
+  const stopClicked = await evaluate(`(() => {
+    const button = document.querySelector('.timer-controls .btn-stop-action');
+    if (!button || button.disabled) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!stopClicked) throw new Error('Stop focus button was not clickable');
   await inspectState('finished');
   results.focusFinishTransition = await evaluate(`(() => {
     const consoleElement = document.querySelector('.focus-console');
@@ -813,6 +819,8 @@ async function main() {
           const dial = choice.querySelector('.timer-dial')?.getBoundingClientRect();
           return {
             label: choice.querySelector('.ic-name')?.textContent?.trim() || '',
+            frame: frame ? [frame.left, frame.top, frame.right, frame.bottom] : null,
+            dial: dial ? [dial.left, dial.top, dial.right, dial.bottom] : null,
             inside:
               Boolean(frame && dial) &&
               dial.left >= frame.left - 0.75 &&

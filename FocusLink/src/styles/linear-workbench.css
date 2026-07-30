@@ -3438,8 +3438,8 @@
   font-size: 10px;
 }
 .instrument-choice .ic-preview .dial-vernier {
-  width: 190px;
-  min-width: 190px;
+  width: 176px;
+  min-width: 176px;
   gap: 5px;
   transform: none;
 }
