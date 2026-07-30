@@ -14,6 +14,7 @@ npm run typecheck
 npm run lint
 npm test
 npm audit --omit=dev
+npm run probe:account-bootstrap
 ```
 
 测试必须覆盖状态机、三时间模型、崩溃恢复、任务树与排序、`completedAt`、CLI 优先/OAuth 后备、活动/完成分阶段加载、设置局部更新与旧设置兼容迁移（fontProfile 仅解析、timerStyle 旧值映射）、dida argv/checklist/marker、统计 request-id、renderer 受控恢复、logger Error 序列化、托盘监听幂等性、同步队列和番茄本地/云桥策略。
@@ -82,6 +83,10 @@ OAuth/device 双向拒绝、`opId` applied/duplicate/复用拒绝、旧 revision
 任务快照、`commandId` 幂等与复用拒绝、实时 start/pause/resume/finish，以及 MCP
 `focuslink:read` 摘要。保存第一次运行的状态证据，升级后确认 ledger、revision、change feed、
 实时 idle 和幂等结果仍在；访问令牌只通过 deploy secret 与各平台安全存储传递。
+
+账号 bootstrap 门禁必须覆盖严格 start/poll 字段、canonical `/owner/*` URL、`flb_*` poll token 短期单次消费、过期 flow、额外字段、错误 origin、凭据/日志脱敏和“未登录不得 authenticated”。`npm run probe:account-bootstrap` 只输出结构化状态；`not-deployed` 是可诊断的真实阻塞，不算公网通过。上线验收必须在无旧凭据的新安装上完成 owner 登录、独立 `fl2` 签发和第二次 poll 拒绝，并确认旧安装原位升级仍在线。
+
+任务快照 freshness 门禁使用不含真实任务正文的 fixture，覆盖发布回读一致性、GET `no-store`、前台 15 秒自动刷新、revision 36→37 收敛、延迟 36 不回退、同 revision 异文拒绝，以及父子 ID/parentId 数量守恒。
 
 Sync v2 额外覆盖 inventory/manifest/bootstrap、三类 epoch、租约过期恢复、`opId` 幂等、旧 revision 冲突、tagId 合并、tombstone 水位、配对 nonce 重放、scope/撤销/轮换、冲突/回收站标准 mutation、Queue `credential-missing` 诊断和重部署持久性。R2 门禁必须包含真实 object 写入、AES-GCM 篡改检测、maintenance 写拒绝、恢复失败回滚及 generation 切换；账户未启用 R2 时记录 Cloudflare 错误码并判定该门禁未通过。
 
