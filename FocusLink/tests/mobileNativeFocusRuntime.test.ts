@@ -11,6 +11,10 @@ import {
 } from '../src/mobile/nativeFocusRuntime';
 import { idleLiveFocusSnapshot } from '../src/mobile/runtimeModel';
 import type { CachedBundle } from '../src/mobile/cache';
+import { FOCUSLINK_CANONICAL_SYNC_ORIGIN } from '../shared/sync/identityProtocol';
+
+const STORED_TOKEN = `fl2_account1_watch1_${'s'.repeat(32)}`;
+const LEGACY_TOKEN = `fl2_account1_watchold_${'l'.repeat(32)}`;
 
 const capacitorHarness = vi.hoisted(() => ({ native: false, pluginAvailable: false }));
 const nativePluginHarness = vi.hoisted(() => ({
@@ -105,21 +109,21 @@ describe('mobile native focus display projection', () => {
     capacitorHarness.pluginAvailable = true;
     nativePluginHarness.getConnection.mockResolvedValue({
       configured: true,
-      endpoint: 'https://sync.example.test',
-      accessToken: 'keystore-token',
-      deviceId: 'device-watch',
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+      accessToken: STORED_TOKEN,
+      deviceId: 'device-watch1',
     });
 
     await expect(
       restoreOrMigrateNativeFocusConnection({
-        endpoint: 'https://legacy.example.test',
-        accessToken: 'legacy-token',
-        deviceId: 'device-legacy',
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        accessToken: LEGACY_TOKEN,
+        deviceId: 'device-watchold',
       }),
     ).resolves.toEqual({
-      endpoint: 'https://sync.example.test',
-      accessToken: 'keystore-token',
-      deviceId: 'device-watch',
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+      accessToken: STORED_TOKEN,
+      deviceId: 'device-watch1',
     });
     expect(nativePluginHarness.configureConnection).not.toHaveBeenCalled();
   });
@@ -128,9 +132,9 @@ describe('mobile native focus display projection', () => {
     capacitorHarness.native = true;
     capacitorHarness.pluginAvailable = true;
     const legacyConnection = {
-      endpoint: 'https://sync.example.test',
-      accessToken: 'legacy-token',
-      deviceId: 'device-watch',
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+      accessToken: LEGACY_TOKEN,
+      deviceId: 'device-watchold',
     };
 
     await expect(restoreOrMigrateNativeFocusConnection(legacyConnection)).resolves.toEqual(
@@ -150,11 +154,25 @@ describe('mobile native focus display projection', () => {
 
     await expect(
       restoreOrMigrateNativeFocusConnection({
-        endpoint: 'https://sync.example.test',
-        accessToken: 'legacy-token',
-        deviceId: 'device-watch',
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        accessToken: LEGACY_TOKEN,
+        deviceId: 'device-watchold',
       }),
     ).rejects.toThrow('keystore unavailable');
+  });
+
+  it('refuses to restore a Keystore bearer bound to an arbitrary HTTPS origin', async () => {
+    capacitorHarness.native = true;
+    capacitorHarness.pluginAvailable = true;
+    nativePluginHarness.getConnection.mockResolvedValue({
+      configured: true,
+      endpoint: 'https://evil.example.test',
+      accessToken: STORED_TOKEN,
+      deviceId: 'device-watch1',
+    });
+
+    await expect(restoreOrMigrateNativeFocusConnection(null)).resolves.toBeNull();
+    expect(nativePluginHarness.configureConnection).not.toHaveBeenCalled();
   });
 
   it('reports the actual native action source in the confirmation copy', () => {

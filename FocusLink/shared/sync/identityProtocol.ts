@@ -27,9 +27,14 @@ export function isCanonicalFocusLinkSyncEndpoint(value: string): boolean {
   }
 }
 
-/** Explicit test credentials may use an injected HTTPS authority; production fl2 credentials may not. */
-export function isAllowedFocusLinkSyncEndpoint(value: string, accessToken: string): boolean {
-  return !isFocusLinkDeviceAccessToken(accessToken) || isCanonicalFocusLinkSyncEndpoint(value);
+/** Production account connections always pair one valid fl2 credential with the canonical origin. */
+export function isCanonicalFocusLinkDeviceConnection(
+  endpoint: string,
+  accessToken: string,
+): boolean {
+  return (
+    isCanonicalFocusLinkSyncEndpoint(endpoint) && isFocusLinkDeviceAccessToken(accessToken.trim())
+  );
 }
 
 export const FOCUSLINK_ENROLLED_DEVICE_SCOPES = [

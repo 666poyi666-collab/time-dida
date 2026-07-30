@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
+  FOCUSLINK_CANONICAL_SYNC_ORIGIN,
   FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
   FOCUSLINK_ENROLLED_DEVICE_SCOPES,
+  isCanonicalFocusLinkDeviceConnection,
+  isCanonicalFocusLinkSyncEndpoint,
+  isFocusLinkDeviceAccessToken,
   parseFocusLinkDeviceRegistrationRequest,
   validateFocusLinkDeviceRegistrationResponse,
 } from '../shared/sync/identityProtocol';
@@ -71,6 +76,24 @@ describe('FocusLink identity device registration protocol', () => {
     expect(validateFocusLinkDeviceRegistrationResponse({ ...valid, extra: true })).toBe(false);
     expect(validateFocusLinkDeviceRegistrationResponse({ ...valid, accessToken: 'oauth' })).toBe(
       false,
+    );
+  });
+
+  it('binds every production-shaped device credential to the canonical sync origin', () => {
+    const token = `fl2_primary_mobile1_${'s'.repeat(48)}`;
+    expect(isFocusLinkDeviceAccessToken(token)).toBe(true);
+    expect(isCanonicalFocusLinkSyncEndpoint(`${FOCUSLINK_CANONICAL_SYNC_ORIGIN}/`)).toBe(true);
+    expect(isCanonicalFocusLinkDeviceConnection(FOCUSLINK_CANONICAL_SYNC_ORIGIN, token)).toBe(true);
+    expect(isCanonicalFocusLinkDeviceConnection('https://evil.example.test', token)).toBe(false);
+    expect(isCanonicalFocusLinkDeviceConnection(FOCUSLINK_CANONICAL_SYNC_ORIGIN, 'legacy')).toBe(
+      false,
+    );
+  });
+
+  it('keeps the Android native canonical origin aligned with the shared protocol', () => {
+    const gradle = readFileSync(new URL('../android/app/build.gradle', import.meta.url), 'utf8');
+    expect(gradle).toContain(
+      `buildConfigField "String", "CANONICAL_SYNC_ORIGIN", '"${FOCUSLINK_CANONICAL_SYNC_ORIGIN}"'`,
     );
   });
 });

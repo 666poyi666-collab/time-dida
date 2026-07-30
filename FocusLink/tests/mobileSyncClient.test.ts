@@ -11,6 +11,9 @@ import {
   configuredNativeEndpoint,
   loadConnectionPreferences,
 } from '../src/mobile/preferences';
+import { FOCUSLINK_CANONICAL_SYNC_ORIGIN } from '../shared/sync/identityProtocol';
+
+const DEVICE_TOKEN = `fl2_account1_mobile1_${'x'.repeat(32)}`;
 
 describe('mobile sync client request recovery', () => {
   afterEach(() => {
@@ -96,8 +99,8 @@ describe('mobile sync client request recovery', () => {
     );
 
     const request = fetchLiveFocusSnapshot({
-      endpoint: 'https://sync.example.test',
-      token: 'test-token',
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+      token: DEVICE_TOKEN,
     });
     const assertion = expect(request).rejects.toThrow('实时同步请求超时，正在重连');
     await vi.advanceTimersByTimeAsync(15_000);
@@ -119,8 +122,8 @@ describe('mobile sync client request recovery', () => {
     );
     const controller = new AbortController();
     const request = fetchLiveFocusSnapshot({
-      endpoint: 'https://sync.example.test',
-      token: 'test-token',
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+      token: DEVICE_TOKEN,
       signal: controller.signal,
     });
     controller.abort();
@@ -140,10 +143,10 @@ describe('mobile sync client request recovery', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      fetchTaskSnapshot({ endpoint: 'https://sync.example.test', token: 'test-token' }),
+      fetchTaskSnapshot({ endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN, token: DEVICE_TOKEN }),
     ).resolves.toMatchObject({ revision: 37 });
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://sync.example.test/sync/v2/tasks',
+      `${FOCUSLINK_CANONICAL_SYNC_ORIGIN}/sync/v2/tasks`,
       expect.objectContaining({ cache: 'no-store', credentials: 'omit' }),
     );
   });
@@ -184,7 +187,23 @@ describe('mobile sync client request recovery', () => {
     await expect(
       fetchLiveFocusSnapshot({
         endpoint: 'http://127.0.0.1:18787',
-        token: 'test-token',
+        token: DEVICE_TOKEN,
+      }),
+    ).rejects.toThrow('HTTPS 云端同步服务');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects any bearer connection that is not a canonical fl2 account binding', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      fetchTaskSnapshot({ endpoint: 'https://evil.example.test', token: DEVICE_TOKEN }),
+    ).rejects.toThrow('HTTPS 云端同步服务');
+    await expect(
+      fetchTaskSnapshot({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        token: 'legacy-or-malformed-bearer',
       }),
     ).rejects.toThrow('HTTPS 云端同步服务');
     expect(fetchMock).not.toHaveBeenCalled();
@@ -233,5 +252,26 @@ describe('mobile sync client request recovery', () => {
     vi.stubGlobal('sessionStorage', { getItem: () => null });
 
     expect(loadConnectionPreferences().endpoint).toBe('');
+  });
+
+  it('retires an arbitrary legacy HTTPS bearer target without deleting the only token copy', () => {
+    const values = new Map([
+      ['focuslink.mobile.endpoint', 'https://legacy.example.test'],
+      ['focuslink.mobile.remember-token', 'true'],
+      ['focuslink.mobile.token.local', 'legacy-token'],
+    ]);
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    });
+    vi.stubGlobal('sessionStorage', { getItem: () => null });
+
+    expect(loadConnectionPreferences()).toEqual({
+      endpoint: '',
+      token: 'legacy-token',
+      rememberToken: true,
+    });
+    expect(values.get('focuslink.mobile.endpoint')).toBe('');
+    expect(values.get('focuslink.mobile.token.local')).toBe('legacy-token');
   });
 });

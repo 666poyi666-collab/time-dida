@@ -8,15 +8,27 @@
 // 或配对码，只显示“从手机登录”和等待确认状态。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { normalizeDeviceSyncEndpoint } from '@shared/sync/deviceProtocol';
+import { isCanonicalFocusLinkDeviceConnection } from '@shared/sync/identityProtocol';
 import type { LiveFocusCommand } from '@shared/sync/liveFocusProtocol';
-import type { SyncedTask } from '@shared/sync/taskSnapshotProtocol';
+import {
+  reconcileTaskSnapshot,
+  type SyncedTask,
+  type TaskSnapshotResponse,
+} from '@shared/sync/taskSnapshotProtocol';
+import { parseDeviceToken } from '@shared/sync/v2Protocol';
 import {
   fetchLiveFocusSnapshot,
   fetchTaskSnapshot,
   sendLiveFocusCommand,
   waitForLiveFocusSnapshot,
 } from './syncClient';
-import { ownerAccountBootstrapApi, type OwnerAccountSession } from './accountBootstrap';
+import {
+  invalidateOwnerAccountBootstrap,
+  ownerAccountBootstrapApi,
+  type OwnerAccountSession,
+} from './accountBootstrap';
+import { createMobileAccountLifecycle, mobileAccountConnectionKey } from './accountLifecycle';
+import { createTaskSnapshotRequestLifecycle } from './taskSnapshotRefresh';
 import {
   configureNativeFocusConnection,
   isNativeFocusRuntimeAvailable,
@@ -26,8 +38,7 @@ import {
   getOrCreateDeviceId,
   getOrCreateInstallationId,
   loadConnectionPreferences,
-  rememberAssignedDeviceId,
-  saveConnectionPreferences,
+  persistMobileAccountSessionBestEffort,
   type MobileConnectionPreferences,
 } from './preferences';
 import {
@@ -79,6 +90,7 @@ export function WatchApp() {
     loadConnectionPreferences(),
   );
   const configured = Boolean(preferences.endpoint && preferences.token);
+  const connectionIdentity = mobileAccountConnectionKey(preferences);
   const [connection, setConnection] = useState<WatchConnection>(
     configured ? 'connecting' : 'unconfigured',
   );
@@ -96,46 +108,82 @@ export function WatchApp() {
   preferencesRef.current = preferences;
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
+  const accountLifecycle = useRef(createMobileAccountLifecycle()).current;
+  const connectionKeyRef = useRef(mobileAccountConnectionKey(preferences));
+  const taskSnapshotRef = useRef<TaskSnapshotResponse | null>(null);
+  const taskRequests = useRef(createTaskSnapshotRequestLifecycle()).current;
+
+  const resetConnectionScopedState = useCallback(() => {
+    taskRequests.invalidate();
+    taskSnapshotRef.current = null;
+    snapshotRef.current = null;
+    setTasks([]);
+    setSelectedTask(null);
+    setSnapshot(null);
+  }, [taskRequests]);
+
+  useEffect(
+    () => () => {
+      accountLifecycle.invalidate();
+      invalidateOwnerAccountBootstrap();
+      taskRequests.invalidate();
+    },
+    [accountLifecycle, taskRequests],
+  );
 
   // Restore the Keystore credential on every native launch. For an upgrade
   // from an older build, migrate the legacy WebView copy first and purge it
   // only after the native store confirms the write.
   useEffect(() => {
     if (!isNativeFocusRuntimeAvailable()) return;
+    const operation = accountLifecycle.issue();
     let disposed = false;
     const legacyPreferences = preferencesRef.current;
-    void restoreOrMigrateNativeFocusConnection(
-      legacyPreferences.endpoint && legacyPreferences.token
-        ? {
-            endpoint: normalizeDeviceSyncEndpoint(legacyPreferences.endpoint),
-            accessToken: legacyPreferences.token,
-            deviceId,
-          }
-        : null,
-    )
+    void accountLifecycle
+      .enqueueNative(() =>
+        restoreOrMigrateNativeFocusConnection(
+          legacyPreferences.endpoint && legacyPreferences.token
+            ? {
+                endpoint: normalizeDeviceSyncEndpoint(legacyPreferences.endpoint),
+                accessToken: legacyPreferences.token,
+                deviceId,
+              }
+            : null,
+        ),
+      )
       .then((nativeConnection) => {
-        if (disposed || !nativeConnection) return;
+        if (disposed || !accountLifecycle.isCurrent(operation) || !nativeConnection) return;
         const next: MobileConnectionPreferences = {
           endpoint: normalizeDeviceSyncEndpoint(nativeConnection.endpoint),
           token: nativeConnection.accessToken,
           rememberToken: true,
         };
-        saveConnectionPreferences(next);
-        if (nativeConnection.deviceId.startsWith('device-')) {
-          rememberAssignedDeviceId(nativeConnection.deviceId);
-        }
+        const nextConnectionKey = mobileAccountConnectionKey(next);
+        const connectionChanged = nextConnectionKey !== connectionKeyRef.current;
+        connectionKeyRef.current = nextConnectionKey;
+        if (connectionChanged) resetConnectionScopedState();
+        if (disposed || !accountLifecycle.isCurrent(operation)) return;
+        const persistenceIssues = persistMobileAccountSessionBestEffort(
+          next,
+          nativeConnection.deviceId,
+        );
         setDeviceId(nativeConnection.deviceId);
         preferencesRef.current = next;
         setPreferences(next);
         setConnection('connecting');
+        if (persistenceIssues.length > 0) {
+          setNotice('安全凭据已恢复，本机资料将在下次启动重试');
+        }
       })
       .catch(() => {
-        if (!disposed) setNotice('账号恢复失败，请重新从手机登录');
+        if (!disposed && accountLifecycle.isCurrent(operation)) {
+          setNotice('账号恢复失败，请重新从手机登录');
+        }
       });
     return () => {
       disposed = true;
     };
-  }, [deviceId]);
+  }, [accountLifecycle, deviceId, resetConnectionScopedState]);
 
   // 秒针：活跃且停留在主视图时才逐秒外推读数；idle 或任务选择页停表省电，
   // 也避免整份任务列表跟着秒针每秒重渲染。回到主视图先立即校准一次。
@@ -151,9 +199,12 @@ export function WatchApp() {
     if (!configured) return;
     let disposed = false;
     const controller = new AbortController();
+    const sourceConnectionKey = connectionIdentity;
+    const isCurrent = () =>
+      !disposed && !controller.signal.aborted && connectionKeyRef.current === sourceConnectionKey;
     const run = async () => {
       let revision = -1;
-      while (!disposed) {
+      while (isCurrent()) {
         try {
           const input = {
             endpoint: preferencesRef.current.endpoint,
@@ -162,19 +213,19 @@ export function WatchApp() {
           };
           if (revision < 0) {
             const first = await fetchLiveFocusSnapshot(input);
-            if (disposed) return;
+            if (!isCurrent()) return;
             revision = first.snapshot.revision;
             setSnapshot(mapSnapshot(first, Date.now()));
             setConnection('live');
             continue;
           }
           const next = await waitForLiveFocusSnapshot({ ...input, afterRevision: revision });
-          if (disposed) return;
+          if (!isCurrent()) return;
           revision = next.snapshot.revision;
           if (next.changed) setSnapshot(mapSnapshot(next, Date.now()));
           setConnection('live');
         } catch {
-          if (disposed) return;
+          if (!isCurrent()) return;
           setConnection('error');
           revision = -1;
           await new Promise((resolve) => setTimeout(resolve, 5_000));
@@ -186,39 +237,80 @@ export function WatchApp() {
       disposed = true;
       controller.abort();
     };
-  }, [configured, preferences.endpoint, preferences.token]);
+  }, [configured, connectionIdentity]);
 
   // 任务快照：连接建立后拉一次，进入选择页时刷新。
-  const refreshTasks = useCallback(() => {
+  const refreshTasks = useCallback(async () => {
     const current = preferencesRef.current;
     if (!current.endpoint || !current.token) return;
-    void fetchTaskSnapshot({ endpoint: current.endpoint, token: current.token })
-      .then((response) => setTasks(response.snapshot?.tasks ?? []))
-      .catch(() => undefined);
-  }, []);
+    const sourceConnectionKey = mobileAccountConnectionKey(current);
+    const request = taskRequests.issue(sourceConnectionKey);
+    const isCurrent = () => request.isCurrent() && connectionKeyRef.current === sourceConnectionKey;
+    try {
+      const response = await fetchTaskSnapshot({
+        endpoint: current.endpoint,
+        token: current.token,
+        signal: request.signal,
+      });
+      if (!isCurrent()) return;
+      const reconciliation = reconcileTaskSnapshot(taskSnapshotRef.current, response);
+      if (reconciliation.freshness === 'stale') return;
+      if (reconciliation.freshness === 'inconsistent') {
+        setNotice('任务 revision 内容不一致，已保留较可信快照');
+        return;
+      }
+      taskSnapshotRef.current = reconciliation.snapshot;
+      setTasks(reconciliation.snapshot.snapshot?.tasks ?? []);
+    } catch (error) {
+      if (isCurrent() && !isAbortError(error)) setNotice('任务清单刷新失败，请稍后重试');
+    } finally {
+      request.finish();
+    }
+  }, [taskRequests]);
   useEffect(() => {
     if (connection === 'live') refreshTasks();
   }, [connection, refreshTasks]);
 
-  const applyOwnerSession = useCallback(async (session: OwnerAccountSession) => {
-    const next = {
-      endpoint: normalizeDeviceSyncEndpoint(session.endpoint),
-      token: session.accessToken,
-      rememberToken: true,
-    };
-    await configureNativeFocusConnection(next.endpoint, next.token, session.deviceId);
-    saveConnectionPreferences(next);
-    rememberAssignedDeviceId(session.deviceId);
-    setDeviceId(session.deviceId);
-    preferencesRef.current = next;
-    setPreferences(next);
-    setConnection('connecting');
-    setWaitingForPhone(false);
-    setNotice(null);
-  }, []);
+  const applyOwnerSession = useCallback(
+    async (session: OwnerAccountSession, operation: number): Promise<boolean> => {
+      const next = {
+        endpoint: normalizeDeviceSyncEndpoint(session.endpoint),
+        token: session.accessToken.trim(),
+        rememberToken: true,
+      };
+      const routed = parseDeviceToken(next.token);
+      if (
+        !isCanonicalFocusLinkDeviceConnection(next.endpoint, next.token) ||
+        !routed ||
+        routed.accountPublicId !== session.accountId ||
+        `device-${routed.devicePublicId}` !== session.deviceId
+      ) {
+        throw new Error('登录服务返回的手表设备身份无效');
+      }
+      await accountLifecycle.enqueueNative(() =>
+        configureNativeFocusConnection(next.endpoint, next.token, session.deviceId),
+      );
+      if (!accountLifecycle.isCurrent(operation)) return false;
+      const nextConnectionKey = mobileAccountConnectionKey(next);
+      const connectionChanged = nextConnectionKey !== connectionKeyRef.current;
+      connectionKeyRef.current = nextConnectionKey;
+      if (connectionChanged) resetConnectionScopedState();
+      if (!accountLifecycle.isCurrent(operation)) return false;
+      const persistenceIssues = persistMobileAccountSessionBestEffort(next, session.deviceId);
+      setDeviceId(session.deviceId);
+      preferencesRef.current = next;
+      setPreferences(next);
+      setConnection('connecting');
+      setWaitingForPhone(false);
+      setNotice(persistenceIssues.length > 0 ? '登录已生效，本机资料将在下次启动重试' : null);
+      return true;
+    },
+    [accountLifecycle, resetConnectionScopedState],
+  );
 
   const requestPhoneLogin = useCallback(async () => {
     if (accountBusy) return;
+    const operation = accountLifecycle.issue();
     setAccountBusy(true);
     try {
       const result = await ownerAccountBootstrapApi().bootstrap({
@@ -226,8 +318,9 @@ export function WatchApp() {
         deviceKind: 'watch',
         displayName: 'FocusLink OPPO Watch',
       });
+      if (!accountLifecycle.isCurrent(operation)) return;
       if (result.status === 'authenticated') {
-        await applyOwnerSession(result.session);
+        await applyOwnerSession(result.session, operation);
         return;
       }
       setWaitingForPhone(true);
@@ -236,13 +329,14 @@ export function WatchApp() {
           ? '等待手机确认…'
           : '请在手机上打开 FocusLink 并确认登录',
       );
-    } catch {
+    } catch (error) {
+      if (!accountLifecycle.isCurrent(operation) || isAbortError(error)) return;
       setWaitingForPhone(false);
       setNotice('暂时无法申请登录，请重试');
     } finally {
-      setAccountBusy(false);
+      if (accountLifecycle.isCurrent(operation)) setAccountBusy(false);
     }
-  }, [accountBusy, applyOwnerSession]);
+  }, [accountBusy, accountLifecycle, applyOwnerSession]);
 
   useEffect(() => {
     if (!waitingForPhone || configured || accountBusy) return;
@@ -449,4 +543,8 @@ export function WatchApp() {
       )}
     </div>
   );
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
 }

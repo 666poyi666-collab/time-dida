@@ -7,6 +7,8 @@ const harness = vi.hoisted(() => ({
   openedUrls: [] as string[],
   logs: [] as unknown[][],
   invalidations: 0,
+  syncBlocked: false,
+  syncRelease: null as (() => void) | null,
 }));
 
 vi.mock('electron', () => ({
@@ -51,16 +53,23 @@ vi.mock('../electron/sync/deviceSyncService.js', () => ({
     accountId: harness.token ? 'account1' : null,
     accountLabel: harness.token ? 'Poyi' : null,
   }),
-  runDeviceSync: vi.fn(async () => ({
-    pushed: 0,
-    pulled: 0,
-    imported: 0,
-    duplicates: 0,
-    conflicts: 0,
-    rejected: 0,
-    cursor: '1',
-    unresolvedConflicts: 0,
-  })),
+  runDeviceSync: vi.fn(async () => {
+    if (harness.syncBlocked) {
+      await new Promise<void>((resolve) => {
+        harness.syncRelease = resolve;
+      });
+    }
+    return {
+      pushed: 0,
+      pulled: 0,
+      imported: 0,
+      duplicates: 0,
+      conflicts: 0,
+      rejected: 0,
+      cursor: '1',
+      unresolvedConflicts: 0,
+    };
+  }),
 }));
 
 import {
@@ -79,6 +88,8 @@ describe('desktop owner account enrollment', () => {
     harness.openedUrls = [];
     harness.logs = [];
     harness.invalidations = 0;
+    harness.syncBlocked = false;
+    harness.syncRelease = null;
     vi.useRealTimers();
   });
 
@@ -321,5 +332,80 @@ describe('desktop owner account enrollment', () => {
         liveControlEnabled: false,
       },
     });
+  });
+
+  it('does not resolve a stale login after logout wins during the initial sync', async () => {
+    harness.token = `fl2_account1_desktop1_${'z'.repeat(32)}`;
+    harness.syncBlocked = true;
+
+    const login = loginDeviceSyncAccount();
+    await vi.waitFor(() => expect(harness.syncRelease).not.toBeNull());
+    logoutDeviceSyncAccount();
+    harness.syncRelease?.();
+
+    await expect(login).rejects.toThrow('登录已取消');
+    expect(harness.token).toBeNull();
+    expect(harness.settingsPatches.at(-1)).toMatchObject({
+      deviceSync: { enabled: false, liveControlEnabled: false },
+    });
+  });
+
+  it('aborts a pending poll and ignores an authenticated response that arrives after logout', async () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    const flowId = `flow_${'f'.repeat(40)}`;
+    const pollToken = `flb_${'p'.repeat(48)}`;
+    const deviceToken = `fl2_account1_desktop1_${'x'.repeat(32)}`;
+    let pollSignal: AbortSignal | undefined;
+    let resolvePoll!: (response: Response) => void;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          protocolVersion: 1,
+          status: 'login-required',
+          flowId,
+          pollToken,
+          loginUrl:
+            'https://poyi-oauth-as.focuslink-poyi-6465e9.workers.dev/owner/focuslink-device',
+          retryAfterMs: 750,
+          expiresAt: now + 60_000,
+          serverTime: now,
+        }),
+      )
+      .mockImplementationOnce((_input: RequestInfo | URL, init?: RequestInit) => {
+        pollSignal = init?.signal ?? undefined;
+        return new Promise<Response>((resolve) => {
+          resolvePoll = resolve;
+        });
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const login = loginDeviceSyncAccount();
+    await vi.advanceTimersByTimeAsync(750);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    logoutDeviceSyncAccount();
+    expect(pollSignal?.aborted).toBe(true);
+    resolvePoll(
+      Response.json({
+        protocolVersion: 1,
+        status: 'authenticated',
+        endpoint: OFFICIAL_FOCUSLINK_ENDPOINT,
+        accountLabel: 'Poyi',
+        device: {
+          protocolVersion: 1,
+          accountPublicId: 'account1',
+          deviceId: 'device-desktop1',
+          accessToken: deviceToken,
+          tokenType: 'Bearer',
+          scopes: ['sync:read', 'sync:write', 'live:read', 'live:write'],
+          expiresAt: now + 60_000,
+          serverTime: now,
+        },
+      }),
+    );
+
+    await expect(login).rejects.toThrow('登录已取消');
+    expect(harness.token).toBeNull();
   });
 });

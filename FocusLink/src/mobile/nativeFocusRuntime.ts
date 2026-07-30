@@ -3,8 +3,12 @@ import {
   fingerprintDeviceSyncValue,
   type DeviceSyncSessionBundle,
 } from '@shared/sync/deviceProtocol';
-import { splitBundleForSyncV2, type SyncV2Mutation } from '@shared/sync/v2Protocol';
-import { isAllowedFocusLinkSyncEndpoint } from '@shared/sync/identityProtocol';
+import {
+  parseDeviceToken,
+  splitBundleForSyncV2,
+  type SyncV2Mutation,
+} from '@shared/sync/v2Protocol';
+import { isCanonicalFocusLinkDeviceConnection } from '@shared/sync/identityProtocol';
 import type { CachedBundle } from './cache';
 import {
   formatClockDuration,
@@ -261,7 +265,12 @@ export async function configureNativeFocusConnection(
   deviceId: string,
 ): Promise<void> {
   if (!isNativeFocusRuntimeAvailable()) return;
-  if (!isAllowedFocusLinkSyncEndpoint(endpoint, accessToken.trim())) {
+  const routed = parseDeviceToken(accessToken.trim());
+  if (
+    !isCanonicalFocusLinkDeviceConnection(endpoint, accessToken) ||
+    !routed ||
+    deviceId !== `device-${routed.devicePublicId}`
+  ) {
     throw new Error('设备凭据只能连接 FocusLink 官方同步服务');
   }
   await FocusRuntime.configureConnection({ endpoint, accessToken, deviceId });
@@ -386,6 +395,8 @@ export async function updateNativeAuthorityProjectionHistory(input: {
 export async function readNativeFocusConnection(): Promise<NativeFocusConnection | null> {
   if (!isNativeFocusRuntimeAvailable()) return null;
   const value = await FocusRuntime.getConnection();
+  const routed =
+    typeof value.accessToken === 'string' ? parseDeviceToken(value.accessToken.trim()) : null;
   if (
     value.configured !== true ||
     typeof value.endpoint !== 'string' ||
@@ -393,7 +404,10 @@ export async function readNativeFocusConnection(): Promise<NativeFocusConnection
     typeof value.deviceId !== 'string' ||
     !value.endpoint ||
     !value.accessToken ||
-    !value.deviceId
+    !value.deviceId ||
+    !isCanonicalFocusLinkDeviceConnection(value.endpoint, value.accessToken) ||
+    !routed ||
+    value.deviceId !== `device-${routed.devicePublicId}`
   ) {
     return null;
   }

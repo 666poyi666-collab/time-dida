@@ -14,7 +14,7 @@ import org.junit.Test;
 public class FocusCloudClientTest {
     private static final FocusRuntimeConnectionStore.Connection CONNECTION =
         new FocusRuntimeConnectionStore.Connection(
-            "https://sync.example.test",
+            BuildConfig.CANONICAL_SYNC_ORIGIN,
             "test-token",
             "android-test"
         );
@@ -33,7 +33,7 @@ public class FocusCloudClientTest {
             assertEquals(status, response.getJSONObject("ack").getString("status"));
             assertEquals("POST", transport.method);
             assertEquals(
-                "https://sync.example.test/sync/v2/live/command",
+                BuildConfig.CANONICAL_SYNC_ORIGIN + "/sync/v2/live/command",
                 transport.url
             );
             JSONObject request = new JSONObject(
@@ -84,7 +84,7 @@ public class FocusCloudClientTest {
 
         assertEquals(9, response.getInt("revision"));
         assertEquals("GET", transport.method);
-        assertEquals("https://sync.example.test/sync/v2/live", transport.url);
+        assertEquals(BuildConfig.CANONICAL_SYNC_ORIGIN + "/sync/v2/live", transport.url);
         assertEquals("test-token", transport.accessToken);
     }
 
@@ -96,14 +96,14 @@ public class FocusCloudClientTest {
         );
         new FocusCloudClient(statusTransport).fetchSyncV2Status(CONNECTION);
         assertEquals("GET", statusTransport.method);
-        assertEquals("https://sync.example.test/sync/v2/status", statusTransport.url);
+        assertEquals(BuildConfig.CANONICAL_SYNC_ORIGIN + "/sync/v2/status", statusTransport.url);
 
         RecordingTransport exchangeTransport = new RecordingTransport(200, "{}");
         JSONObject body = new JSONObject().put("protocolVersion", 2);
         new FocusCloudClient(exchangeTransport).exchangeSyncV2(CONNECTION, body);
         assertEquals("POST", exchangeTransport.method);
         assertEquals(
-            "https://sync.example.test/sync/v2/exchange",
+            BuildConfig.CANONICAL_SYNC_ORIGIN + "/sync/v2/exchange",
             exchangeTransport.url
         );
         assertEquals(

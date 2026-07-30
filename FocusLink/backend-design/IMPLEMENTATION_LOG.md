@@ -4,7 +4,8 @@
 
 - 新设备登录合同收紧为严格 start/poll：独立短期 `flb_*` poll credential、canonical owner URL、流程绑定、响应精确字段和 credential 脱敏；Electron 拒绝未经过 owner 登录直接下发的 device token。公网 probe 当前实测 404 时明确报告 `not-deployed`，不冒充新设备登录已上线；旧 `fl2` 原位升级链保持不变。
 - 手机、平板与手表共用同一严格 bootstrap 解析：start 只提交精确 registration，poll 只提交绑定的 `flowId + flb_*`；首次响应直接夹带 credential、legacy session、非 canonical owner/origin、额外字段或身份不一致全部失败。普通 Electron renderer 的 configure/quickSetup/pairing API 已移除，`settings:set` 忽略 `deviceSync`，生产 `fl2` 连接固定 canonical origin。
-- 账号退出、credential/endpoint generation 变化会先 abort 旧请求；live、task snapshot 与 Sync v2 在应用响应前再次核对 generation/scope，失效响应不得写入缓存、SQLite 或推进 cursor。诊断只保留状态、分类和脱敏后的错误，不记录 token、poll token、installationId 或完整设备身份。
+- 账号退出、credential/endpoint generation 变化会先 abort 旧请求；Electron 与手机、平板、手表的账号级请求在应用响应前再次核对 generation/scope，移动 Keystore 读写使用同一串行队列，失效响应不得写入缓存、SQLite、原生安全存储或推进 cursor。Android 原生连接存储固定 `BuildConfig.CANONICAL_SYNC_ORIGIN`，任意其他 HTTPS origin 不能恢复为 bearer 连接。诊断只保留状态、分类和脱敏后的错误，不记录 token、poll token、installationId 或完整设备身份。
+- Sync v2 checkpoint 显式保存 `boundAccountId`；exchange 落库时在同一 IndexedDB 事务中复核持久 bootstrap owner 与 credential/connection epoch，只有仍属于当前账号的结果才能写 checkpoint 或 bootstrap。延迟 A 账号响应在切到 B 账号后完成的回归会锁定 B 的 bootstrap/cursor 不被旧事务覆盖。
 - 任务快照增加单调 freshness 合同：PC 仅在 authority 回读相同 device/payload 后确认发布，手机可见态每 15 秒自动 GET 且强制 `no-store`，旧 revision 不回退、同 revision 异文不覆盖。回归 fixture 不包含私人任务正文。
 - 精确 PC-off fixture 固定 revision `1→2→3→4`，最终 `2 segments + 1 pause` 且三时间守恒；相同 finish commandId 重放返回 duplicate，第一轮 cursor 只收一份 completed change、第二轮为空。该项是自动化合同，不替代 0.12.73 四端实装后的生产真机证据。
 - 公网真正上线仍需按顺序配置独立 `fia_*`、部署私有 registration、在 foxlink gateway 实现 owner session/CSRF 与 start/poll flow store、执行 poll token 单次消费负测；本仓 dry-run 与合同测试不替代该外部部署。

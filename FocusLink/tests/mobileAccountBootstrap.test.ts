@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  invalidateOwnerAccountBootstrap,
   isOwnerAccountCallback,
   OFFICIAL_FOCUSLINK_ENDPOINT,
   openOwnerLogin,
@@ -226,5 +227,51 @@ describe('mobile owner account bootstrap', () => {
     expect(thrown).toContain('[device-credential-redacted]');
     expect(thrown).not.toContain('flb_');
     expect(thrown).not.toContain('fl2_');
+  });
+
+  it('aborts an invalidated bootstrap generation and cannot reuse its stale response', async () => {
+    let resolveFirst!: (response: Response) => void;
+    let firstSignal: AbortSignal | undefined;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce((_input: RequestInfo | URL, init?: RequestInit) => {
+        firstSignal = init?.signal ?? undefined;
+        return new Promise<Response>((resolve) => {
+          resolveFirst = resolve;
+        });
+      })
+      .mockResolvedValueOnce(Response.json({ error: 'not deployed' }, { status: 404 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stale = ownerAccountBootstrapApi().bootstrap({
+      installationId: 'android-0123456789abcdefghijklmnop',
+      deviceKind: 'phone',
+      displayName: 'FocusLink Android',
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    invalidateOwnerAccountBootstrap();
+    expect(firstSignal?.aborted).toBe(true);
+    resolveFirst(
+      Response.json({
+        protocolVersion: 1,
+        status: 'login-required',
+        flowId: `flow_${'f'.repeat(40)}`,
+        pollToken: `flb_${'p'.repeat(48)}`,
+        loginUrl: 'https://poyi-oauth-as.focuslink-poyi-6465e9.workers.dev/owner/focuslink-device',
+        retryAfterMs: 1_500,
+        expiresAt: Date.now() + 60_000,
+        serverTime: Date.now(),
+      }),
+    );
+    await expect(stale).rejects.toMatchObject({ name: 'AbortError' });
+
+    await expect(
+      ownerAccountBootstrapApi().bootstrap({
+        installationId: 'android-0123456789abcdefghijklmnop',
+        deviceKind: 'phone',
+        displayName: 'FocusLink Android',
+      }),
+    ).rejects.toThrow('账号登录网关尚未部署');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

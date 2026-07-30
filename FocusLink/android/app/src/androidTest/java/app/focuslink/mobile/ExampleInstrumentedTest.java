@@ -666,16 +666,16 @@ public class ExampleInstrumentedTest {
         try {
             FocusRuntimeConnectionStore.put(
                 context,
-                "https://sync.instrumentation.test/",
+                BuildConfig.CANONICAL_SYNC_ORIGIN + "/",
                 token,
                 "instrumentation-device"
             );
             FocusRuntimeConnectionStore.Connection connection =
                 FocusRuntimeConnectionStore.get(context);
             assertNotNull(connection);
-            assertEquals("https://sync.instrumentation.test", connection.endpoint);
+            assertEquals(BuildConfig.CANONICAL_SYNC_ORIGIN, connection.endpoint);
             assertEquals(
-                "https://sync.instrumentation.test",
+                BuildConfig.CANONICAL_SYNC_ORIGIN,
                 context
                     .getSharedPreferences("focus_runtime_connection_v1", Context.MODE_PRIVATE)
                     .getString("endpoint", "")
@@ -691,7 +691,8 @@ public class ExampleInstrumentedTest {
 
             for (String cleartext : new String[] {
                 "http://127.0.0.1:18787",
-                "http://192.168.1.20:8787"
+                "http://192.168.1.20:8787",
+                "https://sync.instrumentation.test"
             }) {
                 try {
                     FocusRuntimeConnectionStore.put(
@@ -801,8 +802,8 @@ public class ExampleInstrumentedTest {
             assertTrue(FocusRuntimeStore.putSnapshot(context, initial));
             FocusRuntimeConnectionStore.put(
                 context,
-                "https://unreachable.invalid",
-                token,
+                endpoint,
+                "invalid-" + token,
                 "xiaomi-native-recovery-validation"
             );
 

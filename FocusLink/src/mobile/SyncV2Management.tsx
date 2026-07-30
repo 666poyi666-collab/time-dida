@@ -1,5 +1,10 @@
 import { AlertTriangle, ArchiveRestore, Laptop, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { isCanonicalFocusLinkDeviceConnection } from '@shared/sync/identityProtocol';
+import {
+  createMobileAccountRequestLifecycle,
+  mobileAccountConnectionKey,
+} from './accountLifecycle';
 
 interface Summary {
   devices: Array<{
@@ -16,27 +21,40 @@ interface Summary {
 export function SyncV2Management({ endpoint, token }: { endpoint: string; token: string }) {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const requests = useRef(createMobileAccountRequestLifecycle()).current;
   const refresh = useCallback(async () => {
-    if (!endpoint || !token) return;
+    if (!endpoint || !token) {
+      requests.invalidate();
+      setSummary(null);
+      setError(null);
+      return;
+    }
+    const request = requests.issue(mobileAccountConnectionKey({ endpoint, token }));
+    setSummary(null);
     setError(null);
     try {
       const [devices, conflicts, trash] = await Promise.all([
-        get<{ devices?: Summary['devices'] }>(endpoint, token, '/v2/devices'),
-        get<{ conflicts?: Summary['conflicts'] }>(endpoint, token, '/v2/conflicts'),
-        get<{ items?: Summary['trash'] }>(endpoint, token, '/v2/trash'),
+        get<{ devices?: Summary['devices'] }>(endpoint, token, '/v2/devices', request.signal),
+        get<{ conflicts?: Summary['conflicts'] }>(endpoint, token, '/v2/conflicts', request.signal),
+        get<{ items?: Summary['trash'] }>(endpoint, token, '/v2/trash', request.signal),
       ]);
+      if (!request.isCurrent()) return;
       setSummary({
         devices: devices.devices ?? [],
         conflicts: conflicts.conflicts ?? [],
         trash: trash.items ?? [],
       });
     } catch (cause) {
+      if (!request.isCurrent()) return;
       setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      request.finish();
     }
-  }, [endpoint, token]);
+  }, [endpoint, requests, token]);
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    return () => requests.invalidate();
+  }, [refresh, requests]);
   if (!endpoint || !token) return null;
   return (
     <section className="sync-v2-management" aria-labelledby="sync-v2-management-title">
@@ -98,9 +116,21 @@ function SummaryLine({
     </div>
   );
 }
-async function get<T>(endpoint: string, token: string, path: string): Promise<T> {
+async function get<T>(
+  endpoint: string,
+  token: string,
+  path: string,
+  signal: AbortSignal,
+): Promise<T> {
+  if (!isCanonicalFocusLinkDeviceConnection(endpoint, token)) {
+    throw new Error('设备凭据只能连接 FocusLink 官方同步服务');
+  }
   const response = await fetch(`${endpoint}${path}`, {
-    headers: { authorization: `Bearer ${token}` },
+    headers: { authorization: `Bearer ${token.trim()}` },
+    cache: 'no-store',
+    credentials: 'omit',
+    redirect: 'error',
+    signal,
   });
   if (!response.ok) throw new Error(`Sync v2 ${path} HTTP ${response.status}`);
   return response.json() as Promise<T>;

@@ -17,7 +17,7 @@ import {
   type SyncV2Response,
 } from '@shared/sync/v2Protocol';
 import { readDeviceSyncJsonResponse } from '@shared/sync/httpTransport';
-import { FOCUSLINK_CANONICAL_SYNC_ORIGIN } from '@shared/sync/identityProtocol';
+import { isCanonicalFocusLinkDeviceConnection } from '@shared/sync/identityProtocol';
 import {
   SyncV2ClientError,
   classifySyncV2Error,
@@ -39,7 +39,7 @@ import {
   resetMobileV2Epoch,
   retryMobileV2Lease,
   writeMobileV2SyncFailure,
-  writeMobileV2Bootstrap,
+  writeMobileV2BootstrapIfOwned,
   type MobileV2BootstrapCheckpoint,
 } from './v2Cache';
 
@@ -77,6 +77,7 @@ export async function runMobileSyncV2(input: MobileSyncV2Input): Promise<MobileS
   try {
     return await runMobileSyncV2Internal(input);
   } catch (error) {
+    assertNotAborted(input.signal);
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     const safe = safeSyncV2Error(error);
     await writeMobileV2SyncFailure(statusDeviceId, safe.code);
@@ -85,12 +86,10 @@ export async function runMobileSyncV2(input: MobileSyncV2Input): Promise<MobileS
 }
 
 async function runMobileSyncV2Internal(input: MobileSyncV2Input): Promise<MobileSyncV2Result> {
+  assertNotAborted(input.signal);
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
   const routed = parseDeviceToken(input.token.trim());
-  if (endpoint !== FOCUSLINK_CANONICAL_SYNC_ORIGIN) {
-    throw new Error('canonical Sync v2 移动端只接受 FocusLink 官方 authority');
-  }
-  if (!routed) {
+  if (!routed || !isCanonicalFocusLinkDeviceConnection(endpoint, input.token)) {
     throw new Error('canonical Sync v2 只接受通过设备配对签发的 fl2 凭据');
   }
   const connection = {
@@ -98,13 +97,17 @@ async function runMobileSyncV2Internal(input: MobileSyncV2Input): Promise<Mobile
     endpoint,
     token: input.token.trim(),
     deviceId: routed ? `device-${routed.devicePublicId}` : input.deviceId,
+    accountId: routed.accountPublicId,
   };
   const status = await getEpochStatus(connection);
+  assertNotAborted(connection.signal);
   let checkpoint = normalizeCheckpoint(await readMobileV2Bootstrap());
+  assertNotAborted(connection.signal);
   if (
     !checkpoint ||
     !sameEpoch(checkpoint, status) ||
-    checkpoint.boundDeviceId !== connection.deviceId
+    checkpoint.boundDeviceId !== connection.deviceId ||
+    checkpoint.boundAccountId !== connection.accountId
   ) {
     checkpoint = {
       key: 'syncV2.bootstrap',
@@ -112,12 +115,14 @@ async function runMobileSyncV2Internal(input: MobileSyncV2Input): Promise<Mobile
       bootstrapId: null,
       cursor: null,
       boundDeviceId: connection.deviceId,
+      boundAccountId: connection.accountId,
       syncEpoch: status.syncEpoch,
       cursorEpoch: status.cursorEpoch,
       accountGeneration: status.accountGeneration,
       updatedAt: Date.now(),
     };
     await resetMobileV2Epoch(checkpoint);
+    assertNotAborted(connection.signal);
   } else if (checkpoint.cursor !== null && parseCursor(checkpoint.cursor) > status.changeSeq) {
     throw new SyncV2ClientError('cursor_ahead');
   }
@@ -136,15 +141,28 @@ async function runMobileSyncV2Internal(input: MobileSyncV2Input): Promise<Mobile
   // bootstrap cursor and materialized entities have reached the current tail.
   if (checkpoint.state !== 'v2-active') {
     checkpoint = await drain(connection, checkpoint, result, false);
+    assertNotAborted(connection.signal);
     checkpoint = { ...checkpoint, state: 'v2-active', updatedAt: Date.now() };
-    await writeMobileV2Bootstrap(checkpoint);
+    await writeMobileV2BootstrapIfOwned(checkpoint);
+    assertNotAborted(connection.signal);
   }
 
-  await enqueueLegacyPendingBundles(connection.deviceId, checkpoint.accountGeneration);
-  await enqueueChangedCachedEntities(connection.deviceId, checkpoint.accountGeneration);
+  await enqueueLegacyPendingBundles(
+    connection.deviceId,
+    checkpoint.accountGeneration,
+    connection.signal,
+  );
+  await enqueueChangedCachedEntities(
+    connection.deviceId,
+    checkpoint.accountGeneration,
+    connection.signal,
+  );
   checkpoint = await drain(connection, checkpoint, result, true);
-  await removeConfirmedLegacyPending(connection.deviceId);
+  assertNotAborted(connection.signal);
+  await removeConfirmedLegacyPending(connection.deviceId, connection.signal);
+  assertNotAborted(connection.signal);
   const localStatus = await readMobileV2Status(connection.deviceId);
+  assertNotAborted(connection.signal);
   result.unresolvedConflicts = localStatus.conflicts;
   result.rejected = Math.max(result.rejected, localStatus.rejected);
   return result;
@@ -155,6 +173,7 @@ async function drain(
     endpoint: string;
     token: string;
     deviceId: string;
+    accountId: string;
     signal?: AbortSignal;
   },
   initial: MobileV2BootstrapCheckpoint,
@@ -170,22 +189,25 @@ async function drain(
 ): Promise<MobileV2BootstrapCheckpoint> {
   let checkpoint = initial;
   for (let page = 0; page < MAX_PAGES_PER_RUN; page += 1) {
+    assertNotAborted(connection.signal);
     const claimed = allowPush
       ? await claimMobileV2Outbox(connection.deviceId, 1)
       : { leaseId: '', items: [] };
-    const request = {
-      protocolVersion: SYNC_V2_PROTOCOL_VERSION,
-      deviceId: connection.deviceId,
-      cursor: checkpoint.cursor,
-      mutations: claimed.items.map(stripOutboxState),
-      pullLimit: Math.min(100, SYNC_V2_MAX_PULL),
-      syncEpoch: checkpoint.syncEpoch,
-      cursorEpoch: checkpoint.cursorEpoch,
-      accountGeneration: checkpoint.accountGeneration,
-    } satisfies SyncV2Request;
     let response: SyncV2Response;
     try {
+      assertNotAborted(connection.signal);
+      const request = {
+        protocolVersion: SYNC_V2_PROTOCOL_VERSION,
+        deviceId: connection.deviceId,
+        cursor: checkpoint.cursor,
+        mutations: claimed.items.map(stripOutboxState),
+        pullLimit: Math.min(100, SYNC_V2_MAX_PULL),
+        syncEpoch: checkpoint.syncEpoch,
+        cursorEpoch: checkpoint.cursorEpoch,
+        accountGeneration: checkpoint.accountGeneration,
+      } satisfies SyncV2Request;
       response = await exchange(connection, request);
+      assertNotAborted(connection.signal);
       assertResponse(response, request, checkpoint);
       checkpoint = {
         ...checkpoint,
@@ -202,6 +224,7 @@ async function drain(
         leaseId: claimed.leaseId,
         acks: response.acks,
       });
+      assertNotAborted(connection.signal);
       for (const ack of response.acks) {
         if (ack.status === 'applied' || ack.status === 'duplicate') result.uploaded += 1;
         if (ack.status === 'conflict') result.conflicts += 1;
@@ -222,8 +245,15 @@ async function drain(
   throw new Error('Sync v2 分页或 outbox 数量超过单轮安全上限');
 }
 
-async function enqueueLegacyPendingBundles(deviceId: string, generation: number): Promise<void> {
-  for (const record of await readPendingDeviceSyncBundles()) {
+async function enqueueLegacyPendingBundles(
+  deviceId: string,
+  generation: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  const records = await readPendingDeviceSyncBundles();
+  assertNotAborted(signal);
+  for (const record of records) {
+    assertNotAborted(signal);
     if (record.state === 'conflict' || record.state === 'rejected') continue;
     if (record.syncDeviceId !== null && record.syncDeviceId !== deviceId) continue;
     const split = splitBundleForSyncV2(record.bundle, deviceId);
@@ -236,6 +266,7 @@ async function enqueueLegacyPendingBundles(deviceId: string, generation: number)
       },
     ]) {
       const state = await readMobileV2EntityState(entity.entityType, entity.entityId);
+      assertNotAborted(signal);
       const fingerprint = fingerprintDeviceSyncValue({ deleted: false, payload: entity.payload });
       if (state?.confirmedFingerprint === fingerprint) continue;
       const baseRevision = state?.confirmedRevision ?? 0;
@@ -248,12 +279,20 @@ async function enqueueLegacyPendingBundles(deviceId: string, generation: number)
         deviceId,
         accountGeneration: generation,
       });
+      assertNotAborted(signal);
     }
   }
 }
 
-async function enqueueChangedCachedEntities(deviceId: string, generation: number): Promise<void> {
-  for (const cached of (await readMobileCache()).bundles) {
+async function enqueueChangedCachedEntities(
+  deviceId: string,
+  generation: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  const cache = await readMobileCache();
+  assertNotAborted(signal);
+  for (const cached of cache.bundles) {
+    assertNotAborted(signal);
     const split = splitBundleForSyncV2(cached.bundle, deviceId);
     for (const entity of [
       { entityType: 'focus_ledger_v2' as const, entityId: cached.entityId, payload: split.ledger },
@@ -264,6 +303,7 @@ async function enqueueChangedCachedEntities(deviceId: string, generation: number
       },
     ]) {
       const state = await readMobileV2EntityState(entity.entityType, entity.entityId);
+      assertNotAborted(signal);
       // `bundles` is a lossy UI projection. Once a canonical state exists it
       // must not be rebuilt into a mutation on every refresh/re-pair.
       if (state) continue;
@@ -276,12 +316,16 @@ async function enqueueChangedCachedEntities(deviceId: string, generation: number
         deviceId,
         accountGeneration: generation,
       });
+      assertNotAborted(signal);
     }
   }
 }
 
-async function removeConfirmedLegacyPending(deviceId: string): Promise<void> {
-  for (const record of await readPendingDeviceSyncBundles()) {
+async function removeConfirmedLegacyPending(deviceId: string, signal?: AbortSignal): Promise<void> {
+  const records = await readPendingDeviceSyncBundles();
+  assertNotAborted(signal);
+  for (const record of records) {
+    assertNotAborted(signal);
     if (record.syncDeviceId !== null && record.syncDeviceId !== deviceId) continue;
     const split = splitBundleForSyncV2(record.bundle, deviceId);
     const ledgerFingerprint = fingerprintDeviceSyncValue({ deleted: false, payload: split.ledger });
@@ -293,7 +337,9 @@ async function removeConfirmedLegacyPending(deviceId: string): Promise<void> {
       (await mobileV2EntityMatches('focus_ledger_v2', record.entityId, ledgerFingerprint)) &&
       (await mobileV2EntityMatches('focus_metadata_v2', record.entityId, metadataFingerprint))
     ) {
+      assertNotAborted(signal);
       await removePendingDeviceSyncBundle(record.opId);
+      assertNotAborted(signal);
     }
   }
 }
@@ -386,13 +432,21 @@ async function requestJson(
     }
     return value;
   } catch (error) {
-    if (input.signal?.aborted) throw error;
+    if (input.signal?.aborted) throw abortError();
     if (timedOut) throw new SyncV2ClientError('timeout');
     throw error;
   } finally {
     window.clearTimeout(timer);
     input.signal?.removeEventListener('abort', abort);
   }
+}
+
+function assertNotAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw abortError();
+}
+
+function abortError(): DOMException {
+  return new DOMException('Sync v2 account request aborted', 'AbortError');
 }
 
 /**
@@ -579,7 +633,7 @@ function normalizeCheckpoint(
   value: MobileV2BootstrapCheckpoint | null,
 ): MobileV2BootstrapCheckpoint | null {
   if (!value || !isEpoch(value as unknown as Record<string, unknown>)) return null;
-  if (!isId(value.boundDeviceId)) return null;
+  if (!isId(value.boundDeviceId) || !isId(value.boundAccountId)) return null;
   if (value.cursor !== null) {
     try {
       parseCursor(value.cursor);

@@ -118,6 +118,7 @@ describe('mobile Sync v2 persistence', () => {
       bootstrapId: 'boot-1',
       cursor: 'cursor',
       boundDeviceId: 'phone',
+      boundAccountId: 'account-test',
       syncEpoch: 's1',
       cursorEpoch: 'c1',
       accountGeneration: 1,
@@ -144,11 +145,13 @@ describe('mobile Sync v2 persistence', () => {
       bootstrapId: null,
       cursor: 'c1',
       boundDeviceId: 'phone',
+      boundAccountId: 'account-test',
       syncEpoch: 's-atomic',
       cursorEpoch: 'c-atomic',
       accountGeneration: 1,
       updatedAt: 101,
     };
+    await writeMobileV2Bootstrap({ ...checkpoint, cursor: 'c0' });
     const invalidLedger: SyncV2Change = {
       changeSeq: 1,
       entityType: 'focus_ledger_v2',
@@ -235,6 +238,7 @@ describe('mobile Sync v2 persistence', () => {
       updatedAt: 1,
     });
     const remote = { ...payload, title: '远端不同内容', updatedByDeviceId: 'tablet' };
+    await writeMobileV2Bootstrap(checkpoint('c7', 'phone'));
     await applyMobileV2ChangesAndCheckpoint({
       changes: [
         {
@@ -287,6 +291,7 @@ describe('mobile Sync v2 persistence', () => {
       accountGeneration: 1,
       updatedAt: 1,
     });
+    await writeMobileV2Bootstrap(checkpoint('c1', 'phone'));
     await applyMobileV2ChangesAndCheckpoint({
       changes: [
         {
@@ -354,6 +359,7 @@ describe('mobile Sync v2 persistence', () => {
       lastVerifiedAt: null,
       lastErrorCode: 'network_error',
     });
+    await writeMobileV2Bootstrap(checkpoint('c0', 'phone'));
     await applyMobileV2ChangesAndCheckpoint({
       changes: [],
       checkpoint: checkpoint('c0', 'phone'),
@@ -374,6 +380,7 @@ function checkpoint(cursor: string, boundDeviceId: string) {
     bootstrapId: null,
     cursor,
     boundDeviceId,
+    boundAccountId: 'account-test',
     syncEpoch: 's1',
     cursorEpoch: 'e1',
     accountGeneration: 1,

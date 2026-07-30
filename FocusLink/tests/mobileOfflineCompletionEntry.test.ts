@@ -30,6 +30,7 @@ describe('MobileApp offline completion entry', () => {
       bootstrapId: null,
       cursor: 'c4',
       boundDeviceId: DEVICE_ID,
+      boundAccountId: 'account-entry',
       syncEpoch: 'sync-entry',
       cursorEpoch: 'cursor-entry',
       accountGeneration: 2,

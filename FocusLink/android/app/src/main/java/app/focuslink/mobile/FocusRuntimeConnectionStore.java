@@ -27,9 +27,9 @@ final class FocusRuntimeConnectionStore {
         final String deviceId;
 
         Connection(String endpoint, String accessToken, String deviceId) {
-            this.endpoint = endpoint;
-            this.accessToken = accessToken;
-            this.deviceId = deviceId;
+            this.endpoint = validateEndpoint(endpoint);
+            this.accessToken = validateAccessToken(accessToken);
+            this.deviceId = validateDeviceId(deviceId);
         }
     }
 
@@ -42,17 +42,13 @@ final class FocusRuntimeConnectionStore {
         String deviceId
     ) {
         String normalizedEndpoint = validateEndpoint(endpoint);
-        if (accessToken == null || accessToken.isEmpty() || accessToken.length() > 4096) {
-            throw new IllegalArgumentException("accessToken is invalid");
-        }
-        if (deviceId == null || deviceId.isEmpty() || deviceId.length() > 200) {
-            throw new IllegalArgumentException("deviceId is invalid");
-        }
+        String validatedToken = validateAccessToken(accessToken);
+        String validatedDeviceId = validateDeviceId(deviceId);
         boolean committed = preferences(context)
             .edit()
             .putString(KEY_ENDPOINT, normalizedEndpoint)
-            .putString(KEY_TOKEN, encrypt(accessToken))
-            .putString(KEY_DEVICE_ID, deviceId)
+            .putString(KEY_TOKEN, encrypt(validatedToken))
+            .putString(KEY_DEVICE_ID, validatedDeviceId)
             .commit();
         if (!committed) throw new IllegalStateException("unable to save cloud credential");
     }
@@ -92,7 +88,9 @@ final class FocusRuntimeConnectionStore {
     }
 
     static synchronized void clear(Context context) {
-        preferences(context).edit().clear().commit();
+        if (!preferences(context).edit().clear().commit()) {
+            throw new IllegalStateException("unable to clear cloud credential");
+        }
     }
 
     private static String validateEndpoint(String raw) {
@@ -113,10 +111,27 @@ final class FocusRuntimeConnectionStore {
             String normalized = value.endsWith("/")
                 ? value.substring(0, value.length() - 1)
                 : value;
+            if (!BuildConfig.CANONICAL_SYNC_ORIGIN.equals(normalized)) {
+                throw new IllegalArgumentException("endpoint must be the canonical FocusLink origin");
+            }
             return normalized;
         } catch (RuntimeException exception) {
             throw new IllegalArgumentException("endpoint is invalid", exception);
         }
+    }
+
+    private static String validateAccessToken(String accessToken) {
+        if (accessToken == null || accessToken.isEmpty() || accessToken.length() > 4096) {
+            throw new IllegalArgumentException("accessToken is invalid");
+        }
+        return accessToken;
+    }
+
+    private static String validateDeviceId(String deviceId) {
+        if (deviceId == null || deviceId.isEmpty() || deviceId.length() > 200) {
+            throw new IllegalArgumentException("deviceId is invalid");
+        }
+        return deviceId;
     }
 
     private static String encrypt(String plaintext) {

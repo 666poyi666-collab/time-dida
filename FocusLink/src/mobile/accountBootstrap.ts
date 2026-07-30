@@ -111,10 +111,12 @@ const HTTP_OWNER_ACCOUNT_BOOTSTRAP: OwnerAccountBootstrapApi = {
     const generation = ++httpRequestGeneration;
     const controller = new AbortController();
     httpRequestController = controller;
-    const operation = bootstrapOwnerAccountHttp(input, generation, controller.signal).finally(() => {
-      if (httpRequestInFlight === operation) httpRequestInFlight = null;
-      if (httpRequestController === controller) httpRequestController = null;
-    });
+    const operation = bootstrapOwnerAccountHttp(input, generation, controller.signal).finally(
+      () => {
+        if (httpRequestInFlight === operation) httpRequestInFlight = null;
+        if (httpRequestController === controller) httpRequestController = null;
+      },
+    );
     httpRequestInFlight = operation;
     return operation;
   },
@@ -130,90 +132,90 @@ async function bootstrapOwnerAccountHttp(
   generation: number,
   signal: AbortSignal,
 ): Promise<OwnerAccountBootstrapResult> {
-    const endpoint = officialFocusLinkEndpoint();
-    const platform: FocusLinkDevicePlatform = Capacitor.isNativePlatform() ? 'android' : 'web';
-    const deviceKind: FocusLinkDeviceKind = input.deviceKind === 'web' ? 'phone' : input.deviceKind;
+  const endpoint = officialFocusLinkEndpoint();
+  const platform: FocusLinkDevicePlatform = Capacitor.isNativePlatform() ? 'android' : 'web';
+  const deviceKind: FocusLinkDeviceKind = input.deviceKind === 'web' ? 'phone' : input.deviceKind;
 
-    if (
-      pendingHttpFlow &&
-      (pendingHttpFlow.installationId !== input.installationId ||
-        pendingHttpFlow.expiresAt <= Date.now())
-    ) {
-      pendingHttpFlow = null;
-    }
-    if (pendingHttpFlow && !input.callbackUrl && pendingHttpFlow.nextPollAt > Date.now()) {
-      return {
-        status: 'waiting-for-phone',
-        retryAfterMs: Math.max(1_000, pendingHttpFlow.nextPollAt - Date.now()),
-      };
-    }
-
-    const activeFlow = pendingHttpFlow;
-    const request: FocusLinkAccountBootstrapRequest = activeFlow
-      ? {
-          protocolVersion: FOCUSLINK_ACCOUNT_BOOTSTRAP_PROTOCOL_VERSION,
-          action: 'poll',
-          flowId: activeFlow.flowId,
-          pollToken: activeFlow.pollToken,
-        }
-      : {
-          protocolVersion: FOCUSLINK_ACCOUNT_BOOTSTRAP_PROTOCOL_VERSION,
-          action: 'start',
-          registration: {
-            protocolVersion: FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
-            installationId: input.installationId,
-            displayName: input.displayName,
-            platform,
-            deviceKind,
-            appVersion: APP_VERSION,
-          },
-        };
-    const result = await requestOwnerBootstrap(endpoint, request, signal);
-    assertCurrentHttpRequest(generation, signal);
-
-    if (result.status === 'authenticated') {
-      if (!activeFlow) {
-        pendingHttpFlow = null;
-        throw new Error('登录服务未完成管理员授权，已拒绝设备凭据');
-      }
-      pendingHttpFlow = null;
-      return {
-        status: 'authenticated',
-        session: {
-          accountId: result.device.accountPublicId,
-          accountLabel: result.accountLabel,
-          endpoint: result.endpoint,
-          accessToken: result.device.accessToken,
-          deviceId: result.device.deviceId,
-        },
-      };
-    }
-
-    if (result.status === 'login-required') {
-      if (
-        activeFlow &&
-        (activeFlow.flowId !== result.flowId || activeFlow.pollToken !== result.pollToken)
-      ) {
-        pendingHttpFlow = null;
-        throw new Error('登录服务在轮询中更换了授权流程');
-      }
-      pendingHttpFlow = makePendingFlow(input.installationId, result);
-      return { status: 'login-required', loginUrl: result.loginUrl };
-    }
-
-    if (!activeFlow || activeFlow.flowId !== result.flowId) {
-      pendingHttpFlow = null;
-      throw new Error('登录服务返回了不匹配的授权流程');
-    }
-    pendingHttpFlow = {
-      ...activeFlow,
-      expiresAt: localExpiry(result.serverTime, result.expiresAt),
-      nextPollAt: Date.now() + result.retryAfterMs,
-    };
+  if (
+    pendingHttpFlow &&
+    (pendingHttpFlow.installationId !== input.installationId ||
+      pendingHttpFlow.expiresAt <= Date.now())
+  ) {
+    pendingHttpFlow = null;
+  }
+  if (pendingHttpFlow && !input.callbackUrl && pendingHttpFlow.nextPollAt > Date.now()) {
     return {
       status: 'waiting-for-phone',
-      retryAfterMs: result.retryAfterMs,
+      retryAfterMs: Math.max(1_000, pendingHttpFlow.nextPollAt - Date.now()),
     };
+  }
+
+  const activeFlow = pendingHttpFlow;
+  const request: FocusLinkAccountBootstrapRequest = activeFlow
+    ? {
+        protocolVersion: FOCUSLINK_ACCOUNT_BOOTSTRAP_PROTOCOL_VERSION,
+        action: 'poll',
+        flowId: activeFlow.flowId,
+        pollToken: activeFlow.pollToken,
+      }
+    : {
+        protocolVersion: FOCUSLINK_ACCOUNT_BOOTSTRAP_PROTOCOL_VERSION,
+        action: 'start',
+        registration: {
+          protocolVersion: FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
+          installationId: input.installationId,
+          displayName: input.displayName,
+          platform,
+          deviceKind,
+          appVersion: APP_VERSION,
+        },
+      };
+  const result = await requestOwnerBootstrap(endpoint, request, signal);
+  assertCurrentHttpRequest(generation, signal);
+
+  if (result.status === 'authenticated') {
+    if (!activeFlow) {
+      pendingHttpFlow = null;
+      throw new Error('登录服务未完成管理员授权，已拒绝设备凭据');
+    }
+    pendingHttpFlow = null;
+    return {
+      status: 'authenticated',
+      session: {
+        accountId: result.device.accountPublicId,
+        accountLabel: result.accountLabel,
+        endpoint: result.endpoint,
+        accessToken: result.device.accessToken,
+        deviceId: result.device.deviceId,
+      },
+    };
+  }
+
+  if (result.status === 'login-required') {
+    if (
+      activeFlow &&
+      (activeFlow.flowId !== result.flowId || activeFlow.pollToken !== result.pollToken)
+    ) {
+      pendingHttpFlow = null;
+      throw new Error('登录服务在轮询中更换了授权流程');
+    }
+    pendingHttpFlow = makePendingFlow(input.installationId, result);
+    return { status: 'login-required', loginUrl: result.loginUrl };
+  }
+
+  if (!activeFlow || activeFlow.flowId !== result.flowId) {
+    pendingHttpFlow = null;
+    throw new Error('登录服务返回了不匹配的授权流程');
+  }
+  pendingHttpFlow = {
+    ...activeFlow,
+    expiresAt: localExpiry(result.serverTime, result.expiresAt),
+    nextPollAt: Date.now() + result.retryAfterMs,
+  };
+  return {
+    status: 'waiting-for-phone',
+    retryAfterMs: result.retryAfterMs,
+  };
 }
 
 async function requestOwnerBootstrap(

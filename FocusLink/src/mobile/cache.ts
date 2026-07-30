@@ -622,6 +622,7 @@ function normalizePendingRecord(value: unknown, now: number): PendingDeviceSyncB
 }
 
 interface CanonicalMobileBinding {
+  accountId: string;
   deviceId: string;
   accountGeneration: number;
 }
@@ -632,12 +633,19 @@ function canonicalMobileBinding(value: unknown): CanonicalMobileBinding | null {
     typeof value.boundDeviceId !== 'string' ||
     value.boundDeviceId.length < 1 ||
     value.boundDeviceId.length > 200 ||
+    typeof value.boundAccountId !== 'string' ||
+    value.boundAccountId.length < 1 ||
+    value.boundAccountId.length > 200 ||
     !Number.isSafeInteger(value.accountGeneration) ||
     Number(value.accountGeneration) < 1
   ) {
     return null;
   }
-  return { deviceId: value.boundDeviceId, accountGeneration: Number(value.accountGeneration) };
+  return {
+    accountId: value.boundAccountId,
+    deviceId: value.boundDeviceId,
+    accountGeneration: Number(value.accountGeneration),
+  };
 }
 
 /**

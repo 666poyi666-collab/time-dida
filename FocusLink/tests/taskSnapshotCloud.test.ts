@@ -131,6 +131,7 @@ describe('desktop-authoritative task snapshot', () => {
       headers: { Authorization: `Bearer ${TOKEN}`, Origin: ORIGIN },
     });
     expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
     const snapshot = (await response.json()) as TaskSnapshotResponse;
     expect(snapshot).toMatchObject({
       revision: 1,

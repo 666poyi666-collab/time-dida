@@ -33,6 +33,8 @@ export interface MobileV2BootstrapCheckpoint extends SyncV2Epoch {
   cursor: string | null;
   /** Device credential that owns this cursor and outbox view. */
   boundDeviceId: string;
+  /** Public account route that owns this cursor; never contains a bearer credential. */
+  boundAccountId: string;
   updatedAt: number;
 }
 
@@ -73,11 +75,16 @@ export async function applyMobileV2ChangesAndCheckpoint(input: {
   const metaStore = transaction.objectStore(META);
   const completion = done(transaction);
   try {
-    const result = await readThreeInTransaction(
+    const result = await readFourInTransaction(
+      metaStore.get(BOOTSTRAP_KEY),
       entityStore.getAll(),
       outboxStore.getAll(),
       bundleStore.getAll(),
-      (storedStates, pending, cached) => {
+      (ownerRecord, storedStates, pending, cached) => {
+        assertCheckpointOwner(
+          (ownerRecord as { value?: MobileV2BootstrapCheckpoint } | undefined)?.value,
+          input.checkpoint,
+        );
         const states = new Map(
           storedStates.map((state) => [`${state.entityType}\u0000${state.entityId}`, state]),
         );
@@ -540,6 +547,42 @@ export async function writeMobileV2Bootstrap(
   database.close();
 }
 
+export async function writeMobileV2BootstrapIfOwned(
+  checkpoint: MobileV2BootstrapCheckpoint,
+): Promise<void> {
+  const database = await openMobileDatabase();
+  const transaction = database.transaction(META, 'readwrite');
+  const store = transaction.objectStore(META);
+  const completion = done(transaction);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const read = store.get(BOOTSTRAP_KEY);
+      read.onsuccess = () => {
+        try {
+          const record = read.result as { value?: MobileV2BootstrapCheckpoint } | undefined;
+          assertCheckpointOwner(record?.value, checkpoint);
+          store.put({ key: BOOTSTRAP_KEY, value: checkpoint });
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      };
+      read.onerror = () => reject(read.error ?? new Error('Sync v2 IndexedDB request failed'));
+    });
+    await completion;
+  } catch (error) {
+    try {
+      transaction.abort();
+    } catch {
+      // The transaction may already be closed after a request failure.
+    }
+    await completion.catch(() => undefined);
+    throw error;
+  } finally {
+    database.close();
+  }
+}
+
 export async function resetMobileV2Epoch(checkpoint: MobileV2BootstrapCheckpoint): Promise<void> {
   const database = await openMobileDatabase();
   const transaction = database.transaction(
@@ -547,38 +590,65 @@ export async function resetMobileV2Epoch(checkpoint: MobileV2BootstrapCheckpoint
     'readwrite',
   );
   const outbox = transaction.objectStore(OUTBOX);
-  const records = (await request(outbox.getAll())) as SyncV2OutboxItem[];
+  const meta = transaction.objectStore(META);
   const history = transaction.objectStore(HISTORY);
-  const now = Date.now();
-  for (const item of records) {
-    const deviceCredentialChanged = item.deviceId !== checkpoint.boundDeviceId;
-    const accountGenerationChanged = item.accountGeneration !== checkpoint.accountGeneration;
-    if (
-      (deviceCredentialChanged || accountGenerationChanged) &&
-      (item.state === 'pending' || item.state === 'uploading' || item.state === 'retry')
-    ) {
-      history.put({
-        opId: item.opId,
-        entityType: item.entityType,
-        entityId: item.entityId,
-        status: deviceCredentialChanged ? 'device-credential-changed' : 'generation-requeued',
-        revision: null,
-        errorCode: deviceCredentialChanged
-          ? 'device_credential_changed'
-          : 'account_generation_changed',
-        completedAt: now,
-      });
-      outbox.delete(item.opId);
+  const completion = done(transaction);
+  try {
+    await readTwoInTransaction(
+      outbox.getAll(),
+      meta.get(BOOTSTRAP_KEY),
+      (records: SyncV2OutboxItem[], previousRecord) => {
+        const previous = previousRecord as { value?: MobileV2BootstrapCheckpoint } | undefined;
+        const accountOwnerChanged =
+          previous?.value?.boundAccountId !== undefined &&
+          previous.value.boundAccountId !== checkpoint.boundAccountId;
+        const now = Date.now();
+        for (const item of records) {
+          const deviceCredentialChanged = item.deviceId !== checkpoint.boundDeviceId;
+          const accountGenerationChanged = item.accountGeneration !== checkpoint.accountGeneration;
+          if (
+            (accountOwnerChanged || deviceCredentialChanged || accountGenerationChanged) &&
+            (item.state === 'pending' || item.state === 'uploading' || item.state === 'retry')
+          ) {
+            history.put({
+              opId: item.opId,
+              entityType: item.entityType,
+              entityId: item.entityId,
+              status:
+                accountOwnerChanged || deviceCredentialChanged
+                  ? 'device-credential-changed'
+                  : 'generation-requeued',
+              revision: null,
+              errorCode: accountOwnerChanged
+                ? 'account_credential_changed'
+                : deviceCredentialChanged
+                  ? 'device_credential_changed'
+                  : 'account_generation_changed',
+              completedAt: now,
+            });
+            outbox.delete(item.opId);
+          }
+        }
+        transaction.objectStore(ENTITY_STATE).clear();
+        transaction.objectStore(CONFLICTS).clear();
+        transaction.objectStore('bundles').clear();
+        meta.delete(LAST_VERIFIED_KEY);
+        meta.delete(LAST_ERROR_KEY);
+        meta.put({ key: BOOTSTRAP_KEY, value: checkpoint });
+      },
+    );
+    await completion;
+  } catch (error) {
+    try {
+      transaction.abort();
+    } catch {
+      // The transaction may already be closed after a request failure.
     }
+    await completion.catch(() => undefined);
+    throw error;
+  } finally {
+    database.close();
   }
-  transaction.objectStore(ENTITY_STATE).clear();
-  transaction.objectStore(CONFLICTS).clear();
-  transaction.objectStore('bundles').clear();
-  transaction.objectStore(META).delete(LAST_VERIFIED_KEY);
-  transaction.objectStore(META).delete(LAST_ERROR_KEY);
-  transaction.objectStore(META).put({ key: BOOTSTRAP_KEY, value: checkpoint });
-  await done(transaction);
-  database.close();
 }
 
 export async function mobileV2EntityMatches(
@@ -741,6 +811,22 @@ function scopedStatusValue(value: unknown, deviceId: string): Record<string, unk
   return value as Record<string, unknown>;
 }
 
+function assertCheckpointOwner(
+  stored: MobileV2BootstrapCheckpoint | undefined,
+  expected: MobileV2BootstrapCheckpoint,
+): void {
+  if (
+    !stored ||
+    stored.boundAccountId !== expected.boundAccountId ||
+    stored.boundDeviceId !== expected.boundDeviceId ||
+    stored.syncEpoch !== expected.syncEpoch ||
+    stored.cursorEpoch !== expected.cursorEpoch ||
+    stored.accountGeneration !== expected.accountGeneration
+  ) {
+    throw new DOMException('Sync v2 account connection changed', 'AbortError');
+  }
+}
+
 function request<T>(value: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     value.onsuccess = () => resolve(value.result);
@@ -748,22 +834,15 @@ function request<T>(value: IDBRequest<T>): Promise<T> {
   });
 }
 
-/**
- * Runs the write phase from the last IndexedDB success callback. Older Android
- * WebViews may auto-commit a readwrite transaction before an awaited Promise
- * continuation can enqueue more requests.
- */
-function readThreeInTransaction<A, B, C, R>(
+function readTwoInTransaction<A, B, R>(
   first: IDBRequest<A>,
   second: IDBRequest<B>,
-  third: IDBRequest<C>,
-  apply: (first: A, second: B, third: C) => R,
+  apply: (first: A, second: B) => R,
 ): Promise<R> {
   return new Promise((resolve, reject) => {
-    let remaining = 3;
+    let remaining = 2;
     let firstValue: A;
     let secondValue: B;
-    let thirdValue: C;
     let settled = false;
     const fail = (error: DOMException | null) => {
       if (settled) return;
@@ -775,7 +854,55 @@ function readThreeInTransaction<A, B, C, R>(
       if (remaining !== 0 || settled) return;
       try {
         settled = true;
-        resolve(apply(firstValue, secondValue, thirdValue));
+        resolve(apply(firstValue, secondValue));
+      } catch (error) {
+        settled = true;
+        reject(error);
+      }
+    };
+    first.onsuccess = () => {
+      firstValue = first.result;
+      finish();
+    };
+    second.onsuccess = () => {
+      secondValue = second.result;
+      finish();
+    };
+    first.onerror = () => fail(first.error);
+    second.onerror = () => fail(second.error);
+  });
+}
+
+/**
+ * Runs the write phase from the last IndexedDB success callback. Older Android
+ * WebViews may auto-commit a readwrite transaction before an awaited Promise
+ * continuation can enqueue more requests.
+ */
+function readFourInTransaction<A, B, C, D, R>(
+  first: IDBRequest<A>,
+  second: IDBRequest<B>,
+  third: IDBRequest<C>,
+  fourth: IDBRequest<D>,
+  apply: (first: A, second: B, third: C, fourth: D) => R,
+): Promise<R> {
+  return new Promise((resolve, reject) => {
+    let remaining = 4;
+    let firstValue: A;
+    let secondValue: B;
+    let thirdValue: C;
+    let fourthValue: D;
+    let settled = false;
+    const fail = (error: DOMException | null) => {
+      if (settled) return;
+      settled = true;
+      reject(error ?? new Error('Sync v2 IndexedDB request failed'));
+    };
+    const finish = () => {
+      remaining -= 1;
+      if (remaining !== 0 || settled) return;
+      try {
+        settled = true;
+        resolve(apply(firstValue, secondValue, thirdValue, fourthValue));
       } catch (error) {
         settled = true;
         reject(error);
@@ -793,9 +920,14 @@ function readThreeInTransaction<A, B, C, R>(
       thirdValue = third.result;
       finish();
     };
+    fourth.onsuccess = () => {
+      fourthValue = fourth.result;
+      finish();
+    };
     first.onerror = () => fail(first.error);
     second.onerror = () => fail(second.error);
     third.onerror = () => fail(third.error);
+    fourth.onerror = () => fail(fourth.error);
   });
 }
 

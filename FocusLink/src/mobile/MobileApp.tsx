@@ -69,9 +69,7 @@ import {
   getOrCreateInstallationId,
   loadMobileAccountProfile,
   loadConnectionPreferences,
-  rememberAssignedDeviceId,
-  saveMobileAccountProfile,
-  saveConnectionPreferences,
+  persistMobileAccountSessionBestEffort,
   type MobileConnectionPreferences,
 } from './preferences';
 import {
@@ -100,7 +98,7 @@ import {
   ownerAccountBootstrapApi,
   type OwnerAccountSession,
 } from './accountBootstrap';
-import { createMobileAccountLifecycle } from './accountLifecycle';
+import { createMobileAccountLifecycle, mobileAccountConnectionKey } from './accountLifecycle';
 import { TaskBrowser } from './TaskBrowser';
 import { MobileConfirmDialog } from './MobileConfirmDialog';
 import {
@@ -113,7 +111,10 @@ import {
 import { remoteForkEvidence } from './authorityPolicy';
 import { runMobileSyncV2 } from './v2Sync';
 import { persistCompletedOfflineFocus } from './offlineCompletion';
-import { startVisibleTaskSnapshotRefresh } from './taskSnapshotRefresh';
+import {
+  createTaskSnapshotRequestLifecycle,
+  startVisibleTaskSnapshotRefresh,
+} from './taskSnapshotRefresh';
 
 type PullState = 'idle' | 'pulling' | 'confirmed' | 'error';
 
@@ -182,22 +183,29 @@ export function MobileApp() {
   const ledgerGeneration = useRef(0);
   const liveRequest = useRef<AbortController | null>(null);
   const liveGeneration = useRef(0);
-  const taskRequest = useRef<AbortController | null>(null);
-  const taskGeneration = useRef(0);
+  const taskRequests = useRef(createTaskSnapshotRequestLifecycle()).current;
   const cacheMutationQueue = useRef<Promise<void>>(Promise.resolve());
   const nativeQueueRunning = useRef(false);
   const lastResumeRefreshAt = useRef(0);
-  const connectionKeyRef = useRef(connectionKey(initialPreferences));
+  const connectionKeyRef = useRef(mobileAccountConnectionKey(initialPreferences));
   const accountLifecycle = useRef(createMobileAccountLifecycle()).current;
 
   const resetTaskSnapshotForAccount = useCallback(async () => {
-    taskGeneration.current += 1;
-    taskRequest.current?.abort();
-    taskRequest.current = null;
+    taskRequests.invalidate();
     taskSnapshotRef.current = null;
     setTaskSnapshot(null);
+    setSelectedTaskId('');
+    setTitleDraft('');
     await enqueueMutation(cacheMutationQueue, clearCachedTaskSnapshot);
-  }, []);
+  }, [taskRequests]);
+
+  useEffect(
+    () => () => {
+      accountLifecycle.invalidate();
+      invalidateOwnerAccountBootstrap();
+    },
+    [accountLifecycle],
+  );
 
   useEffect(() => {
     applyMobileAppearance(appearance);
@@ -228,22 +236,22 @@ export function MobileApp() {
           token: connection.accessToken,
           rememberToken: true,
         };
-        if (connectionKey(next) !== connectionKeyRef.current) {
+        if (mobileAccountConnectionKey(next) !== connectionKeyRef.current) {
           await resetTaskSnapshotForAccount();
         }
         if (disposed || !accountLifecycle.isCurrent(operation)) return;
         // The helper has confirmed the Keystore copy. Keep the token only in
         // React memory and now remove any legacy browser remnants.
-        saveConnectionPreferences(next);
-        if (connection.deviceId.startsWith('device-')) {
-          rememberAssignedDeviceId(connection.deviceId);
-        }
+        const persistenceIssues = persistMobileAccountSessionBestEffort(next, connection.deviceId);
         setDeviceId(connection.deviceId);
         preferencesRef.current = next;
-        connectionKeyRef.current = connectionKey(next);
+        connectionKeyRef.current = mobileAccountConnectionKey(next);
         setPreferences(next);
         setConfigOpen(false);
         setConnectionEpoch((value) => value + 1);
+        if (persistenceIssues.length > 0) {
+          setCommandNotice('账号已从 Android 安全存储恢复，但本机资料持久化仍需下次重试');
+        }
       })
       .catch((error) => {
         if (!disposed && accountLifecycle.isCurrent(operation)) {
@@ -278,20 +286,27 @@ export function MobileApp() {
       if (!accountLifecycle.isCurrent(operation)) return false;
       await resetTaskSnapshotForAccount();
       if (!accountLifecycle.isCurrent(operation)) return false;
-      saveConnectionPreferences(next);
-      saveMobileAccountProfile({
+      const profile = {
         accountId: session.accountId,
         accountLabel: session.accountLabel,
-      });
-      rememberAssignedDeviceId(session.deviceId);
+      };
+      const persistenceIssues = persistMobileAccountSessionBestEffort(
+        next,
+        session.deviceId,
+        profile,
+      );
       setDeviceId(session.deviceId);
       preferencesRef.current = next;
-      connectionKeyRef.current = connectionKey(next);
+      connectionKeyRef.current = mobileAccountConnectionKey(next);
       setPreferences(next);
-      setAccountProfile({ accountId: session.accountId, accountLabel: session.accountLabel });
+      setAccountProfile(profile);
       setConfigOpen(false);
       setConnectionEpoch((value) => value + 1);
-      setCommandNotice('账号已登录，正在同步这台设备');
+      setCommandNotice(
+        persistenceIssues.length > 0
+          ? '账号已登录，但本机资料持久化失败；当前会话继续同步并将在下次启动重试'
+          : '账号已登录，正在同步这台设备',
+      );
       return true;
     },
     [accountLifecycle, resetTaskSnapshotForAccount],
@@ -422,43 +437,38 @@ export function MobileApp() {
     [deviceId],
   );
 
-  const refreshTasks = useCallback(async (connection: MobileConnectionPreferences) => {
-    taskRequest.current?.abort();
-    const controller = new AbortController();
-    const generation = taskGeneration.current + 1;
-    taskGeneration.current = generation;
-    taskRequest.current = controller;
-    const isCurrent = () =>
-      taskGeneration.current === generation &&
-      taskRequest.current === controller &&
-      !controller.signal.aborted;
-    try {
-      const response = await fetchTaskSnapshot({
-        endpoint: connection.endpoint,
-        token: connection.token,
-        signal: controller.signal,
-      });
-      if (!isCurrent()) return;
-      const reconciliation = reconcileTaskSnapshot(taskSnapshotRef.current, response);
-      if (reconciliation.freshness === 'stale') return;
-      if (reconciliation.freshness === 'inconsistent') {
-        setCommandNotice('任务清单 revision 内容不一致，已保留本机较可信快照并继续重试');
-        return;
+  const refreshTasks = useCallback(
+    async (connection: MobileConnectionPreferences) => {
+      const request = taskRequests.issue(mobileAccountConnectionKey(connection));
+      try {
+        const response = await fetchTaskSnapshot({
+          endpoint: connection.endpoint,
+          token: connection.token,
+          signal: request.signal,
+        });
+        if (!request.isCurrent()) return;
+        const reconciliation = reconcileTaskSnapshot(taskSnapshotRef.current, response);
+        if (reconciliation.freshness === 'stale') return;
+        if (reconciliation.freshness === 'inconsistent') {
+          setCommandNotice('任务清单 revision 内容不一致，已保留本机较可信快照并继续重试');
+          return;
+        }
+        taskSnapshotRef.current = reconciliation.snapshot;
+        setTaskSnapshot(reconciliation.snapshot);
+        await enqueueMutation(cacheMutationQueue, async () => {
+          if (request.isCurrent()) await writeCachedTaskSnapshot(reconciliation.snapshot);
+        });
+      } catch (error) {
+        if (!request.isCurrent() || isAbortError(error)) return;
+        setCommandNotice(
+          (current) => current ?? `任务清单刷新失败：${errorMessage(error)}；继续使用本机缓存`,
+        );
+      } finally {
+        request.finish();
       }
-      taskSnapshotRef.current = reconciliation.snapshot;
-      setTaskSnapshot(reconciliation.snapshot);
-      await enqueueMutation(cacheMutationQueue, async () => {
-        if (isCurrent()) await writeCachedTaskSnapshot(reconciliation.snapshot);
-      });
-    } catch (error) {
-      if (!isCurrent() || isAbortError(error)) return;
-      setCommandNotice(
-        (current) => current ?? `任务清单刷新失败：${errorMessage(error)}；继续使用本机缓存`,
-      );
-    } finally {
-      if (taskRequest.current === controller) taskRequest.current = null;
-    }
-  }, []);
+    },
+    [taskRequests],
+  );
 
   const pullLedger = useCallback(
     async (connection: MobileConnectionPreferences, _startCursor: string | null) => {
@@ -528,19 +538,12 @@ export function MobileApp() {
 
   useEffect(() => {
     preferencesRef.current = preferences;
-    connectionKeyRef.current = connectionKey(preferences);
-    if (preferences.endpoint && preferences.token) {
-      void accountLifecycle
-        .enqueueNative(() =>
-          configureNativeFocusConnection(preferences.endpoint, preferences.token, deviceId),
-        )
-        .catch(() => setCommandNotice('Android 后台同步初始化失败；前台同步仍可继续'));
-    }
+    connectionKeyRef.current = mobileAccountConnectionKey(preferences);
     // A non-remembered WebView token lives in sessionStorage and can disappear when
     // Android reclaims the renderer. That must not silently erase the encrypted native
     // connection which still powers an active notification. Explicit token removal and
     // cache reset paths clear the native connection themselves.
-  }, [accountLifecycle, deviceId, preferences]);
+  }, [preferences]);
 
   useEffect(() => {
     cacheRef.current = cache;
@@ -549,7 +552,7 @@ export function MobileApp() {
   useEffect(() => {
     let active = true;
     const generation = ledgerGeneration.current;
-    const taskCacheGeneration = taskGeneration.current;
+    const taskCacheGeneration = taskRequests.generation();
     void Promise.all([
       readMobileCache(),
       readCachedLiveFocusSnapshot(),
@@ -590,7 +593,7 @@ export function MobileApp() {
         if (
           cachedTasks &&
           initialConnectionConfigured &&
-          taskGeneration.current === taskCacheGeneration
+          taskRequests.generation() === taskCacheGeneration
         ) {
           taskSnapshotRef.current = cachedTasks;
           setTaskSnapshot(cachedTasks);
@@ -613,12 +616,11 @@ export function MobileApp() {
       active = false;
       ledgerGeneration.current += 1;
       liveGeneration.current += 1;
-      taskGeneration.current += 1;
+      taskRequests.invalidate();
       ledgerRequest.current?.abort();
       liveRequest.current?.abort();
-      taskRequest.current?.abort();
     };
-  }, [deviceId, initialConnectionConfigured]);
+  }, [deviceId, initialConnectionConfigured, taskRequests]);
 
   useEffect(() => {
     const handleOnline = () => setOnline(true);
@@ -719,7 +721,10 @@ export function MobileApp() {
                   signal: controller.signal,
                 });
           if (!isCurrent()) return;
-          const mapped = await commitLiveSnapshot(response, connectionKey(preferences));
+          const mapped = await commitLiveSnapshot(
+            response,
+            mobileAccountConnectionKey(preferences),
+          );
           if (!isCurrent()) return;
           if (!mapped) return;
           lastRevision = response.snapshot.revision;
@@ -822,7 +827,7 @@ export function MobileApp() {
           break;
         }
         try {
-          const sourceConnectionKey = connectionKey(connection);
+          const sourceConnectionKey = mobileAccountConnectionKey(connection);
           const response = await sendNativeCommand(connection, deviceId, nativeCommand);
           const committed = await commitLiveSnapshot(response, sourceConnectionKey);
           if (!committed || connectionKeyRef.current !== sourceConnectionKey) break;
@@ -909,7 +914,7 @@ export function MobileApp() {
       if (pendingCommandRef.current) return;
       const snapshot = liveSnapshotRef.current ?? makeIdleSnapshot();
       const connection = preferencesRef.current;
-      const sourceConnectionKey = connectionKey(connection);
+      const sourceConnectionKey = mobileAccountConnectionKey(connection);
       const title = (titleOverride ?? titleDraft).trim();
       if (action === 'start' && !title) {
         setCommandNotice('请先填写本次专注标题');
@@ -1089,15 +1094,14 @@ export function MobileApp() {
     setAccountBusy(false);
     ledgerGeneration.current += 1;
     liveGeneration.current += 1;
-    taskGeneration.current += 1;
+    taskRequests.invalidate();
     ledgerRequest.current?.abort();
     liveRequest.current?.abort();
-    taskRequest.current?.abort();
     clearSavedToken();
     clearMobileAccountProfile();
     const next = { ...preferencesRef.current, token: '', rememberToken: false };
     preferencesRef.current = next;
-    connectionKeyRef.current = connectionKey(next);
+    connectionKeyRef.current = mobileAccountConnectionKey(next);
     setPreferences(next);
     setAccountProfile(null);
     liveSnapshotRef.current = null;
@@ -1118,10 +1122,9 @@ export function MobileApp() {
     }
     ledgerGeneration.current += 1;
     liveGeneration.current += 1;
-    taskGeneration.current += 1;
+    taskRequests.invalidate();
     ledgerRequest.current?.abort();
     liveRequest.current?.abort();
-    taskRequest.current?.abort();
     try {
       await enqueueMutation(cacheMutationQueue, clearMobileCache);
       cacheRef.current = EMPTY_CACHE;
@@ -1418,12 +1421,6 @@ function connectionTitle(state: LiveConnectionState): string {
   if (state === 'offline') return '当前离线 · 本机专注可用';
   if (state === 'error') return '实时连接中断 · 自动重试中';
   return '尚未登录 FocusLink';
-}
-
-function connectionKey(
-  connection: Pick<MobileConnectionPreferences, 'endpoint' | 'token'>,
-): string {
-  return `${connection.endpoint}\u0000${connection.token}`;
 }
 
 function isAbortError(error: unknown): boolean {

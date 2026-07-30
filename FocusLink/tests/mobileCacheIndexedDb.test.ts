@@ -2,7 +2,9 @@ import 'fake-indexeddb/auto';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DeviceSyncSessionBundle } from '@shared/sync/deviceProtocol';
+import type { TaskSnapshotResponse } from '@shared/sync/taskSnapshotProtocol';
 import {
+  clearCachedTaskSnapshot,
   completeOfflineFocusRuntime,
   createOfflineFocusRuntime,
   markPendingDeviceSyncFailure,
@@ -10,7 +12,9 @@ import {
   readLocalSessionSyncMeta,
   readOfflineFocusRuntime,
   readPendingDeviceSyncBundles,
+  readCachedTaskSnapshot,
   removePendingDeviceSyncBundle,
+  writeCachedTaskSnapshot,
   type LocalSessionSyncMeta,
 } from '../src/mobile/cache';
 import { startOfflineFocus } from '../src/mobile/offlineFocusRuntime';
@@ -118,6 +122,7 @@ describe('mobile IndexedDB local-first persistence', () => {
       bootstrapId: null,
       cursor: 'c4',
       boundDeviceId: 'device-phone',
+      boundAccountId: 'account-test',
       syncEpoch: 'sync-1',
       cursorEpoch: 'cursor-1',
       accountGeneration: 1,
@@ -154,6 +159,21 @@ describe('mobile IndexedDB local-first persistence', () => {
     const identity = await readMobileDeviceIdentity('legacy-phone');
     expect(JSON.stringify(identity)).not.toMatch(/fl2_|token|cookie|secret/i);
     expect(identity).toMatchObject({ deviceId: 'legacy-phone', scopes: ['sync:read'] });
+  });
+
+  it('clears the account-scoped task revision before another connection can restore it', async () => {
+    const oldAccountSnapshot = {
+      protocolVersion: 1,
+      revision: 36,
+      sourceDeviceId: 'device-old-account',
+      snapshot: { publishedAt: 36_000, projects: [], tasks: [] },
+      serverTime: 36_100,
+    } satisfies TaskSnapshotResponse;
+
+    await writeCachedTaskSnapshot(oldAccountSnapshot);
+    expect(await readCachedTaskSnapshot()).toEqual(oldAccountSnapshot);
+    await clearCachedTaskSnapshot();
+    expect(await readCachedTaskSnapshot()).toBeNull();
   });
 });
 

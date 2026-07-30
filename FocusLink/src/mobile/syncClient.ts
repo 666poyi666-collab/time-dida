@@ -3,7 +3,7 @@ import {
   type DeviceSyncMutation,
   type DeviceSyncResponse,
 } from '@shared/sync/deviceProtocol';
-import { isAllowedFocusLinkSyncEndpoint } from '@shared/sync/identityProtocol';
+import { isCanonicalFocusLinkDeviceConnection } from '@shared/sync/identityProtocol';
 import { readDeviceSyncJsonResponse } from '@shared/sync/httpTransport';
 import {
   LIVE_FOCUS_COMMAND_PATH,
@@ -239,9 +239,10 @@ function unreachableMobileServiceMessage(service: string): string {
 }
 
 function requireMobileCloudEndpoint(endpoint: string, accessToken = ''): void {
+  const token = accessToken.trim();
   if (
     new URL(endpoint).protocol !== 'https:' ||
-    !isAllowedFocusLinkSyncEndpoint(endpoint, accessToken.trim())
+    (token.length > 0 && !isCanonicalFocusLinkDeviceConnection(endpoint, token))
   ) {
     throw new Error('移动端只允许连接 HTTPS 云端同步服务');
   }

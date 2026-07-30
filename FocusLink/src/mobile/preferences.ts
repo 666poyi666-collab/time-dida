@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import {
   FOCUSLINK_CANONICAL_SYNC_ORIGIN,
-  isAllowedFocusLinkSyncEndpoint,
+  isCanonicalFocusLinkDeviceConnection,
 } from '@shared/sync/identityProtocol';
 
 const ENDPOINT_KEY = 'focuslink.mobile.endpoint';
@@ -27,6 +27,8 @@ export interface MobileAccountProfile {
   accountId: string;
   accountLabel: string;
 }
+
+export type MobileAccountPersistenceIssue = 'connection' | 'profile' | 'device';
 
 export function loadMobileAccountProfile(): MobileAccountProfile | null {
   const accountId = localStorage.getItem(ACCOUNT_ID_KEY)?.trim();
@@ -92,7 +94,8 @@ export function cloudOnlyMobileSyncEndpoint(endpoint: string, accessToken = ''):
       return '';
     }
     const normalized = url.toString().replace(/\/$/, '');
-    return isAllowedFocusLinkSyncEndpoint(normalized, accessToken) ? normalized : '';
+    const token = accessToken.trim();
+    return !token || isCanonicalFocusLinkDeviceConnection(normalized, token) ? normalized : '';
   } catch {
     return '';
   }
@@ -100,7 +103,7 @@ export function cloudOnlyMobileSyncEndpoint(endpoint: string, accessToken = ''):
 
 export function saveConnectionPreferences(value: MobileConnectionPreferences): void {
   const endpoint = cloudOnlyMobileSyncEndpoint(value.endpoint, value.token);
-  if (value.endpoint && !endpoint) {
+  if ((value.endpoint || value.token) && !endpoint) {
     throw new Error(`设备凭据只能连接 ${FOCUSLINK_CANONICAL_SYNC_ORIGIN}`);
   }
   localStorage.setItem(ENDPOINT_KEY, endpoint);
@@ -122,6 +125,32 @@ export function saveConnectionPreferences(value: MobileConnectionPreferences): v
     sessionStorage.setItem(TOKEN_SESSION_KEY, value.token);
     localStorage.removeItem(TOKEN_LOCAL_KEY);
   }
+}
+
+export function persistMobileAccountSessionBestEffort(
+  connection: MobileConnectionPreferences,
+  deviceId: string,
+  profile?: MobileAccountProfile,
+): MobileAccountPersistenceIssue[] {
+  const issues: MobileAccountPersistenceIssue[] = [];
+  try {
+    saveConnectionPreferences(connection);
+  } catch {
+    issues.push('connection');
+  }
+  if (profile) {
+    try {
+      saveMobileAccountProfile(profile);
+    } catch {
+      issues.push('profile');
+    }
+  }
+  try {
+    rememberAssignedDeviceId(deviceId);
+  } catch {
+    issues.push('device');
+  }
+  return issues;
 }
 
 export function clearSavedToken(): void {

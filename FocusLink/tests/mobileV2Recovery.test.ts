@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { FOCUSLINK_CANONICAL_SYNC_ORIGIN } from '../shared/sync/identityProtocol';
 import type { SyncV2Mutation } from '../shared/sync/v2Protocol';
 import {
   enqueueMobileV2Mutation,
@@ -14,6 +15,7 @@ import { runMobileSyncV2, validateMobileSyncV2ExchangeRequest } from '../src/mob
 const DATABASE_NAME = 'focuslink-mobile-preview';
 const OLD_DEVICE_ID = 'device-olddev1';
 const NEW_DEVICE_ID = 'device-newdev1';
+const OLD_TOKEN = `fl2_account-old_olddev1_${'o'.repeat(32)}`;
 const NEW_TOKEN = `fl2_account1_newdev1_${'x'.repeat(32)}`;
 
 describe('mobile canonical Sync v2 recovery', () => {
@@ -33,6 +35,7 @@ describe('mobile canonical Sync v2 recovery', () => {
       bootstrapId: null,
       cursor: 'c9',
       boundDeviceId: OLD_DEVICE_ID,
+      boundAccountId: 'account-old',
       syncEpoch: 'sync-epoch-1',
       cursorEpoch: 'cursor-epoch-1',
       accountGeneration: 1,
@@ -75,7 +78,7 @@ describe('mobile canonical Sync v2 recovery', () => {
     );
 
     await runMobileSyncV2({
-      endpoint: 'https://sync.example.test',
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
       token: NEW_TOKEN,
       deviceId: 'ignored-client-device-id',
     });
@@ -92,9 +95,58 @@ describe('mobile canonical Sync v2 recovery', () => {
     expect(await readMobileV2Bootstrap()).toMatchObject({
       state: 'v2-active',
       boundDeviceId: NEW_DEVICE_ID,
+      boundAccountId: 'account1',
       cursor: 'c0',
     });
     expect(await readMobileV2Status(NEW_DEVICE_ID)).toMatchObject({ pending: 0, rejected: 0 });
+  });
+
+  it('rejects an old account exchange inside the cache transaction after a new owner resets it', async () => {
+    let resolveOldExchange!: (response: Response) => void;
+    let oldExchangeStarted = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string | URL | Request, init?: RequestInit) => {
+        const parsed = new URL(typeof url === 'string' ? url : url instanceof URL ? url : url.url);
+        if (parsed.pathname === '/sync/v2/status') return Promise.resolve(json(status(0)));
+        const authorization = new Headers(init?.headers).get('authorization') ?? '';
+        if (authorization === `Bearer ${OLD_TOKEN}` && !oldExchangeStarted) {
+          oldExchangeStarted = true;
+          return new Promise<Response>((resolve) => {
+            resolveOldExchange = resolve;
+          });
+        }
+        return Promise.resolve(json(page()));
+      }),
+    );
+
+    const oldRun = runMobileSyncV2({
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+      token: OLD_TOKEN,
+      deviceId: 'ignored',
+    }).catch((error: unknown) => error);
+    await vi.waitFor(() => expect(oldExchangeStarted).toBe(true));
+
+    await runMobileSyncV2({
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+      token: NEW_TOKEN,
+      deviceId: 'ignored',
+    });
+    expect(await readMobileV2Bootstrap()).toMatchObject({
+      state: 'v2-active',
+      boundAccountId: 'account1',
+      boundDeviceId: NEW_DEVICE_ID,
+      cursor: 'c0',
+    });
+
+    resolveOldExchange(json(page()));
+    await expect(oldRun).resolves.toMatchObject({ name: 'AbortError' });
+    expect(await readMobileV2Bootstrap()).toMatchObject({
+      state: 'v2-active',
+      boundAccountId: 'account1',
+      boundDeviceId: NEW_DEVICE_ID,
+      cursor: 'c0',
+    });
   });
 
   it('rejects an ahead cursor without exchange or legacy fallback', async () => {
@@ -104,6 +156,7 @@ describe('mobile canonical Sync v2 recovery', () => {
       bootstrapId: null,
       cursor: 'c9',
       boundDeviceId: NEW_DEVICE_ID,
+      boundAccountId: 'account1',
       syncEpoch: 'sync-epoch-1',
       cursorEpoch: 'cursor-epoch-1',
       accountGeneration: 1,
@@ -120,7 +173,7 @@ describe('mobile canonical Sync v2 recovery', () => {
     );
     await expect(
       runMobileSyncV2({
-        endpoint: 'https://sync.example.test',
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
         token: NEW_TOKEN,
         deviceId: 'ignored',
       }),
@@ -140,7 +193,7 @@ describe('mobile canonical Sync v2 recovery', () => {
       }),
     );
     const error = await runMobileSyncV2({
-      endpoint: 'https://sync.example.test',
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
       token: NEW_TOKEN,
       deviceId: 'ignored',
     }).catch((caught: unknown) => caught);
@@ -188,7 +241,7 @@ describe('mobile canonical Sync v2 recovery', () => {
       }),
     );
     const error = await runMobileSyncV2({
-      endpoint: 'https://sync.example.test',
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
       token: NEW_TOKEN,
       deviceId: 'ignored',
     }).catch((caught: unknown) => caught);

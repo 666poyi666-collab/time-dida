@@ -5,6 +5,7 @@ import { APP_VERSION } from '@shared/version';
 import {
   FOCUSLINK_CANONICAL_SYNC_ORIGIN,
   FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
+  isFocusLinkDeviceAccessToken,
   type FocusLinkDeviceRegistrationRequest,
 } from '@shared/sync/identityProtocol';
 import {
@@ -44,7 +45,9 @@ export function getDeviceSyncAccountIdentity(): {
   accountLabel: string | null;
 } {
   const token = getDeviceSyncToken();
-  const match = token?.match(/^fl2_([A-Za-z0-9-]{6,80})_[A-Za-z0-9-]{6,80}_[A-Za-z0-9_-]{32,160}$/);
+  const match = isFocusLinkDeviceAccessToken(token ?? '')
+    ? token?.match(/^fl2_([A-Za-z0-9-]{6,80})_/)
+    : null;
   return {
     signedIn: Boolean(match),
     accountId: match?.[1] ?? null,
@@ -93,7 +96,7 @@ async function loginDeviceSyncAccountInternal(
   if (existing.signedIn) {
     assertCurrentLogin(generation, signal);
     enableOfficialSync();
-    return finishLogin();
+    return finishLogin(generation, signal);
   }
 
   const registration = registrationRequest();
@@ -126,7 +129,7 @@ async function loginDeviceSyncAccountInternal(
         deviceId: response.device.deviceId,
         expiresAt: response.device.expiresAt,
       });
-      return finishLogin();
+      return finishLogin(generation, signal);
     }
     if (response.status === 'login-required') {
       if (poll && (poll.flowId !== response.flowId || poll.pollToken !== response.pollToken)) {
@@ -160,17 +163,23 @@ async function loginDeviceSyncAccountInternal(
   throw new Error('登录等待超时，请重新点击登录');
 }
 
-async function finishLogin(): Promise<DeviceSyncAccountLoginResult> {
+async function finishLogin(
+  generation: number,
+  signal: AbortSignal,
+): Promise<DeviceSyncAccountLoginResult> {
+  assertCurrentLogin(generation, signal);
   let sync: Awaited<ReturnType<typeof runDeviceSync>> | null = null;
   let syncError: string | null = null;
   try {
     sync = await runDeviceSync();
   } catch (error) {
+    assertCurrentLogin(generation, signal);
     syncError = error instanceof Error ? error.message : String(error);
     logger.warn('deviceSyncAccount', 'initial sync remains pending after sign-in', {
       error: syncError,
     });
   }
+  assertCurrentLogin(generation, signal);
   return { status: getDeviceSyncStatus(), sync, syncError };
 }
 
