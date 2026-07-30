@@ -3,6 +3,7 @@ import {
   type DeviceSyncMutation,
   type DeviceSyncResponse,
 } from '@shared/sync/deviceProtocol';
+import { isAllowedFocusLinkSyncEndpoint } from '@shared/sync/identityProtocol';
 import { readDeviceSyncJsonResponse } from '@shared/sync/httpTransport';
 import {
   LIVE_FOCUS_COMMAND_PATH,
@@ -189,7 +190,7 @@ async function liveFocusFetch(
   timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
-  requireMobileCloudEndpoint(endpoint);
+  requireMobileCloudEndpoint(endpoint, input.token);
   const token = input.token.trim();
   if (!token) throw new Error('请先登录 FocusLink 账号');
 
@@ -237,8 +238,11 @@ function unreachableMobileServiceMessage(service: string): string {
   return `无法连接${service}，请检查 HTTPS 地址、CORS 或网络`;
 }
 
-function requireMobileCloudEndpoint(endpoint: string): void {
-  if (new URL(endpoint).protocol !== 'https:') {
+function requireMobileCloudEndpoint(endpoint: string, accessToken = ''): void {
+  if (
+    new URL(endpoint).protocol !== 'https:' ||
+    !isAllowedFocusLinkSyncEndpoint(endpoint, accessToken.trim())
+  ) {
     throw new Error('移动端只允许连接 HTTPS 云端同步服务');
   }
 }

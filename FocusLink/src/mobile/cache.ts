@@ -422,6 +422,14 @@ export async function writeCachedTaskSnapshot(snapshot: TaskSnapshotResponse): P
   database.close();
 }
 
+export async function clearCachedTaskSnapshot(): Promise<void> {
+  const database = await openDatabase();
+  const transaction = database.transaction(META_STORE, 'readwrite');
+  transaction.objectStore(META_STORE).delete(TASK_SNAPSHOT_KEY);
+  await transactionDone(transaction);
+  database.close();
+}
+
 function validateChanges(changes: readonly DeviceSyncChange[]): void {
   let previousSequence = -1;
   for (const change of changes) {

@@ -4,6 +4,7 @@ import {
   type DeviceSyncSessionBundle,
 } from '@shared/sync/deviceProtocol';
 import { splitBundleForSyncV2, type SyncV2Mutation } from '@shared/sync/v2Protocol';
+import { isAllowedFocusLinkSyncEndpoint } from '@shared/sync/identityProtocol';
 import type { CachedBundle } from './cache';
 import {
   formatClockDuration,
@@ -260,6 +261,9 @@ export async function configureNativeFocusConnection(
   deviceId: string,
 ): Promise<void> {
   if (!isNativeFocusRuntimeAvailable()) return;
+  if (!isAllowedFocusLinkSyncEndpoint(endpoint, accessToken.trim())) {
+    throw new Error('设备凭据只能连接 FocusLink 官方同步服务');
+  }
   await FocusRuntime.configureConnection({ endpoint, accessToken, deviceId });
 }
 

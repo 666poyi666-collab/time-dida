@@ -4,6 +4,34 @@ export const FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION = 1 as const;
 export const FOCUSLINK_CANONICAL_SYNC_ORIGIN =
   'https://foxlink-mcp.focuslink-poyi-6465e9.workers.dev' as const;
 
+const FOCUSLINK_DEVICE_ACCESS_TOKEN_PATTERN =
+  /^fl2_[A-Za-z0-9-]{6,80}_[A-Za-z0-9-]{6,80}_[A-Za-z0-9_-]{32,160}$/;
+
+export function isFocusLinkDeviceAccessToken(value: string): boolean {
+  return FOCUSLINK_DEVICE_ACCESS_TOKEN_PATTERN.test(value);
+}
+
+export function isCanonicalFocusLinkSyncEndpoint(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      url.username === '' &&
+      url.password === '' &&
+      url.search === '' &&
+      url.hash === '' &&
+      url.toString().replace(/\/$/, '') === FOCUSLINK_CANONICAL_SYNC_ORIGIN
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Explicit test credentials may use an injected HTTPS authority; production fl2 credentials may not. */
+export function isAllowedFocusLinkSyncEndpoint(value: string, accessToken: string): boolean {
+  return !isFocusLinkDeviceAccessToken(accessToken) || isCanonicalFocusLinkSyncEndpoint(value);
+}
+
 export const FOCUSLINK_ENROLLED_DEVICE_SCOPES = [
   'sync:read',
   'sync:write',
@@ -98,7 +126,7 @@ export function validateFocusLinkDeviceRegistrationResponse(
     typeof value.deviceId === 'string' &&
     /^device-[A-Za-z0-9-]{6,194}$/.test(value.deviceId) &&
     typeof value.accessToken === 'string' &&
-    /^fl2_[A-Za-z0-9-]{6,80}_[A-Za-z0-9-]{6,80}_[A-Za-z0-9_-]{32,160}$/.test(value.accessToken) &&
+    isFocusLinkDeviceAccessToken(value.accessToken) &&
     value.tokenType === 'Bearer' &&
     hasExactEnrolledScopes(value.scopes) &&
     Number.isSafeInteger(value.expiresAt) &&

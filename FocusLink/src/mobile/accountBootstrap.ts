@@ -50,11 +50,22 @@ let pendingHttpFlow: {
   expiresAt: number;
   nextPollAt: number;
 } | null = null;
+let httpRequestGeneration = 0;
+let httpRequestController: AbortController | null = null;
+let httpRequestInFlight: Promise<OwnerAccountBootstrapResult> | null = null;
 
 /** Tests and native companion integrations may replace only the account bootstrap transport. */
 export function setOwnerAccountBootstrapApi(api: OwnerAccountBootstrapApi | null): void {
+  invalidateOwnerAccountBootstrap();
   injectedApi = api;
-  if (!api) pendingHttpFlow = null;
+}
+
+export function invalidateOwnerAccountBootstrap(): void {
+  httpRequestGeneration += 1;
+  httpRequestController?.abort();
+  httpRequestController = null;
+  httpRequestInFlight = null;
+  pendingHttpFlow = null;
 }
 
 export function ownerAccountBootstrapApi(): OwnerAccountBootstrapApi {
@@ -95,7 +106,30 @@ export async function openOwnerLogin(loginUrl: string): Promise<void> {
 }
 
 const HTTP_OWNER_ACCOUNT_BOOTSTRAP: OwnerAccountBootstrapApi = {
-  async bootstrap(input) {
+  bootstrap(input) {
+    if (httpRequestInFlight) return httpRequestInFlight;
+    const generation = ++httpRequestGeneration;
+    const controller = new AbortController();
+    httpRequestController = controller;
+    const operation = bootstrapOwnerAccountHttp(input, generation, controller.signal).finally(() => {
+      if (httpRequestInFlight === operation) httpRequestInFlight = null;
+      if (httpRequestController === controller) httpRequestController = null;
+    });
+    httpRequestInFlight = operation;
+    return operation;
+  },
+};
+
+async function bootstrapOwnerAccountHttp(
+  input: {
+    installationId: string;
+    deviceKind: OwnerDeviceKind;
+    displayName: string;
+    callbackUrl?: string;
+  },
+  generation: number,
+  signal: AbortSignal,
+): Promise<OwnerAccountBootstrapResult> {
     const endpoint = officialFocusLinkEndpoint();
     const platform: FocusLinkDevicePlatform = Capacitor.isNativePlatform() ? 'android' : 'web';
     const deviceKind: FocusLinkDeviceKind = input.deviceKind === 'web' ? 'phone' : input.deviceKind;
@@ -134,7 +168,8 @@ const HTTP_OWNER_ACCOUNT_BOOTSTRAP: OwnerAccountBootstrapApi = {
             appVersion: APP_VERSION,
           },
         };
-    const result = await requestOwnerBootstrap(endpoint, request);
+    const result = await requestOwnerBootstrap(endpoint, request, signal);
+    assertCurrentHttpRequest(generation, signal);
 
     if (result.status === 'authenticated') {
       if (!activeFlow) {
@@ -179,16 +214,20 @@ const HTTP_OWNER_ACCOUNT_BOOTSTRAP: OwnerAccountBootstrapApi = {
       status: 'waiting-for-phone',
       retryAfterMs: result.retryAfterMs,
     };
-  },
-};
+}
 
-async function requestOwnerBootstrap(endpoint: string, request: FocusLinkAccountBootstrapRequest) {
+async function requestOwnerBootstrap(
+  endpoint: string,
+  request: FocusLinkAccountBootstrapRequest,
+  signal: AbortSignal,
+) {
   const response = await fetch(`${endpoint}${OWNER_DEVICE_BOOTSTRAP_PATH}`, {
     method: 'POST',
     credentials: 'omit',
     headers: { accept: 'application/json', 'content-type': 'application/json' },
     redirect: 'error',
     body: JSON.stringify(request),
+    signal,
   });
   const body = (await response.json().catch(() => null)) as unknown;
   if (!response.ok) {
@@ -200,6 +239,12 @@ async function requestOwnerBootstrap(endpoint: string, request: FocusLinkAccount
   const parsed = parseFocusLinkAccountBootstrapResponse(body);
   if (!parsed) throw new Error('登录服务响应无效');
   return parsed;
+}
+
+function assertCurrentHttpRequest(generation: number, signal: AbortSignal): void {
+  if (signal.aborted || generation !== httpRequestGeneration) {
+    throw new DOMException('account bootstrap invalidated', 'AbortError');
+  }
 }
 
 function makePendingFlow(

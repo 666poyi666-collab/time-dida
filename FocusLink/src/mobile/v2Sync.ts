@@ -17,6 +17,7 @@ import {
   type SyncV2Response,
 } from '@shared/sync/v2Protocol';
 import { readDeviceSyncJsonResponse } from '@shared/sync/httpTransport';
+import { FOCUSLINK_CANONICAL_SYNC_ORIGIN } from '@shared/sync/identityProtocol';
 import {
   SyncV2ClientError,
   classifySyncV2Error,
@@ -86,8 +87,8 @@ export async function runMobileSyncV2(input: MobileSyncV2Input): Promise<MobileS
 async function runMobileSyncV2Internal(input: MobileSyncV2Input): Promise<MobileSyncV2Result> {
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
   const routed = parseDeviceToken(input.token.trim());
-  if (new URL(endpoint).protocol !== 'https:') {
-    throw new Error('canonical Sync v2 移动端只接受 HTTPS 云端 authority');
+  if (endpoint !== FOCUSLINK_CANONICAL_SYNC_ORIGIN) {
+    throw new Error('canonical Sync v2 移动端只接受 FocusLink 官方 authority');
   }
   if (!routed) {
     throw new Error('canonical Sync v2 只接受通过设备配对签发的 fl2 凭据');

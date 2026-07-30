@@ -1,4 +1,8 @@
 import { Capacitor } from '@capacitor/core';
+import {
+  FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+  isAllowedFocusLinkSyncEndpoint,
+} from '@shared/sync/identityProtocol';
 
 const ENDPOINT_KEY = 'focuslink.mobile.endpoint';
 const TOKEN_SESSION_KEY = 'focuslink.mobile.token.session';
@@ -43,13 +47,16 @@ export function clearMobileAccountProfile(): void {
 
 export function loadConnectionPreferences(): MobileConnectionPreferences {
   const rememberToken = localStorage.getItem(REMEMBER_TOKEN_KEY) === 'true';
+  const token = rememberToken
+    ? (localStorage.getItem(TOKEN_LOCAL_KEY) ?? '')
+    : (sessionStorage.getItem(TOKEN_SESSION_KEY) ?? '');
   const storedEndpoint = localStorage.getItem(ENDPOINT_KEY);
   const endpointBeforeRetirement =
     storedEndpoint ??
     (Capacitor.isNativePlatform()
       ? configuredNativeEndpoint(import.meta.env.VITE_FOCUSLINK_ENDPOINT)
       : '');
-  const endpoint = cloudOnlyMobileSyncEndpoint(endpointBeforeRetirement);
+  const endpoint = cloudOnlyMobileSyncEndpoint(endpointBeforeRetirement, token);
   if (storedEndpoint !== null && endpoint !== storedEndpoint) {
     // Old Android installs may retain a localhost/ADB or LAN HTTP endpoint. Do
     // not silently reconnect it: PC-off mobile mode is HTTPS authority-only.
@@ -65,15 +72,13 @@ export function loadConnectionPreferences(): MobileConnectionPreferences {
     // Storage. Keep that value available until the caller has durably migrated
     // it into Android Keystore. saveConnectionPreferences removes both browser
     // copies only after that native write succeeds.
-    token: rememberToken
-      ? (localStorage.getItem(TOKEN_LOCAL_KEY) ?? '')
-      : (sessionStorage.getItem(TOKEN_SESSION_KEY) ?? ''),
+    token,
     rememberToken,
   };
 }
 
 /** Mobile data-plane endpoints are cloud HTTPS only; loopback/LAN HTTP has no fallback role. */
-export function cloudOnlyMobileSyncEndpoint(endpoint: string): string {
+export function cloudOnlyMobileSyncEndpoint(endpoint: string, accessToken = ''): string {
   try {
     const url = new URL(endpoint);
     if (
@@ -86,14 +91,19 @@ export function cloudOnlyMobileSyncEndpoint(endpoint: string): string {
     ) {
       return '';
     }
-    return url.toString().replace(/\/$/, '');
+    const normalized = url.toString().replace(/\/$/, '');
+    return isAllowedFocusLinkSyncEndpoint(normalized, accessToken) ? normalized : '';
   } catch {
     return '';
   }
 }
 
 export function saveConnectionPreferences(value: MobileConnectionPreferences): void {
-  localStorage.setItem(ENDPOINT_KEY, value.endpoint);
+  const endpoint = cloudOnlyMobileSyncEndpoint(value.endpoint, value.token);
+  if (value.endpoint && !endpoint) {
+    throw new Error(`设备凭据只能连接 ${FOCUSLINK_CANONICAL_SYNC_ORIGIN}`);
+  }
+  localStorage.setItem(ENDPOINT_KEY, endpoint);
   if (Capacitor.isNativePlatform()) {
     // Native callers must persist the credential through FocusRuntime before
     // invoking this function. This is the commit point that removes the legacy

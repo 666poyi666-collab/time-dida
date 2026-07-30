@@ -35,6 +35,8 @@ const LOGIN_TIMEOUT_MS = 5 * 60_000;
 const REQUEST_TIMEOUT_MS = 15_000;
 
 let loginInFlight: Promise<DeviceSyncAccountLoginResult> | null = null;
+let loginGeneration = 0;
+let loginAbortController: AbortController | null = null;
 
 export function getDeviceSyncAccountIdentity(): {
   signedIn: boolean;
@@ -53,14 +55,22 @@ export function getDeviceSyncAccountIdentity(): {
 
 export function loginDeviceSyncAccount(): Promise<DeviceSyncAccountLoginResult> {
   if (loginInFlight) return loginInFlight;
-  const operation = loginDeviceSyncAccountInternal().finally(() => {
+  const generation = ++loginGeneration;
+  const controller = new AbortController();
+  loginAbortController = controller;
+  const operation = loginDeviceSyncAccountInternal(generation, controller.signal).finally(() => {
     if (loginInFlight === operation) loginInFlight = null;
+    if (loginAbortController === controller) loginAbortController = null;
   });
   loginInFlight = operation;
   return operation;
 }
 
 export function logoutDeviceSyncAccount(): void {
+  loginGeneration += 1;
+  loginAbortController?.abort();
+  loginAbortController = null;
+  loginInFlight = null;
   invalidateDeviceSyncConnection();
   setDeviceSyncToken(null);
   updateSettings({
@@ -74,9 +84,14 @@ export function logoutDeviceSyncAccount(): void {
   logger.info('deviceSyncAccount', 'owner account signed out on this device');
 }
 
-async function loginDeviceSyncAccountInternal(): Promise<DeviceSyncAccountLoginResult> {
+async function loginDeviceSyncAccountInternal(
+  generation: number,
+  signal: AbortSignal,
+): Promise<DeviceSyncAccountLoginResult> {
+  assertCurrentLogin(generation, signal);
   const existing = getDeviceSyncAccountIdentity();
   if (existing.signedIn) {
+    assertCurrentLogin(generation, signal);
     enableOfficialSync();
     return finishLogin();
   }
@@ -91,7 +106,8 @@ async function loginDeviceSyncAccountInternal(): Promise<DeviceSyncAccountLoginR
   let poll: FocusLinkAccountBootstrapPollRequest | null = null;
   let openedLogin = false;
   while (Date.now() < deadline) {
-    const response = await requestBootstrap(request);
+    const response = await requestBootstrap(request, signal);
+    assertCurrentLogin(generation, signal);
     logger.debug(
       'deviceSyncAccount',
       'owner bootstrap response received',
@@ -101,6 +117,7 @@ async function loginDeviceSyncAccountInternal(): Promise<DeviceSyncAccountLoginR
       if (!openedLogin || !poll) {
         throw new Error('登录服务未完成管理员授权，已拒绝设备凭据');
       }
+      assertCurrentLogin(generation, signal);
       invalidateDeviceSyncConnection();
       setDeviceSyncToken(response.device.accessToken);
       enableOfficialSync();
@@ -124,6 +141,7 @@ async function loginDeviceSyncAccountInternal(): Promise<DeviceSyncAccountLoginR
       request = poll;
       if (!openedLogin) {
         await shell.openExternal(response.loginUrl);
+        assertCurrentLogin(generation, signal);
         openedLogin = true;
         logger.info('deviceSyncAccount', 'owner sign-in opened in system browser', {
           loginOrigin: new URL(response.loginUrl).origin,
@@ -136,7 +154,8 @@ async function loginDeviceSyncAccountInternal(): Promise<DeviceSyncAccountLoginR
       }
       request = poll;
     }
-    await wait(response.retryAfterMs);
+    await wait(response.retryAfterMs, signal);
+    assertCurrentLogin(generation, signal);
   }
   throw new Error('登录等待超时，请重新点击登录');
 }
@@ -195,8 +214,12 @@ function cleanDeviceName(value: string): string {
 
 async function requestBootstrap(
   request: FocusLinkAccountBootstrapRequest,
+  parentSignal: AbortSignal,
 ): Promise<FocusLinkAccountBootstrapResponse> {
   const controller = new AbortController();
+  const abortFromParent = () => controller.abort(parentSignal.reason);
+  if (parentSignal.aborted) abortFromParent();
+  else parentSignal.addEventListener('abort', abortFromParent, { once: true });
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(
@@ -224,16 +247,33 @@ async function requestBootstrap(
     return parsed;
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
+      if (parentSignal.aborted) throw new Error('登录已取消');
       throw new Error('登录服务请求超时');
     }
     throw error;
   } finally {
     clearTimeout(timeout);
+    parentSignal.removeEventListener('abort', abortFromParent);
   }
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function wait(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(new Error('登录已取消'));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    }, ms);
+    const abort = () => {
+      clearTimeout(timer);
+      reject(new Error('登录已取消'));
+    };
+    signal.addEventListener('abort', abort, { once: true });
+  });
+}
+
+function assertCurrentLogin(generation: number, signal: AbortSignal): void {
+  if (signal.aborted || generation !== loginGeneration) throw new Error('登录已取消');
 }
 
 function readBootstrapError(value: unknown): string {
