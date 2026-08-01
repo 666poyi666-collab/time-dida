@@ -50,13 +50,15 @@ describe('mobile Sync v2 persistence', () => {
   beforeEach(deleteDatabase);
 
   it('claims with a lease, retries after a failure and settles atomically', async () => {
-    await enqueueMobileV2Mutation(mutation, 1);
-    const first = await claimMobileV2Outbox('phone', 10, 2);
+    const owner = checkpoint('c0', 'phone');
+    await writeMobileV2Bootstrap(owner);
+    await enqueueMobileV2Mutation(mutation, owner, 1);
+    const first = await claimMobileV2Outbox(owner, 10, 2);
     expect(first.items).toHaveLength(1);
     expect(first.items[0].state).toBe('uploading');
     expect(await retryMobileV2Lease(first.leaseId, 'network', 10, 3)).toBe(1);
-    expect((await claimMobileV2Outbox('phone', 10, 9)).items).toHaveLength(0);
-    const second = await claimMobileV2Outbox('phone', 10, 10);
+    expect((await claimMobileV2Outbox(owner, 10, 9)).items).toHaveLength(0);
+    const second = await claimMobileV2Outbox(owner, 10, 10);
     expect(
       await settleMobileV2Ack({
         leaseId: second.leaseId,
@@ -75,7 +77,7 @@ describe('mobile Sync v2 persistence', () => {
         now: 11,
       }),
     ).toBe(true);
-    expect((await claimMobileV2Outbox('phone', 10, 12)).items).toHaveLength(0);
+    expect((await claimMobileV2Outbox(owner, 10, 12)).items).toHaveLength(0);
   });
 
   it('persists a standalone delete ACK as a tombstone', async () => {
@@ -86,8 +88,10 @@ describe('mobile Sync v2 persistence', () => {
       kind: 'delete',
       payload: null,
     };
-    await enqueueMobileV2Mutation(deleted, 1);
-    const claimed = await claimMobileV2Outbox('phone', 1, 2);
+    const owner = checkpoint('c0', 'phone');
+    await writeMobileV2Bootstrap(owner);
+    await enqueueMobileV2Mutation(deleted, owner, 1);
+    const claimed = await claimMobileV2Outbox(owner, 1, 2);
     await expect(
       settleMobileV2Ack({
         leaseId: claimed.leaseId,
@@ -109,6 +113,43 @@ describe('mobile Sync v2 persistence', () => {
       deleted: true,
       baseSnapshot: null,
     });
+  });
+
+  it('rejects an ACK whose lease, device or epoch no longer matches the owner', async () => {
+    const owner = checkpoint('c0', 'phone');
+    await writeMobileV2Bootstrap(owner);
+    await enqueueMobileV2Mutation(mutation, owner, 1);
+    const claimed = await claimMobileV2Outbox(owner, 1, 2);
+    const ack = {
+      opId: mutation.opId,
+      entityType: mutation.entityType,
+      entityId: mutation.entityId,
+      status: 'applied' as const,
+      revision: 1,
+      fingerprint: fingerprintDeviceSyncValue(payload),
+      errorCode: null,
+    };
+    const epoch = { syncEpoch: 's1', cursorEpoch: 'c1', accountGeneration: 1 };
+    await expect(
+      settleMobileV2Ack({ leaseId: 'other-lease', deviceId: 'phone', payload, ack, epoch }),
+    ).resolves.toBe(false);
+    await expect(
+      settleMobileV2Ack({ leaseId: claimed.leaseId, deviceId: 'other-device', payload, ack, epoch }),
+    ).resolves.toBe(false);
+    await expect(
+      settleMobileV2Ack({
+        leaseId: claimed.leaseId,
+        deviceId: 'phone',
+        payload,
+        ack,
+        epoch: { ...epoch, accountGeneration: 2 },
+      }),
+    ).resolves.toBe(false);
+    expect(await readMobileV2Status('phone')).toMatchObject({ pending: 1 });
+    await expect(
+      settleMobileV2Ack({ leaseId: claimed.leaseId, deviceId: 'phone', payload, ack, epoch }),
+    ).resolves.toBe(true);
+    expect(await readMobileV2Status('phone')).toMatchObject({ pending: 0 });
   });
 
   it('persists the explicit bootstrap migration state', async () => {
@@ -137,9 +178,11 @@ describe('mobile Sync v2 persistence', () => {
       entityId: 'mobile-atomic',
       payload: { ...payload, sessionId: 'mobile-atomic' },
     };
-    await enqueueMobileV2Mutation(atomicMutation, 100);
-    const claimed = await claimMobileV2Outbox('phone', 1, 100);
-    const checkpoint = {
+    const owner = checkpoint('c0', 'phone');
+    await writeMobileV2Bootstrap(owner);
+    await enqueueMobileV2Mutation(atomicMutation, owner, 100);
+    const claimed = await claimMobileV2Outbox(owner, 1, 100);
+    const nextCheckpoint = {
       key: 'syncV2.bootstrap' as const,
       state: 'v2-active' as const,
       bootstrapId: null,
@@ -151,7 +194,7 @@ describe('mobile Sync v2 persistence', () => {
       accountGeneration: 1,
       updatedAt: 101,
     };
-    await writeMobileV2Bootstrap({ ...checkpoint, cursor: 'c0' });
+    await writeMobileV2Bootstrap({ ...nextCheckpoint, cursor: 'c0' });
     const invalidLedger: SyncV2Change = {
       changeSeq: 1,
       entityType: 'focus_ledger_v2',
@@ -166,7 +209,7 @@ describe('mobile Sync v2 persistence', () => {
     await expect(
       applyMobileV2ChangesAndCheckpoint({
         changes: [invalidLedger],
-        checkpoint,
+        checkpoint: nextCheckpoint,
         serverTime: 102,
         deviceId: atomicMutation.deviceId,
         leaseId: claimed.leaseId,
@@ -186,31 +229,47 @@ describe('mobile Sync v2 persistence', () => {
 
     expect(await readMobileV2EntityState('focus_metadata_v2', 'mobile-atomic')).toBeNull();
     expect(await readMobileV2Status('phone')).toMatchObject({ pending: 1 });
-    expect((await claimMobileV2Outbox('phone', 1, 100 + 30_001)).items).toHaveLength(1);
+    expect(
+      (await claimMobileV2Outbox({ ...nextCheckpoint, cursor: 'c0' }, 1, 100 + 30_001)).items,
+    ).toHaveLength(1);
     expect((await readMobileV2Bootstrap())?.cursor).not.toBe('c1');
   });
 
   it('keeps opId idempotent and rejects the same opId with a different payload', async () => {
-    await enqueueMobileV2Mutation(mutation, 1);
-    await enqueueMobileV2Mutation(mutation, 2);
+    const owner = checkpoint('c0', 'phone');
+    await writeMobileV2Bootstrap(owner);
+    await enqueueMobileV2Mutation(mutation, owner, 1);
+    await enqueueMobileV2Mutation(mutation, owner, 2);
     await expect(
-      enqueueMobileV2Mutation({
-        ...mutation,
-        payload: { ...payload, title: '不同内容' },
-      }),
+      enqueueMobileV2Mutation(
+        {
+          ...mutation,
+          payload: { ...payload, title: '不同内容' },
+        },
+        owner,
+      ),
     ).rejects.toThrow('同一 Sync v2 opId 对应了不同 payload');
-    expect((await claimMobileV2Outbox('phone', 10, 3)).items).toHaveLength(1);
+    expect((await claimMobileV2Outbox(owner, 10, 3)).items).toHaveLength(1);
   });
 
   it('archives old-device outbox rows and never leases them to a rebound credential', async () => {
-    await enqueueMobileV2Mutation({ ...mutation, opId: 'old-op', deviceId: 'old-phone' }, 1);
-    await enqueueMobileV2Mutation({ ...mutation, opId: 'current-op' }, 2);
-    await resetMobileV2Epoch(checkpoint('c0', 'phone'), null);
+    const oldOwner = checkpoint('c0', 'old-phone');
+    await writeMobileV2Bootstrap(oldOwner);
+    await enqueueMobileV2Mutation(
+      { ...mutation, opId: 'old-op', deviceId: 'old-phone' },
+      oldOwner,
+      1,
+    );
+    const currentOwner = checkpoint('c0', 'phone');
+    await resetMobileV2Epoch(currentOwner, oldOwner);
+    await enqueueMobileV2Mutation({ ...mutation, opId: 'current-op' }, currentOwner, 2);
 
-    expect((await claimMobileV2Outbox('phone', 10, 3)).items.map((item) => item.opId)).toEqual([
-      'current-op',
-    ]);
-    expect((await claimMobileV2Outbox('old-phone', 10, 3)).items).toHaveLength(0);
+    expect((await claimMobileV2Outbox(currentOwner, 10, 3)).items.map((item) => item.opId)).toEqual(
+      ['current-op'],
+    );
+    await expect(claimMobileV2Outbox(oldOwner, 10, 3)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
     expect(await readMobileV2OperationHistory()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -220,6 +279,30 @@ describe('mobile Sync v2 persistence', () => {
         }),
       ]),
     );
+  });
+
+  it('rejects an old account enqueue after a newer owner committed its checkpoint', async () => {
+    const oldOwner = {
+      ...checkpoint('c1', 'device-old'),
+      boundAccountId: 'account-old',
+    };
+    await writeMobileV2Bootstrap(oldOwner);
+    const newOwner = {
+      ...checkpoint('c0', 'device-new'),
+      boundAccountId: 'account-new',
+      syncEpoch: 'sync-new',
+      cursorEpoch: 'cursor-new',
+    };
+    await resetMobileV2Epoch(newOwner, oldOwner);
+
+    await expect(
+      enqueueMobileV2Mutation(
+        { ...mutation, opId: 'released-old-enqueue', deviceId: 'device-old' },
+        oldOwner,
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(await readMobileV2Status('device-new')).toMatchObject({ pending: 0 });
+    expect(await readMobileV2Bootstrap()).toEqual(newOwner);
   });
 
   it('uses a transaction CAS so an old account cannot reset a newer bootstrap owner', async () => {

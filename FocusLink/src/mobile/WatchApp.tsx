@@ -27,12 +27,20 @@ import {
   ownerAccountBootstrapApi,
   type OwnerAccountSession,
 } from './accountBootstrap';
-import { createMobileAccountLifecycle, mobileAccountConnectionKey } from './accountLifecycle';
+import {
+  createMobileAccountLifecycle,
+  createMobileAccountRequestLifecycle,
+  mobileAccountConnectionKey,
+  runMobileAccountCommit,
+} from './accountLifecycle';
 import { createTaskSnapshotRequestLifecycle } from './taskSnapshotRefresh';
 import {
   configureNativeFocusConnection,
   isNativeFocusRuntimeAvailable,
+  readNativeFocusConnectionState,
+  restoreNativeFocusConnectionState,
   restoreOrMigrateNativeFocusConnection,
+  type NativeFocusConnectionState,
 } from './nativeFocusRuntime';
 import {
   getOrCreateDeviceId,
@@ -112,23 +120,27 @@ export function WatchApp() {
   const connectionKeyRef = useRef(mobileAccountConnectionKey(preferences));
   const taskSnapshotRef = useRef<TaskSnapshotResponse | null>(null);
   const taskRequests = useRef(createTaskSnapshotRequestLifecycle()).current;
+  const commandRequests = useRef(createMobileAccountRequestLifecycle()).current;
 
   const resetConnectionScopedState = useCallback(() => {
     taskRequests.invalidate();
+    commandRequests.invalidate();
     taskSnapshotRef.current = null;
     snapshotRef.current = null;
     setTasks([]);
     setSelectedTask(null);
     setSnapshot(null);
-  }, [taskRequests]);
+    setBusy(false);
+  }, [commandRequests, taskRequests]);
 
   useEffect(
     () => () => {
       accountLifecycle.invalidate();
       invalidateOwnerAccountBootstrap();
       taskRequests.invalidate();
+      commandRequests.invalidate();
     },
-    [accountLifecycle, taskRequests],
+    [accountLifecycle, commandRequests, taskRequests],
   );
 
   // Restore the Keystore credential on every native launch. For an upgrade
@@ -287,15 +299,37 @@ export function WatchApp() {
       ) {
         throw new Error('登录服务返回的手表设备身份无效');
       }
-      await accountLifecycle.enqueueNative(() =>
-        configureNativeFocusConnection(next.endpoint, next.token, session.deviceId),
+      const transition = await runMobileAccountCommit(
+        accountLifecycle,
+        operation,
+        {
+          read: readNativeFocusConnectionState,
+          async mutate(baseline): Promise<NativeFocusConnectionState> {
+            const connection = await configureNativeFocusConnection(
+              next.endpoint,
+              next.token,
+              session.deviceId,
+              baseline.connectionLease,
+            );
+            return {
+              connection,
+              connectionLease: connection?.connectionLease ?? null,
+            };
+          },
+          async restore(baseline, applied) {
+            await restoreNativeFocusConnectionState(baseline, applied.connectionLease);
+          },
+        },
+        async () => {
+          if (mobileAccountConnectionKey(next) !== connectionKeyRef.current) {
+            resetConnectionScopedState();
+          }
+          return [];
+        },
       );
-      if (!accountLifecycle.isCurrent(operation)) return false;
+      if (!transition.current) return false;
       const nextConnectionKey = mobileAccountConnectionKey(next);
-      const connectionChanged = nextConnectionKey !== connectionKeyRef.current;
       connectionKeyRef.current = nextConnectionKey;
-      if (connectionChanged) resetConnectionScopedState();
-      if (!accountLifecycle.isCurrent(operation)) return false;
       const persistenceIssues = persistMobileAccountSessionBestEffort(next, session.deviceId);
       setDeviceId(session.deviceId);
       preferencesRef.current = next;
@@ -349,6 +383,8 @@ export function WatchApp() {
       const current = snapshotRef.current;
       const prefs = preferencesRef.current;
       if (!current || !prefs.endpoint || !prefs.token || busy) return;
+      const sourceConnectionKey = mobileAccountConnectionKey(prefs);
+      const request = commandRequests.issue(sourceConnectionKey);
       const commandId = `command_${crypto.randomUUID()}`;
       const command: LiveFocusCommand =
         action === 'start'
@@ -380,15 +416,21 @@ export function WatchApp() {
           token: prefs.token,
           deviceId,
           command,
+          signal: request.signal,
         });
+        if (!request.isCurrent() || connectionKeyRef.current !== sourceConnectionKey) return;
         setSnapshot(mapSnapshot(response, Date.now()));
       } catch {
-        setNotice('指令未送达，请重试');
+        if (request.isCurrent() && connectionKeyRef.current === sourceConnectionKey) {
+          setNotice('指令未送达，请重试');
+        }
       } finally {
-        setBusy(false);
+        const shouldClear = request.isCurrent() && connectionKeyRef.current === sourceConnectionKey;
+        request.finish();
+        if (shouldClear) setBusy(false);
       }
     },
-    [busy, deviceId, selectedTask],
+    [busy, commandRequests, deviceId, selectedTask],
   );
 
   const state = snapshot?.state ?? 'idle';

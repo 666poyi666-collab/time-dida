@@ -150,16 +150,8 @@ async function runMobileSyncV2Internal(input: MobileSyncV2Input): Promise<Mobile
     assertNotAborted(connection.signal);
   }
 
-  await enqueueLegacyPendingBundles(
-    connection.deviceId,
-    checkpoint.accountGeneration,
-    connection.signal,
-  );
-  await enqueueChangedCachedEntities(
-    connection.deviceId,
-    checkpoint.accountGeneration,
-    connection.signal,
-  );
+  await enqueueLegacyPendingBundles(checkpoint, connection.signal);
+  await enqueueChangedCachedEntities(checkpoint, connection.signal);
   checkpoint = await drain(connection, checkpoint, result, true);
   assertNotAborted(connection.signal);
   await removeConfirmedLegacyPending(connection.deviceId, connection.signal);
@@ -194,7 +186,7 @@ async function drain(
   for (let page = 0; page < MAX_PAGES_PER_RUN; page += 1) {
     assertNotAborted(connection.signal);
     const claimed = allowPush
-      ? await claimMobileV2Outbox(connection.deviceId, 1)
+      ? await claimMobileV2Outbox(checkpoint, 1)
       : { leaseId: '', items: [] };
     let response: SyncV2Response;
     try {
@@ -249,10 +241,11 @@ async function drain(
 }
 
 async function enqueueLegacyPendingBundles(
-  deviceId: string,
-  generation: number,
+  checkpoint: MobileV2BootstrapCheckpoint,
   signal?: AbortSignal,
 ): Promise<void> {
+  const deviceId = checkpoint.boundDeviceId;
+  const generation = checkpoint.accountGeneration;
   const records = await readPendingDeviceSyncBundles();
   assertNotAborted(signal);
   for (const record of records) {
@@ -273,25 +266,29 @@ async function enqueueLegacyPendingBundles(
       const fingerprint = fingerprintDeviceSyncValue({ deleted: false, payload: entity.payload });
       if (state?.confirmedFingerprint === fingerprint) continue;
       const baseRevision = state?.confirmedRevision ?? 0;
-      await enqueueIgnoringDuplicate({
-        ...entity,
-        opId: `v2-${fingerprintDeviceSyncValue({ entity, baseRevision, deviceId })}`,
-        kind: 'put',
-        baseRevision,
-        baseFingerprint: state?.confirmedFingerprint ?? null,
-        deviceId,
-        accountGeneration: generation,
-      });
+      await enqueueIgnoringDuplicate(
+        {
+          ...entity,
+          opId: `v2-${fingerprintDeviceSyncValue({ entity, baseRevision, deviceId })}`,
+          kind: 'put',
+          baseRevision,
+          baseFingerprint: state?.confirmedFingerprint ?? null,
+          deviceId,
+          accountGeneration: generation,
+        },
+        checkpoint,
+      );
       assertNotAborted(signal);
     }
   }
 }
 
 async function enqueueChangedCachedEntities(
-  deviceId: string,
-  generation: number,
+  checkpoint: MobileV2BootstrapCheckpoint,
   signal?: AbortSignal,
 ): Promise<void> {
+  const deviceId = checkpoint.boundDeviceId;
+  const generation = checkpoint.accountGeneration;
   const cache = await readMobileCache();
   assertNotAborted(signal);
   for (const cached of cache.bundles) {
@@ -310,15 +307,18 @@ async function enqueueChangedCachedEntities(
       // `bundles` is a lossy UI projection. Once a canonical state exists it
       // must not be rebuilt into a mutation on every refresh/re-pair.
       if (state) continue;
-      await enqueueIgnoringDuplicate({
-        ...entity,
-        opId: `v2-${fingerprintDeviceSyncValue({ entity, baseRevision: 0, deviceId })}`,
-        kind: 'put',
-        baseRevision: 0,
-        baseFingerprint: null,
-        deviceId,
-        accountGeneration: generation,
-      });
+      await enqueueIgnoringDuplicate(
+        {
+          ...entity,
+          opId: `v2-${fingerprintDeviceSyncValue({ entity, baseRevision: 0, deviceId })}`,
+          kind: 'put',
+          baseRevision: 0,
+          baseFingerprint: null,
+          deviceId,
+          accountGeneration: generation,
+        },
+        checkpoint,
+      );
       assertNotAborted(signal);
     }
   }
@@ -347,8 +347,11 @@ async function removeConfirmedLegacyPending(deviceId: string, signal?: AbortSign
   }
 }
 
-async function enqueueIgnoringDuplicate(mutation: SyncV2Mutation): Promise<void> {
-  await enqueueMobileV2Mutation(mutation);
+async function enqueueIgnoringDuplicate(
+  mutation: SyncV2Mutation,
+  checkpoint: MobileV2BootstrapCheckpoint,
+): Promise<void> {
+  await enqueueMobileV2Mutation(mutation, checkpoint);
 }
 
 async function getEpochStatus(input: {

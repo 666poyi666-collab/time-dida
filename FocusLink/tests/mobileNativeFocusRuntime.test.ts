@@ -38,7 +38,7 @@ describe('mobile native focus display projection', () => {
     capacitorHarness.native = false;
     capacitorHarness.pluginAvailable = false;
     nativePluginHarness.configureConnection.mockReset();
-    nativePluginHarness.configureConnection.mockResolvedValue(undefined);
+    nativePluginHarness.configureConnection.mockResolvedValue({ connectionLease: '1' });
     nativePluginHarness.enqueueCompletedLedgerBundle.mockReset();
     nativePluginHarness.enqueueCompletedLedgerBundle.mockResolvedValue({
       queued: true,
@@ -50,7 +50,10 @@ describe('mobile native focus display projection', () => {
       pending: 0,
     });
     nativePluginHarness.getConnection.mockReset();
-    nativePluginHarness.getConnection.mockResolvedValue({ configured: false });
+    nativePluginHarness.getConnection.mockResolvedValue({
+      configured: false,
+      connectionLease: '0',
+    });
   });
 
   it('keeps a bounded native snapshot alive between background cloud polls', () => {
@@ -112,6 +115,7 @@ describe('mobile native focus display projection', () => {
       endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
       accessToken: STORED_TOKEN,
       deviceId: 'device-watch1',
+      connectionLease: '7',
     });
 
     await expect(
@@ -124,6 +128,7 @@ describe('mobile native focus display projection', () => {
       endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
       accessToken: STORED_TOKEN,
       deviceId: 'device-watch1',
+      connectionLease: '7',
     });
     expect(nativePluginHarness.configureConnection).not.toHaveBeenCalled();
   });
@@ -137,13 +142,17 @@ describe('mobile native focus display projection', () => {
       deviceId: 'device-watchold',
     };
 
-    await expect(restoreOrMigrateNativeFocusConnection(legacyConnection)).resolves.toEqual(
-      legacyConnection,
-    );
+    await expect(restoreOrMigrateNativeFocusConnection(legacyConnection)).resolves.toEqual({
+      endpoint: legacyConnection.endpoint,
+      accessToken: legacyConnection.accessToken,
+      deviceId: legacyConnection.deviceId,
+      connectionLease: '1',
+    });
     expect(nativePluginHarness.configureConnection).toHaveBeenCalledWith({
       endpoint: legacyConnection.endpoint,
       accessToken: legacyConnection.accessToken,
       deviceId: legacyConnection.deviceId,
+      expectedConnectionLease: '0',
     });
   });
 
@@ -169,6 +178,7 @@ describe('mobile native focus display projection', () => {
       endpoint: 'https://evil.example.test',
       accessToken: STORED_TOKEN,
       deviceId: 'device-watch1',
+      connectionLease: '9',
     });
 
     await expect(restoreOrMigrateNativeFocusConnection(null)).resolves.toBeNull();
@@ -211,8 +221,13 @@ describe('mobile native focus display projection', () => {
       pauses: [],
     };
 
-    await expect(enqueueNativeCompletedLedgerBundle(bundle, 'device-native')).resolves.toBe(true);
-    const record = nativePluginHarness.enqueueCompletedLedgerBundle.mock.calls[0][0].record;
+    await expect(
+      enqueueNativeCompletedLedgerBundle(bundle, 'device-native', '12'),
+    ).resolves.toBe(true);
+    const options = nativePluginHarness.enqueueCompletedLedgerBundle.mock.calls[0][0];
+    expect(options.deviceId).toBe('device-native');
+    expect(options.connectionLease).toBe('12');
+    const record = options.record;
     expect(record).toMatchObject({
       schemaVersion: 1,
       bundleId: 'session-native',
@@ -256,6 +271,8 @@ describe('mobile native focus display projection', () => {
     capacitorHarness.pluginAvailable = true;
     await expect(
       updateNativeAuthorityProjectionHistory({
+        deviceId: 'device-native',
+        connectionLease: '12',
         records: [cached],
         lastVerifiedAt: 70_000,
         lastAttemptAt: 69_000,
@@ -263,6 +280,8 @@ describe('mobile native focus display projection', () => {
       }),
     ).resolves.toBe(true);
     expect(nativePluginHarness.updateAuthorityProjectionHistory).toHaveBeenCalledWith({
+      deviceId: 'device-native',
+      connectionLease: '12',
       history: buildNativeAuthorityHistory([cached]),
       lastVerifiedAt: 70_000,
       lastAttemptAt: 69_000,

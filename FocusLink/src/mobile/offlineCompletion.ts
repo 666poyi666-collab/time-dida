@@ -12,10 +12,13 @@ import { enqueueNativeCompletedLedgerBundle } from './nativeFocusRuntime';
 export async function persistCompletedOfflineFocus(
   bundle: DeviceSyncSessionBundle,
   deviceId: string,
+  nativeConnectionLease: string | null,
 ): Promise<{ nativeQueued: boolean; pending: PendingDeviceSyncBundle }> {
-  const nativeQueued = await enqueueNativeCompletedLedgerBundle(bundle, deviceId).catch(
-    () => false,
-  );
+  const nativeQueued = await enqueueNativeCompletedLedgerBundle(
+    bundle,
+    deviceId,
+    nativeConnectionLease,
+  ).catch(() => false);
   const pending = await completeOfflineFocusRuntime(bundle);
   return { nativeQueued, pending };
 }

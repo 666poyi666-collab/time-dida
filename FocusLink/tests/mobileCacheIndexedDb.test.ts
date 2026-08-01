@@ -119,7 +119,7 @@ describe('mobile IndexedDB local-first persistence', () => {
       task: null,
       now: 1_720_000_000_000,
     });
-    await writeMobileV2Bootstrap({
+    const owner = {
       key: 'syncV2.bootstrap',
       state: 'v2-active',
       bootstrapId: null,
@@ -130,11 +130,12 @@ describe('mobile IndexedDB local-first persistence', () => {
       cursorEpoch: 'cursor-1',
       accountGeneration: 1,
       updatedAt: 1,
-    });
+    } as const;
+    await writeMobileV2Bootstrap(owner);
     await createOfflineFocusRuntime(runtime, makeMeta(runtime.id));
 
     const pending = await completeOfflineFocusRuntime(makeBundle(runtime.id));
-    const claimed = await claimMobileV2Outbox('device-phone', 10, Date.now());
+    const claimed = await claimMobileV2Outbox(owner, 10, Date.now());
 
     expect(pending).toMatchObject({ syncDeviceId: 'device-phone' });
     expect(await readOfflineFocusRuntime()).toBeNull();

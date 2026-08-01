@@ -17,9 +17,16 @@ export interface MobileAccountRequestLifecycle {
   generation(): number;
 }
 
-export interface MobileAccountCommitResult {
+export interface MobileAccountCommitResult<T> {
   current: boolean;
   issues: string[];
+  nativeState?: T;
+}
+
+export interface MobileAccountNativeTransition<T> {
+  read(): Promise<T>;
+  mutate(baseline: T): Promise<T>;
+  restore(baseline: T, applied: T): Promise<void>;
 }
 
 export function mobileAccountConnectionKey(connection: {
@@ -105,32 +112,42 @@ export function createMobileAccountLifecycle(): MobileAccountLifecycle {
  * A cache failure must not leave the renderer on the old account after Keystore accepted
  * the new one; a superseding logout/login still prevents all renderer state commits.
  */
-export async function runMobileAccountCommit(
+export async function runMobileAccountCommit<T>(
   lifecycle: MobileAccountLifecycle,
   operation: number,
-  persistNative: () => Promise<void>,
+  native: MobileAccountNativeTransition<T>,
   resetAccountState: () => Promise<readonly string[]>,
-): Promise<MobileAccountCommitResult> {
-  await lifecycle.enqueueNative(persistNative);
-  if (!lifecycle.isCurrent(operation)) return { current: false, issues: [] };
+): Promise<MobileAccountCommitResult<T>> {
+  return lifecycle.enqueueNative(async () => {
+    if (!lifecycle.isCurrent(operation)) return { current: false, issues: [] };
+    const baseline = await native.read();
+    if (!lifecycle.isCurrent(operation)) return { current: false, issues: [] };
+    const applied = await native.mutate(baseline);
+    if (!lifecycle.isCurrent(operation)) {
+      await native.restore(baseline, applied);
+      return { current: false, issues: [] };
+    }
 
-  let issues: string[];
-  try {
-    issues = [...(await resetAccountState())];
-  } catch {
-    issues = ['account-cache'];
-  }
-  return lifecycle.isCurrent(operation)
-    ? { current: true, issues }
-    : { current: false, issues: [] };
+    let issues: string[];
+    try {
+      issues = [...(await resetAccountState())];
+    } catch {
+      issues = ['account-cache'];
+    }
+    if (!lifecycle.isCurrent(operation)) {
+      await native.restore(baseline, applied);
+      return { current: false, issues: [] };
+    }
+    return { current: true, issues, nativeState: applied };
+  });
 }
 
 /** Renderer logout state may be committed only after the durable native clear succeeds. */
-export async function runMobileAccountLogout(
+export async function runMobileAccountLogout<T>(
   lifecycle: MobileAccountLifecycle,
   operation: number,
-  clearNative: () => Promise<void>,
-): Promise<boolean> {
-  await lifecycle.enqueueNative(clearNative);
-  return lifecycle.isCurrent(operation);
+  native: MobileAccountNativeTransition<T>,
+  resetAccountState: () => Promise<readonly string[]>,
+): Promise<MobileAccountCommitResult<T>> {
+  return runMobileAccountCommit(lifecycle, operation, native, resetAccountState);
 }

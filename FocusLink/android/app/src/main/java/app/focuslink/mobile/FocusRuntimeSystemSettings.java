@@ -130,8 +130,6 @@ final class FocusRuntimeSystemSettings {
     }
 
     private static SharedPreferences preferences(Context context) {
-        return context
-            .getApplicationContext()
-            .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE);
+        return FocusRuntimePreferences.get(context, PREFERENCES_NAME);
     }
 }

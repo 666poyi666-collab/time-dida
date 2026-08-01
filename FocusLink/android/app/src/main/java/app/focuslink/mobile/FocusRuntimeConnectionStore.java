@@ -70,6 +70,48 @@ final class FocusRuntimeConnectionStore {
         connectionGeneration += 1L;
     }
 
+    static synchronized Connection replaceAndClearAccountState(
+        Context context,
+        String endpoint,
+        String accessToken,
+        String deviceId
+    ) {
+        Connection previous = get(context);
+        String normalizedEndpoint = validateEndpoint(endpoint);
+        String validatedToken = validateAccessToken(accessToken);
+        String validatedDeviceId = validateDeviceId(deviceId);
+        if (
+            previous != null &&
+            previous.endpoint.equals(normalizedEndpoint) &&
+            previous.accessToken.equals(validatedToken) &&
+            previous.deviceId.equals(validatedDeviceId)
+        ) {
+            return previous;
+        }
+
+        persistConnection(context, normalizedEndpoint, validatedToken, validatedDeviceId);
+        connectionGeneration += 1L;
+        try {
+            clearAccountState(context);
+        } catch (RuntimeException exception) {
+            restoreConnection(context, previous);
+            connectionGeneration += 1L;
+            throw exception;
+        }
+        return get(context);
+    }
+
+    static synchronized Connection replaceAndClearAccountStateIfCurrent(
+        Context context,
+        String expectedLease,
+        String endpoint,
+        String accessToken,
+        String deviceId
+    ) {
+        requireCurrentLease(expectedLease);
+        return replaceAndClearAccountState(context, endpoint, accessToken, deviceId);
+    }
+
     static synchronized Connection get(Context context) {
         SharedPreferences preferences = preferences(context);
         String endpoint = preferences.getString(KEY_ENDPOINT, null);
@@ -112,6 +154,50 @@ final class FocusRuntimeConnectionStore {
         connectionGeneration += 1L;
     }
 
+    static synchronized void clearConnectionAndAccountState(Context context) {
+        Connection previous = get(context);
+        if (!preferences(context).edit().clear().commit()) {
+            throw new IllegalStateException("unable to clear cloud credential");
+        }
+        connectionGeneration += 1L;
+        try {
+            clearAccountState(context);
+        } catch (RuntimeException exception) {
+            restoreConnection(context, previous);
+            connectionGeneration += 1L;
+            throw exception;
+        }
+    }
+
+    static synchronized void clearConnectionAndAccountStateIfCurrent(
+        Context context,
+        String expectedLease
+    ) {
+        requireCurrentLease(expectedLease);
+        clearConnectionAndAccountState(context);
+    }
+
+    static synchronized String currentLease() {
+        return Long.toString(connectionGeneration);
+    }
+
+    static synchronized String leaseFor(Connection connection) {
+        if (connection == null || connection.generation < 0L) {
+            throw new IllegalArgumentException("connection is not generation-bound");
+        }
+        return Long.toString(connection.generation);
+    }
+
+    static synchronized Connection connectionForSource(
+        Context context,
+        String deviceId,
+        String expectedLease
+    ) {
+        if (deviceId == null || deviceId.isEmpty() || !leaseMatches(expectedLease)) return null;
+        Connection connection = get(context);
+        return connection != null && connection.deviceId.equals(deviceId) ? connection : null;
+    }
+
     static synchronized boolean isCurrent(Context context, Connection expected) {
         if (expected == null || expected.generation < 0L) return false;
         Connection current = get(context);
@@ -130,6 +216,47 @@ final class FocusRuntimeConnectionStore {
     ) {
         if (!isCurrent(context, expected)) return null;
         return operation.run();
+    }
+
+    private static void persistConnection(
+        Context context,
+        String endpoint,
+        String accessToken,
+        String deviceId
+    ) {
+        boolean committed = preferences(context)
+            .edit()
+            .putString(KEY_ENDPOINT, endpoint)
+            .putString(KEY_TOKEN, encrypt(accessToken))
+            .putString(KEY_DEVICE_ID, deviceId)
+            .commit();
+        if (!committed) throw new IllegalStateException("unable to save cloud credential");
+    }
+
+    private static void restoreConnection(Context context, Connection previous) {
+        if (previous == null) {
+            if (!preferences(context).edit().clear().commit()) {
+                throw new IllegalStateException("unable to roll back cloud credential");
+            }
+            return;
+        }
+        persistConnection(context, previous.endpoint, previous.accessToken, previous.deviceId);
+    }
+
+    private static void clearAccountState(Context context) {
+        FocusRuntimeStore.clearSnapshot(context);
+        FocusAuthorityProjectionStore.clear(context);
+        FocusNotificationService.clearPollDiagnostics(context);
+    }
+
+    private static void requireCurrentLease(String expectedLease) {
+        if (!leaseMatches(expectedLease)) {
+            throw new IllegalStateException("account connection changed");
+        }
+    }
+
+    private static boolean leaseMatches(String expectedLease) {
+        return expectedLease != null && expectedLease.equals(Long.toString(connectionGeneration));
     }
 
     private static String validateEndpoint(String raw) {
@@ -221,6 +348,6 @@ final class FocusRuntimeConnectionStore {
     }
 
     private static SharedPreferences preferences(Context context) {
-        return context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE);
+        return FocusRuntimePreferences.get(context, PREFERENCES_NAME);
     }
 }

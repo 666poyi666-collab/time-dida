@@ -112,6 +112,12 @@ export interface NativeFocusConnection {
   endpoint: string;
   accessToken: string;
   deviceId: string;
+  connectionLease: string;
+}
+
+export interface NativeFocusConnectionState {
+  connection: NativeFocusConnection | null;
+  connectionLease: string | null;
 }
 
 export interface NativeAuthorityHistoryTask {
@@ -133,9 +139,20 @@ export interface NativeAuthorityHistoryRecord {
 }
 
 interface FocusRuntimePlugin {
-  updateSnapshot(options: { snapshot: NativeFocusDisplaySnapshot }): Promise<void>;
-  drainPendingCommands(): Promise<{ commands: NativeFocusCommand[] }>;
-  completeCommands(options: { ids: string[] }): Promise<void>;
+  updateSnapshot(options: {
+    snapshot: NativeFocusDisplaySnapshot;
+    deviceId: string;
+    connectionLease: string;
+  }): Promise<void>;
+  drainPendingCommands(options: {
+    deviceId: string;
+    connectionLease: string;
+  }): Promise<{ commands: NativeFocusCommand[] }>;
+  completeCommands(options: {
+    ids: string[];
+    deviceId: string;
+    connectionLease: string;
+  }): Promise<void>;
   getNativeStatus(): Promise<NativeFocusStatus>;
   requestNotificationPermission(): Promise<{
     notificationPermission?: string;
@@ -147,18 +164,26 @@ interface FocusRuntimePlugin {
     endpoint: string;
     accessToken: string;
     deviceId: string;
-  }): Promise<void>;
-  clearConnection(): Promise<void>;
+    expectedConnectionLease: string;
+  }): Promise<{ connectionLease?: string }>;
+  clearConnection(options: {
+    expectedConnectionLease: string;
+  }): Promise<{ connectionLease?: string }>;
   getConnection(): Promise<{
     configured: boolean;
     endpoint?: string;
     accessToken?: string;
     deviceId?: string;
+    connectionLease?: string;
   }>;
   enqueueCompletedLedgerBundle(options: {
     record: NativeCompletedLedgerRecord;
+    deviceId: string;
+    connectionLease: string;
   }): Promise<{ queued?: boolean; pending?: number }>;
   updateAuthorityProjectionHistory(options: {
+    deviceId: string;
+    connectionLease: string;
     history: NativeAuthorityHistoryRecord[];
     lastVerifiedAt: number;
     lastAttemptAt: number;
@@ -263,8 +288,9 @@ export async function configureNativeFocusConnection(
   endpoint: string,
   accessToken: string,
   deviceId: string,
-): Promise<void> {
-  if (!isNativeFocusRuntimeAvailable()) return;
+  expectedConnectionLease: string | null,
+): Promise<NativeFocusConnection | null> {
+  if (!isNativeFocusRuntimeAvailable()) return null;
   const routed = parseDeviceToken(accessToken.trim());
   if (
     !isCanonicalFocusLinkDeviceConnection(endpoint, accessToken) ||
@@ -273,12 +299,32 @@ export async function configureNativeFocusConnection(
   ) {
     throw new Error('设备凭据只能连接 FocusLink 官方同步服务');
   }
-  await FocusRuntime.configureConnection({ endpoint, accessToken, deviceId });
+  const expectedLease = requireNativeConnectionLease(expectedConnectionLease);
+  const result = await FocusRuntime.configureConnection({
+    endpoint,
+    accessToken,
+    deviceId,
+    expectedConnectionLease: expectedLease,
+  });
+  return {
+    endpoint,
+    accessToken,
+    deviceId,
+    connectionLease: requireNativeConnectionLease(result.connectionLease),
+  };
 }
 
-export async function clearNativeFocusConnection(): Promise<void> {
-  if (!isNativeFocusRuntimeAvailable()) return;
-  await FocusRuntime.clearConnection();
+export async function clearNativeFocusConnection(
+  expectedConnectionLease: string | null,
+): Promise<NativeFocusConnectionState> {
+  if (!isNativeFocusRuntimeAvailable()) return { connection: null, connectionLease: null };
+  const result = await FocusRuntime.clearConnection({
+    expectedConnectionLease: requireNativeConnectionLease(expectedConnectionLease),
+  });
+  return {
+    connection: null,
+    connectionLease: requireNativeConnectionLease(result.connectionLease),
+  };
 }
 
 /**
@@ -289,8 +335,10 @@ export async function clearNativeFocusConnection(): Promise<void> {
 export async function enqueueNativeCompletedLedgerBundle(
   bundle: DeviceSyncSessionBundle,
   deviceId: string,
+  connectionLease: string | null,
 ): Promise<boolean> {
   if (!isNativeFocusRuntimeAvailable()) return false;
+  const sourceLease = requireNativeConnectionLease(connectionLease);
   const split = splitBundleForSyncV2(bundle, deviceId);
   const entities = [
     { entityType: 'focus_ledger_v2' as const, entityId: bundle.session.id, payload: split.ledger },
@@ -308,6 +356,8 @@ export async function enqueueNativeCompletedLedgerBundle(
     baseFingerprint: null,
   }));
   const result = await FocusRuntime.enqueueCompletedLedgerBundle({
+    deviceId,
+    connectionLease: sourceLease,
     record: {
       schemaVersion: 1,
       bundleId: bundle.session.id,
@@ -370,6 +420,8 @@ export function buildNativeAuthorityHistory(
 }
 
 export async function updateNativeAuthorityProjectionHistory(input: {
+  deviceId: string;
+  connectionLease: string | null;
   records: readonly CachedBundle[];
   lastVerifiedAt: number | null;
   lastAttemptAt: number;
@@ -379,6 +431,8 @@ export async function updateNativeAuthorityProjectionHistory(input: {
   if (!isNativeFocusRuntimeAvailable()) return false;
   const history = buildNativeAuthorityHistory(input.records);
   const result = await FocusRuntime.updateAuthorityProjectionHistory({
+    deviceId: input.deviceId,
+    connectionLease: requireNativeConnectionLease(input.connectionLease),
     history,
     lastVerifiedAt: safeProjectionTimestamp(input.lastVerifiedAt ?? 0),
     lastAttemptAt: safeProjectionTimestamp(input.lastAttemptAt),
@@ -392,9 +446,10 @@ export async function updateNativeAuthorityProjectionHistory(input: {
  * Restores the Keystore-protected credential into renderer memory only.  The
  * caller must never write accessToken to Web Storage or IndexedDB.
  */
-export async function readNativeFocusConnection(): Promise<NativeFocusConnection | null> {
-  if (!isNativeFocusRuntimeAvailable()) return null;
+export async function readNativeFocusConnectionState(): Promise<NativeFocusConnectionState> {
+  if (!isNativeFocusRuntimeAvailable()) return { connection: null, connectionLease: null };
   const value = await FocusRuntime.getConnection();
+  const connectionLease = requireNativeConnectionLease(value.connectionLease);
   const routed =
     typeof value.accessToken === 'string' ? parseDeviceToken(value.accessToken.trim()) : null;
   if (
@@ -409,13 +464,40 @@ export async function readNativeFocusConnection(): Promise<NativeFocusConnection
     !routed ||
     value.deviceId !== `device-${routed.devicePublicId}`
   ) {
-    return null;
+    return { connection: null, connectionLease };
   }
   return {
-    endpoint: value.endpoint,
-    accessToken: value.accessToken,
-    deviceId: value.deviceId,
+    connectionLease,
+    connection: {
+      endpoint: value.endpoint,
+      accessToken: value.accessToken,
+      deviceId: value.deviceId,
+      connectionLease,
+    },
   };
+}
+
+export async function readNativeFocusConnection(): Promise<NativeFocusConnection | null> {
+  return (await readNativeFocusConnectionState()).connection;
+}
+
+export async function restoreNativeFocusConnectionState(
+  baseline: NativeFocusConnectionState,
+  expectedConnectionLease: string | null,
+): Promise<NativeFocusConnectionState> {
+  if (baseline.connection) {
+    const connection = await configureNativeFocusConnection(
+      baseline.connection.endpoint,
+      baseline.connection.accessToken,
+      baseline.connection.deviceId,
+      expectedConnectionLease,
+    );
+    return {
+      connection,
+      connectionLease: connection?.connectionLease ?? null,
+    };
+  }
+  return clearNativeFocusConnection(expectedConnectionLease);
 }
 
 function projectionTask(
@@ -468,26 +550,33 @@ function safeProjectionTimestamp(value: number): number {
   return value;
 }
 
+function requireNativeConnectionLease(value: unknown): string {
+  if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,18})$/.test(value)) {
+    throw new DOMException('Android 账号连接已变化', 'AbortError');
+  }
+  return value;
+}
+
 /**
  * Restores the existing Keystore credential or atomically migrates a legacy
  * renderer credential. The caller may purge Web Storage only after this
  * promise resolves with a connection.
  */
 export async function restoreOrMigrateNativeFocusConnection(
-  legacyConnection: NativeFocusConnection | null,
+  legacyConnection: Omit<NativeFocusConnection, 'connectionLease'> | null,
 ): Promise<NativeFocusConnection | null> {
   if (!isNativeFocusRuntimeAvailable()) return null;
-  const stored = await readNativeFocusConnection();
-  if (stored) return stored;
+  const stored = await readNativeFocusConnectionState();
+  if (stored.connection) return stored.connection;
   if (!legacyConnection?.endpoint || !legacyConnection.accessToken || !legacyConnection.deviceId) {
     return null;
   }
-  await configureNativeFocusConnection(
+  return configureNativeFocusConnection(
     legacyConnection.endpoint,
     legacyConnection.accessToken,
     legacyConnection.deviceId,
+    stored.connectionLease,
   );
-  return legacyConnection;
 }
 
 export async function openNativeBackgroundSettings(): Promise<boolean> {
@@ -567,24 +656,44 @@ export async function setNativePauseReminderPreference(
 
 export async function updateNativeFocusSnapshot(
   snapshot: LiveFocusSnapshotLike,
+  deviceId: string,
+  connectionLease: string | null,
   controlsEnabled: boolean,
   now = Date.now(),
   localAuthority = false,
 ): Promise<void> {
   if (!isNativeFocusRuntimeAvailable()) return;
   await FocusRuntime.updateSnapshot({
+    deviceId,
+    connectionLease: requireNativeConnectionLease(connectionLease),
     snapshot: makeNativeDisplaySnapshot(snapshot, controlsEnabled, now, localAuthority),
   });
 }
 
-export async function drainNativeFocusCommands(): Promise<NativeFocusCommand[]> {
+export async function drainNativeFocusCommands(
+  deviceId: string,
+  connectionLease: string | null,
+): Promise<NativeFocusCommand[]> {
   if (!isNativeFocusRuntimeAvailable()) return [];
-  return (await FocusRuntime.drainPendingCommands()).commands;
+  return (
+    await FocusRuntime.drainPendingCommands({
+      deviceId,
+      connectionLease: requireNativeConnectionLease(connectionLease),
+    })
+  ).commands;
 }
 
-export async function completeNativeFocusCommands(ids: readonly string[]): Promise<void> {
+export async function completeNativeFocusCommands(
+  ids: readonly string[],
+  deviceId: string,
+  connectionLease: string | null,
+): Promise<void> {
   if (!isNativeFocusRuntimeAvailable() || ids.length === 0) return;
-  await FocusRuntime.completeCommands({ ids: [...ids] });
+  await FocusRuntime.completeCommands({
+    ids: [...ids],
+    deviceId,
+    connectionLease: requireNativeConnectionLease(connectionLease),
+  });
 }
 
 export async function subscribeToNativeFocusCommands(

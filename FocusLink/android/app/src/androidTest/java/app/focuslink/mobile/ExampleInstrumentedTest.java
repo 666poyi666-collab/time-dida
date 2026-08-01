@@ -12,9 +12,7 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Context;
-import android.content.ContextWrapper;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
@@ -37,11 +35,29 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry;
 import androidx.test.runner.lifecycle.Stage;
 import org.junit.Test;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.runner.RunWith;
 import org.json.JSONObject;
 
 @RunWith(AndroidJUnit4.class)
 public class ExampleInstrumentedTest {
+    @BeforeClass
+    public static void isolateNativeRuntimePreferences() {
+        FocusRuntimePreferences.enableTestIsolation(
+            "focus_runtime_instrumentation_" + android.os.Process.myPid() + "_"
+        );
+    }
+
+    @AfterClass
+    public static void clearIsolatedNativeRuntimePreferences() {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        FocusNotificationService.setCloudClientFactoryForTests(null);
+        context.stopService(new Intent(context, FocusNotificationService.class));
+        FocusNotificationService.clearPauseReminder(context);
+        FocusRuntimePreferences.clearAndDisableTestIsolation(context);
+    }
+
     @Test
     public void holdsDesktopOverlayForManualScreenshot() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -676,15 +692,15 @@ public class ExampleInstrumentedTest {
             assertEquals(BuildConfig.CANONICAL_SYNC_ORIGIN, connection.endpoint);
             assertEquals(
                 BuildConfig.CANONICAL_SYNC_ORIGIN,
-                context
-                    .getSharedPreferences("focus_runtime_connection_v1", Context.MODE_PRIVATE)
+                FocusRuntimePreferences
+                    .get(context, "focus_runtime_connection_v1")
                     .getString("endpoint", "")
             );
             assertEquals(token, connection.accessToken);
             assertEquals("instrumentation-device", connection.deviceId);
 
-            String storedToken = context
-                .getSharedPreferences("focus_runtime_connection_v1", Context.MODE_PRIVATE)
+            String storedToken = FocusRuntimePreferences
+                .get(context, "focus_runtime_connection_v1")
                 .getString("token", "");
             assertFalse(storedToken.isEmpty());
             assertFalse(storedToken.contains(token));
@@ -789,13 +805,12 @@ public class ExampleInstrumentedTest {
                 transportStarted.await(5, TimeUnit.SECONDS)
             );
 
-            FocusRuntimeConnectionStore.put(
+            FocusRuntimeConnectionStore.replaceAndClearAccountState(
                 context,
                 BuildConfig.CANONICAL_SYNC_ORIGIN,
                 "fl2_accountb_deviceb_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                 "device-b"
             );
-            FocusRuntimeStore.clearSnapshot(context);
             assertEquals(0, FocusRuntimeStore.pendingCount(context));
             releaseTransport.countDown();
             oldPoll.join(5_000L);
@@ -807,6 +822,174 @@ public class ExampleInstrumentedTest {
             assertEquals(0L, FocusRuntimeStore.getSnapshot(context).stateRevision);
         } finally {
             releaseTransport.countDown();
+            FocusRuntimeConnectionStore.clear(context);
+            FocusRuntimeStore.clearForTests(context);
+        }
+    }
+
+    @Test
+    public void atomicConnectionSwitchClearsAnOldWriteAlreadyInsideItsGeneration()
+        throws Exception {
+        Context context = isolatedRuntimeContext();
+        FocusRuntimeStore.clearForTests(context);
+        FocusRuntimeConnectionStore.clear(context);
+        CountDownLatch oldWriterEntered = new CountDownLatch(1);
+        CountDownLatch releaseOldWriter = new CountDownLatch(1);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        try {
+            FocusRuntimeConnectionStore.put(
+                context,
+                BuildConfig.CANONICAL_SYNC_ORIGIN,
+                "fl2_accounta_devicea_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "device-a"
+            );
+            FocusRuntimeConnectionStore.Connection oldConnection =
+                FocusRuntimeConnectionStore.get(context);
+            assertNotNull(oldConnection);
+            Thread oldWriter = new Thread(() -> {
+                try {
+                    FocusRuntimeConnectionStore.runIfCurrent(
+                        context,
+                        oldConnection,
+                        () -> {
+                            oldWriterEntered.countDown();
+                            try {
+                                if (!releaseOldWriter.await(5, TimeUnit.SECONDS)) {
+                                    throw new IllegalStateException("old writer release timed out");
+                                }
+                            } catch (InterruptedException exception) {
+                                Thread.currentThread().interrupt();
+                                throw new IllegalStateException(exception);
+                            }
+                            long now = System.currentTimeMillis();
+                            FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromPlugin(
+                                context,
+                                activeSnapshot(now, 4L, "old-account-in-lock")
+                            );
+                            FocusRuntimeStore.putSnapshot(context, snapshot);
+                            FocusRuntimeStore.enqueueCommand(
+                                context,
+                                FocusRuntimeContract.COMMAND_PAUSE,
+                                FocusRuntimeContract.SOURCE_NOTIFICATION,
+                                snapshot.sessionId,
+                                snapshot.stateRevision
+                            );
+                            return true;
+                        }
+                    );
+                } catch (Throwable throwable) {
+                    failure.set(throwable);
+                }
+            });
+            oldWriter.start();
+            assertTrue(oldWriterEntered.await(5, TimeUnit.SECONDS));
+
+            Thread switcher = new Thread(() -> {
+                try {
+                    FocusRuntimeConnectionStore.replaceAndClearAccountState(
+                        context,
+                        BuildConfig.CANONICAL_SYNC_ORIGIN,
+                        "fl2_accountb_deviceb_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                        "device-b"
+                    );
+                } catch (Throwable throwable) {
+                    failure.set(throwable);
+                }
+            });
+            switcher.start();
+            releaseOldWriter.countDown();
+            oldWriter.join(5_000L);
+            switcher.join(5_000L);
+
+            assertFalse(oldWriter.isAlive());
+            assertFalse(switcher.isAlive());
+            assertNull(failure.get());
+            assertEquals(0, FocusRuntimeStore.pendingCount(context));
+            assertEquals(0L, FocusRuntimeStore.getSnapshot(context).stateRevision);
+            FocusRuntimeConnectionStore.Connection current =
+                FocusRuntimeConnectionStore.get(context);
+            assertNotNull(current);
+            assertEquals("device-b", current.deviceId);
+        } finally {
+            releaseOldWriter.countDown();
+            FocusRuntimeConnectionStore.clear(context);
+            FocusRuntimeStore.clearForTests(context);
+        }
+    }
+
+    @Test
+    public void rejectsOldRendererLeaseAfterSameDeviceCredentialRotation() {
+        Context context = isolatedRuntimeContext();
+        FocusRuntimeStore.clearForTests(context);
+        FocusRuntimeConnectionStore.clear(context);
+        try {
+            String deviceId = "device-same";
+            FocusRuntimeConnectionStore.put(
+                context,
+                BuildConfig.CANONICAL_SYNC_ORIGIN,
+                "fl2_account_device_same_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                deviceId
+            );
+            FocusRuntimeConnectionStore.Connection previous =
+                FocusRuntimeConnectionStore.get(context);
+            assertNotNull(previous);
+            String previousLease = FocusRuntimeConnectionStore.leaseFor(previous);
+            long now = System.currentTimeMillis();
+            assertTrue(
+                FocusRuntimeStore.putSnapshot(
+                    context,
+                    FocusRuntimeSnapshot.fromPlugin(
+                        context,
+                        activeSnapshot(now, 9L, "same-device-old-token")
+                    )
+                )
+            );
+
+            FocusRuntimeConnectionStore.Connection rotated =
+                FocusRuntimeConnectionStore.replaceAndClearAccountStateIfCurrent(
+                    context,
+                    previousLease,
+                    BuildConfig.CANONICAL_SYNC_ORIGIN,
+                    "fl2_account_device_same_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    deviceId
+                );
+            assertNotNull(rotated);
+            String rotatedLease = FocusRuntimeConnectionStore.leaseFor(rotated);
+            assertFalse(previousLease.equals(rotatedLease));
+            assertNull(
+                FocusRuntimeConnectionStore.connectionForSource(
+                    context,
+                    deviceId,
+                    previousLease
+                )
+            );
+            assertNull(
+                FocusRuntimeConnectionStore.connectionForSource(context, deviceId, null)
+            );
+            assertNotNull(
+                FocusRuntimeConnectionStore.connectionForSource(
+                    context,
+                    deviceId,
+                    rotatedLease
+                )
+            );
+            assertEquals(0L, FocusRuntimeStore.getSnapshot(context).stateRevision);
+
+            boolean staleCasRejected = false;
+            try {
+                FocusRuntimeConnectionStore.replaceAndClearAccountStateIfCurrent(
+                    context,
+                    previousLease,
+                    BuildConfig.CANONICAL_SYNC_ORIGIN,
+                    "fl2_account_device_same_cccccccccccccccccccccccccccccccc",
+                    deviceId
+                );
+            } catch (IllegalStateException expected) {
+                staleCasRejected = true;
+            }
+            assertTrue(staleCasRejected);
+            assertEquals(rotatedLease, FocusRuntimeConnectionStore.currentLease());
+        } finally {
             FocusRuntimeConnectionStore.clear(context);
             FocusRuntimeStore.clearForTests(context);
         }
@@ -1336,19 +1519,7 @@ public class ExampleInstrumentedTest {
     }
 
     private static Context isolatedRuntimeContext() {
-        Context target = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        String prefix = "focus_runtime_instrumentation_" + android.os.Process.myPid() + "_";
-        return new ContextWrapper(target) {
-            @Override
-            public Context getApplicationContext() {
-                return this;
-            }
-
-            @Override
-            public SharedPreferences getSharedPreferences(String name, int mode) {
-                return super.getSharedPreferences(prefix + name, mode);
-            }
-        };
+        return InstrumentationRegistry.getInstrumentation().getTargetContext();
     }
 
     private static ServiceInfo findService(ServiceInfo[] services, String className) {

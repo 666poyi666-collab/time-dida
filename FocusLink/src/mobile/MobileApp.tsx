@@ -54,12 +54,15 @@ import {
   drainNativeFocusCommands,
   enterNativePictureInPicture,
   isNativeFocusRuntimeAvailable,
+  readNativeFocusConnectionState,
   readNativeFocusStatus,
+  restoreNativeFocusConnectionState,
   restoreOrMigrateNativeFocusConnection,
   setNativeImmersiveSystemBars,
   subscribeToNativeFocusCommands,
   updateNativeAuthorityProjectionHistory,
   updateNativeFocusSnapshot,
+  type NativeFocusConnectionState,
   type NativeFocusCommand,
 } from './nativeFocusRuntime';
 import {
@@ -100,6 +103,7 @@ import {
 } from './accountBootstrap';
 import {
   createMobileAccountLifecycle,
+  createMobileAccountRequestLifecycle,
   mobileAccountConnectionKey,
   runMobileAccountCommit,
   runMobileAccountLogout,
@@ -177,6 +181,7 @@ export function MobileApp() {
   );
 
   const [deviceId, setDeviceId] = useState(() => getOrCreateDeviceId());
+  const [nativeConnectionLease, setNativeConnectionLease] = useState<string | null>(null);
   const preferencesRef = useRef(preferences);
   const cacheRef = useRef(cache);
   const liveSnapshotRef = useRef(liveSnapshot);
@@ -190,11 +195,18 @@ export function MobileApp() {
   const liveRequest = useRef<AbortController | null>(null);
   const liveGeneration = useRef(0);
   const taskRequests = useRef(createTaskSnapshotRequestLifecycle()).current;
+  const commandRequests = useRef(createMobileAccountRequestLifecycle()).current;
   const cacheMutationQueue = useRef<Promise<void>>(Promise.resolve());
   const nativeQueueRunning = useRef(false);
+  const nativeConnectionLeaseRef = useRef<string | null>(null);
   const lastResumeRefreshAt = useRef(0);
   const connectionKeyRef = useRef(mobileAccountConnectionKey(initialPreferences));
   const accountLifecycle = useRef(createMobileAccountLifecycle()).current;
+
+  const commitNativeConnectionLease = useCallback((lease: string | null) => {
+    nativeConnectionLeaseRef.current = lease;
+    setNativeConnectionLease(lease);
+  }, []);
 
   const resetTaskSnapshotForAccount = useCallback(async (): Promise<string[]> => {
     taskRequests.invalidate();
@@ -211,6 +223,9 @@ export function MobileApp() {
   }, [taskRequests]);
 
   const resetLiveSnapshotForAccount = useCallback(async (): Promise<string[]> => {
+    commandRequests.invalidate();
+    pendingCommandRef.current = null;
+    setPendingCommand(null);
     liveGeneration.current += 1;
     liveRequest.current?.abort();
     liveRequest.current = null;
@@ -223,7 +238,7 @@ export function MobileApp() {
     } catch {
       return ['live-cache'];
     }
-  }, []);
+  }, [commandRequests]);
 
   const resetAccountScopedState = useCallback(async (): Promise<string[]> => {
     ledgerGeneration.current += 1;
@@ -245,8 +260,9 @@ export function MobileApp() {
     () => () => {
       accountLifecycle.invalidate();
       invalidateOwnerAccountBootstrap();
+      commandRequests.invalidate();
     },
-    [accountLifecycle],
+    [accountLifecycle, commandRequests],
   );
 
   useEffect(() => {
@@ -287,6 +303,7 @@ export function MobileApp() {
         // The helper has confirmed the Keystore copy. Keep the token only in
         // React memory and now remove any legacy browser remnants.
         const persistenceIssues = persistMobileAccountSessionBestEffort(next, connection.deviceId);
+        commitNativeConnectionLease(connection.connectionLease);
         setDeviceId(connection.deviceId);
         preferencesRef.current = next;
         connectionKeyRef.current = mobileAccountConnectionKey(next);
@@ -305,7 +322,7 @@ export function MobileApp() {
     return () => {
       disposed = true;
     };
-  }, [accountLifecycle, deviceId, resetAccountScopedState]);
+  }, [accountLifecycle, commitNativeConnectionLease, deviceId, resetAccountScopedState]);
 
   const applyOwnerAccountSession = useCallback(
     async (session: OwnerAccountSession, operation: number): Promise<boolean> => {
@@ -327,13 +344,32 @@ export function MobileApp() {
       const transition = await runMobileAccountCommit(
         accountLifecycle,
         operation,
-        () => configureNativeFocusConnection(next.endpoint, next.token, session.deviceId),
-        async () => {
-          connectionKeyRef.current = mobileAccountConnectionKey(next);
-          return resetAccountScopedState();
+        {
+          read: readNativeFocusConnectionState,
+          async mutate(baseline): Promise<NativeFocusConnectionState> {
+            const connection = await configureNativeFocusConnection(
+              next.endpoint,
+              next.token,
+              session.deviceId,
+              baseline.connectionLease,
+            );
+            return {
+              connection,
+              connectionLease: connection?.connectionLease ?? null,
+            };
+          },
+          async restore(baseline, applied) {
+            const restored = await restoreNativeFocusConnectionState(
+              baseline,
+              applied.connectionLease,
+            );
+            commitNativeConnectionLease(restored.connectionLease);
+          },
         },
+        resetAccountScopedState,
       );
       if (!transition.current) return false;
+      commitNativeConnectionLease(transition.nativeState?.connectionLease ?? null);
       const profile = {
         accountId: session.accountId,
         accountLabel: session.accountLabel,
@@ -356,7 +392,7 @@ export function MobileApp() {
       );
       return true;
     },
-    [accountLifecycle, resetAccountScopedState],
+    [accountLifecycle, commitNativeConnectionLease, resetAccountScopedState],
   );
 
   const bootstrapOwnerAccount = useCallback(
@@ -527,6 +563,8 @@ export function MobileApp() {
 
   const pullLedger = useCallback(
     async (connection: MobileConnectionPreferences, _startCursor: string | null) => {
+      const sourceConnectionKey = mobileAccountConnectionKey(connection);
+      const sourceNativeLease = nativeConnectionLease;
       ledgerRequest.current?.abort();
       const controller = new AbortController();
       const generation = ledgerGeneration.current + 1;
@@ -538,6 +576,7 @@ export function MobileApp() {
       const isCurrent = () =>
         ledgerGeneration.current === generation &&
         ledgerRequest.current === controller &&
+        connectionKeyRef.current === sourceConnectionKey &&
         !controller.signal.aborted;
 
       try {
@@ -550,15 +589,20 @@ export function MobileApp() {
         });
         if (!isCurrent()) return;
         const snapshot = await readMobileCache();
+        if (!isCurrent()) return;
         const pending = await readPendingDeviceSyncBundles();
+        if (!isCurrent()) return;
         const confirmedAt = Date.now();
         await updateNativeAuthorityProjectionHistory({
+          deviceId,
+          connectionLease: sourceNativeLease,
           records: snapshot.bundles,
           lastVerifiedAt: confirmedAt,
           lastAttemptAt: attemptedAt,
           pendingCount: pending.length + synced.unresolvedConflicts,
           lastErrorCode: '',
         }).catch(() => false);
+        if (!isCurrent()) return;
         setPendingUploadCount(pending.length + synced.unresolvedConflicts);
         cacheRef.current = snapshot;
         setCache(snapshot);
@@ -571,13 +615,17 @@ export function MobileApp() {
       } catch (error) {
         if (!isCurrent() || isAbortError(error)) return;
         const pending = await readPendingDeviceSyncBundles().catch(() => []);
+        if (!isCurrent()) return;
         await updateNativeAuthorityProjectionHistory({
+          deviceId,
+          connectionLease: sourceNativeLease,
           records: cacheRef.current.bundles,
           lastVerifiedAt: cacheRef.current.lastSyncAt,
           lastAttemptAt: Date.now(),
           pendingCount: pending.length,
           lastErrorCode: classifySyncV2Error(error),
         }).catch(() => false);
+        if (!isCurrent()) return;
         setPullState('error');
         setLedgerNotice(
           cacheRef.current.bundles.length > 0
@@ -588,7 +636,7 @@ export function MobileApp() {
         if (ledgerRequest.current === controller) ledgerRequest.current = null;
       }
     },
-    [deviceId],
+    [deviceId, nativeConnectionLease],
   );
 
   useEffect(() => {
@@ -643,6 +691,8 @@ export function MobileApp() {
               ? storedLedger
               : EMPTY_CACHE;
           void updateNativeAuthorityProjectionHistory({
+            deviceId,
+            connectionLease: nativeConnectionLease,
             records: ledger.bundles,
             lastVerifiedAt: ledger.lastSyncAt,
             lastAttemptAt: ledger.lastSyncAt ?? 0,
@@ -704,6 +754,7 @@ export function MobileApp() {
   }, [
     deviceId,
     initialConnectionConfigured,
+    nativeConnectionLease,
     preferences.endpoint,
     preferences.token,
     taskRequests,
@@ -851,13 +902,15 @@ export function MobileApp() {
     const snapshot = liveSnapshot ?? makeIdleSnapshot();
     void updateNativeFocusSnapshot(
       snapshot,
+      deviceId,
+      nativeConnectionLease,
       liveConnection === 'live' && offlineRuntime === null,
       Date.now(),
       offlineRuntime !== null,
     ).catch(() => {
       // Native controls are optional; Web/PWA live sync remains usable if the bridge is absent.
     });
-  }, [liveConnection, liveSnapshot, offlineRuntime]);
+  }, [deviceId, liveConnection, liveSnapshot, nativeConnectionLease, offlineRuntime]);
 
   const refreshNativeDisplayStatus = useCallback(async () => {
     if (!nativeSystemControls.available) return;
@@ -906,8 +959,9 @@ export function MobileApp() {
       return;
     }
     nativeQueueRunning.current = true;
+    const sourceNativeLease = nativeConnectionLease;
     try {
-      const commands = await drainNativeFocusCommands();
+      const commands = await drainNativeFocusCommands(deviceId, sourceNativeLease);
       for (const nativeCommand of commands) {
         const connection = preferencesRef.current;
         if (!connection.endpoint || !connection.token || liveConnectionRef.current !== 'live') {
@@ -924,7 +978,12 @@ export function MobileApp() {
             response.ack.status === 'conflict' ||
             response.ack.status === 'rejected'
           ) {
-            await completeNativeFocusCommands([nativeCommand.id]);
+            if (nativeConnectionLeaseRef.current !== sourceNativeLease) break;
+            await completeNativeFocusCommands(
+              [nativeCommand.id],
+              deviceId,
+              sourceNativeLease,
+            );
           }
           if (response.ack.status === 'applied' || response.ack.status === 'duplicate') {
             setCommandNotice(
@@ -962,7 +1021,7 @@ export function MobileApp() {
     } finally {
       nativeQueueRunning.current = false;
     }
-  }, [commitLiveSnapshot, deviceId, pullLedger]);
+  }, [commitLiveSnapshot, deviceId, nativeConnectionLease, pullLedger]);
 
   useEffect(() => {
     if (liveConnection !== 'live') return;
@@ -1002,6 +1061,7 @@ export function MobileApp() {
       const snapshot = liveSnapshotRef.current ?? makeIdleSnapshot();
       const connection = preferencesRef.current;
       const sourceConnectionKey = mobileAccountConnectionKey(connection);
+      const sourceNativeLease = nativeConnectionLeaseRef.current;
       const title = (titleOverride ?? titleDraft).trim();
       if (action === 'start' && !title) {
         setCommandNotice('请先填写本次专注标题');
@@ -1056,7 +1116,7 @@ export function MobileApp() {
             setCommandNotice('本机专注已继续');
           } else if (action === 'finish' && nextRuntime) {
             const bundle = finishOfflineFocus(nextRuntime, now);
-            await persistCompletedOfflineFocus(bundle, deviceId);
+            await persistCompletedOfflineFocus(bundle, deviceId, sourceNativeLease);
             nextRuntime = null;
             authorityModeRef.current = 'cloud-live';
             setAuthorityMode('cloud-live');
@@ -1095,6 +1155,7 @@ export function MobileApp() {
       }
 
       const command = makeUiCommand(action, snapshot, title, selectedTask);
+      const request = commandRequests.issue(sourceConnectionKey);
       pendingCommandRef.current = action;
       setPendingCommand(action);
       setCommandNotice(null);
@@ -1104,9 +1165,17 @@ export function MobileApp() {
           token: connection.token,
           deviceId,
           command,
+          signal: request.signal,
         });
+        if (!request.isCurrent() || connectionKeyRef.current !== sourceConnectionKey) return;
         const committed = await commitLiveSnapshot(response, sourceConnectionKey);
-        if (!committed || connectionKeyRef.current !== sourceConnectionKey) return;
+        if (
+          !committed ||
+          !request.isCurrent() ||
+          connectionKeyRef.current !== sourceConnectionKey
+        ) {
+          return;
+        }
         setCommandNotice(commandAckNotice(action, command.expectedRevision, response));
         if (response.ack.status === 'applied' || response.ack.status === 'duplicate') {
           if (action === 'start') setTitleDraft('');
@@ -1114,13 +1183,32 @@ export function MobileApp() {
           if (action === 'finish') void pullLedger(connection, cacheRef.current.cursor);
         }
       } catch (error) {
-        if (!isAbortError(error)) setCommandNotice(errorMessage(error));
+        if (
+          request.isCurrent() &&
+          connectionKeyRef.current === sourceConnectionKey &&
+          !isAbortError(error)
+        ) {
+          setCommandNotice(errorMessage(error));
+        }
       } finally {
-        pendingCommandRef.current = null;
-        setPendingCommand(null);
+        const shouldClear = request.isCurrent() && connectionKeyRef.current === sourceConnectionKey;
+        request.finish();
+        if (shouldClear) {
+          pendingCommandRef.current = null;
+          setPendingCommand(null);
+        }
       }
     },
-    [commitLiveSnapshot, deviceId, online, pullLedger, selectedTaskId, taskSnapshot, titleDraft],
+    [
+      commandRequests,
+      commitLiveSnapshot,
+      deviceId,
+      online,
+      pullLedger,
+      selectedTaskId,
+      taskSnapshot,
+      titleDraft,
+    ],
   );
 
   const handleRetry = () => {
@@ -1186,15 +1274,27 @@ export function MobileApp() {
     ledgerRequest.current?.abort();
     liveRequest.current?.abort();
     try {
-      if (
-        !(await runMobileAccountLogout(accountLifecycle, operation, clearNativeFocusConnection))
-      ) {
-        return;
-      }
+      const transition = await runMobileAccountLogout(
+        accountLifecycle,
+        operation,
+        {
+          read: readNativeFocusConnectionState,
+          mutate: (baseline) => clearNativeFocusConnection(baseline.connectionLease),
+          async restore(baseline, applied) {
+            const restored = await restoreNativeFocusConnectionState(
+              baseline,
+              applied.connectionLease,
+            );
+            commitNativeConnectionLease(restored.connectionLease);
+          },
+        },
+        resetAccountScopedState,
+      );
+      if (!transition.current) return;
+      commitNativeConnectionLease(null);
       const next = { ...preferencesRef.current, token: '', rememberToken: false };
       connectionKeyRef.current = mobileAccountConnectionKey(next);
-      const accountStateIssues = await resetAccountScopedState();
-      if (!accountLifecycle.isCurrent(operation)) return;
+      const accountStateIssues = transition.issues;
       let browserPersistenceFailed = false;
       try {
         clearSavedToken();

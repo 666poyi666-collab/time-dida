@@ -81,11 +81,27 @@ public final class FocusRuntimePlugin extends Plugin {
     @PluginMethod
     public void updateSnapshot(PluginCall call) {
         try {
+            FocusRuntimeConnectionStore.Connection connection = connectionForSourceDevice(
+                call.getString("deviceId"),
+                call.getString("connectionLease")
+            );
+            if (connection == null) {
+                call.reject("account connection changed", "stale_connection");
+                return;
+            }
             FocusRuntimeSnapshot snapshot = FocusRuntimeSnapshot.fromPlugin(
                 getContext(),
                 call.getObject("snapshot")
             );
-            FocusRuntimeStore.putSnapshot(getContext(), snapshot);
+            Boolean stored = FocusRuntimeConnectionStore.runIfCurrent(
+                getContext(),
+                connection,
+                () -> FocusRuntimeStore.putSnapshot(getContext(), snapshot)
+            );
+            if (stored == null) {
+                call.reject("account connection changed", "stale_connection");
+                return;
+            }
             FocusNotificationService.synchronize(getContext());
             FocusRuntimeTileService.requestRefresh(getContext());
             call.resolve(nativeStatus(FocusRuntimeStore.getSnapshot(getContext())));
@@ -97,36 +113,14 @@ public final class FocusRuntimePlugin extends Plugin {
     @PluginMethod
     public void configureConnection(PluginCall call) {
         try {
-            FocusRuntimeConnectionStore.Connection previous = FocusRuntimeConnectionStore.get(
-                getContext()
+            FocusRuntimeConnectionStore.Connection configured =
+                FocusRuntimeConnectionStore.replaceAndClearAccountStateIfCurrent(
+                    getContext(),
+                    call.getString("expectedConnectionLease"),
+                    call.getString("endpoint"),
+                    call.getString("accessToken"),
+                    call.getString("deviceId")
             );
-            FocusRuntimeConnectionStore.put(
-                getContext(),
-                call.getString("endpoint"),
-                call.getString("accessToken"),
-                call.getString("deviceId")
-            );
-            FocusRuntimeConnectionStore.Connection configured = FocusRuntimeConnectionStore.get(
-                getContext()
-            );
-            if (!sameConnection(previous, configured)) {
-                try {
-                    FocusRuntimeStore.clearSnapshot(getContext());
-                    FocusAuthorityProjectionStore.clear(getContext());
-                } catch (IllegalStateException exception) {
-                    if (previous == null) {
-                        FocusRuntimeConnectionStore.clear(getContext());
-                    } else {
-                        FocusRuntimeConnectionStore.put(
-                            getContext(),
-                            previous.endpoint,
-                            previous.accessToken,
-                            previous.deviceId
-                        );
-                    }
-                    throw exception;
-                }
-            }
             if (
                 configured != null &&
                 FocusLedgerNativeOutboxStore.countForDevice(
@@ -137,7 +131,12 @@ public final class FocusRuntimePlugin extends Plugin {
                 FocusLedgerSyncScheduler.schedule(getContext());
             }
             FocusNotificationService.synchronize(getContext());
-            call.resolve();
+            call.resolve(
+                new JSObject().put(
+                    "connectionLease",
+                    FocusRuntimeConnectionStore.currentLease()
+                )
+            );
         } catch (IllegalArgumentException | IllegalStateException exception) {
             call.reject(exception.getMessage(), "invalid_connection");
         }
@@ -146,14 +145,18 @@ public final class FocusRuntimePlugin extends Plugin {
     @PluginMethod
     public void clearConnection(PluginCall call) {
         try {
-            // Clear account-scoped responses and commands before the credential. If the
-            // durable credential clear fails, the renderer keeps the account logged in.
-            FocusRuntimeStore.clearSnapshot(getContext());
-            FocusAuthorityProjectionStore.clear(getContext());
-            FocusRuntimeConnectionStore.clear(getContext());
+            FocusRuntimeConnectionStore.clearConnectionAndAccountStateIfCurrent(
+                getContext(),
+                call.getString("expectedConnectionLease")
+            );
             FocusLedgerSyncScheduler.cancel(getContext());
             FocusNotificationService.synchronize(getContext());
-            call.resolve();
+            call.resolve(
+                new JSObject().put(
+                    "connectionLease",
+                    FocusRuntimeConnectionStore.currentLease()
+                )
+            );
         } catch (IllegalStateException exception) {
             call.reject(exception.getMessage(), "clear_connection_failed");
         }
@@ -164,7 +167,10 @@ public final class FocusRuntimePlugin extends Plugin {
         FocusRuntimeConnectionStore.Connection connection = FocusRuntimeConnectionStore.get(
             getContext()
         );
-        JSObject value = new JSObject();
+        JSObject value = new JSObject().put(
+            "connectionLease",
+            FocusRuntimeConnectionStore.currentLease()
+        );
         if (connection == null) {
             call.resolve(value.put("configured", false));
             return;
@@ -202,8 +208,9 @@ public final class FocusRuntimePlugin extends Plugin {
 
     @PluginMethod
     public void enqueueCompletedLedgerBundle(PluginCall call) {
-        FocusRuntimeConnectionStore.Connection connection = FocusRuntimeConnectionStore.get(
-            getContext()
+        FocusRuntimeConnectionStore.Connection connection = connectionForSourceDevice(
+            call.getString("deviceId"),
+            call.getString("connectionLease")
         );
         if (connection == null) {
             call.resolve(
@@ -215,23 +222,32 @@ public final class FocusRuntimePlugin extends Plugin {
         }
         try {
             JSObject record = call.getObject("record");
-            boolean queued = FocusLedgerNativeOutboxStore.enqueue(
+            JSObject result = FocusRuntimeConnectionStore.runIfCurrent(
                 getContext(),
-                record,
-                connection.deviceId
+                connection,
+                () -> {
+                    boolean queued = FocusLedgerNativeOutboxStore.enqueue(
+                        getContext(),
+                        record,
+                        connection.deviceId
+                    );
+                    FocusLedgerSyncScheduler.schedule(getContext());
+                    return new JSObject()
+                        .put("queued", queued)
+                        .put(
+                            "pending",
+                            FocusLedgerNativeOutboxStore.countForDevice(
+                                getContext(),
+                                connection.deviceId
+                            )
+                        );
+                }
             );
-            FocusLedgerSyncScheduler.schedule(getContext());
-            call.resolve(
-                new JSObject()
-                    .put("queued", queued)
-                    .put(
-                        "pending",
-                        FocusLedgerNativeOutboxStore.countForDevice(
-                            getContext(),
-                            connection.deviceId
-                        )
-                    )
-            );
+            if (result == null) {
+                call.reject("account connection changed", "stale_connection");
+                return;
+            }
+            call.resolve(result);
         } catch (IllegalArgumentException | IllegalStateException exception) {
             call.reject(exception.getMessage(), "invalid_completed_ledger");
         }
@@ -240,19 +256,38 @@ public final class FocusRuntimePlugin extends Plugin {
     @PluginMethod
     public void updateAuthorityProjectionHistory(PluginCall call) {
         try {
+            FocusRuntimeConnectionStore.Connection connection = connectionForSourceDevice(
+                call.getString("deviceId"),
+                call.getString("connectionLease")
+            );
+            if (connection == null) {
+                call.reject("account connection changed", "stale_connection");
+                return;
+            }
             JSArray history = call.getArray("history");
             Integer pendingCount = call.getInt("pendingCount");
             if (history == null || pendingCount == null) {
                 throw new IllegalArgumentException("history and pendingCount are required");
             }
-            FocusAuthorityProjectionStore.updateHistory(
+            Boolean committed = FocusRuntimeConnectionStore.runIfCurrent(
                 getContext(),
-                history,
-                safeTimestamp(call, "lastVerifiedAt"),
-                safeTimestamp(call, "lastAttemptAt"),
-                pendingCount,
-                call.getString("lastErrorCode", "")
+                connection,
+                () -> {
+                    FocusAuthorityProjectionStore.updateHistory(
+                        getContext(),
+                        history,
+                        safeTimestamp(call, "lastVerifiedAt"),
+                        safeTimestamp(call, "lastAttemptAt"),
+                        pendingCount,
+                        call.getString("lastErrorCode", "")
+                    );
+                    return true;
+                }
             );
+            if (committed == null) {
+                call.reject("account connection changed", "stale_connection");
+                return;
+            }
             call.resolve(
                 new JSObject()
                     .put("accepted", history.length())
@@ -414,9 +449,23 @@ public final class FocusRuntimePlugin extends Plugin {
 
     @PluginMethod
     public void drainPendingCommands(PluginCall call) {
-        List<FocusRuntimeCommand> pending = FocusRuntimeStore.drainPendingCommands(
-            getContext()
+        FocusRuntimeConnectionStore.Connection connection = connectionForSourceDevice(
+            call.getString("deviceId"),
+            call.getString("connectionLease")
         );
+        if (connection == null) {
+            call.reject("account connection changed", "stale_connection");
+            return;
+        }
+        List<FocusRuntimeCommand> pending = FocusRuntimeConnectionStore.runIfCurrent(
+            getContext(),
+            connection,
+            () -> FocusRuntimeStore.drainPendingCommands(getContext())
+        );
+        if (pending == null) {
+            call.reject("account connection changed", "stale_connection");
+            return;
+        }
         JSArray commands = new JSArray();
         for (FocusRuntimeCommand command : pending) {
             commands.put(command.toJson());
@@ -427,10 +476,23 @@ public final class FocusRuntimePlugin extends Plugin {
     @PluginMethod
     public void completeCommands(PluginCall call) {
         try {
-            int completed = FocusRuntimeStore.completeCommands(
-                getContext(),
-                call.getArray("ids")
+            FocusRuntimeConnectionStore.Connection connection = connectionForSourceDevice(
+                call.getString("deviceId"),
+                call.getString("connectionLease")
             );
+            if (connection == null) {
+                call.reject("account connection changed", "stale_connection");
+                return;
+            }
+            Integer completed = FocusRuntimeConnectionStore.runIfCurrent(
+                getContext(),
+                connection,
+                () -> FocusRuntimeStore.completeCommands(getContext(), call.getArray("ids"))
+            );
+            if (completed == null) {
+                call.reject("account connection changed", "stale_connection");
+                return;
+            }
             FocusNotificationService.synchronize(getContext());
             FocusRuntimeTileService.requestRefresh(getContext());
             call.resolve(new JSObject().put("completed", completed));
@@ -627,14 +689,15 @@ public final class FocusRuntimePlugin extends Plugin {
         return new JSObject().put("status", status).put("manualRequired", false);
     }
 
-    private static boolean sameConnection(
-        FocusRuntimeConnectionStore.Connection left,
-        FocusRuntimeConnectionStore.Connection right
+    private FocusRuntimeConnectionStore.Connection connectionForSourceDevice(
+        String deviceId,
+        String connectionLease
     ) {
-        if (left == null || right == null) return left == right;
-        return left.endpoint.equals(right.endpoint) &&
-        left.accessToken.equals(right.accessToken) &&
-        left.deviceId.equals(right.deviceId);
+        return FocusRuntimeConnectionStore.connectionForSource(
+            getContext(),
+            deviceId,
+            connectionLease
+        );
     }
 
     private static long safeTimestamp(PluginCall call, String key) {

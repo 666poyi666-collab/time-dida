@@ -1,6 +1,18 @@
 # FocusLink 实施日志
 
-## 2026-07-30 · Focus Guard 阶段 A 本地兼容层
+## 2026-08-01 · v0.12.74 账号过渡与 native lease 最终封口
+
+- 0.12.73/1273 候选作废（候选生成后修改了跨端行为），本版统一升为 0.12.74/1274；
+  release-v01273 候选目录退役，保留 v01270/v01272/v01274 三个规范发布目录。
+- 竞态冻结审查（Android / Sync v2 / native lease 三段）确认 0e1398f 封口成立，并补两处
+  边界：`drainPendingCommands` 纳入 connection-generation barrier（切号后旧调用按
+  `stale_connection` 拒绝）；Sync v2 切号 reset 同时清除 legacy `cursor` 元数据。为
+  `settleMobileV2Ack` 补错 lease/device/epoch 拒绝的确定性负向用例。
+- 手机/手表 live command、任务快照与账本拉取统一挂载可中止 request lease；accountLifecycle
+  串行化 Keystore 写入，旧 restore 补偿不可能覆盖后继登录；instrumentation 使用 PID 前缀
+  隔离 SharedPreferences，不触碰 7 个生产偏好文件（前后 SHA-256 契约在真机证据链回填）。
+
+## 2026-07-30 · v0.12.73 Focus Guard 阶段 A 本地兼容层
 
 - 冻结四类 `focus_guard_*` 的 entity ID、V1 明文字段白名单、A256GCM envelope、AAD、
   tombstone、revision、冲突和设备专属字段边界；Account DO 仍只保存 opaque envelope。
@@ -10,8 +22,25 @@
 - mixed-version 自动化覆盖四类 guard kind、附带明文/额外字段拒绝、Electron 与 IndexedDB
   持久化、cursor 不前进、byte pagination、tombstone、Account DO validator 绑定，以及
   Android cursorless completed-ledger writer 忽略不消费的 guard change。
-- 本条是未发布的阶段 A 本地实现：未改版本、未打包、未安装设备、未部署、未读取 secret。
-  同账号 root provisioning、全端解密 parser、冲突预览和生产 publisher 继续阻断。
+- 本地兼容层随 0.12.73 候选统一交付；未部署 Worker/DO/gateway、未读取 secret，也未新增
+  root provisioning、全端解密 parser、冲突预览或生产 publisher。
+
+## 2026-07-30 · v0.12.73 账号切换竞态最终封口
+
+- Android 连接存储以同一同步 barrier 完成 Keystore credential 替换/清除和 runtime
+  snapshot/command、authority projection、poll diagnostics 清理。已经进入旧 generation 的写入先
+  完成再被清空；尚未进入的旧 live/command/ledger 响应因 generation 变化直接丢弃。来自 renderer 的
+  snapshot、completed ledger 与 projection 还必须携带并匹配当前 source deviceId。
+- 移动 Sync v2 的 enqueue/claim 将 outbox 与 `syncV2.bootstrap` 放进同一 IndexedDB 事务，核对
+  account owner、deviceId、sync/cursor epoch 与 account generation；claim 同时过滤 device 与
+  generation，账号切换会归档并删除所有外账号 outbox 状态、旧账本投影和时间元数据。
+- 手机账本拉取在 sync、缓存读取、pending 读取和 native projection 每个 await 后重验连接；手机与
+  手表 live command 使用独立 AbortController lease，切号同步取消请求并清除 busy/pending，旧请求的
+  success、catch 与 finally 均不能覆盖新账号 UI。
+- 确定性回归覆盖“旧 poll 被阻塞后切号”“旧写已进入 generation barrier 后切号”“新 checkpoint
+  已提交后释放旧 enqueue”与 command lease 失效。Node 20.20.2 定向 43 项通过；Android Studio
+  JBR 21.0.10 完成 unit/lint/assemble，JBR 构建 APK 在小米直跑 20 项 instrumentation 为 `OK`，
+  其中需真实云参数或华为机型的既有用例按合同 skipped，新增两项账号竞态用例均实际通过。
 
 ## 2026-07-30 · v0.12.73 单账号 bootstrap 与任务快照 freshness
 

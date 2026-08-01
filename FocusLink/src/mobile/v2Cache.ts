@@ -315,10 +315,17 @@ function joinV2Bundle(ledger: FocusLedgerV2, metadata: FocusMetadataV2): DeviceS
 
 export async function enqueueMobileV2Mutation(
   mutation: SyncV2Mutation,
+  expectedCheckpoint: MobileV2BootstrapCheckpoint,
   now = Date.now(),
 ): Promise<void> {
+  if (
+    mutation.deviceId !== expectedCheckpoint.boundDeviceId ||
+    mutation.accountGeneration !== expectedCheckpoint.accountGeneration
+  ) {
+    throw new DOMException('Sync v2 mutation does not belong to the current account', 'AbortError');
+  }
   const database = await openMobileDatabase();
-  const transaction = database.transaction(OUTBOX, 'readwrite');
+  const transaction = database.transaction([OUTBOX, META], 'readwrite');
   const store = transaction.objectStore(OUTBOX);
   const record: SyncV2OutboxItem = {
     ...mutation,
@@ -332,22 +339,31 @@ export async function enqueueMobileV2Mutation(
     createdAt: now,
     updatedAt: now,
   };
+  const completion = done(transaction);
   try {
-    const existing = (await request(store.get(mutation.opId))) as SyncV2OutboxItem | undefined;
-    if (existing) {
-      if (!sameMutation(existing, mutation)) {
-        throw new Error('同一 Sync v2 opId 对应了不同 payload');
-      }
-    } else {
-      store.add(record);
-    }
-    await done(transaction);
+    await readTwoInTransaction(
+      store.get(mutation.opId),
+      transaction.objectStore(META).get(BOOTSTRAP_KEY),
+      (existing: SyncV2OutboxItem | undefined, ownerRecord) => {
+        const owner = ownerRecord as { value?: MobileV2BootstrapCheckpoint } | undefined;
+        assertCheckpointOwner(owner?.value, expectedCheckpoint);
+        if (existing) {
+          if (!sameMutation(existing, mutation)) {
+            throw new Error('同一 Sync v2 opId 对应了不同 payload');
+          }
+        } else {
+          store.add(record);
+        }
+      },
+    );
+    await completion;
   } catch (error) {
     try {
       transaction.abort();
     } catch {
       // A request failure can abort the transaction before this catch runs.
     }
+    await completion.catch(() => undefined);
     throw error;
   } finally {
     database.close();
@@ -355,7 +371,7 @@ export async function enqueueMobileV2Mutation(
 }
 
 export async function claimMobileV2Outbox(
-  boundDeviceId: string,
+  expectedCheckpoint: MobileV2BootstrapCheckpoint,
   limit: number,
   now = Date.now(),
 ): Promise<{
@@ -363,33 +379,54 @@ export async function claimMobileV2Outbox(
   items: SyncV2OutboxItem[];
 }> {
   const database = await openMobileDatabase();
-  const transaction = database.transaction(OUTBOX, 'readwrite');
+  const transaction = database.transaction([OUTBOX, META], 'readwrite');
   const store = transaction.objectStore(OUTBOX);
-  const records = (await request(store.getAll())) as SyncV2OutboxItem[];
   const leaseId = crypto.randomUUID();
-  const items = records
-    .filter(
-      (item) =>
-        item.deviceId === boundDeviceId &&
-        (item.state === 'pending' ||
-          item.state === 'retry' ||
-          (item.state === 'uploading' && (item.leaseExpiresAt ?? 0) <= now)) &&
-        item.nextRetryAt <= now,
-    )
-    .sort((left, right) => left.createdAt - right.createdAt)
-    .slice(0, Math.max(0, limit))
-    .map((item) => ({
-      ...item,
-      state: 'uploading' as const,
-      leaseId,
-      claimedAt: now,
-      leaseExpiresAt: now + SYNC_V2_DEFAULT_LEASE_MS,
-      updatedAt: now,
-    }));
-  for (const item of items) store.put(item);
-  await done(transaction);
-  database.close();
-  return { leaseId, items };
+  const completion = done(transaction);
+  try {
+    const items = await readTwoInTransaction(
+      store.getAll(),
+      transaction.objectStore(META).get(BOOTSTRAP_KEY),
+      (records: SyncV2OutboxItem[], ownerRecord) => {
+        const owner = ownerRecord as { value?: MobileV2BootstrapCheckpoint } | undefined;
+        assertCheckpointOwner(owner?.value, expectedCheckpoint);
+        const claimed = records
+          .filter(
+            (item) =>
+              item.deviceId === expectedCheckpoint.boundDeviceId &&
+              item.accountGeneration === expectedCheckpoint.accountGeneration &&
+              (item.state === 'pending' ||
+                item.state === 'retry' ||
+                (item.state === 'uploading' && (item.leaseExpiresAt ?? 0) <= now)) &&
+              item.nextRetryAt <= now,
+          )
+          .sort((left, right) => left.createdAt - right.createdAt)
+          .slice(0, Math.max(0, limit))
+          .map((item) => ({
+            ...item,
+            state: 'uploading' as const,
+            leaseId,
+            claimedAt: now,
+            leaseExpiresAt: now + SYNC_V2_DEFAULT_LEASE_MS,
+            updatedAt: now,
+          }));
+        for (const item of claimed) store.put(item);
+        return claimed;
+      },
+    );
+    await completion;
+    return { leaseId, items };
+  } catch (error) {
+    try {
+      transaction.abort();
+    } catch {
+      // A request failure can abort the transaction before this catch runs.
+    }
+    await completion.catch(() => undefined);
+    throw error;
+  } finally {
+    database.close();
+  }
 }
 
 export async function settleMobileV2Ack(input: {
@@ -610,10 +647,7 @@ export async function resetMobileV2Epoch(
         for (const item of records) {
           const deviceCredentialChanged = item.deviceId !== checkpoint.boundDeviceId;
           const accountGenerationChanged = item.accountGeneration !== checkpoint.accountGeneration;
-          if (
-            (accountOwnerChanged || deviceCredentialChanged || accountGenerationChanged) &&
-            (item.state === 'pending' || item.state === 'uploading' || item.state === 'retry')
-          ) {
+          if (accountOwnerChanged || deviceCredentialChanged || accountGenerationChanged) {
             history.put({
               opId: item.opId,
               entityType: item.entityType,
@@ -636,6 +670,9 @@ export async function resetMobileV2Epoch(
         transaction.objectStore(ENTITY_STATE).clear();
         transaction.objectStore(CONFLICTS).clear();
         transaction.objectStore('bundles').clear();
+        meta.delete('lastSyncAt');
+        meta.delete('serverTime');
+        meta.delete('cursor');
         meta.delete(LAST_VERIFIED_KEY);
         meta.delete(LAST_ERROR_KEY);
         meta.put({ key: BOOTSTRAP_KEY, value: checkpoint });

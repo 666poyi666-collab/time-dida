@@ -30,7 +30,7 @@ describe('mobile canonical Sync v2 recovery', () => {
   });
 
   it('pulls first after a credential rebind and never sends the previous device outbox', async () => {
-    await writeMobileV2Bootstrap({
+    const oldOwner = {
       key: 'syncV2.bootstrap',
       state: 'v2-active',
       bootstrapId: null,
@@ -41,7 +41,8 @@ describe('mobile canonical Sync v2 recovery', () => {
       cursorEpoch: 'cursor-epoch-1',
       accountGeneration: 1,
       updatedAt: 1,
-    });
+    } as const;
+    await writeMobileV2Bootstrap(oldOwner);
     const staleMutation: SyncV2Mutation = {
       opId: 'stale-device-operation',
       entityType: 'focus_metadata_v2',
@@ -62,7 +63,7 @@ describe('mobile canonical Sync v2 recovery', () => {
       deviceId: OLD_DEVICE_ID,
       accountGeneration: 1,
     };
-    await enqueueMobileV2Mutation(staleMutation, 2);
+    await enqueueMobileV2Mutation(staleMutation, oldOwner, 2);
 
     const exchangeBodies: Array<Record<string, unknown>> = [];
     vi.stubGlobal(

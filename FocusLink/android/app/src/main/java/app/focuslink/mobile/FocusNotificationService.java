@@ -183,14 +183,15 @@ public final class FocusNotificationService extends Service {
     private void dispatchCloudPoll() {
         if (!cloudPolling || cloudPollInFlight) return;
         cloudPollInFlight = true;
-        recordPollAttempt();
+        FocusRuntimeConnectionStore.Connection dispatchConnection =
+            FocusRuntimeConnectionStore.get(this);
         try {
             cloudExecutor.execute(() -> {
                 try {
                     pollCloudSnapshot();
                 } catch (Throwable throwable) {
                     String errorCode = pollErrorCode(throwable);
-                    recordPollFailure(errorCode);
+                    recordPollFailureForDispatch(dispatchConnection, errorCode);
                     Log.e(TAG, "Background cloud focus poll terminated unexpectedly [" + errorCode + "]");
                 } finally {
                     handler.post(() -> {
@@ -203,7 +204,7 @@ public final class FocusNotificationService extends Service {
             });
         } catch (RuntimeException exception) {
             cloudPollInFlight = false;
-            recordPollFailure(pollErrorCode(exception));
+            recordPollFailureForDispatch(dispatchConnection, pollErrorCode(exception));
             if (cloudPolling) handler.postDelayed(cloudPollRunnable, CLOUD_POLL_INTERVAL_MS);
         }
     }
@@ -214,6 +215,7 @@ public final class FocusNotificationService extends Service {
             recordPollFailure("connection-not-configured");
             return;
         }
+        recordPollAttempt(connection);
         FocusRuntimeSnapshot current = FocusRuntimeStore.getSnapshot(this);
         if (!current.localAuthority) uploadPendingCommand(connection);
         try {
@@ -227,11 +229,11 @@ public final class FocusNotificationService extends Service {
                 if (!current.localAuthority) {
                     throw new IllegalArgumentException("cloud revision rollback or conflict");
                 }
-                recordPollSuccess(snapshot.stateRevision);
+                recordPollSuccess(connection, snapshot.stateRevision);
                 Log.i(TAG, "Cloud focus snapshot retained as diagnostics while local authority is active");
                 return;
             }
-            recordPollSuccess(snapshot.stateRevision);
+            recordPollSuccess(connection, snapshot.stateRevision);
             Log.i(TAG, "Background cloud focus snapshot confirmed at revision " + snapshot.stateRevision);
             handler.post(() -> {
                 if (FocusRuntimeConnectionStore.isCurrent(this, connection)) {
@@ -240,7 +242,7 @@ public final class FocusNotificationService extends Service {
             });
         } catch (Throwable exception) {
             String errorCode = pollErrorCode(exception);
-            recordPollFailure(errorCode);
+            recordPollFailure(connection, errorCode);
             Log.w(TAG, "Unable to refresh focus state in background [" + errorCode + "]");
         }
     }
@@ -279,7 +281,7 @@ public final class FocusNotificationService extends Service {
             });
         } catch (Throwable exception) {
             String errorCode = pollErrorCode(exception);
-            recordPollFailure(errorCode);
+            recordPollFailure(connection, errorCode);
             Log.w(TAG, "Unable to upload pending native focus command [" + errorCode + "]");
         }
     }
@@ -302,9 +304,9 @@ public final class FocusNotificationService extends Service {
     }
 
     static JSONObject pollDiagnostics(Context context) {
-        SharedPreferences preferences = context.getSharedPreferences(
-            DIAGNOSTICS_PREFERENCES,
-            Context.MODE_PRIVATE
+        SharedPreferences preferences = FocusRuntimePreferences.get(
+            context,
+            DIAGNOSTICS_PREFERENCES
         );
         try {
             return new JSONObject()
@@ -319,32 +321,79 @@ public final class FocusNotificationService extends Service {
         }
     }
 
-    private void recordPollAttempt() {
-        SharedPreferences preferences = getSharedPreferences(
-            DIAGNOSTICS_PREFERENCES,
-            Context.MODE_PRIVATE
-        );
-        preferences
+    static void clearPollDiagnostics(Context context) {
+        if (!FocusRuntimePreferences.get(context, DIAGNOSTICS_PREFERENCES)
             .edit()
-            .putLong("attemptCount", preferences.getLong("attemptCount", 0L) + 1L)
-            .putLong("lastAttemptAtEpochMs", System.currentTimeMillis())
-            .apply();
+            .clear()
+            .commit()) {
+            throw new IllegalStateException("unable to clear cloud poll diagnostics");
+        }
     }
 
-    private void recordPollSuccess(long revision) {
-        getSharedPreferences(DIAGNOSTICS_PREFERENCES, Context.MODE_PRIVATE)
-            .edit()
-            .putLong("lastSuccessAtEpochMs", System.currentTimeMillis())
-            .putLong("lastRevision", revision)
-            .putString("lastError", "")
-            .apply();
+    private void recordPollAttempt(FocusRuntimeConnectionStore.Connection connection) {
+        FocusRuntimeConnectionStore.runIfCurrent(
+            this,
+            connection,
+            () -> {
+                SharedPreferences preferences = FocusRuntimePreferences.get(
+                    this,
+                    DIAGNOSTICS_PREFERENCES
+                );
+                return preferences
+                    .edit()
+                    .putLong("attemptCount", preferences.getLong("attemptCount", 0L) + 1L)
+                    .putLong("lastAttemptAtEpochMs", System.currentTimeMillis())
+                    .commit();
+            }
+        );
+    }
+
+    private void recordPollSuccess(
+        FocusRuntimeConnectionStore.Connection connection,
+        long revision
+    ) {
+        FocusRuntimeConnectionStore.runIfCurrent(
+            this,
+            connection,
+            () -> FocusRuntimePreferences.get(this, DIAGNOSTICS_PREFERENCES)
+                .edit()
+                .putLong("lastSuccessAtEpochMs", System.currentTimeMillis())
+                .putLong("lastRevision", revision)
+                .putString("lastError", "")
+                .commit()
+        );
+    }
+
+    private void recordPollFailure(
+        FocusRuntimeConnectionStore.Connection connection,
+        String message
+    ) {
+        FocusRuntimeConnectionStore.runIfCurrent(
+            this,
+            connection,
+            () -> FocusRuntimePreferences.get(this, DIAGNOSTICS_PREFERENCES)
+                .edit()
+                .putString("lastError", message)
+                .commit()
+        );
     }
 
     private void recordPollFailure(String message) {
-        getSharedPreferences(DIAGNOSTICS_PREFERENCES, Context.MODE_PRIVATE)
+        FocusRuntimePreferences.get(this, DIAGNOSTICS_PREFERENCES)
             .edit()
             .putString("lastError", message)
             .apply();
+    }
+
+    private void recordPollFailureForDispatch(
+        FocusRuntimeConnectionStore.Connection expected,
+        String message
+    ) {
+        if (expected != null) {
+            recordPollFailure(expected, message);
+        } else if (FocusRuntimeConnectionStore.get(this) == null) {
+            recordPollFailure(message);
+        }
     }
 
     static String pollErrorCode(Throwable throwable) {
@@ -690,16 +739,16 @@ public final class FocusNotificationService extends Service {
     }
 
     private boolean hasPostedPauseReminder(FocusRuntimeSnapshot snapshot) {
-        SharedPreferences preferences = getSharedPreferences(
-            PAUSE_REMINDER_PREFERENCES,
-            Context.MODE_PRIVATE
+        SharedPreferences preferences = FocusRuntimePreferences.get(
+            this,
+            PAUSE_REMINDER_PREFERENCES
         );
         return snapshot.sessionId.equals(preferences.getString(PAUSE_REMINDER_SESSION_ID_KEY, "")) &&
             snapshot.stateRevision == preferences.getLong(PAUSE_REMINDER_REVISION_KEY, -1L);
     }
 
     private void markPauseReminderPosted(FocusRuntimeSnapshot snapshot) {
-        getSharedPreferences(PAUSE_REMINDER_PREFERENCES, Context.MODE_PRIVATE)
+        FocusRuntimePreferences.get(this, PAUSE_REMINDER_PREFERENCES)
             .edit()
             .putString(PAUSE_REMINDER_SESSION_ID_KEY, snapshot.sessionId)
             .putLong(PAUSE_REMINDER_REVISION_KEY, snapshot.stateRevision)
@@ -708,8 +757,8 @@ public final class FocusNotificationService extends Service {
 
     static void clearPauseReminder(Context context) {
         Context applicationContext = context.getApplicationContext();
-        applicationContext
-            .getSharedPreferences(PAUSE_REMINDER_PREFERENCES, Context.MODE_PRIVATE)
+        FocusRuntimePreferences
+            .get(applicationContext, PAUSE_REMINDER_PREFERENCES)
             .edit()
             .clear()
             .apply();
