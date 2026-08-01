@@ -1,21 +1,20 @@
 # Changelog
 
-## Unreleased - 2026-07-30（Focus Guard 阶段 A 本地兼容层）
+## v0.12.74 - 2026-08-01（账号过渡与 native lease 最终封口、instrumentation 隔离）
 
-- **mixed-version change feed**：Electron 与移动 renderer 共用完整 Sync v2 entity type
-  判定；四类 `focus_guard_*` 加密实体现在可在无 root、不可解密的客户端中验证并原样持久化，
-  不再因旧的三类型白名单拒绝整页或卡住 cursor。
-- **加密边界收紧**：Focus Guard envelope 固定精确字段、entity kind、A256GCM 元数据和
-  tombstone 语义；附带明文、额外字段、错误 kind、未知 type 或非法 cursor/revision 会在
-  提交 checkpoint 前失败。Account DO 继续只见密文，不新增生产 publisher。
-- **阶段边界**：本轮只做合同、parser 与本地自动化，不部署 Worker/DO/gateway，不读取或
-  写入 secret，不打包、不递增版本、不安装 Windows/小米/华为/OPPO。32-byte root
-  provisioning、解密桥、生产 schema 和真机矩阵仍须单独批准。
+- **0.12.73 候选作废**：0.12.73/1273 候选生成后又修改了跨端行为，按用户决定作废、绝不复用；本版在冻结范围内统一升为 `0.12.74/1274`，作废候选的 release-v01273 目录退役，保留 v01270/v01272/v01274 三个规范发布目录。
+- **native lease 生命周期收口**：手机/手表 renderer 的 live command、任务快照与账本拉取统一走可中止 request lease（新请求即中止旧代），Android native 侧以 `connection-generation barrier` + 来源 `deviceId` 双重校验写入；每次 await 后重验连接，旧 success/catch/finally 不再污染新账号。
+- **切号竞态冻结审查补漏**：冻结审查确认 Android configure/clear、Sync v2 owner/epoch CAS、旧响应丢弃与 renderer 来源校验全部成立；补上两处边界 —— 旧代 `drainPendingCommands` 进入 generation barrier（切号后旧调用按 `stale_connection` 拒绝），Sync v2 切号 reset 同时清除 legacy `cursor` 元数据（不再向旧账号 UI 短暂暴露旧游标），并为 `settleMobileV2Ack` 补错 lease/device/epoch 拒绝的确定性负向用例。
+- **instrumentation 生产偏好隔离**：Android instrumentation 全程使用 PID 前缀隔离 SharedPreferences，绝不触碰 7 个生产偏好文件；前后 SHA-256 契约在真机证据链回填。
+- **移动端批次**：MobileApp/WatchApp 账本、命令与快照在账号生命周期上统一挂载可中止 lease；accountLifecycle 串行化 Keystore 写入与补偿回滚（后继登录提交后旧 restore 直接拒绝，不可能覆盖）。
+- **门禁与安装矩阵**：格式/类型/lint/全量测试/build/dist、Android JBR 三件套与 instrumentation 按 TEST_AND_RELEASE.md 执行；安装矩阵（Windows/小米/华为/OPPO）与外部阻塞在发布记录回填。
 
 ## v0.12.73 - 2026-07-30（账号同步加固、任务快照收敛与有效日账本）
 
 - **登录还是只登账号**：Windows、手机、平板继续不显示服务地址、访问令牌、配对码或“编辑连接”；既有 `fl2` 凭据原位升级不掉线。新设备 bootstrap 收紧为 start/poll 两阶段，使用短期独立 `flb_*` poll credential、canonical owner 登录 URL、精确字段与全链脱敏；未完成管理员登录时直接下发 device token 会被拒绝。
 - **canonical 权限边界闭环**：Electron preload/IPC 不再向普通 renderer 暴露 configure、quick setup 或 pairing 写面，`settings:set` 会剥离 `deviceSync`；生产 `fl2` 运行期与 Android 原生安全存储都固定 canonical origin，移动账号操作按 generation 取消旧请求并串行写 Keystore。退出登录、凭据或连接 epoch 变化会废弃旧 live、任务与账本响应；Sync v2 checkpoint 绑定账号，并在同一 IndexedDB 事务内复核 bootstrap owner，延迟的旧账号 exchange 不能写入新连接。
+- **账号切换竞态最终封口**：Android configure/clear、runtime command/snapshot、authority projection 与 poll diagnostics 进入同一 connection-generation barrier，renderer 写入还必须匹配来源设备；手机/手表命令和账本拉取在每个异步边界后复核连接。Sync v2 enqueue/claim 与 bootstrap owner 在同一 IndexedDB 事务内 CAS，并同时过滤 device 与 account generation；新账号提交后才恢复的旧 enqueue 会被 `AbortError` 拒绝。
+- **Focus Guard mixed-version 兼容**：Electron 与移动 renderer 共用完整 Sync v2 entity type 判定；四类 `focus_guard_*` A256GCM envelope 可由无 root 客户端精确验证并原样持久化，明文、额外字段、错误 kind、未知 type 或非法 cursor/revision 会在 checkpoint 前失败。Account DO 继续只见密文，本版不新增生产 publisher、root provisioning 或解密桥。
 - **公网边界不冒充**：新增 `probe:account-bootstrap` 只输出结构化部署状态。当前 canonical 实测 `/account/v1/device/bootstrap` 为 404，明确记为 `not-deployed`；本仓已完成客户端、私有 registration、合同、诊断与部署清单，真实上线仍需 foxlink gateway 的 owner session/CSRF、flow store、独立 `fia_*` secret 和单次消费负测。
 - **任务快照自动追新**：手机/平板可见态每 15 秒使用 `no-store` 拉取任务快照，并在恢复前台/连接变化时立即刷新；revision 只允许前进，延迟旧响应不覆盖新缓存，同 revision 异文直接拒绝。PC 只有收到 authority 对同一 device/payload 的回读确认后才清除耐久 pending snapshot。
 - **共享有效日账本**：新增 07:00–22:00 有效日纯函数，真实 Segment/PauseEvent 切出 focus/pause/gap 且严格守恒；Dashboard 提供甜甜圈、24h 轴和精确空档，历史缺边界数据只显示 estimated，不写第二份 gap 事实。

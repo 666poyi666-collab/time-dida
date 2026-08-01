@@ -20,7 +20,7 @@ describe('FocusLink identity device registration protocol', () => {
         displayName: '  这台 Windows 电脑  ',
         platform: 'windows',
         deviceKind: 'desktop',
-        appVersion: '0.12.72',
+        appVersion: '0.12.74',
       }),
     ).toEqual({
       protocolVersion: FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
@@ -28,7 +28,7 @@ describe('FocusLink identity device registration protocol', () => {
       displayName: '这台 Windows 电脑',
       platform: 'windows',
       deviceKind: 'desktop',
-      appVersion: '0.12.72',
+      appVersion: '0.12.74',
     });
   });
 

@@ -2,9 +2,9 @@
 
 FocusLink 是一个本地优先的 Windows 桌面专注工具：主进程精确记录专注、暂停与自然跨度，把片段关联到滴答清单任务，并通过彼此独立的队列同步滴答清单与番茄 To-do。
 
-> 当前版本：v0.12.73（单账号同步加固；任务快照自动收敛；共享有效日账本；移动 Liquid Glass 任务树）
+> 当前版本：v0.12.74（账号过渡与 native lease 最终封口；instrumentation 隔离；0.12.73 候选作废）
 >
-> 版本主题：登录即同步 · revision 单调刷新 · 07:00–22:00 有效日与精确空档 · 四端同版实装
+> 版本主题：登录即同步 · 切号竞态零窗口 · 四端同版实装 · 生产偏好不被 instrumentation 改写
 
 ## 产品边界
 
@@ -184,7 +184,7 @@ RELEASE_NOTES.md
 
 | 版本 | 本地安装版 | 版本说明 |
 | --- | --- | --- |
-| 0.12.73 | 账号同步竞态加固、任务快照 freshness、共享有效日账本与移动端界面收口 | [v0.12.73](release-v01273/RELEASE_NOTES.md) |
+| 0.12.74 | 账号过渡与 native lease 最终封口、instrumentation 生产偏好隔离 | [v0.12.74](release-v01274/RELEASE_NOTES.md) |
 | 0.12.72 | 单账号 canonical 同步与 Windows/Android 四端实装 | [v0.12.72](release-v01272/RELEASE_NOTES.md) |
 | 0.12.70 | 云端三端实时控制、MCP 投影与真实 PC 进程关闭验收 | [v0.12.70](release-v01270/RELEASE_NOTES.md) |
 
@@ -210,7 +210,7 @@ v0.12.11 因校验表格式被阻断；v0.12.12 的源码、回归和便携版�
 
 ### 当前发布
 
-- [v0.12.73 账号同步加固与有效日账本版本说明](release-v01273/RELEASE_NOTES.md)
+- [v0.12.74 账号过渡封口与 native lease 版本说明](release-v01274/RELEASE_NOTES.md)
 - [版本历史](CHANGELOG.md)
 
 ## License

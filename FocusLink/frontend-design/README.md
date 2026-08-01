@@ -1,6 +1,6 @@
 # FocusLink 前端设计索引
 
-> 适用版本：v0.12.x 系列；当前对应 v0.12.73「账号同步加固、快照收敛、有效日账本与移动 Liquid Glass」
+> 适用版本：v0.12.x 系列；当前对应 v0.12.74「账号过渡与 native lease 最终封口、instrumentation 隔离」
 >
 > 文档责任：只描述产品体验、renderer 结构和可验收的视觉/交互规则。
 

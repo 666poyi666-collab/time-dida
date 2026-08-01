@@ -17,7 +17,7 @@ const registration = {
   displayName: 'FocusLink · PC',
   platform: 'windows',
   deviceKind: 'desktop',
-  appVersion: '0.12.73',
+  appVersion: '0.12.74',
 } as const;
 
 const device = {

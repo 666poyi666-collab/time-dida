@@ -120,7 +120,7 @@ describe('mobile owner account bootstrap', () => {
         displayName: 'FocusLink Android',
         platform: 'web',
         deviceKind: 'phone',
-        appVersion: '0.12.73',
+        appVersion: '0.12.74',
       },
     });
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
