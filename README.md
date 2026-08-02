@@ -80,11 +80,20 @@ FocusLink 先以稳定 marker 原子写入本地 PCRecord，再通过经过身�
 
 只有 `cloudSyncUploadRecord` 明确返回 success 且本地同步状态持久化后才记为“上传已确认”。已有 marker 的学科修改若暂时无法写入番茄桥，会进入持久补传队列，旧学科的 `isSynced=1` 不会冒充新学科已上传。当前番茄 To-do 1.6.2 不提供专注记录的独立云端回读或远端删除接口，诊断会明确区分“上传已确认”和“本地 marker 已清理”，不会虚报云端回读/删除。无法识别学科的 FocusLink 记录归入“学习”，不会迁移用户的其他记录。
 
-### FocusLink 跨设备同步（测试阶段）
+### FocusLink 跨设备同步（单账号 · 设备授权绑定）
 
-桌面端可把已结束的 Session / Segment / PauseEvent 原子账本上传到独立测试服务，Web/PWA 与
+FocusLink 使用**一个账号、多台设备**的模型：账号就是你的 FocusLink 账号（`Poyi`），数据在所有设备间通用。
+已绑定的设备包括这台 Windows 电脑、华为平板与小米手机（OPPO 手表为第四台候选目标）。绑定的含义是：每台设备
+用自己的安装身份（installationId，重启、重装 App 后不变；恢复出厂或换机后需重新授权）向云端登记，获得各自的
+`fl2` 设备凭据，之后这台设备就固定属于该账号。
+
+**登录 = 设备授权，不是输入账号密码。** 手机/平板/手表上点「登录」后，设备会打开云端授权页面
+（`/owner/device-registrations`，需要主人用一次性验证码在网页上确认），你在网页上点「允许」，云端就给这台
+设备签发凭据并开始自动同步；同一账号的数据（专注账本、任务关联）在所有已绑定设备间通用。
+
+桌面端可把已结束的 Session / Segment / PauseEvent 原子账本上传到云端，Web/PWA 与
 Capacitor Android 使用同一界面按服务端 cursor 增量拉取，并在 IndexedDB 保留离线缓存。
-同一测试账号仍只有一个云端活动会话；Web/Android 在电脑或服务不可达时也可新建独立 UUID 的
+同一账号仍只有一个云端活动会话；Web/Android 在电脑或服务不可达时也可新建独立 UUID 的
 本机会话并完整暂停、继续和结束。重连发现不同云端活动 UUID 时，本机会话进入 `forked-local`：
 本地与云端分别保持自己的控制域、结束并入账，不互相覆盖或拼接。结束的本机会话先原子写入
 IndexedDB 队列，只有 `applied/duplicate` 才出队；冲突和拒绝保留为可诊断记录。
@@ -96,11 +105,12 @@ Android 壳只提供可见前台通知、暂停/继续/结束动作、快捷设�
 
 `FocusLink/cloud/` 只保留 loopback-first 合同测试后端，启动必须显式设置测试 token，禁止公开部署。
 生产客户端固定访问 canonical HTTPS gateway 与私有 Account DO authority，不运行内嵌同步服务、ADB
-reverse 或 LAN bearer。现有 `fl2` 设备凭据可继续同步；全新设备的公网账号 bootstrap 在 gateway 真正
-部署前会明确报告 `not-deployed`，不能把本地合同测试冒充为已经上线。
+reverse 或 LAN bearer。现有 `fl2` 设备凭据可继续同步；全新设备的公网账号 bootstrap 由
+`foxlink-cloud-mcp` gateway 提供（owner 批准后才签发凭据），云端未部署时会明确报告 `not-deployed`，
+不能把本地合同测试冒充为已经上线。
 
 如果安装后看到 `timer:start-with-task` / `TypeError: fetch failed`，应先确认设备仍登录同一 FocusLink
-管理员账号并运行 `npm run probe:account-bootstrap` 区分连接故障与 gateway 未部署。首次实时握手成功前
+账号并运行 `npm run probe:account-bootstrap` 区分连接故障与 gateway 未部署。首次实时握手成功前
 桌面计时保持本地可用；已确认云端为空闲而后续传输失败时也会自动回到本机计时，活动云端会话则继续
 锁定云端事实源。状态、健康检查和错误编号见 [同步错误索引](FocusLink/backend-design/SYNC_TROUBLESHOOTING.md)。
 

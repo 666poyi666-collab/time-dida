@@ -1,5 +1,18 @@
 # FocusLink 实施日志
 
+## 2026-08-02 · 设备授权登录网关落地（跨仓）
+
+- 补齐公网 `/account/v1/device/bootstrap`：`foxlink-cloud-mcp` 新增 D1 `bootstrap_flows` 流程表与
+  `src/bootstrap.ts`（start 建 flow、返回 owner 授权页 URL；poll 回显 pending，owner 批准后经
+  service binding 调私有 `/sync/v1/devices/register`，一次性签发 `fl2` 凭据并原子消费 flow；
+  单次消费、poll token HMAC 指纹、10 分钟有效期、`[750,10000]ms` 轮询节奏）。客户端零改动。
+- `poyi-oauth-as` 新增 `/owner/device-registrations` 管理员批准页：复用 owner session + 一次性
+  CSRF，列出待批设备（设备名/平台/类型/版本）并批准或拒绝，经 `fls_*` service hop 写回 flow。
+- 设备绑定语义与 README 对齐：单账号（Poyi）多设备；每台设备以 installationId 登记，重启/重装
+  不变，恢复出厂或换机后重新授权；Windows/华为平板/小米手机为已绑定设备。
+- 公网 404→`failed to fetch` 的根因（`errorJson` 无 CORS 头 + 端点不存在）随端点落地一并消除。
+
+
 ## 2026-08-01 · v0.12.74 账号过渡与 native lease 最终封口
 
 - 0.12.73/1273 候选作废（候选生成后修改了跨端行为），本版统一升为 0.12.74/1274；
