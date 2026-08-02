@@ -2,7 +2,7 @@
 
 FocusLink 是一个本地优先的 Windows 桌面专注工具：主进程精确记录专注、暂停与自然跨度，把片段关联到滴答清单任务，并通过彼此独立的队列同步滴答清单与番茄 To-do。
 
-> 当前版本：v0.12.74（账号过渡与 native lease 最终封口；instrumentation 隔离；0.12.73 候选作废）
+> 当前版本：v0.12.75（设备授权登录修复：浏览器打开与授权页重定向）
 >
 > 版本主题：登录即同步 · 切号竞态零窗口 · 四端同版实装 · 生产偏好不被 instrumentation 改写
 
@@ -194,9 +194,9 @@ RELEASE_NOTES.md
 
 | 版本 | 本地安装版 | 版本说明 |
 | --- | --- | --- |
+| 0.12.75 | 设备授权登录修复：Android 浏览器打开与授权页重定向 | [v0.12.75](release-v01275/RELEASE_NOTES.md) |
 | 0.12.74 | 账号过渡与 native lease 最终封口、instrumentation 生产偏好隔离 | [v0.12.74](release-v01274/RELEASE_NOTES.md) |
 | 0.12.72 | 单账号 canonical 同步与 Windows/Android 四端实装 | [v0.12.72](release-v01272/RELEASE_NOTES.md) |
-| 0.12.70 | 云端三端实时控制、MCP 投影与真实 PC 进程关闭验收 | [v0.12.70](release-v01270/RELEASE_NOTES.md) |
 
 每次版本迭代必须同步更新 `CHANGELOG.md`、本地 `RELEASE_NOTES.md`、四文件发布目录与 Android APK 备份，并推送 GitHub `main`。只有用户明确要求时才创建公开 tag、上传资产和 GitHub Release；该正式发布流程中只推送代码或 tag 不算发布完成。
 

@@ -413,12 +413,12 @@ export function MobileApp() {
           if (!polling) await openOwnerLogin(result.loginUrl);
           if (!accountLifecycle.isCurrent(operation)) return;
           setAccountLoginPolling(true);
-          setCommandNotice('请在系统浏览器完成登录，完成后会自动继续');
+          setCommandNotice('已打开授权网页，请在网页中完成登录与批准，会自动继续');
           return;
         }
         if (result.status === 'waiting-for-phone') {
           setAccountLoginPolling(true);
-          setCommandNotice('请在已登录设备上确认登录');
+          setCommandNotice('请在系统浏览器中完成授权确认，如未弹出请重新点击登录');
           return;
         }
         setAccountLoginPolling(false);

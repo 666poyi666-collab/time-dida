@@ -1,5 +1,27 @@
 # FocusLink 实施日志
 
+## 2026-08-02 · v0.12.75 设备授权登录修复（Android 浏览器打开 + 授权页重定向）
+
+- **根因一：Android 11+ package visibility 导致浏览器打不开**。0.12.72–0.12.74 手机点「登录」提示
+  「无法打开系统登录页面」，随后停在「请在已登录设备上确认登录」。定位：`FocusRuntimePlugin.openExternalUrl`
+  用 `intent.resolveActivity()` 探测默认浏览器，但 `AndroidManifest.xml` 没有 `<queries>` 声明
+  `VIEW/BROWSABLE https`，Android 11+ 包可见性使 `resolveActivity()` 返回 null，插件 `opened=false`，
+  授权页从未弹出。真机证据：修复前 MIUI 不出现任何弹窗；修复后点击登录出现「FocusLink 想要打开 Via」确认框，
+  浏览器正常打开。修复：Manifest 增加 `<queries>`。
+- **根因二：授权页未登录返回 401 JSON 无界面**。手机浏览器打开 `/owner/device-registrations?flow=...`
+  时直接 `401 {"error":"access_denied"}`，无登录表单。修复：`poyi-oauth-as` 中未登录且带 `flow` 参数访问
+  自动 303 到 `/owner/sign-in?bootstrap_flow=...`（一次性验证码登录表单），登录后回待批准列表。
+- **文案纠正**：`MobileApp.tsx` 的 `login-required`/`waiting-for-phone` 分支提示改为
+  「已打开授权网页，请在网页中完成登录与批准，会自动继续」。
+- **云端链路**：`foxlink-cloud-mcp` 部署 `/account/v1/device/bootstrap`（D1 `bootstrap_flows` 流程表、
+  start/poll/approve 单次消费、poll token HMAC）；`focuslink-sync` 与 `foxlink-cloud-mcp` 配置同一
+  `fia_*` 身份令牌；`poyi-oauth-as` 增加 `/owner/device-registrations` 批准页。
+- **小米真机端到端**（installationId `android-cc2bd342...`，flow `flow_x_2N9u...`）：点击登录 → 浏览器打开 →
+  一次性验证码登录 → 批准设备 → 手机 poll 消费 flow → 实时已连接 + 账本同步确认（处理 362 条变更、
+  95 场会话、82 个缓存任务）。D1 中 flow 状态 `pending → approved → consumed` 全程可查。
+- **遗留**：华为平板、Windows 桌面登录链路待 0.12.75 三端实装后回读；OPPO 手表未纳入本轮。
+
+
 ## 2026-08-02 · 设备授权登录网关落地（跨仓）
 
 - 补齐公网 `/account/v1/device/bootstrap`：`foxlink-cloud-mcp` 新增 D1 `bootstrap_flows` 流程表与

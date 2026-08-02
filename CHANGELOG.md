@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.12.75 - 2026-08-02（设备授权登录修复：Android 浏览器打开与授权页重定向）
+
+- **Android `<queries>` 修复浏览器打开**：0.12.72–0.12.74 的手机/平板点「登录」后提示「无法打开系统登录页面」，随后停在「请在已登录设备上确认登录」。根因是 Android 11+ package visibility——`AndroidManifest.xml` 未声明 `VIEW/BROWSABLE https` 的 `<queries>`，`resolveActivity()` 对默认浏览器返回空，`openExternalUrl` 返回 `opened=false`，授权页从未弹出。本版在 Manifest 增加 `<queries>` 声明；小米真机验证：点击登录弹出 MIUI「FocusLink 想要打开 Via」确认框，授权页正常打开。
+- **授权页未登录重定向**：手机浏览器打开 `/owner/device-registrations?flow=...` 时此前直接返回 `401 {"error":"access_denied"}` JSON，无任何可操作界面。现在未登录带 `flow` 参数访问会自动重定向到验证码登录表单（`/owner/sign-in?bootstrap_flow=...`），登录后回到待批准设备列表；该逻辑在 `poyi-oauth-as` 部署。
+- **登录文案纠正**：`login-required`/`waiting-for-phone` 分支改为明确提示「已打开授权网页，请在网页中完成登录与批准，会自动继续」，不再误导为「请在已登录设备上确认登录」。
+- **设备授权登录端到端打通**：云端 `/account/v1/device/bootstrap` 已部署（`foxlink-cloud-mcp`），owner 在网页用一次性验证码批准后设备获得 `fl2` 凭据。小米真机完成全链路：登录 → 浏览器打开 → 验证码登录 → 批准 → 实时已连接 + 账本同步确认（处理 362 条变更、95 场会话、82 个缓存任务）。
+- **版本与交付**：三端统一升为 `0.12.75/1275`；门禁与安装矩阵见 `backend-design/TEST_AND_RELEASE.md` 与发布记录。
+
 ## v0.12.74 - 2026-08-01（账号过渡与 native lease 最终封口、instrumentation 隔离）
 
 - **0.12.73 候选作废**：0.12.73/1273 候选生成后又修改了跨端行为，按用户决定作废、绝不复用；本版在冻结范围内统一升为 `0.12.74/1274`，作废候选的 release-v01273 目录退役，保留 v01270/v01272/v01274 三个规范发布目录。
