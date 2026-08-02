@@ -221,9 +221,9 @@ describe('mobile native focus display projection', () => {
       pauses: [],
     };
 
-    await expect(
-      enqueueNativeCompletedLedgerBundle(bundle, 'device-native', '12'),
-    ).resolves.toBe(true);
+    await expect(enqueueNativeCompletedLedgerBundle(bundle, 'device-native', '12')).resolves.toBe(
+      true,
+    );
     const options = nativePluginHarness.enqueueCompletedLedgerBundle.mock.calls[0][0];
     expect(options.deviceId).toBe('device-native');
     expect(options.connectionLease).toBe('12');

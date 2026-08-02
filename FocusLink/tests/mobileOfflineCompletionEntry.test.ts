@@ -39,7 +39,7 @@ describe('MobileApp offline completion entry', () => {
   });
 
   it('durably fans one real completion into native WorkManager and canonical v2 outboxes', async () => {
-    const result = await persistCompletedOfflineFocus(bundle(), DEVICE_ID);
+    const result = await persistCompletedOfflineFocus(bundle(), DEVICE_ID, '0');
 
     expect(result.nativeQueued).toBe(true);
     expect(result.pending).toMatchObject({
@@ -76,7 +76,7 @@ describe('MobileApp offline completion entry', () => {
       new Error('vendor scheduler unavailable'),
     );
 
-    await expect(persistCompletedOfflineFocus(bundle(), DEVICE_ID)).resolves.toMatchObject({
+    await expect(persistCompletedOfflineFocus(bundle(), DEVICE_ID, '0')).resolves.toMatchObject({
       nativeQueued: false,
       pending: { entityId: 'session-entry', state: 'pending' },
     });

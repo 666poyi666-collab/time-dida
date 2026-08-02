@@ -979,11 +979,7 @@ export function MobileApp() {
             response.ack.status === 'rejected'
           ) {
             if (nativeConnectionLeaseRef.current !== sourceNativeLease) break;
-            await completeNativeFocusCommands(
-              [nativeCommand.id],
-              deviceId,
-              sourceNativeLease,
-            );
+            await completeNativeFocusCommands([nativeCommand.id], deviceId, sourceNativeLease);
           }
           if (response.ack.status === 'applied' || response.ack.status === 'duplicate') {
             setCommandNotice(

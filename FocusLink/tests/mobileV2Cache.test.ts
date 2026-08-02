@@ -134,7 +134,13 @@ describe('mobile Sync v2 persistence', () => {
       settleMobileV2Ack({ leaseId: 'other-lease', deviceId: 'phone', payload, ack, epoch }),
     ).resolves.toBe(false);
     await expect(
-      settleMobileV2Ack({ leaseId: claimed.leaseId, deviceId: 'other-device', payload, ack, epoch }),
+      settleMobileV2Ack({
+        leaseId: claimed.leaseId,
+        deviceId: 'other-device',
+        payload,
+        ack,
+        epoch,
+      }),
     ).resolves.toBe(false);
     await expect(
       settleMobileV2Ack({
