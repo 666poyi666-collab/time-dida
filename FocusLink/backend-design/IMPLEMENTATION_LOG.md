@@ -21,6 +21,24 @@
   95 场会话、82 个缓存任务）。D1 中 flow 状态 `pending → approved → consumed` 全程可查。
 - **遗留**：华为平板、Windows 桌面登录链路待 0.12.75 三端实装后回读；OPPO 手表未纳入本轮。
 
+## 2026-08-02 · v0.12.75 华为登录障碍：workers.dev 域名 DNS 污染（环境事实）
+
+- **现象**：华为平板（DBY-W09）点「登录」后云端一直收不到 flow；`curl https://foxlink-mcp...workers.dev/healthz` 超时
+  （HTTP 000），而 `curl https://www.baidu.com` 正常（HTTP 200）。
+- **根因**：华为在当前网络（Wi-Fi「咪咪白露の网」，DNS 走路由器 192.168.1.1）把 `*.workers.dev`
+  解析到 Facebook/Meta 的 IP（`199.59.148.96` / `2a03:2880:...`），连接全部失败。用阿里公共
+  DoH（`dns.alidns.com/resolve`）直接查询同一域名也返回 `199.59.150.49`——证明是**国内 DNS 层面
+  对 workers.dev 域名的普遍投毒**，不是华为设备或路由器单独问题，也不是代码问题。
+- **佐证**：小米能正常同步，是因为小米开着 Clash Meta VPN（`com.github.metacubex.clash.meta`，
+  DNS 走 VPN 的 172.19.0.2），绕开了被污染的 DNS；仓库自定义域名 `focuslink.pyzzgk.dpdns.org`
+  解析到 Cloudflare 真 IP（`2606:4700:3033::6815:1086`），华为可正常访问（HTTP 200）。
+- **解决（不改代码）**：华为开启代理（Clash VPN，Uids 全量接管）后，workers.dev 解析到真实
+  Cloudflare IP `159.106.121.75`，healthz 200。随后华为平板完成登录：验证码登录 owner →
+  批准 flow `flow_PL7I4WTSnWXEVwpvCUNU2tOUmPvQ2yWGHZSXz60eTV9qcgCJU1ry2w` → 设备 poll 消费 →
+  「实时状态已连接」+「账本同步已确认：补传 0，处理 362 条变更，现有 95 场会话」。
+- **后续建议**：若要让无代理网络下的华为/其他设备直接可用，需给两个 worker（foxlink-mcp、
+  poyi-oauth-as）都挂自定义域名并切换客户端 canonical origin（本轮未做，保持现状）。
+
 
 ## 2026-08-02 · 设备授权登录网关落地（跨仓）
 
