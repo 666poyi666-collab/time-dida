@@ -415,7 +415,7 @@ function focusGuardEnvelope(entityKind: 'rule' | 'state' | 'completion' | 'confi
     product: 'focus-guard',
     entityKind,
     nonce: 'abcdefghijklmnop',
-    ciphertext: 'abcdefghijklmnop',
+    ciphertext: 'A'.repeat(22),
     aadHash: 'a'.repeat(64),
     aadBaseRevision: 0,
     operation: 'put',

@@ -61,6 +61,7 @@ import {
   type FocusLedgerCorrectionV2,
   type FocusLedgerV2,
   type FocusMetadataV2,
+  type EncryptedFocusGuardEnvelopeV1,
   type SyncV2Change,
   type SyncV2EntityType,
   type SyncV2Epoch,
@@ -2973,7 +2974,7 @@ function validateV2SyncRequest(value: SyncV2Request): void {
   }
 }
 
-function validateV2Mutation(mutation: SyncV2Mutation): string | null {
+export function validateV2Mutation(mutation: SyncV2Mutation): string | null {
   if (
     !mutation ||
     !isId(mutation.opId) ||
@@ -3006,7 +3007,9 @@ function validateV2Mutation(mutation: SyncV2Mutation): string | null {
     mutation.entityType.startsWith('focus_guard_') &&
     mutation.kind !== 'delete' &&
     mutation.kind !== 'purge' &&
-    !isEncryptedFocusGuardEnvelopeV1(mutation.payload, mutation.entityType)
+    (!isEncryptedFocusGuardEnvelopeV1(mutation.payload, mutation.entityType) ||
+      (mutation.payload as EncryptedFocusGuardEnvelopeV1).operation !== mutation.kind ||
+      (mutation.payload as EncryptedFocusGuardEnvelopeV1).aadBaseRevision !== mutation.baseRevision)
   ) {
     return 'invalid_encrypted_focus_guard_envelope';
   }

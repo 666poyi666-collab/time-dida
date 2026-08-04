@@ -111,7 +111,7 @@ describe('Sync v2 operational policies', () => {
       product: 'focus-guard',
       entityKind: 'rule',
       nonce: 'abcdefghijklmnop',
-      ciphertext: 'abcdefghijklmnop',
+      ciphertext: 'A'.repeat(22),
       aadHash: 'a'.repeat(64),
       aadBaseRevision: 0,
       operation: 'put',
