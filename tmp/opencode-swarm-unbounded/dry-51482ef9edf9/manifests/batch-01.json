@@ -1,0 +1,38 @@
+{
+  "_controller": {
+    "run_id": "dry-51482ef9edf9",
+    "batch": 1,
+    "batches": 1,
+    "range_start": 1,
+    "range_end": 5,
+    "total": 5,
+    "concurrency": 5
+  },
+  "jobs": [
+    {
+      "id": "build-desktop-workbench",
+      "title": "Implement desktop workbench polish",
+      "prompt": "Build mode. Read AGENTS.md and current frontend spec. You exclusively own FocusLink/src/styles/linear-workbench.css, FocusLink/src/styles/legacy-support.css, and a new FocusLink/tests/desktopResponsiveStyleContract.test.ts. Implement the approved restrained desktop Time Instrument polish: fix the max-width 1080 + max-height 760 breakpoint collision so 980x660 remains one-column band and dials never clip; use 336px ledger under 1100; tighten console density; wrap history header safely; enforce 10px auxiliary text floor; replace heavy donut shadow; style window-blurred subtly; protect long ledger duration text; apply design-system findings in these owned CSS files (tokenize color white/scrim where possible, radius ladder, danger uses --app-danger, accent focus-visible, disabled styling, dark dial/stat shading, define or remove dead temporal-sweep). Preserve behavior, status text, no nested cards, and 1280x720/default layout. Add deterministic style-contract tests. Do not touch any other file, version, docs, generated output, release artifacts, or EXEs. Run the new test and relevant existing desktop/style tests. Finish VERDICT / CHANGES / TESTS / RISKS / ARTIFACTS <=2000 chars.\n\nGlobal job 1/5 (batch 1/1, local 1/5)."
+    },
+    {
+      "id": "build-mini-polish",
+      "title": "Implement fixed two-state mini polish",
+      "prompt": "Build mode. Read AGENTS.md mini rules. You exclusively own FocusLink/src/styles/temporal-mini.css and FocusLink/scripts/smoke/mini-ui-smoke.cjs. Implement the approved CSS-only mini polish while keeping shared mini layout constants untouched: collapsed grid expand affordance 24px within a 30px column, min-width guards, optical alignment, expanded 7px state dot, calmer 11s marquee, metric labels 8.5/9.5px, 17px control heights/9px text, expanded progress 10px. Preserve exactly 184x44 and 256x70, all controls, drag/snap/auto-collapse, no new DOM or third size. Extend smoke for long H:MM:SS, long CJK task marquee, reduced-motion no animation/focusable scroll without weakening existing assertions. Do not touch any other file, versions/docs, generated output, release assets, or EXEs. Run focused tests/smoke if feasible. Finish VERDICT / CHANGES / TESTS / RISKS / ARTIFACTS <=2000 chars.\n\nGlobal job 2/5 (batch 1/1, local 2/5)."
+    },
+    {
+      "id": "build-mobile-responsive",
+      "title": "Implement phone and Huawei tablet UI upgrade",
+      "prompt": "Build mode. Read AGENTS.md and FRONTEND_SPEC. You exclusively own FocusLink/mobile/index.html, FocusLink/android/app/src/main/AndroidManifest.xml, FocusLink/src/mobile/appearance.ts, FocusLink/src/mobile/MobileApp.tsx, FocusLink/src/mobile/mobile.css, FocusLink/tests/mobileAppearance.test.ts, FocusLink/tests/mobileResponsiveStyleContract.test.ts, FocusLink/tests/mobileResponsiveA11yContract.test.ts, and FocusLink/scripts/regression/mobile-viewport-screenshot.ts. Implement the controller's v0.12.86 mobile direction: a continuous quiet Time Instrument work surface, not rounded card walls. At 360/412 compress brand header and sync strip; make timer an unframed stable stage (no decorative shadow/card), make task disclosure/title a section with hairline rows rather than card-inside-card, reserve space for sticky primary action above nav so it never covers timeline/content, flatten task groups/child rows, reduce empty stats above the fold, keep settings rows and color swatches appropriate. At 640 portrait keep bottom nav and make focus action sticky above it; at 760+/landscape keep sidebar/split but flatten right facts into bordered rows and reduce blank detail space. Preserve every business/authority/status semantic, task tree behavior, Huawei capsule and Xiaomi system-surface paths; OPPO WatchApp/watch.css frozen and untouched. Also add interactive-widget=resizes-content, adjustResize, state-partial wrapping, live system-theme listener, detail-card/nav spacing, 16px form inputs, 44px targets, safe areas, light/dark/reduced-motion. No gradients/orbs/glass card walls, no invented features. Update owned contract/screenshot tests for overlap, keyboard and theme changes; do not weaken checks. Do not touch any other file, version/docs, generated output, releases or EXEs. Run focused mobile tests, build:web and viewport screenshot runner. Finish VERDICT / CHANGES / TESTS / RISKS / ARTIFACTS <=2000 chars.\n\nGlobal job 3/5 (batch 1/1, local 3/5)."
+    },
+    {
+      "id": "build-shared-design-qa",
+      "title": "Implement shared tokens and QA contracts",
+      "prompt": "Build mode. Read AGENTS.md and frontend spec. You exclusively own FocusLink/src/styles/temporal-foundation.css, FocusLink/tests/styleContract.test.ts, FocusLink/tests/themeTokens.test.ts, and FocusLink/tests/mainWindowLayout.test.ts. Tighten the existing shared token ladder for v0.12.86 without creating a new theme: add any named tokens required by the approved desktop/mobile changes (danger solid foreground and scrim only if absent), keep palette balanced and semantic, preserve five accents and pause/danger distinction. Extend tests for no literal color:white, permitted radius ladder, accent focus-visible, danger semantics, auxiliary text floors where deterministic, and desktop 980x660/1280x720 layout contracts. Do not duplicate tokens in component CSS, change UI components, versions/docs, generated files, releases or EXEs. Run focused token/style/layout tests. Finish VERDICT / CHANGES / TESTS / RISKS / ARTIFACTS <=2000 chars.\n\nGlobal job 4/5 (batch 1/1, local 4/5)."
+    },
+    {
+      "id": "build-version-design-docs",
+      "title": "Bump v0.12.86 and document UI iteration",
+      "prompt": "Build mode. Read AGENTS.md and mandatory preflight docs. You exclusively own FocusLink/package.json, FocusLink/package-lock.json, FocusLink/shared/version.ts, FocusLink/shared/version.generated.ts, FocusLink/electron-builder.yml, FocusLink/android/app/build.gradle, FocusLink/android/app/src/test/java/app/focuslink/mobile/FocusLinkConfigTest.java, README.md, CHANGELOG.md, FocusLink/frontend-design/README.md, FocusLink/frontend-design/FRONTEND_SPEC.md, FocusLink/frontend-design/USER_REQUIREMENTS.md, FocusLink/backend-design/README.md, FocusLink/backend-design/BACKEND_SPEC.md, FocusLink/backend-design/IMPLEMENTATION_LOG.md, and FocusLink/backend-design/TEST_AND_RELEASE.md. Bump candidate identity consistently from 0.12.85/1285/release-v01285 to 0.12.86/1286/release-v01286. Add a current 2026-08-11 UI iteration entry describing the controller-approved direction: desktop density/breakpoint polish; fixed two-state mini polish; mobile continuous work surface replacing nested cards; 640 sticky action; 760 split refinement; IME/system-theme/a11y fixes; OPPO remains retired/frozen. Record current state honestly as implementation in progress, not built/installed/released; preserve v0.12.85 history and existing Bugs. Update specs/requirements and release gate wording only as needed. Do not create release-v01286 yet, do not touch source/test files outside ownership, build, commit, push, tag, or publish. Run narrow version consistency checks. Finish VERDICT / CHANGES / TESTS / RISKS / ARTIFACTS <=2000 chars.\n\nGlobal job 5/5 (batch 1/1, local 5/5)."
+    }
+  ]
+}

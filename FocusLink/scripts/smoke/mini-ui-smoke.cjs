@@ -443,6 +443,16 @@ async function inspectMini(mini) {
         return 0;
       }
     })();
+    const collapsedGrid = document.querySelector('.mini-collapsed-content');
+    const collapsedExpandButton = document.querySelector('.mini-collapsed-content .mini-icon-button');
+    const expandedStateDot = document.querySelector('.mini-state-badge .mini-state-dot');
+    const marqueeTitle = document.querySelector('.mini-task-block.is-marquee .mini-task-title');
+    const taskBlockEl = document.querySelector('.mini-task-block');
+    const taskTitleEl = document.querySelector('.mini-task-title');
+    const metricSpanEl = document.querySelector('.mini-metric > span');
+    const metricStrongEl = document.querySelector('.mini-metric > strong');
+    const primaryBtn = document.querySelector('.mini-primary-button');
+    const expandedProgressEl = document.querySelector('.mini-expanded-progress');
     return {
       ready: Boolean(shell),
       shellClass: shell?.className || null,
@@ -518,6 +528,57 @@ async function inspectMini(mini) {
       },
       timeOrigin: performance.timeOrigin,
       themeSmokeIdentity: window.__focuslinkMiniThemeSmokeIdentity || null,
+      cssPresets: {
+        collapsedExpandButton: collapsedExpandButton
+          ? {
+              width: collapsedExpandButton.getBoundingClientRect().width,
+              height: collapsedExpandButton.getBoundingClientRect().height,
+              minWidth: Number.parseFloat(getComputedStyle(collapsedExpandButton).minWidth || '0'),
+            }
+          : null,
+        collapsedColumns: collapsedGrid
+          ? getComputedStyle(collapsedGrid).gridTemplateColumns
+          : null,
+        expandedStateDot: expandedStateDot
+          ? {
+              width: Number.parseFloat(getComputedStyle(expandedStateDot).width || '0'),
+              height: Number.parseFloat(getComputedStyle(expandedStateDot).height || '0'),
+            }
+          : null,
+        marquee: marqueeTitle
+          ? {
+              animationName: getComputedStyle(marqueeTitle).animationName,
+              animationDuration: getComputedStyle(marqueeTitle).animationDuration,
+            }
+          : null,
+        taskBlock: taskBlockEl
+          ? {
+              className: taskBlockEl.className,
+              tabIndex: taskBlockEl.tabIndex,
+              appRegion:
+                getComputedStyle(taskBlockEl).getPropertyValue('-webkit-app-region').trim() ||
+                getComputedStyle(taskBlockEl).webkitAppRegion ||
+                'none',
+              titleAnimationName: taskTitleEl
+                ? getComputedStyle(taskTitleEl).animationName
+                : 'none',
+            }
+          : null,
+        metricLabelFontSize: metricSpanEl
+          ? Number.parseFloat(getComputedStyle(metricSpanEl).fontSize)
+          : 0,
+        metricValueFontSize: metricStrongEl
+          ? Number.parseFloat(getComputedStyle(metricStrongEl).fontSize)
+          : 0,
+        primaryButtonHeight: primaryBtn ? primaryBtn.getBoundingClientRect().height : 0,
+        primaryButtonFontSize: primaryBtn
+          ? Number.parseFloat(getComputedStyle(primaryBtn).fontSize)
+          : 0,
+        expandedProgressHeight: expandedProgressEl
+          ? Number.parseFloat(getComputedStyle(expandedProgressEl).height)
+          : 0,
+        shellTransitionDuration: shellStyle ? shellStyle.transitionDuration : '0s',
+      },
     };
   })()`);
 }
@@ -1058,6 +1119,9 @@ function assertResult(name, result, expected) {
       'actionDock',
     ];
     const expectedCollapsedText = expected.stripLabel + result.primaryTimeText;
+    const collapsedColumns = String(result.cssPresets?.collapsedColumns || '');
+    const lastGridColumn = Number.parseFloat(collapsedColumns.split(/\s+/).pop() || '0');
+    const expandButton = result.cssPresets?.collapsedExpandButton;
     assertions.push(
       [everyElementReady(result, compactKeys), 'collapsed key content inside shell'],
       [!result.elements.compactTotal.present, 'collapsed omits cumulative metric'],
@@ -1077,6 +1141,17 @@ function assertResult(name, result, expected) {
           result.edgeProgressValue >= 0 &&
           result.edgeProgressValue <= 100,
         'collapsed second-decay rail is bounded',
+      ],
+      [Math.abs(lastGridColumn - 30) <= 0.5, 'collapsed expand affordance sits in a 30px column'],
+      [
+        expandButton &&
+          Math.abs(expandButton.width - 24) <= 0.5 &&
+          Math.abs(expandButton.height - 24) <= 0.5,
+        'collapsed expand affordance is 24px',
+      ],
+      [
+        expandButton && expandButton.minWidth >= 24,
+        'collapsed expand affordance has a 24px min-width guard',
       ],
       [
         expected.state === 'paused'
@@ -1149,12 +1224,211 @@ function assertResult(name, result, expected) {
         expected.state !== 'paused' || result.fuseCanvasAnimationName === 'none',
         'expanded fuse canvas has no infinite CSS particle loop',
       ],
+      [
+        result.cssPresets?.expandedStateDot &&
+          Math.abs(result.cssPresets.expandedStateDot.width - 7) <= 0.1 &&
+          Math.abs(result.cssPresets.expandedStateDot.height - 7) <= 0.1,
+        'expanded state dot is 7px',
+      ],
+      [
+        Math.abs((result.cssPresets?.metricLabelFontSize || 0) - 8.5) <= 0.1,
+        'expanded metric labels are 8.5px',
+      ],
+      [
+        Math.abs((result.cssPresets?.metricValueFontSize || 0) - 9.5) <= 0.1,
+        'expanded metric values are 9.5px',
+      ],
+      [
+        Math.abs((result.cssPresets?.primaryButtonHeight || 0) - 17) <= 0.5,
+        'expanded controls are 17px tall',
+      ],
+      [
+        Math.abs((result.cssPresets?.primaryButtonFontSize || 0) - 9) <= 0.1,
+        'expanded control text is 9px',
+      ],
+      [
+        Math.abs((result.cssPresets?.expandedProgressHeight || 0) - 10) <= 0.5,
+        'expanded progress rail is 10px',
+      ],
     );
   }
   const failed = assertions.filter(([passed]) => !passed).map(([, label]) => label);
   if (failed.length > 0) {
     throw new Error(`${name} assertions failed: ${failed.join(', ')}\n${JSON.stringify(result)}`);
   }
+}
+
+async function waitForTaskDisplay(mini, mode) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const result = await inspectMini(mini);
+    const className = String(result.cssPresets?.taskBlock?.className || '');
+    const isTarget = className.includes(`is-${mode}`);
+    const isOther =
+      mode === 'marquee' ? className.includes('is-scroll') : className.includes('is-marquee');
+    if (result.ready && isTarget && !isOther) return result;
+    await delay(100);
+  }
+  const last = await inspectMini(mini);
+  throw new Error(`Mini task block did not reach ${mode} display: ${JSON.stringify(last)}`);
+}
+
+async function waitForMiniAfterReload(mini, state, collapsed, size) {
+  await mini.send('Page.reload', { ignoreCache: true });
+  let lastResult = null;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      lastResult = await inspectMini(mini);
+      if (lastResult.ready && Boolean(lastResult.buildIdentity.version) && lastResult.mode) {
+        return await waitForMiniState(mini, state, collapsed, size);
+      }
+    } catch {
+      // The renderer is still navigating; keep polling instead of failing the smoke.
+    }
+    await delay(150);
+  }
+  throw new Error(`Mini did not become inspectable after reload: ${JSON.stringify(lastResult)}`);
+}
+
+async function probeLongTimePreset(mini, selector, label) {
+  const probe = await mini.evaluate(`(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return { ok: false, reason: 'element missing' };
+    el.classList.add('mini-time-long');
+    el.textContent = '1:23:45';
+    const style = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    const shellRect = document.querySelector('.mini-window-shell').getBoundingClientRect();
+    return {
+      ok: true,
+      fontSize: Number.parseFloat(style.fontSize),
+      text: String(el.textContent || '').replace(/\\s+/g, '').trim(),
+      complete: el.scrollWidth <= el.clientWidth + 1,
+      insideShell:
+        rect.left >= shellRect.left - 1 &&
+        rect.top >= shellRect.top - 1 &&
+        rect.right <= shellRect.right + 1 &&
+        rect.bottom <= shellRect.bottom + 1,
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    };
+  })()`);
+  if (!probe?.ok) {
+    throw new Error(`${label} long-time probe failed: ${JSON.stringify(probe)}`);
+  }
+  if (!/^\d+:\d{2}:\d{2}$/.test(probe.text)) {
+    throw new Error(`${label} did not present an H:MM:SS value: ${JSON.stringify(probe)}`);
+  }
+  if (Math.abs(probe.fontSize - 17) > 0.5) {
+    throw new Error(
+      `${label} long H:MM:SS did not use the 17px compact preset: ${JSON.stringify(probe)}`,
+    );
+  }
+  if (!probe.complete || !probe.insideShell) {
+    throw new Error(
+      `${label} long H:MM:SS overflowed or escaped the shell: ${JSON.stringify(probe)}`,
+    );
+  }
+  return probe;
+}
+
+async function verifyLongTimeAndReducedMotion(main, mini) {
+  process.stderr.write(
+    '[mini-smoke] verify long H:MM:SS compact preset in expanded and collapsed states\n',
+  );
+  await waitForMiniState(mini, null, false, EXPANDED_SIZE);
+  const longExpanded = await probeLongTimePreset(mini, '.mini-expanded-time', 'expanded');
+  await clickMini(mini, 'button[aria-label="收起"]', 'collapse for long-time probe');
+  await waitForMiniState(mini, null, true, COLLAPSED_SIZE);
+  const longCollapsed = await probeLongTimePreset(mini, '.mini-collapsed-time', 'collapsed');
+  await clickMini(mini, 'button[aria-label="展开"]', 'expand after long-time probe');
+  await waitForMiniState(mini, null, false, EXPANDED_SIZE);
+
+  process.stderr.write('[mini-smoke] verify long CJK task marquee rides at 11s\n');
+  const LONG_CJK_TITLE =
+    '非常长的一条中文任务名，用来验证展开态小窗任务名在装不下时走克制往返滚动而不会撑爆控制台或丢失原文'.repeat(
+      2,
+    );
+  const started = await main.evaluate(
+    `window.focuslink.timer.startWithTask(${JSON.stringify('smoke-long-cjk-marquee')}, 'local', ${JSON.stringify(LONG_CJK_TITLE)})`,
+  );
+  if (
+    started?.state !== 'running' ||
+    !String(started.currentTaskTitle || '').includes('非常长的一条中文任务名')
+  ) {
+    throw new Error(`Long CJK task did not start: ${JSON.stringify(started)}`);
+  }
+  const marquee = await waitForTaskDisplay(mini, 'marquee');
+  const marqueePresets = marquee.cssPresets?.marquee;
+  if (!marqueePresets || marqueePresets.animationName !== 'mini-marquee') {
+    throw new Error(
+      `Long CJK marquee did not run mini-marquee: ${JSON.stringify(marquee.cssPresets)}`,
+    );
+  }
+  const marqueeSeconds = Number.parseFloat(marqueePresets.animationDuration || '0');
+  if (Math.abs(marqueeSeconds - 11) > 0.5) {
+    throw new Error(`Long CJK marquee is not 11s: ${JSON.stringify(marqueePresets)}`);
+  }
+  if (!marquee.taskTitle.includes('非常长的一条中文任务名')) {
+    throw new Error(`Long CJK marquee lost task copy: ${JSON.stringify(marquee)}`);
+  }
+
+  process.stderr.write(
+    '[mini-smoke] verify reduced-motion falls back to focusable scroll with no animation\n',
+  );
+  await mini.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+  });
+  await waitForMiniAfterReload(mini, 'running', false, EXPANDED_SIZE);
+  const scroll = await waitForTaskDisplay(mini, 'scroll');
+  const scrollPresets = scroll.cssPresets?.taskBlock;
+  const shellDuration = Number.parseFloat(scroll.cssPresets?.shellTransitionDuration || '0');
+  const reducedMotionChecks = [
+    [
+      scrollPresets && String(scrollPresets.className).includes('is-scroll'),
+      'reduced-motion uses a scroll surface',
+    ],
+    [
+      scrollPresets && !String(scrollPresets.className).includes('is-marquee'),
+      'reduced-motion never runs the marquee',
+    ],
+    [scrollPresets?.tabIndex === 0, 'reduced-motion task block is keyboard focusable'],
+    [
+      String(scrollPresets?.appRegion || '').toLowerCase() === 'no-drag',
+      'reduced-motion scroll surface is not draggable',
+    ],
+    [
+      String(scrollPresets?.titleAnimationName || '') === 'none',
+      'reduced-motion task title has no animation',
+    ],
+    [shellDuration === 0, 'reduced-motion shell transition is disabled'],
+  ];
+  const reducedMotionFailed = reducedMotionChecks
+    .filter(([passed]) => !passed)
+    .map(([, label]) => label);
+  if (reducedMotionFailed.length > 0) {
+    throw new Error(
+      `Reduced-motion assertions failed: ${reducedMotionFailed.join(', ')}\n${JSON.stringify(scroll.cssPresets)}`,
+    );
+  }
+
+  await mini.send('Emulation.setEmulatedMedia', { features: [] });
+  await waitForMiniAfterReload(mini, 'running', false, EXPANDED_SIZE);
+  return {
+    longHMS: {
+      expanded: longExpanded,
+      collapsed: longCollapsed,
+      format: 'H:MM:SS',
+      compactPresetPx: 17,
+    },
+    longCjkMarquee: {
+      durationS: marqueeSeconds,
+      animationName: marqueePresets.animationName,
+    },
+    reducedMotion: {
+      focusableScroll: true,
+      titleAnimationName: scrollPresets?.titleAnimationName,
+    },
+  };
 }
 
 let mainSession;
@@ -1489,6 +1763,11 @@ async function main() {
     transition: summarizeWindowState(cancellationTransition),
     afterMove: summarizeWindowState(cancelled),
   };
+
+  process.stderr.write(
+    '[mini-smoke] verify long H:MM:SS preset, long CJK marquee and reduced-motion fallback\n',
+  );
+  results.longTimeAndReducedMotion = await verifyLongTimeAndReducedMotion(mainSession, miniSession);
 
   const report = {
     contract: { collapsed: COLLAPSED_SIZE, expanded: EXPANDED_SIZE },

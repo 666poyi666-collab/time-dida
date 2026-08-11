@@ -57,6 +57,30 @@ export function applyMobileAppearance(value: MobileAppearance): void {
   root.dataset.mobileFontProfile = normalized.fontProfile;
 }
 
+/**
+ * Live `system` theme: re-apply the appearance whenever the OS color scheme
+ * changes so a device left in 跟随系统 tracks the current system theme without
+ * a reload. Both the modern addEventListener path and the legacy addListener
+ * path register so Capacitor WebView versions never silently drop the listener.
+ */
+export function watchMobileSystemTheme(
+  apply: (value: MobileAppearance) => void,
+  value: MobileAppearance,
+): () => void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return () => undefined;
+  }
+  if (normalizeMobileAppearance(value).theme !== 'system') return () => undefined;
+  const query = window.matchMedia('(prefers-color-scheme: dark)');
+  const handleChange = () => apply(normalizeMobileAppearance(value));
+  query.addEventListener?.('change', handleChange);
+  query.addListener?.(handleChange);
+  return () => {
+    query.removeEventListener?.('change', handleChange);
+    query.removeListener?.(handleChange);
+  };
+}
+
 export function normalizeMobileAppearance(value: Partial<MobileAppearance>): MobileAppearance {
   const theme = value.theme === 'dark' || value.theme === 'system' ? value.theme : 'light';
   return {

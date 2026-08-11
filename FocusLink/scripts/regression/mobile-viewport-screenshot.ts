@@ -227,10 +227,43 @@ async function validateViewport(
             `${viewport.id} task fields precede the primary timer`,
           );
         }
-        assert(
-          focusLayout.actionOverlaps.length === 0,
-          `${viewport.id} focus actions overlap ${focusLayout.actionOverlaps.join(', ')}`,
-        );
+        if (viewport.id === 'tablet-640-portrait') {
+          // The 640 portrait tablet keeps the phone bottom navigation and a
+          // sticky CTA. At rest the bar floats above the instrument; it must
+          // stay above the fixed nav and never cover it.
+          assert(
+            focusLayout.navigationTop > 0,
+            `${viewport.id} bottom navigation missing for sticky CTA reservation`,
+          );
+          assert(
+            focusLayout.hasPrimaryAction &&
+              focusLayout.primaryActionBottom > 0 &&
+              focusLayout.primaryActionTop < focusLayout.innerHeight,
+            `${viewport.id} sticky primary focus action is not visible (${focusLayout.primaryActionTop}–${focusLayout.primaryActionBottom})`,
+          );
+          assert(
+            focusLayout.actionsBottom <= focusLayout.navigationTop + 1,
+            `${viewport.id} sticky focus CTA covers the bottom navigation (${focusLayout.actionsBottom} vs ${focusLayout.navigationTop})`,
+          );
+          // The instrument reserves its trailing height so the ribbon and the
+          // runtime metrics are fully readable at the end of the content.
+          await scrollFocusView(win, 'bottom');
+          const pinned = await readFocusLayout(win);
+          assert(
+            pinned.actionOverlaps.length === 0,
+            `${viewport.id} sticky focus CTA hides ${pinned.actionOverlaps.join(', ')} at the end of the instrument`,
+          );
+          assert(
+            pinned.actionsBottom <= pinned.navigationTop + 1,
+            `${viewport.id} sticky focus CTA covers the bottom navigation after scrolling (${pinned.actionsBottom} vs ${pinned.navigationTop})`,
+          );
+          await scrollFocusView(win, 'top');
+        } else {
+          assert(
+            focusLayout.actionOverlaps.length === 0,
+            `${viewport.id} focus actions overlap ${focusLayout.actionOverlaps.join(', ')}`,
+          );
+        }
         if (viewport.id === 'phone-landscape') {
           assert(
             focusLayout.hasActions &&
@@ -602,6 +635,13 @@ async function readWatchMetrics(win: BrowserWindow): Promise<{
   })()`);
 }
 
+async function scrollFocusView(win: BrowserWindow, edge: 'top' | 'bottom'): Promise<void> {
+  await win.webContents.executeJavaScript(`(() => {
+    window.scrollTo(0, ${edge === 'bottom' ? 'document.documentElement.scrollHeight' : '0'});
+  })()`);
+  await sleep(120);
+}
+
 async function readFocusLayout(win: BrowserWindow): Promise<{
   innerHeight: number;
   primaryTop: number;
@@ -613,6 +653,7 @@ async function readFocusLayout(win: BrowserWindow): Promise<{
   primaryActionBottom: number;
   hasActions: boolean;
   hasPrimaryAction: boolean;
+  navigationTop: number;
   actionOverlaps: string[];
 }> {
   return win.webContents.executeJavaScript(`(() => {
@@ -620,11 +661,15 @@ async function readFocusLayout(win: BrowserWindow): Promise<{
     const fields = document.querySelector('.focus-start-fields, .active-title-block')?.getBoundingClientRect();
     const actions = document.querySelector('.focus-actions')?.getBoundingClientRect();
     const primaryAction = document.querySelector('.focus-action.primary')?.getBoundingClientRect();
+    const navigation = document.querySelector('.app-navigation')?.getBoundingClientRect();
     const candidates = [
       ['task fields', document.querySelector('.focus-start-fields, .active-title-block')],
       ['primary timer', document.querySelector('.primary-readout')],
       ['timeline', document.querySelector('.mobile-temporal-ribbon')],
       ['runtime metrics', document.querySelector('.runtime-metrics')],
+      // The sticky focus CTA must never cover the fixed bottom navigation on
+      // phones and the 640 portrait tablet; it sticks above the nav instead.
+      ['bottom navigation', document.querySelector('.app-navigation')],
     ];
     const intersects = (left, right) =>
       left.left < right.right - 1 && left.right > right.left + 1 &&
@@ -648,6 +693,7 @@ async function readFocusLayout(win: BrowserWindow): Promise<{
       primaryActionBottom: primaryAction?.bottom ?? Number.NEGATIVE_INFINITY,
       hasActions: Boolean(actions),
       hasPrimaryAction: Boolean(primaryAction),
+      navigationTop: navigation?.top ?? Number.POSITIVE_INFINITY,
       actionOverlaps,
     };
   })()`);

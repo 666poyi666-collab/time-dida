@@ -89,6 +89,7 @@ import {
   applyMobileAppearance,
   loadMobileAppearance,
   saveMobileAppearance,
+  watchMobileSystemTheme,
   type MobileAppearance,
 } from './appearance';
 import {
@@ -278,6 +279,7 @@ export function MobileApp() {
   useEffect(() => {
     applyMobileAppearance(appearance);
     saveMobileAppearance(appearance);
+    return watchMobileSystemTheme(applyMobileAppearance, appearance);
   }, [appearance]);
 
   useEffect(() => {

@@ -65,7 +65,7 @@
 }
 .window-controls .window-close:hover {
   background: rgb(var(--app-danger));
-  color: white;
+  color: rgb(var(--app-danger-solid-fg));
 }
 
 .skip-link {
@@ -77,7 +77,7 @@
   padding: 8px 12px;
   background: rgb(var(--app-ink));
   color: rgb(var(--app-ink-fg));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .skip-link:focus {
   transform: none;
@@ -198,8 +198,8 @@
   min-height: 58px;
   grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 20px;
-  padding: 0 18px 0 24px;
+  gap: 16px;
+  padding: 0 16px 0 20px;
   border-bottom: 1px solid rgb(var(--app-border));
   background: rgb(var(--app-surface));
 }
@@ -207,7 +207,7 @@
   display: flex;
   min-width: 0;
   align-items: baseline;
-  gap: 14px;
+  gap: 12px;
 }
 .console-kicker {
   flex-shrink: 0;
@@ -243,7 +243,7 @@
   gap: 8px;
   padding: 0 16px;
   border: 1px solid rgb(var(--app-ink));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--app-ink));
   color: rgb(var(--app-ink-fg));
   font-size: 13px;
@@ -268,7 +268,7 @@
   gap: 8px;
   padding: 0 16px;
   border: 1px solid rgb(var(--app-accent));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--app-accent));
   color: rgb(var(--app-accent-fg));
   font-size: 13px;
@@ -291,7 +291,7 @@
   gap: 8px;
   padding: 0 16px;
   border: 1px solid rgb(var(--app-border-strong));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: rgb(var(--app-text));
   font-size: 13px;
@@ -319,7 +319,7 @@
   gap: 6px;
   padding: 0 10px;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: rgb(var(--app-muted));
   font-size: 12.5px;
@@ -331,7 +331,7 @@
 .btn-text {
   padding: 2px 6px;
   border: 0;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: rgb(var(--app-muted));
   font-size: 12.5px;
@@ -351,7 +351,7 @@
   gap: 8px;
   padding: 0 16px;
   border: 1px solid rgb(var(--app-danger-solid));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--app-danger-solid));
   color: rgb(var(--app-danger-solid-fg));
   font-size: 13px;
@@ -359,6 +359,27 @@
 }
 .btn-danger:hover:not(:disabled) {
   filter: brightness(1.06);
+}
+
+/* 按钮体系危险型之外的实心按钮统一禁用态：全局 button:disabled 只降透明度，
+   这里补齐语义：禁用即不可点、不悬停变色、不响应位移。 */
+.btn-solid:disabled,
+.btn-primary:disabled,
+.btn-accent:disabled,
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 表单控件禁用态：输入、选择与文本域不可交互时统一降为半透明并去掉手型。 */
+.input:disabled,
+.overlay-select:disabled,
+.settings-select-trigger:disabled,
+select:disabled,
+input:disabled,
+textarea:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* ─── 专注页（3单重构）：工位横幅 → 仪表列 + 纪念碑 → 全宽时间之带 ──
@@ -471,7 +492,7 @@
   gap: 6px;
   padding: 0 10px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: rgb(var(--app-muted));
   font-size: 11.5px;
@@ -594,7 +615,7 @@
     linear-gradient(180deg, rgb(255 255 255 / 0.1), transparent 42%), rgb(var(--app-surface-2));
   box-shadow:
     inset 0 1px rgb(255 255 255 / 0.16),
-    inset 0 -2px rgb(var(--app-ink) / 0.08);
+    inset 0 -2px rgb(var(--app-scrim) / 0.08);
   font-family: var(--font-number);
 }
 .instrument-chrome-digits {
@@ -654,7 +675,7 @@
     linear-gradient(180deg, rgb(255 255 255 / 0.16), transparent 49%), var(--flip-card-bg);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.07),
-    inset 0 -1px 0 rgb(0 0 0 / 0.4);
+    inset 0 -1px 0 rgb(var(--app-scrim) / 0.4);
   color: var(--flip-card-ink);
   perspective: 680px;
   transform: translateZ(0);
@@ -664,7 +685,7 @@
     linear-gradient(180deg, rgb(255 255 255 / 0.055), transparent 49%), var(--flip-card-bg);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.09),
-    inset 0 -1px 0 rgb(0 0 0 / 0.6),
+    inset 0 -1px 0 rgb(var(--app-scrim) / 0.6),
     0 0 0 1px rgb(255 255 255 / 0.06);
 }
 .dial-flip.state-running .flip-card {
@@ -693,7 +714,9 @@
 .flip-bottom {
   bottom: 0;
   border-radius: 0 0 0.055em 0.055em;
-  background: linear-gradient(180deg, rgb(0 0 0 / 0.035), rgb(0 0 0 / 0.12)), var(--flip-card-bg);
+  background:
+    linear-gradient(180deg, rgb(var(--app-scrim) / 0.035), rgb(var(--app-scrim) / 0.12)),
+    var(--flip-card-bg);
 }
 .flip-glyph {
   position: absolute;
@@ -834,7 +857,7 @@
   left: 0;
   color: rgb(var(--app-muted));
   font-family: var(--font-number);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.16em;
 }
@@ -875,7 +898,7 @@
   background: rgb(var(--app-surface-2));
   box-shadow:
     inset 0 1px rgb(255 255 255 / 0.14),
-    inset 0 -2px rgb(var(--app-ink) / 0.08);
+    inset 0 -2px rgb(var(--app-scrim) / 0.08);
   font-family: var(--font-number);
   font-size: clamp(76px, 15cqi, 138px);
   font-weight: 560;
@@ -888,9 +911,9 @@
   width: 0.72em;
   height: 1.04em;
   border: 1px solid rgb(var(--app-border-strong));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--app-surface));
-  box-shadow: inset 0 0 0.09em rgb(var(--app-ink) / 0.14);
+  box-shadow: inset 0 0 0.09em rgb(var(--app-scrim) / 0.14);
 }
 /* 滚筒曲率：窗口上下的暗部是机械滚筒的体积感来源 */
 .counter-cell::after {
@@ -899,10 +922,10 @@
   inset: 0;
   background: linear-gradient(
     180deg,
-    rgb(var(--app-ink) / 0.16),
+    rgb(var(--app-scrim) / 0.16),
     transparent 26%,
     transparent 74%,
-    rgb(var(--app-ink) / 0.18)
+    rgb(var(--app-scrim) / 0.18)
   );
   content: '';
   pointer-events: none;
@@ -1196,7 +1219,7 @@
   margin-left: auto;
   padding: 2px 8px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   color: rgb(var(--app-muted));
   font-family: var(--font-number);
   font-size: 10.5px;
@@ -1387,20 +1410,25 @@
 }
 .ledger-row-main {
   display: flex;
+  min-width: 0;
   align-items: baseline;
   gap: 8px;
 }
 .ledger-row-title {
+  min-width: 0;
+  flex: 1 1 auto;
   overflow-wrap: anywhere;
   font-size: 12.5px;
   font-weight: 550;
 }
 .ledger-row-duration {
+  flex: 0 0 auto;
   margin-left: auto;
   font-family: var(--font-number);
   font-size: 14px;
   font-weight: 550;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .ledger-row.row-focus .ledger-row-title,
 .ledger-row.row-focus .ledger-row-duration {
@@ -1442,7 +1470,7 @@
 }
 .ledger-sync.tone-danger,
 .ledger-sync.tone-error {
-  color: rgb(var(--app-pause));
+  color: rgb(var(--app-danger));
 }
 
 .focus-console[data-state='running'] .ledger-title,
@@ -1639,8 +1667,8 @@
 .focus-immersive.instrument-flip .flip-card {
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.1),
-    inset 0 -2px 0 rgb(0 0 0 / 0.55),
-    0 8px 20px -14px rgb(0 0 0 / 0.85);
+    inset 0 -2px 0 rgb(var(--app-scrim) / 0.55),
+    0 8px 20px -14px rgb(var(--app-scrim) / 0.85);
 }
 
 @keyframes immersive-readout-enter {
@@ -1701,7 +1729,7 @@
   border-right: 1px solid rgb(var(--app-border));
   background: transparent;
   color: rgb(var(--app-muted));
-  font-size: 9.5px;
+  font-size: 10px;
 }
 
 .ribbon-view-switch button:last-child {
@@ -1900,7 +1928,7 @@
 .task-workspace-search,
 .task-focus-action,
 .task-restore-action {
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .task-view-list button.active,
 .task-project-list button.active {
@@ -2022,7 +2050,7 @@
 .history-day-navigator button,
 .history-day-current,
 .history-range-refresh {
-  border-radius: 3px !important;
+  border-radius: var(--radius-sm) !important;
 }
 .history-timeline {
   margin: 0;
@@ -2277,7 +2305,7 @@
   color: rgb(var(--app-warning));
 }
 .history-segment-marker span {
-  font-size: 8px;
+  font-size: 10px;
   line-height: 1;
 }
 .history-segment-marker strong {
@@ -2359,7 +2387,7 @@
 .tomatodo-subject-actions > button,
 .tomatodo-subject-actions > div button,
 .history-segment-actions button {
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 /* ─── 设置页（3单重构）：工位横幅 + 分组导航｜编号规格表 ────── */
 .settings-page {
@@ -2430,7 +2458,7 @@
   margin: 0 auto;
   padding: 0 12px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: rgb(var(--app-elevated));
   transition: border-color 150ms var(--ease-standard);
 }
@@ -2451,6 +2479,10 @@
 .settings-search-input::placeholder {
   color: rgb(var(--app-muted) / 0.85);
 }
+.settings-search-input:focus-visible {
+  outline: 2px solid rgb(var(--app-accent) / 0.55);
+  outline-offset: -1px;
+}
 /* 浏览器自带的 search 清除叉与我们的清除按钮重复，且样式无法统一。 */
 .settings-search-input::-webkit-search-cancel-button {
   appearance: none;
@@ -2468,7 +2500,7 @@
   height: 22px;
   place-items: center;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: rgb(var(--app-muted));
 }
@@ -2512,7 +2544,7 @@
   margin-left: 9px;
   padding: 2px 7px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: rgb(var(--app-muted));
   font-size: 10px;
   font-weight: 500;
@@ -2547,7 +2579,7 @@
 .overlay-surface,
 .picker-shell,
 .confirm-shell {
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 /* 确认弹层挂在 body 顶层，避免被页面切换 transform 与 app-stage 裁切。 */
@@ -2559,7 +2591,7 @@
   background: rgb(var(--app-ink) / 0.34);
 }
 .dark .confirm-layer .overlay-backdrop {
-  background: rgb(0 0 0 / 0.56);
+  background: rgb(var(--app-scrim) / 0.56);
 }
 .confirm-shell {
   width: min(500px, calc(100vw - 48px));
@@ -2794,8 +2826,8 @@
   overflow: visible;
   border-radius: 50%;
   background: rgb(var(--app-surface) / 0.52);
-  filter: drop-shadow(0 10px 24px rgb(0 0 0 / 0.12));
-  backdrop-filter: blur(18px) saturate(1.35);
+  filter: drop-shadow(0 4px 10px rgb(var(--app-scrim) / 0.1));
+  backdrop-filter: blur(10px) saturate(1.2);
 }
 
 .stats-time-donut circle {
@@ -2839,7 +2871,7 @@
 .stats-time-donut text.caption {
   fill: rgb(var(--app-muted));
   font-family: var(--font-ui);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 520;
 }
 
@@ -2977,7 +3009,7 @@
   margin-top: 5px;
   color: rgb(var(--app-subtle));
   font-family: var(--font-number);
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .stats-ledger-float {
@@ -2985,12 +3017,12 @@
   min-width: 126px;
   gap: 2px;
   padding: 7px 11px;
-  border: 1px solid rgb(255 255 255 / 0.14);
+  border: 1px solid rgb(var(--app-elevated) / 0.8);
   border-radius: 12px;
   background: rgb(var(--app-surface-2) / 0.58);
-  box-shadow: inset 0 1px rgb(255 255 255 / 0.08);
+  box-shadow: inset 0 1px rgb(var(--app-elevated) / 0.6);
   text-align: right;
-  backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(10px) saturate(1.2);
 }
 
 .stats-ledger-float strong,
@@ -3006,7 +3038,7 @@
 
 .stats-ledger-float span {
   color: rgb(var(--app-muted));
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .stats-ledger-chart {
@@ -3044,10 +3076,10 @@
   margin: 0;
   padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-2xl);
   box-shadow:
     inset 0 1px rgb(255 255 255 / 0.22),
-    0 5px 14px rgb(0 0 0 / 0.11);
+    0 5px 14px rgb(var(--app-scrim) / 0.11);
   transition:
     filter var(--motion-fast),
     transform var(--motion-fast);
@@ -3088,7 +3120,7 @@ button.stats-ledger-block:focus-visible {
   height: 22px;
   color: rgb(var(--app-subtle));
   font-family: var(--font-number);
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .stats-ledger-axis span {
@@ -3110,7 +3142,7 @@ button.stats-ledger-block:focus-visible {
   flex-wrap: wrap;
   gap: 12px;
   color: rgb(var(--app-muted));
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .stats-ledger-legend span::before {
@@ -3118,7 +3150,7 @@ button.stats-ledger-block:focus-visible {
   width: 7px;
   height: 7px;
   margin-right: 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--app-muted) / 0.22);
   content: '';
 }
@@ -3255,10 +3287,10 @@ button.stats-ledger-block:focus-visible {
 .stats-estimated-badge {
   padding: 6px 9px;
   border: 1px solid rgb(var(--app-border-strong));
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: rgb(var(--app-surface-2) / 0.64);
   color: rgb(var(--app-muted));
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 560;
   backdrop-filter: blur(14px) saturate(1.3);
 }
@@ -3292,7 +3324,7 @@ button.stats-ledger-block:focus-visible {
 
 .stats-gap-ledger li strong {
   color: rgb(var(--app-muted));
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 560;
 }
 
@@ -3340,7 +3372,7 @@ button.stats-ledger-block:focus-visible {
 .stats-trend-chart .axis-label {
   fill: rgb(var(--app-subtle));
   font-family: var(--font-number);
-  font-size: 8px;
+  font-size: 10px;
   text-anchor: end;
 }
 
@@ -3390,7 +3422,7 @@ button.stats-ledger-block:focus-visible {
   padding-inline: 6.667%;
   color: rgb(var(--app-muted));
   font-family: var(--font-number);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .stats-trend-labels span {
@@ -3435,7 +3467,7 @@ button.stats-ledger-block:focus-visible {
 .stats-allocation-total span {
   margin-top: 5px;
   color: rgb(var(--app-muted));
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .stats-allocation-band {
@@ -3499,7 +3531,7 @@ button.stats-ledger-block:focus-visible {
 .stats-task-row b {
   color: rgb(var(--app-muted));
   font-family: var(--font-number);
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 520;
   text-align: right;
 }
@@ -3731,7 +3763,7 @@ button.stats-ledger-block:focus-visible {
 }
 .instrument-choice .ic-preview .dial-draft .draft-dim {
   gap: 5px;
-  font-size: 7px;
+  font-size: 10px;
 }
 .instrument-choice .ic-preview .pixel-core {
   display: none;
@@ -3755,14 +3787,14 @@ button.stats-ledger-block:focus-visible {
   height: 34px;
   padding: 0;
   border: 1px solid rgb(var(--app-border-strong));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 .focus-color-swatch.active::after {
   position: absolute;
   inset: -4px;
   border: 1.5px solid rgb(var(--app-text));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   content: '';
 }
 .focus-color-note {
@@ -3783,7 +3815,7 @@ button.stats-ledger-block:focus-visible {
   padding: 7px 10px;
   border: 1px solid rgb(var(--app-border));
   border-left-width: 3px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   background: rgb(var(--app-surface));
   font-size: 11px;
 }
@@ -3801,7 +3833,7 @@ button.stats-ledger-block:focus-visible {
    箭头和标题一样黑，看不出哪个是内容、哪个是可操作的提示。 */
 .task-child-count {
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: rgb(var(--app-surface-2) / 0.9);
   color: rgb(var(--app-muted));
   font-size: 10px;
@@ -3873,7 +3905,7 @@ button.stats-ledger-block:focus-visible {
   width: 30px;
   height: 30px;
   place-items: center;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--app-surface-2) / 0.75);
   color: rgb(var(--app-muted));
 }
@@ -3884,7 +3916,7 @@ button.stats-ledger-block:focus-visible {
 .settings-provider-badge {
   flex-shrink: 0;
   padding: 2px 7px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--app-accent) / 0.12);
   color: rgb(var(--app-accent));
   font-size: 10px;
@@ -3905,7 +3937,7 @@ button.stats-ledger-block:focus-visible {
   overflow: hidden;
   margin-top: 10px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: rgb(var(--app-surface) / 0.6);
 }
 .settings-provider-status-head {
@@ -3927,7 +3959,7 @@ button.stats-ledger-block:focus-visible {
   width: 26px;
   height: 26px;
   place-items: center;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--app-surface-2));
   color: rgb(var(--app-muted));
 }
@@ -3975,7 +4007,7 @@ button.stats-ledger-block:focus-visible {
 .settings-disclosure {
   overflow: hidden;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: rgb(var(--app-surface) / 0.55);
 }
 .settings-disclosure > summary {
@@ -4019,7 +4051,7 @@ button.stats-ledger-block:focus-visible {
 .settings-diag-block {
   padding: 8px 10px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--app-surface-2) / 0.6);
   font-family: var(--font-mono);
 }
@@ -4031,7 +4063,7 @@ button.stats-ledger-block:focus-visible {
    从未定义——「已连接」「需重启」「连接失败」渲染出来是同一个灰色，状态等于没说。 */
 .settings-status-badge {
   padding: 2px 7px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--app-surface-2) / 0.85);
   font-weight: 600;
 }
@@ -4078,7 +4110,7 @@ button.stats-ledger-block:focus-visible {
   min-width: 118px;
   padding: 0 11px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: rgb(var(--app-elevated) / 0.7);
 }
 .settings-hotkey-btn:hover {
@@ -4102,21 +4134,21 @@ button.stats-ledger-block:focus-visible {
 .settings-fixed-value {
   padding: 4px 10px;
   border: 1px dashed rgb(var(--app-border-strong));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: rgb(var(--app-muted));
   font-size: 11.5px;
 }
 .settings-version-chip {
   padding: 3px 9px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   font-family: var(--font-mono);
 }
 
 .settings-opacity-slider {
   width: 190px;
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: rgb(var(--app-border-strong));
   appearance: none;
 }
@@ -4199,6 +4231,14 @@ button.stats-ledger-block:focus-visible {
   }
 }
 
+/* 账本宽度分层：1100 以下右侧专注账本收窄到 336px，为主舞台让出宽度，
+   避免小窗口里纪念碑与账本互抢水平空间。 */
+@media (max-width: 1099px) {
+  .focus-console {
+    grid-template-columns: minmax(0, 1fr) 336px;
+  }
+}
+
 @media (max-width: 900px) {
   .app-stage {
     inset: 0 0 58px;
@@ -4271,9 +4311,6 @@ button.stats-ledger-block:focus-visible {
   .view-console {
     min-height: 46px;
   }
-  .focus-instrument {
-    grid-template-columns: 206px minmax(0, 1fr);
-  }
   .focus-meter-rail {
     padding: 14px 20px;
   }
@@ -4313,6 +4350,15 @@ button.stats-ledger-block:focus-visible {
   }
   .timer-total-value {
     font-size: 16px;
+  }
+}
+
+/* 低高度 + 足够宽度才压缩为「仪表列 + 纪念碑」双列；980×660 属于
+   ≤1080 单列横档区，不能被这里的双列规则抢回——否则仪表列与纪念碑在
+   660 高度互相挤占，计时读数会被裁切。 */
+@media (min-width: 1081px) and (max-height: 760px) {
+  .focus-instrument {
+    grid-template-columns: 206px minmax(0, 1fr);
   }
 }
 
@@ -4367,7 +4413,7 @@ button.stats-ledger-block:focus-visible {
   display: inline-flex;
   overflow: hidden;
   border: 1px solid rgb(var(--app-border-strong));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .history-filter-buttons button {
   height: 30px;
@@ -4400,7 +4446,7 @@ button.stats-ledger-block:focus-visible {
   height: 28px;
   place-items: center;
   border: 1px solid rgb(var(--app-border-strong));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: rgb(var(--app-muted));
 }
@@ -4441,9 +4487,39 @@ button.stats-ledger-block:focus-visible {
   height: 30px;
   padding: 0 8px;
   border: 1px solid rgb(var(--app-border-strong));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--app-surface));
   color: rgb(var(--app-text));
   font-family: var(--font-number);
   font-size: 12px;
+}
+
+/* 统计页工位横幅安全换行：单行三段（身份｜控制｜操作）在窄窗会把控制挤到
+   min-content 以下，日期输入等不可再折的内容会横向溢出。901–1239 之间把
+   控制整段换到第二行独占全宽，身份与操作留在首行。 */
+@media (min-width: 901px) and (max-width: 1239px) {
+  .history-header.view-console {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .history-header.view-console .history-header-controls {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-start;
+    padding-top: 10px;
+    border-top: 1px solid rgb(var(--app-border));
+  }
+}
+
+/* 窗口失焦：只降低强调色与状态色的饱和度，不动布局、不降透明度、不隐藏状态。 */
+.window-blurred .edge-dock-button.active,
+.window-blurred .edge-dock-state.state-running,
+.window-blurred .edge-dock-state.state-paused,
+.window-blurred .timer-dial.state-running,
+.window-blurred .timer-dial.state-paused,
+.window-blurred .focus-state-word.state-running,
+.window-blurred .focus-state-word.state-paused,
+.window-blurred .ledger-live.focus,
+.window-blurred .ledger-live.pause,
+.window-blurred .stats-primary-readout strong {
+  filter: saturate(0.8);
 }

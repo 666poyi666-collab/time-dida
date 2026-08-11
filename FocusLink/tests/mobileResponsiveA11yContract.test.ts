@@ -167,6 +167,16 @@ describe('mobile responsive and accessibility review contract', () => {
     expectRule(mobileRoot, '.appearance-select-row select', { 'min-height': '44px' });
   });
 
+  it('keeps editable text at 16px and the flattened timer stage on the canvas surface', () => {
+    expectRule(appleRoot, '.task-search input', { 'min-height': '44px', 'font-size': '16px' });
+    expectRule(appleRoot, '.form-field input', { 'font-size': '16px' });
+    expectRule(appleRoot, '.primary-readout', {
+      background: 'var(--canvas)',
+      'border-radius': '0',
+      'box-shadow': 'none',
+    });
+  });
+
   it('keeps content opaque and scopes Liquid Glass to the functional chrome with a solid fallback', () => {
     const supported = '((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))';
     const controls = ['.app-navigation', '.focus-actions', '.dashboard-range', '.connection-sheet'];

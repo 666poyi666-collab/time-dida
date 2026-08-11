@@ -65,4 +65,44 @@ describe('phone, tablet and watch responsive style contract', () => {
     expect(consoleSource).toContain('className="focus-action connection-action"');
     expect(consoleSource).not.toContain('inline-connection-action');
   });
+
+  it('keeps text inputs at 16px and wraps partial ledger copy on the phone strip', () => {
+    const css = compactCss('mobile.css');
+
+    expect(css).toMatch(
+      /\.form-field input,\s*\.native-pause-reminder input\[type='number'\]\s*\{[^}]*font-size:\s*16px/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width:\s*619px\)[\s\S]*?\.sync-status-ledger\.state-partial \.sync-copy span\s*\{[^}]*overflow-wrap:\s*anywhere[^}]*text-overflow:\s*clip[^}]*white-space:\s*normal/,
+    );
+  });
+
+  it('flattens the timer stage and task nesting to continuous hairline rows', () => {
+    const css = compactCss('mobile.css');
+
+    expect(css).toMatch(
+      /\.primary-readout\s*\{[^}]*border-radius:\s*0[^}]*background:\s*var\(--canvas\)[^}]*box-shadow:\s*none/,
+    );
+    expect(css).toMatch(
+      /\.task-project-group\s*\{[^}]*border-radius:\s*0[^}]*background:\s*transparent[^}]*box-shadow:\s*none/,
+    );
+    expect(css).toMatch(/\.task-children\s*\{[^}]*margin:\s*0 !important[^}]*border-radius:\s*0/);
+  });
+
+  it('keeps the 640 portrait CTA sticky above the nav and compresses the 760+ side pane', () => {
+    const css = compactCss('mobile.css');
+
+    expect(css).toMatch(
+      /@media \(min-width:\s*620px\) and \(max-width:\s*759px\) and \(orientation:\s*portrait\)[\s\S]*?\.focus-actions\s*\{[^}]*position:\s*sticky[^}]*bottom:\s*calc\(72px \+ env\(safe-area-inset-bottom,\s*0px\)\)/,
+    );
+    expect(css).toMatch(
+      /@media \(min-width:\s*620px\) and \(max-width:\s*759px\) and \(orientation:\s*portrait\)[\s\S]*?\.focus-instrument\s*\{[^}]*padding-bottom:\s*calc\(112px \+ env\(safe-area-inset-bottom,\s*0px\)\)/,
+    );
+    expect(css).toMatch(
+      /@media \(min-width:\s*760px\), \(orientation:\s*landscape\)[\s\S]*?\.live-context\s*\{[^}]*align-content:\s*start/,
+    );
+    expect(css).toMatch(
+      /@media \(min-width:\s*760px\), \(orientation:\s*landscape\)[\s\S]*?\.task-selection-detail\s*\{[^}]*min-height:\s*0/,
+    );
+  });
 });

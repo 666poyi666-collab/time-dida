@@ -6147,3 +6147,176 @@ body,
     transform: none !important;
   }
 }
+
+/* v0.12.86 · continuous work surface pass ------------------------------------
+ * The phone chrome compresses to a single dense band, the timer stage and the
+ * side facts drop card chrome, task project/child nesting flattens to
+ * continuous hairline rows, and the empty stats view stops wasting its first
+ * viewport. Only the navigation/control layer keeps restrained material. */
+
+/* Text inputs stay at 16px so iOS never auto-zooms into a focused field. */
+.form-field input,
+.native-pause-reminder input[type='number'] {
+  font-size: 16px;
+}
+
+/* A partial ledger state wraps its pending/attention copy in full on the phone
+ * strip, exactly like the error state already does. */
+@media (max-width: 619px) {
+  .sync-status-ledger.state-error .sync-copy span,
+  .sync-status-ledger.state-partial .sync-copy span {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+}
+
+/* Phone header + sync strip collapse into one compact band so the readout and
+ * the primary action stay inside the first viewport. */
+@media (max-width: 619px) {
+  .mobile-topbar {
+    min-height: calc(52px + env(safe-area-inset-top));
+    padding-block: calc(6px + env(safe-area-inset-top)) 6px;
+  }
+
+  .sync-strip {
+    min-height: 46px;
+    padding-block: 6px;
+  }
+}
+
+/* Timer stage: a continuous instrument stage, not a floating card. */
+.primary-readout {
+  border: 0;
+  border-top: 1px solid var(--mobile-hairline);
+  border-bottom: 1px solid var(--mobile-hairline);
+  border-radius: 0;
+  background: var(--canvas);
+  box-shadow: none;
+}
+
+.mobile-temporal-ribbon canvas {
+  border-color: var(--mobile-hairline);
+  border-radius: 0;
+}
+
+/* Side facts: connection, runtime facts and delivery/system notes become
+ * hairline rows inside the live context instead of separate rounded cards. */
+.connection-callout,
+.runtime-facts,
+.desktop-delivery-note,
+.native-system-controls {
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.connection-callout {
+  border: 0;
+  border-bottom: 1px solid var(--mobile-hairline);
+  padding: 12px 0;
+}
+
+.runtime-facts {
+  border: 0;
+  border-top: 1px solid var(--mobile-hairline);
+  border-bottom: 1px solid var(--mobile-hairline);
+}
+
+.desktop-delivery-note,
+.native-system-controls {
+  border: 0;
+}
+
+.desktop-delivery-note {
+  border-top: 1px solid var(--mobile-hairline);
+}
+
+.native-system-controls {
+  border-top: 1px solid var(--mobile-hairline);
+  border-bottom: 1px solid var(--mobile-hairline);
+}
+
+/* Task group / child nesting: continuous hairline rows. The project header,
+ * the task rows and the child group read as one list instead of nested cards;
+ * the settings color swatches keep their own dedicated surface. */
+.task-project-group {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.task-project-toggle,
+.task-project-group.is-open .task-project-toggle {
+  background: var(--surface);
+}
+
+.task-project-toggle {
+  border-bottom-color: var(--mobile-hairline);
+}
+
+.task-list {
+  gap: 0;
+  padding: 0;
+  background: var(--surface);
+}
+
+.task-tree-branch[data-depth='0'] {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.task-children {
+  margin: 0 !important;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Empty stats: a compact placeholder instead of a tall blank first viewport. */
+.analytics-empty {
+  min-height: 64px;
+  margin: 0;
+  padding: 18px max(16px, env(safe-area-inset-right)) 20px max(16px, env(safe-area-inset-left));
+}
+
+.mobile-gap-ledger > p {
+  min-height: 56px;
+  padding: 16px max(16px, env(safe-area-inset-right)) 18px max(16px, env(safe-area-inset-left));
+}
+
+.dashboard-primary {
+  min-height: 150px;
+}
+
+/* 640×1024 portrait keeps the phone bottom navigation and the phone hierarchy:
+ * the primary CTA stays sticky above the fixed nav and the instrument reserves
+ * room so the bar never hides the ribbon or the runtime metrics. */
+@media (min-width: 620px) and (max-width: 759px) and (orientation: portrait) {
+  .focus-actions {
+    position: sticky;
+    z-index: 32;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .focus-instrument {
+    padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* 760px+ / landscape: the side detail pane stays compact instead of leaving a
+ * tall blank column next to the focus console or the task list. */
+@media (min-width: 760px), (orientation: landscape) {
+  .live-context {
+    align-content: start;
+    padding-block: 16px;
+  }
+
+  .task-selection-detail {
+    min-height: 0;
+  }
+}

@@ -103,6 +103,9 @@
   --app-danger: 160 43 32;
   --app-danger-solid: 160 43 32;
   --app-danger-solid-fg: 255 255 255;
+  /* 遮罩（scrim）基底色：调用方按主题叠加透明度——亮色 ink/0.34、暗色黑/0.56
+     （与 .confirm-layer .overlay-backdrop 现状一致），只收敛色值不收敛透明度。 */
+  --app-scrim: 24 26 29;
   --app-info: var(--app-accent);
   /* 两个此前未定义的别名：颜色未定义时整条声明作废，任务选择器里的嵌套子任务
      因此没有底色、撤销条按钮退回继承色。别名跟随主题，无需在 .dark 里重复。 */
@@ -130,6 +133,9 @@
   --pause: var(--app-pause);
   --warning: var(--app-warning);
   --danger: var(--app-danger);
+  --danger-solid: var(--app-danger-solid);
+  --danger-solid-fg: var(--app-danger-solid-fg);
+  --scrim: var(--app-scrim);
   --info: var(--app-info);
 
   --radius-xs: 2px;
@@ -193,6 +199,7 @@
   --app-danger: 255 138 128;
   --app-danger-solid: 137 37 30;
   --app-danger-solid-fg: 255 255 255;
+  --app-scrim: 0 0 0;
   --app-ink: 239 239 235;
   --app-ink-fg: 18 20 23;
   --app-grid: 239 239 235;

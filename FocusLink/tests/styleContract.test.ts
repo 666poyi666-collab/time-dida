@@ -107,4 +107,50 @@ describe('style contract', () => {
 
     expect(missing, `设置页引用了但样式表里没有的类：${missing.join(', ')}`).toEqual([]);
   });
+
+  it('前景白色必须来自 token，不允许字面 color: white / #fff', () => {
+    const offenders: { file: string; line: number; match: string }[] = [];
+    for (const file of readStyles()) {
+      const lines = file.text.split('\n');
+      lines.forEach((line, index) => {
+        // (?<![\w-]) 排除 border-color 等复合属性；注释已被 stripComments 剥掉。
+        const match = /(?<![\w-])color\s*:\s*(#fff(fff)?|white)\b/i.exec(line);
+        if (match) offenders.push({ file: file.name, line: index + 1, match: match[0] });
+      });
+    }
+    expect(
+      offenders.map((o) => `${o.file}:${o.line} ${o.match}`).join('；'),
+      '发现字面白色前景，应改用 token（如 --app-danger-solid-fg）',
+    ).toEqual('');
+  });
+
+  it('全局 :focus-visible 描边必须派生自强调色 token', () => {
+    // 全局焦点环只定义在基础层 temporal-foundation.css；行内组件的 :focus-visible
+    // 变体不承担全局描边契约，扫全量会先撞到它们。
+    const foundation = readStyles().find((file) => file.name === 'temporal-foundation.css');
+    expect(foundation, '缺少 temporal-foundation.css').toBeDefined();
+    const block = /:focus-visible\s*\{([^}]*)\}/.exec(foundation!.text);
+    expect(block, '基础层缺少全局 :focus-visible 规则').not.toBeNull();
+    expect(block![1]).toContain('outline:');
+    expect(block![1], ':focus-visible 描边必须用 --app-accent，禁止硬编码蓝').toContain(
+      'var(--app-accent)',
+    );
+  });
+
+  it('辅助文字字号守住确定性下限：text-meta ≥ 11px、text-diag ≥ 10px', () => {
+    const css = readStyles()
+      .map((file) => file.text)
+      .join('\n');
+    const meta = /\.text-meta\s*\{([^}]*)\}/.exec(css);
+    const diag = /\.text-diag\s*\{([^}]*)\}/.exec(css);
+    expect(meta, '缺少 .text-meta 规则').not.toBeNull();
+    expect(diag, '缺少 .text-diag 规则').not.toBeNull();
+    const sizeOf = (block: string) => {
+      const match = /(?:font-size|font)\s*:\s*[^;]*?([\d.]+)px/.exec(block);
+      expect(match, `无法解析字号: ${block}`).not.toBeNull();
+      return parseFloat(match![1]);
+    };
+    expect(sizeOf(meta![1]), '.text-meta 是主信息，字号不得低于 11px').toBeGreaterThanOrEqual(11);
+    expect(sizeOf(diag![1]), '.text-diag 是辅助标签，字号不得低于 10px').toBeGreaterThanOrEqual(10);
+  });
 });

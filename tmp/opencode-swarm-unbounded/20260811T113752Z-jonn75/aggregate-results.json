@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "run_id": "20260811T113752Z-jonn75",
+  "cwd": "C:\\Users\\poyi\\Desktop\\time1",
+  "output_dir": "C:\\Users\\poyi\\Desktop\\time1\\tmp\\opencode-swarm-unbounded\\20260811T113752Z-jonn75",
+  "title_prefix": "FocusLink v0.12.86 UI audit",
+  "source": {
+    "type": "manifest",
+    "total": 5
+  },
+  "agent": "plan",
+  "variant": "max",
+  "allow_write": false,
+  "retries": 1,
+  "timeout_ms": 900000,
+  "concurrency": 5,
+  "dry_run": false,
+  "started_at_ms": 1786448272980,
+  "finished_at_ms": 1786449053803,
+  "status": "failed",
+  "batches": [
+    {
+      "index": 1,
+      "jobs_count": 5,
+      "range_start": 1,
+      "range_end": 5,
+      "concurrency": 5,
+      "status": "failed",
+      "run_id": "20260811T113753Z-m7mhhp",
+      "output_dir": "C:\\Users\\poyi\\Desktop\\time1\\tmp\\opencode-swarm-unbounded\\20260811T113752Z-jonn75\\batch-01\\run",
+      "results_path": "C:\\Users\\poyi\\Desktop\\time1\\tmp\\opencode-swarm-unbounded\\20260811T113752Z-jonn75\\batch-01\\run\\results.json",
+      "error": "run-swarm exited with code 1",
+      "job_totals": {
+        "total": 5,
+        "queued": 0,
+        "running": 0,
+        "completed": 4,
+        "failed": 1,
+        "cancelled": 0,
+        "planned": 0
+      },
+      "started_at_ms": 1786448272982,
+      "finished_at_ms": 1786449053795
+    }
+  ],
+  "batch_totals": {
+    "queued": 0,
+    "running": 0,
+    "completed": 0,
+    "failed": 1,
+    "cancelled": 0,
+    "planned": 0
+  },
+  "job_totals": {
+    "total": 5,
+    "queued": 0,
+    "running": 0,
+    "completed": 4,
+    "failed": 1,
+    "cancelled": 0,
+    "planned": 0
+  }
+}

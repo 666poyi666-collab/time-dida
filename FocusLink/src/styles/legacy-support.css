@@ -62,7 +62,7 @@
   gap: 10px;
   padding: 11px 12px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 8px;
+  border-radius: var(--radius-2xl);
   background: rgb(var(--app-elevated) / 0.94);
   box-shadow: var(--shadow-modal);
 }
@@ -117,7 +117,7 @@
 
 .skeleton {
   display: block;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: linear-gradient(
     90deg,
     rgb(var(--app-surface-2)),
@@ -125,12 +125,12 @@
     rgb(var(--app-surface-2))
   );
   background-size: 220% 100%;
-  animation: temporal-sweep 1.4s ease-in-out infinite;
+  animation: temporal-pulse 1.4s ease-in-out infinite;
 }
 
 .focus-edition {
   color: rgb(var(--app-subtle));
-  font: 500 9px/1 var(--font-mono);
+  font: 500 10px/1 var(--font-mono);
   letter-spacing: 0.18em;
 }
 
@@ -206,7 +206,7 @@
   min-height: 34px;
   padding: 0 8px;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: rgb(var(--app-muted));
   text-align: left;
@@ -226,7 +226,7 @@
 
 .task-view-list small,
 .task-project-list small {
-  font: 500 9px/1 var(--font-mono);
+  font: 500 10px/1 var(--font-mono);
 }
 
 .task-navigation-divider {
@@ -321,7 +321,7 @@
 
 .task-workbench-kicker {
   color: rgb(var(--app-accent));
-  font: 500 9px/1 var(--font-mono);
+  font: 500 10px/1 var(--font-mono);
   letter-spacing: 0.12em;
 }
 
@@ -384,6 +384,10 @@
   outline: 0;
   background: transparent;
 }
+.task-workspace-search input:focus-visible {
+  outline: 2px solid rgb(var(--app-accent) / 0.55);
+  outline-offset: 0;
+}
 
 .task-workspace-search button {
   border: 0;
@@ -401,14 +405,14 @@
 .task-control-select select {
   min-height: 29px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: rgb(var(--app-surface));
   font-size: 10px;
 }
 
 .task-result-count {
   color: rgb(var(--app-subtle));
-  font: 500 9px/1 var(--font-mono);
+  font: 500 10px/1 var(--font-mono);
 }
 
 .task-workbench-list {
@@ -455,7 +459,7 @@
   margin: 0 8px 8px 22px;
   border: 1px solid rgb(var(--app-border));
   border-left: 2px solid rgb(var(--app-border-strong));
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   background: rgb(var(--app-canvas));
 }
 
@@ -755,7 +759,7 @@
   min-height: 29px;
   padding: 0 9px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: rgb(var(--app-elevated) / 0.56);
   color: rgb(var(--app-muted));
   font-size: 10px;
@@ -780,7 +784,7 @@
 .task-completed-group {
   padding: 18px 0 7px;
   color: rgb(var(--app-subtle));
-  font: 500 9px/1 var(--font-mono);
+  font: 500 10px/1 var(--font-mono);
   letter-spacing: 0.1em;
 }
 
@@ -827,7 +831,7 @@
   max-width: 420px;
   padding: 10px 12px;
   border: 1px solid rgb(var(--app-border-strong));
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   background: rgb(var(--app-ink));
   color: rgb(var(--app-ink-fg));
   box-shadow: var(--shadow-lg);
@@ -931,7 +935,7 @@
   min-height: 30px;
   padding: 0 9px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: rgb(var(--app-surface) / 0.56);
   color: rgb(var(--app-muted));
   font-size: 10px;
@@ -1013,7 +1017,7 @@
   min-height: 30px;
   padding: 0 10px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: rgb(var(--app-surface) / 0.55);
   color: rgb(var(--app-muted));
   font-size: 10px;
@@ -1071,7 +1075,7 @@
 .history-bar,
 .analytics-bar {
   background: rgb(var(--app-accent));
-  border-radius: 2px 2px 0 0;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
   transform-origin: bottom;
   animation: temporal-enter var(--motion-slow) var(--ease-fluid) both;
 }
@@ -1220,7 +1224,7 @@
   min-height: 36px;
   padding: 0 10px;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: rgb(var(--app-muted));
   text-align: left;
@@ -1299,7 +1303,7 @@
   min-height: 30px;
   padding: 0 11px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   font-size: 10px;
 }
 
@@ -1309,9 +1313,9 @@
   height: 24px;
   padding: 0;
   border: 1px solid rgb(var(--app-border-strong));
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--app-surface-3));
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.08);
+  box-shadow: inset 0 1px 2px rgb(var(--app-scrim) / 0.08);
 }
 
 .toggle-track.checked {
@@ -1348,7 +1352,7 @@
   min-height: 31px;
   padding: 0 9px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: rgb(var(--app-elevated) / 0.6);
   font-size: 10px;
 }
@@ -1361,7 +1365,7 @@
   min-width: 160px;
   padding: 4px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   background: rgb(var(--app-elevated));
   box-shadow: var(--shadow-modal);
 }
@@ -1374,7 +1378,7 @@
   min-height: 30px;
   padding: 0 8px;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: transparent;
   font-size: 10px;
 }
@@ -1537,7 +1541,7 @@
 .confirm-shell {
   overflow: hidden;
   border: 1px solid rgb(var(--app-border-strong));
-  border-radius: 8px;
+  border-radius: var(--radius-2xl);
   background: rgb(var(--app-elevated) / 0.96);
   box-shadow: var(--shadow-modal);
 }
@@ -1549,7 +1553,7 @@
 .overlay-select {
   min-height: 33px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: rgb(var(--app-surface));
   font-size: 10px;
 }
@@ -1565,7 +1569,7 @@
   min-height: 34px;
   padding: 0 30px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: rgb(var(--app-surface) / 0.65);
   outline: 0;
 }
@@ -1584,7 +1588,7 @@
   width: 34px;
   height: 34px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: transparent;
 }
 

@@ -1,0 +1,28 @@
+{
+  "_controller": {
+    "run_id": "20260811T121738Z-9ypu2a",
+    "batch": 1,
+    "batches": 1,
+    "range_start": 1,
+    "range_end": 3,
+    "total": 3,
+    "concurrency": 3
+  },
+  "jobs": [
+    {
+      "id": "retry-desktop-finish",
+      "title": "Finish and verify desktop CSS partial",
+      "prompt": "Build mode retry. Exclusively own FocusLink/src/styles/linear-workbench.css, FocusLink/src/styles/legacy-support.css, FocusLink/tests/desktopResponsiveStyleContract.test.ts. A previous worker left partial linear-workbench changes. Inspect them, keep valid token/radius/10px/focus/disabled fixes, then finish only missing approved items: 980x660 breakpoint collision, 336px ledger under 1100, safe history header wrapping, subtle .window-blurred, legacy auxiliary floor. Add the new deterministic responsive test. Do not touch other files. Run Prettier and focused desktop/style/layout tests; return concrete final VERDICT/CHANGES/TESTS/RISKS/ARTIFACTS <=1800 chars.\n\nGlobal job 1/3 (batch 1/1, local 1/3)."
+    },
+    {
+      "id": "retry-mini-finish",
+      "title": "Implement mini CSS and smoke polish",
+      "prompt": "Build mode retry. Exclusively own FocusLink/src/styles/temporal-mini.css and FocusLink/scripts/smoke/mini-ui-smoke.cjs. Make the exact approved fixed-preset changes only: collapsed expand affordance 24px in 30px column + min-width guard; expanded 7px dot; 11s marquee; metrics 8.5/9.5px; 17px controls with 9px text; progress 10px. Keep 184x44 and 256x70 constants/DOM/drag/snap untouched. Add smoke assertions for long H:MM:SS, long CJK marquee, reduced-motion no animation/focusable scroll without weakening current checks. Do not touch other files. Format and run the most focused feasible test/smoke; finish VERDICT/CHANGES/TESTS/RISKS/ARTIFACTS <=1800 chars.\n\nGlobal job 2/3 (batch 1/1, local 2/3)."
+    },
+    {
+      "id": "retry-mobile-finish",
+      "title": "Implement focused mobile continuous work surface",
+      "prompt": "Build mode retry. Exclusively own FocusLink/mobile/index.html, FocusLink/android/app/src/main/AndroidManifest.xml, FocusLink/src/mobile/appearance.ts, FocusLink/src/mobile/MobileApp.tsx, FocusLink/src/mobile/mobile.css, FocusLink/tests/mobileAppearance.test.ts, FocusLink/tests/mobileResponsiveStyleContract.test.ts, FocusLink/tests/mobileResponsiveA11yContract.test.ts, FocusLink/scripts/regression/mobile-viewport-screenshot.ts. Implement a focused, finishable v0.12.86 patch: interactive-widget=resizes-content + adjustResize; live system-theme listener; 16px inputs; wrap partial state; sticky action/nav spacing. Then restyle using existing selectors only: compress phone header/sync strip; remove shadow/border/radius from timer stage; flatten focus context and task group/child nesting to hairline continuous rows; keep appropriate color swatches; reduce empty stats first viewport; 640 portrait sticky CTA with content reservation; 760+/landscape flatten side facts/detail rows and reduce blank pane. Preserve all business/authority semantics, Huawei/Xiaomi native paths; do not touch WatchApp/watch.css. No gradients/orbs/card walls. Update owned contract and screenshot overlap tests. Do not touch other files. Run Prettier, focused mobile tests, build:web, viewport runner. Finish VERDICT/CHANGES/TESTS/RISKS/ARTIFACTS <=1800 chars.\n\nGlobal job 3/3 (batch 1/1, local 3/3)."
+    }
+  ]
+}
