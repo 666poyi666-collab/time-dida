@@ -308,6 +308,45 @@ export function enqueueSessionSync(sessionId: string): SyncQueueItem {
   return item;
 }
 
+/**
+ * Durable hand-off used by remote-session write-back. Completed queue rows are reused so a crash
+ * after provider success but before coordinator settlement does not create another provider call.
+ */
+export function ensureSessionSyncQueued(sessionId: string): SyncQueueItem[] {
+  const items: SyncQueueItem[] = [];
+  const allQueueItems = listSyncQueue();
+  for (const segment of listSegments(sessionId)) {
+    if (!segment.taskId || segment.taskSource !== 'ticktick' || !segment.endedAt) continue;
+    const existing = allQueueItems.find((candidate) => {
+      try {
+        const payload = JSON.parse(candidate.payload) as Payload;
+        return payload.type === 'segment-focus' && payload.segmentId === segment.id;
+      } catch {
+        return false;
+      }
+    });
+    if (!existing) {
+      items.push(enqueueSegmentSync(segment.id));
+    } else if (existing.status === 'synced' || existing.status === 'pending') {
+      // A pending record can carry a persisted rate-limit cooldown. Reusing it verbatim is
+      // essential: resetting lastError/retryCount here would make every remote-writeback retry
+      // immediately hit dida again and defeat the queue's account-wide backoff.
+      items.push(existing);
+    } else {
+      // The remote write-back coordinator has already applied its own durable backoff before
+      // reaching this point, so terminal queue items may now be reopened safely.
+      items.push(reactivateQueueItem(existing));
+    }
+  }
+  return items;
+}
+
+export function readSyncQueueItems(ids: readonly string[]): SyncQueueItem[] {
+  return ids
+    .map((id) => getSyncQueueItem(id))
+    .filter((item): item is SyncQueueItem => item !== null);
+}
+
 function reactivateQueueItem(item: SyncQueueItem): SyncQueueItem {
   if (item.status === 'pending' && !item.lastError) return item;
   item.status = 'pending';

@@ -2,7 +2,17 @@
 
 > 这是发布门禁，不是建议清单。每个补丁版本都必须推送 GitHub `main`；公开 tag、资产上传和 GitHub Release 只在用户明确要求时执行，并且只有本页全部满足才算发布完成。
 >
-> 除非命令明确写了其他路径，本页所有 `npm` / `node` 命令都从仓库内 `FocusLink/` 执行。正式开发运行时固定为 Node.js 20.x / npm 10.x。
+> 除非命令明确写了其他路径，本页所有 `npm` / `node` 命令都从仓库内 `FocusLink/` 执行。正式开发运行时固定为 Node.js 22.x / npm 10.x（当前门禁基线为 Node `22.22.2` / npm `10.9.9`）。Cloudflare Worker 保持 `compatibility_date: 2026-07-25`；不得为适配旧 Wrangler/workerd 而回退该日期。
+
+## 0. 每轮迭代前置复盘
+
+这是开始规划、改源码、升版本、构建或安装前的硬门禁：
+
+1. 读完 [IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md) 顶部当前版本记录和其中尚未关闭的 Bug/事故；产品级事实、证据、根因和遗留风险只追加到该日志。
+2. 读完与本轮症状对应的 [SYNC_TROUBLESHOOTING.md](SYNC_TROUBLESHOOTING.md) 或 [INSTALLER_TROUBLESHOOTING.md](INSTALLER_TROUBLESHOOTING.md) 稳定错误编号；需要复用的诊断顺序只维护在 troubleshooting 文档。
+3. 读完本页全部门禁，再确定版本、测试、构建和三设备安装矩阵。未完成以上阅读不得把历史错误直接当成当前故障，也不得新建一次性 Bug 报告、平行 `docs/` 或散落结果文件。
+
+连接事故必须按“已安装配置（脱敏）→ 最近日志时间/结构化错误码 → DNS → TCP → 正确的只读 health 路径 → canonical 路由/鉴权边界 → 产品状态”顺序诊断。历史 `network_error` 与当前 health 成功可以同时为真；`conflict_present` 是耐久数据待确认状态，不是 transport 断开。禁止仅凭任意非空 `lastError` 显示“连接失败”，也禁止用会写远端状态的 bootstrap 代替健康检查。
 
 ## 1. 测试层级
 
@@ -18,6 +28,19 @@ npm run probe:account-bootstrap
 ```
 
 测试必须覆盖状态机、三时间模型、崩溃恢复、任务树与排序、`completedAt`、CLI 优先/OAuth 后备、活动/完成分阶段加载、设置局部更新与旧设置兼容迁移（fontProfile 仅解析、timerStyle 旧值映射）、dida argv/checklist/marker、统计 request-id、renderer 受控恢复、logger Error 序列化、托盘监听幂等性、同步队列和番茄本地/云桥策略。
+
+Focus Guard 阶段 B 的本地门禁另加：
+
+```bash
+npx vitest run tests/focusGuardRootProtocol.test.ts tests/focusGuardCrypto.test.ts tests/focusGuardRootStore.test.ts
+./gradlew :app:testDebugUnitTest --tests app.focuslink.mobile.FocusGuardRootProtocolTest
+```
+
+必须覆盖四类 V1 payload round-trip、wrong root/account/AAD/entity/revision/operation、nonce/tag/
+ciphertext/AAD 篡改与截断、generation rollback/replay、corrupt/lost/recovery-required/revoked 与
+secure-storage unavailable；root/recovery secret/解密明文不得进入日志、renderer、WebView preference、
+APK 常量或云端 payload。阶段 B 只允许本地源码和 synthetic fixture；不得以本地测试代替部署、生产
+schema/secret、打包或设备安装验收。
 
 ### 构建与隔离回归
 
@@ -43,7 +66,7 @@ npm run android:sync
 `cloud/docker-compose.yml` + `cloud/docker-compose.test.yml` 只验证 Web/PWA 容器。Node personal-cloud
 authority 已退役，不能再用 Docker/Coolify、静态 bearer account 或本地 JSON 卷模拟 production。
 回环协议测试直接使用 `startDeviceSyncTestBackend()` 且只监听 `127.0.0.1`；生产数据面必须验证
-canonical foxlink-cloud-mcp → private service binding → Account DO 链路。
+canonical foxlink-cloud-mcp → private service binding → Account DO 链路。回环与嵌入测试后端绑定动态端口 0 时必须避开 WHATWG Fetch forbidden-port 列表（`FL-SYNC-008`）：显式 forbidden 端口在 bind 前拒绝、标准列表不可被 seam 绕开、并发 `listen()` 合并、重试耗尽后服务保持关闭；`tests/deviceSyncServerPortSafety.test.ts` 为确定性回归，不得把端口 flake 当作 authority 故障。
 
 账本协议测试必须覆盖 Bearer 鉴权、精确 CORS、512 KiB bundle/1 MiB 请求与响应字节预算、`opId` 重放及正文回退、
 `baseRevision` 冲突、按连接分区的原子检查点、耐久冲突状态、`invalid_cursor` 恢复、单调 cursor 分页与账号隔离。
@@ -72,11 +95,13 @@ canonical foxlink-cloud-mcp → private service binding → Account DO 链路。
 错误 command id、非终态 ack、断网、非 200 和非法 JSON。Service 只有在匹配 command id 的终态 ack 后才可删除持久命令，
 其他失败必须保留以便下一轮至少一次重放。OEM 候选的纯逻辑测试必须覆盖华为 action、小米显式组件及最终应用详情兜底。
 
+原生 completed-ledger 还必须用隔离 SharedPreferences instrumentation 覆盖完整 terminal 生命周期：conflict/rejected 保留原 outbox、写 sidecar并从普通 Worker 队列排除；用户未点击时二次 Worker 不得发送。用户在电脑端处理后，只有当前 device + connection lease 通过的显式“重新检查”才能提交独立 unique work + `REPLACE`；该 work 必须持久绑定 expected device id，marker 在执行前保持不变，普通 `KEEP` worker 永远不可读取。排程失败、进程重启、错误 device/lease 与 A→B 账号切换都必须 fail-closed 且不得形成裸 pending；applied/duplicate 后 outbox 与 sidecar 同时清除；孤立 marker 清理不得伪报 requeued，有效 foreign marker 不得被当前设备状态读取改写。
+
 发布前必须证明 Node production authority 无法启动：`startPersonalCloud()` 固定失败，Compose 不包含
 `focuslink-cloud` API，容器配置不含 `FOCUSLINK_CLOUD_ACCOUNTS` 或生产 bearer token。运行
 `wrangler deploy --dry-run` 只用于生成本地 bundle 证据，不等于部署或远端验收。
 
-Cloudflare 托管实现必须先执行 Worker 类型检查、本地协议测试、deployment containment 测试和 dry-run。
+Cloudflare 托管实现必须先执行 Worker 类型检查、本地协议测试、deployment containment 测试和 dry-run。外部 run/verify 只能在显式 opt-in 的 `127.0.0.1` disposable Worker 上执行；`FOCUSLINK_TEST_STATE` 仅允许项目 `.tmp` 或系统临时目录下的受控直系状态文件，必须拒绝 junction/symlink/非普通文件、exclusive create 并在读取/清理前复核文件身份，状态不得保存 credential。external verify 只验证持久化、不得自动删除外部状态文件；local 隔离 gate 才自动清理自己创建的临时目录与状态。
 私有 FocusLink Worker 不得有 `workers.dev`、preview 或 custom route；唯一公网 origin 是
 foxlink-cloud-mcp adapter。公网门禁覆盖 canonical `/sync/v2/*`、`/sync/v1/pair/*`、错误 token、
 OAuth/device 双向拒绝、`opId` applied/duplicate/复用拒绝、旧 revision conflict、cursor 增量、
@@ -86,7 +111,7 @@ OAuth/device 双向拒绝、`opId` applied/duplicate/复用拒绝、旧 revision
 
 账号 bootstrap 门禁必须覆盖严格 start/poll 字段、canonical `/owner/*` URL、`flb_*` poll token 短期单次消费、过期 flow、额外字段、错误 origin、凭据/日志脱敏和“未登录不得 authenticated”。`npm run probe:account-bootstrap` 只输出结构化状态；只有 `deployed-login-required` 返回成功退出码，`not-deployed` 是可诊断的真实阻塞，不算公网通过。上线验收必须在无旧凭据的新安装上完成 owner 登录、独立 `fl2` 签发和第二次 poll 拒绝，并确认旧安装原位升级仍在线。
 
-任务快照 freshness 门禁使用不含真实任务正文的 fixture，覆盖发布回读一致性、GET `no-store`、前台 15 秒自动刷新、revision 36→37 收敛、延迟 36 不回退、同 revision 异文拒绝，以及父子 ID/parentId 数量守恒。
+任务快照 freshness 门禁使用不含真实任务正文的 fixture，覆盖发布回读一致性、GET `no-store`、前台 15 秒自动刷新、revision 36→37 收敛、延迟 36 不回退、同 revision 异文拒绝，以及父子 ID/parentId 数量守恒。Account DO 与 loopback 都必须接受 `publishedAt = serverTime + 5 分钟` 以内的边界值、拒绝超限值并返回 `422 task_snapshot_timestamp_too_far_ahead`，且超限不得改写当前 register；已持久化 legacy far-future 快照必须可由合法新快照恢复。桌面 durable pending 收到该 422 后只可执行一次可信 GET 与一次重戳 POST；第二次 422、GET/解析/重试失败或连接 scope/generation 变化均保留 pending，`stale_task_snapshot` 才可清除，`task_snapshot_conflict` 必须保留。
 
 Sync v2 额外覆盖 inventory/manifest/bootstrap、三类 epoch、租约过期恢复、`opId` 幂等、旧 revision 冲突、tagId 合并、tombstone 水位、配对 nonce 重放、scope/撤销/轮换、冲突/回收站标准 mutation、Queue `credential-missing` 诊断和重部署持久性。R2 门禁必须包含真实 object 写入、AES-GCM 篡改检测、maintenance 写拒绝、恢复失败回滚及 generation 切换；账户未启用 R2 时记录 Cloudflare 错误码并判定该门禁未通过。
 
@@ -97,10 +122,11 @@ Authority observation 本地合同必须覆盖：默认公网入口拒绝、name
 Android 门禁限定 `:app:`，只测试最终可交付 APK；不要让 Gradle 根任务选择器额外构建 Capacitor
 生成库中没有产品测试源码的 instrumentation APK。
 
-ADB 双机验证必须先用 `adb devices -l` 核对两个唯一序列号，安装与日志命令均显式传
-`adb -s <serial>`。移动端只接受 canonical HTTPS authority；不得再配置 ADB reverse、localhost/LAN HTTP，
-也不得为了真机调试放宽 Android 明文网络规则。逐台跑连接测试时设置 `ANDROID_SERIAL` 后执行
-`:app:connectedDebugAndroidTest`，并核对两台设备各自的测试报告与安装版本。
+ADB 安装门禁必须先用 `adb devices -l` 核对指定小米手机和华为平板的两个唯一序列号；OPPO OWW221 已于 2026-08-11 退役，不再开发或验证，
+安装与日志命令均显式传 `adb -s <serial>`，并逐台回读同一 APK 的 `versionName` / `versionCode`。移动端只接受
+canonical HTTPS authority；不得再配置 ADB reverse、localhost/LAN HTTP，也不得为了真机调试放宽 Android
+明文网络规则。手机和平板逐台跑连接测试时设置 `ANDROID_SERIAL` 后执行 `:app:connectedDebugAndroidTest`，
+并核对各自的测试报告；不得用历史手表记录替代当前手机/平板 instrumentation 证据。
 
 instrumentation 中的 native store 测试必须使用隔离的 SharedPreferences，禁止清空真机正在使用的
 `focus_runtime_native_v1`。Gradle connected 任务可能在收尾卸载目标调试包，因此只能在专用测试设备
@@ -133,19 +159,21 @@ ANR、ForegroundServiceStartNotAllowedException 或通知通道错误。
 
 Android 真机还必须分别在手机和平板验证：任务父子叠层及 44px 展开命中、开始前树序任务选择、running/paused 时间之带在首分钟不会铺满且刻度可读；显式授予 overlay 后回到系统桌面，左上角计时逐秒更新并可点击回到 App，结束后消失。拒绝或撤销 overlay 权限时应用应继续通过通知工作且不崩溃。Windows FocusLink 进程停止期间，手机开始、平板暂停、手机继续、平板结束必须仍由 canonical authority 收敛为一份 `2 segments + 1 pause` 账本；Windows 重启并同步后只能导入一次，不得配置或恢复 ADB reverse。
 
+OPPO OWW221 已退役；新候选不再安装或验证手表 renderer，相关历史实现与记录只保留用于兼容审计。
+
 ### UI smoke
 
 - 主窗覆盖深浅主题的 idle、running、paused、任务、统计、设置和 TaskPicker。
 - 契约断言覆盖六套真实界面字体、五套计时仪表、7×9 点阵（含窄冒号不越界）、翻页 `fold/unfold/steady` DOM 闭环与动画取消兜底、canvas 时间之带实时渲染与 finished 冻结、统计日报的 KPI/双尺度单日时间轴/多日堆叠柱/100% 任务构成带/暂停损耗，以及 Electron 原生全屏沉浸覆盖层、进入过渡和全页仅一个 TimerDial/TemporalRibbon 动画实例。
 - 视觉断言要确认主工作面无大面积 `backdrop-filter`/blur/光晕，文字对比与字号下限符合前端规范，reduced-motion 无持续呼吸或位移。
 - 覆盖默认尺寸、980×660 最小尺寸、1280×720、键盘焦点和无横向溢出；多日柱图的每日精确值必须可键盘聚焦。
-- 小窗覆盖 expanded/collapsed、running/paused、实时主题/字体切换、透明边界、DPR、多显示器 work area 和四边吸附；Windows 原生拖拽必须由 `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` 区分按住与释放，断言收起态仅有状态、当前时间、60 格当前分钟秒轨和展开入口，展开态在 `256×70` 外框内完整显示任务名、三项累计与全部控制，时间与按钮分区且按钮不换行；暂停粒子必须跟随消逝边界，并覆盖 320ms 收束与过渡中拖动取消。
+- 小窗覆盖 expanded/collapsed、running/paused、实时主题/字体切换、透明边界、DPR、多显示器 work area 和四边吸附；Windows 原生拖拽必须由 `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` 区分按住与释放，断言收起态仅有状态、当前时间、60 格当前分钟秒轨和展开入口，展开态在 `256×70` 外框内完整显示任务名、三项累计与全部控制，时间与按钮分区且按钮不换行；暂停粒子必须跟随消逝边界，并覆盖 320ms 收束与过渡中拖动取消；置顶动作（`mini.bringToFront`）前后必须断言收起态几何与 Win32 前台窗口身份（handle/processId/title）保持不变，且不抢焦点。
 - 小窗尺寸以 BrowserWindow 内容 viewport、填满 viewport 的 shell 和截图像素为三重事实；Chromium 的 `window.outerWidth/outerHeight` 在 Windows runner 可能包含不可见系统边框，只能用于诊断和重复命令前后不变性，不能作为固定内容尺寸的发布断言。
 - 关闭 smoke 后删除临时 user-data 必须允许 Windows 日志尾写入的有界重试；清理错误不得覆盖首个产品/断言错误。
 - 统计 smoke 连续快速展开不同会话、在计时 tick 中滚动/切换页面，确认旧请求不会覆盖新详情，退出页不拦截鼠标。
 - 任务 smoke 必须用真实临时滴答任务完成整条可逆链路：“完成 → 6 秒内撤销 → 再次完成 → 已完成视图按 `completedAt` 找到 → 恢复未完成”。同时覆盖 30/90/365 天选项、名称/日期排序和超过 120 项时的逐步显示。
 - UI smoke 输出放系统临时目录，不放仓库根目录。
-- 跨设备实时控制改动必须运行 `npm run smoke:live-fallback -- <本次 win-unpacked\\FocusLink.exe>`：脚本使用隔离 userData、不可达 loopback 和当前账户加密令牌，断言首次握手失败后本机计时仍能开始并结束；输出 `SKIP` 只表示环境缺少可解密令牌，不计入通过。
+- 跨设备实时控制改动必须运行 `npm run smoke:live-fallback -- <本次 win-unpacked\\FocusLink.exe>`：脚本使用隔离 userData、不可达 loopback，并由 Electron `safeStorage` helper 在该临时 profile 内生成 synthetic 非生产令牌；不得读取或复制当前账户真实凭据。脚本断言首次握手失败后本机计时仍能开始并结束；helper 初始化、加密或解密失败必须在有界超时内明确失败，不得以 `SKIP` 计入通过。
 
 ### 真实 dida 临时任务
 
@@ -200,9 +228,12 @@ npm run smoke:dida:ui -- ../release-v01214/win-unpacked/FocusLink.exe
 Android `versionCode` 必须为正整数，且高于此前所有已发布或测试分发 APK 的值；每次分发都只能单调递增，
 不得因语义版本回退、补发或重建而复用或降低。`versionName` 及其单元测试断言必须与本次版本策略同步更新。
 
-跨端 UI 或行为每轮候选必须递增补丁版本。正式构建前必须把同一版本安装到 Windows、指定华为平板和指定小米手机，分别回读版本并完成三端验证矩阵；任一端缺失、版本落后或不一致时，不得标记完成、执行正式打包、创建 tag 或发布。华为现用胶囊布局模块、Windows 两态小窗与小米系统表面必须保留并复验，除非本轮明确替换对应实现。
+跨端 UI 或行为每轮候选必须递增补丁版本。正式构建前必须把同一版本实际安装到 Windows、指定小米手机、
+指定华为平板，分别回读版本并完成三设备验证矩阵；任一在用端缺失、版本落后或不一致时，不得标记完成、
+执行正式打包、创建 tag 或发布。华为现用胶囊布局模块、Windows 两态小窗和小米系统表面必须保留并复验；
+OPPO 手表 renderer 已冻结并退出新开发。
 
-每个补丁版本都在测试、三端同版安装、CHANGELOG/实施日志、四文件发布目录和 Android APK 备份完成后推送 `main`。补丁尾号不再决定上传节奏；annotated tag、公开资产和 GitHub Release 只在用户明确要求时创建，不得因版本尾号自动发布。
+每个补丁版本都在测试、三设备同版安装、CHANGELOG/实施日志、四文件发布目录和 Android APK 备份完成后推送 `main`。补丁尾号不再决定上传节奏；annotated tag、公开资产和 GitHub Release 只在用户明确要求时创建，不得因版本尾号自动发布。
 
 目录规则：`0.11.5 → release-v0115`，`0.2.10 → release-v0210`。发布目录位于源码工作区父级；仓库本地只保留最新三个 release 目录，更老的安装包由 GitHub Releases 长期保存。
 

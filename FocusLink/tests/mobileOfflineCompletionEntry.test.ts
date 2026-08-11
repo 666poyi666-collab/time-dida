@@ -80,7 +80,10 @@ describe('MobileApp offline completion entry', () => {
       nativeQueued: false,
       pending: { entityId: 'session-entry', state: 'pending' },
     });
-    expect(await readMobileV2Status(DEVICE_ID)).toMatchObject({ pending: 2 });
+    expect(await readMobileV2Status(DEVICE_ID)).toMatchObject({
+      pending: 2,
+      outstandingEntityIds: ['session-entry'],
+    });
   });
 });
 

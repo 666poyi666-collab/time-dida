@@ -22,10 +22,19 @@ final class FocusAuthorityProjectionV1 {
         if (!connectionConfigured) return "blocked";
         boolean hasError = lastErrorCode != null && !lastErrorCode.isEmpty();
         if (isBlockingError(lastErrorCode)) return "blocked";
-        if (lastVerifiedAt <= 0L) return hasError ? "offline" : "unknown";
-        if (hasError && lastAttemptAt > lastVerifiedAt) return "offline";
+        // A conflict/rejection is durable attention after an authoritative response, not
+        // transport evidence. Preserve the last verified freshness while continuing to expose
+        // its safe code and pending count. With no verified projection yet, remain unknown so
+        // the provider keeps history redacted rather than inventing either freshness or outage.
+        boolean requestFailed = hasError && !isAttentionError(lastErrorCode);
+        if (lastVerifiedAt <= 0L) return requestFailed ? "offline" : "unknown";
+        if (requestFailed && lastAttemptAt > lastVerifiedAt) return "offline";
         if (now >= lastVerifiedAt && now - lastVerifiedAt <= FRESH_AFTER_MS) return "fresh";
         return "stale";
+    }
+
+    static boolean isAttentionError(String errorCode) {
+        return "conflict_present".equals(errorCode) || "rejected_operation".equals(errorCode);
     }
 
     static boolean isBlockingError(String errorCode) {

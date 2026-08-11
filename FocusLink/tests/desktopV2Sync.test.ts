@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fingerprintDeviceSyncValue } from '../shared/sync/deviceProtocol';
 import type { FocusSegment, FocusSession, PauseEvent } from '../shared/types';
+import type { DeviceSyncSessionBundle } from '../shared/sync/deviceProtocol';
 import type { FocusLedgerV2, FocusMetadataV2 } from '../shared/sync/v2Protocol';
 
 const harness = vi.hoisted(() => ({
@@ -11,12 +12,16 @@ const harness = vi.hoisted(() => ({
     accessToken: `fl2_account1_desktop1_${'x'.repeat(32)}`,
     deviceId: 'device-desktop1',
     scope: 'scope-1',
+    providerScope: 'provider-account1',
+    generation: 0,
   },
   state: null as Record<string, unknown> | null,
   states: new Map<string, Record<string, unknown>>(),
   sessions: [] as FocusSession[],
   segments: new Map<string, FocusSegment[]>(),
   pauses: new Map<string, PauseEvent[]>(),
+  insertedBundles: [] as DeviceSyncSessionBundle[],
+  remoteWritebackIntents: [] as Array<{ connectionScope: string; sessionId: string }>,
   deleted: [] as string[],
   discarded: [] as string[],
   enqueued: [] as Array<Record<string, unknown>>,
@@ -31,9 +36,20 @@ vi.mock('../electron/db/index.js', () => ({
   getDb: () => ({ transaction: (operation: () => unknown) => operation }),
   getMeta: (key: string) => harness.meta.get(key) ?? null,
   setMeta: (key: string, value: string) => harness.meta.set(key, value),
-  getSession: () => null,
+  getSession: (sessionId: string) =>
+    harness.sessions.find((session) => session.id === sessionId) ?? null,
   deleteSession: (id: string) => harness.deleted.push(id),
-  insertDeviceSyncBundleIfMissing: () => false,
+  insertDeviceSyncBundleIfMissing: (bundle: DeviceSyncSessionBundle) => {
+    if (harness.sessions.some((session) => session.id === bundle.session.id)) return false;
+    harness.insertedBundles.push(bundle);
+    harness.sessions.push(bundle.session);
+    harness.segments.set(
+      bundle.session.id,
+      bundle.segments.map((segment) => ({ ...segment, cloudFocusId: null })),
+    );
+    harness.pauses.set(bundle.session.id, bundle.pauses);
+    return true;
+  },
   listFinishedSessionsForDeviceSync: () => harness.sessions,
   listPauses: (sessionId: string) => harness.pauses.get(sessionId) ?? [],
   listSegments: (sessionId: string) => harness.segments.get(sessionId) ?? [],
@@ -59,7 +75,9 @@ vi.mock('../electron/sync/v2OutboxStore.js', () => ({
   }),
   hasOpenV2Conflict: vi.fn(() => false),
   hasPendingV2Mutation: vi.fn(() => null),
-  listV2EntityStates: vi.fn(() => []),
+  listV2EntityStates: vi.fn((_scope: string, entityId?: string) =>
+    [...harness.states.values()].filter((state) => !entityId || state.entityId === entityId),
+  ),
   readDesktopV2Status: vi.fn(() => ({ pending: 0, conflicts: 0, rejected: 0 })),
   readV2EntityState: vi.fn((_scope: string, entityType: string, entityId: string) => {
     return harness.states.get(`${entityType}:${entityId}`) ?? harness.state;
@@ -79,7 +97,24 @@ vi.mock('../electron/sync/v2OutboxStore.js', () => ({
   ),
   writeV2EntityState: vi.fn((_scope: string, value: Record<string, unknown>) => {
     harness.stored.push(value);
+    harness.states.set(`${value.entityType}:${value.entityId}`, {
+      ...value,
+      confirmedRevision: value.revision,
+      confirmedFingerprint: value.fingerprint,
+      baseSnapshot: value.payload,
+    });
   }),
+}));
+
+vi.mock('../electron/sync/remoteWritebackStore.js', () => ({
+  enqueueRemoteWritebackIntents: vi.fn((connectionScope: string, sessionId: string) => {
+    harness.remoteWritebackIntents.push({ connectionScope, sessionId });
+  }),
+  hasRemoteWritebackIntentPair: vi.fn((connectionScope: string, sessionId: string) =>
+    harness.remoteWritebackIntents.some(
+      (intent) => intent.connectionScope === connectionScope && intent.sessionId === sessionId,
+    ),
+  ),
 }));
 
 import {
@@ -96,6 +131,8 @@ describe('desktop canonical Sync v2 boundary', () => {
     harness.sessions = [];
     harness.segments.clear();
     harness.pauses.clear();
+    harness.insertedBundles = [];
+    harness.remoteWritebackIntents = [];
     harness.deleted = [];
     harness.discarded = [];
     harness.enqueued = [];
@@ -303,6 +340,146 @@ describe('desktop canonical Sync v2 boundary', () => {
     ).toMatchObject({ state: 'uninitialized', cursor: null, lastChangeSeq: 0 });
   });
 
+  it('records one provider pair for a new projection and backfills an old projection once', async () => {
+    const remoteSession: FocusSession = {
+      id: 'session-import',
+      title: '平板化学',
+      status: 'finished',
+      startedAt: 1_000,
+      endedAt: 31_000,
+      activeElapsedMs: 25_000,
+      pauseElapsedMs: 5_000,
+      wallElapsedMs: 30_000,
+      defaultTaskId: 'task-chemistry',
+      defaultTaskSource: 'ticktick',
+      defaultTaskTitle: '化学',
+      note: null,
+      createdAt: 1_000,
+      updatedAt: 31_000,
+    };
+    const remoteSegment: FocusSegment = {
+      id: 'segment-import',
+      sessionId: remoteSession.id,
+      taskId: 'task-chemistry',
+      taskSource: 'ticktick',
+      title: '化学',
+      startedAt: 1_000,
+      endedAt: 31_000,
+      activeElapsedMs: 25_000,
+      note: null,
+      cloudFocusId: null,
+      tomatodoSubject: '化学',
+      createdAt: 1_000,
+      updatedAt: 31_000,
+    };
+    const remotePause: PauseEvent = {
+      id: 'pause-import',
+      sessionId: remoteSession.id,
+      segmentId: remoteSegment.id,
+      pauseStartedAt: 11_000,
+      pauseEndedAt: 16_000,
+      durationMs: 5_000,
+      reason: null,
+      createdAt: 11_000,
+      updatedAt: 16_000,
+    };
+    const ledger: FocusLedgerV2 = {
+      sessionId: remoteSession.id,
+      startedAt: remoteSession.startedAt,
+      endedAt: remoteSession.endedAt!,
+      status: 'finished',
+      activeElapsedMs: remoteSession.activeElapsedMs,
+      pausedElapsedMs: remoteSession.pauseElapsedMs,
+      wallElapsedMs: remoteSession.wallElapsedMs,
+      originDeviceId: 'device-tablet1',
+      segments: [
+        {
+          id: remoteSegment.id,
+          sessionId: remoteSegment.sessionId,
+          taskId: remoteSegment.taskId,
+          taskSource: remoteSegment.taskSource,
+          title: remoteSegment.title,
+          startedAt: remoteSegment.startedAt,
+          endedAt: remoteSegment.endedAt,
+          activeElapsedMs: remoteSegment.activeElapsedMs,
+          note: remoteSegment.note,
+          tomatodoSubject: remoteSegment.tomatodoSubject,
+          createdAt: remoteSegment.createdAt,
+          updatedAt: remoteSegment.updatedAt,
+        },
+      ],
+      pauses: [remotePause],
+    };
+    const metadata: FocusMetadataV2 = {
+      sessionId: remoteSession.id,
+      title: remoteSession.title,
+      note: remoteSession.note,
+      subject: '化学',
+      tags: [],
+      taskAssociation: {
+        taskId: remoteSession.defaultTaskId!,
+        source: 'ticktick',
+        title: remoteSession.defaultTaskTitle,
+      },
+      updatedAt: remoteSession.updatedAt,
+      updatedByDeviceId: 'device-tablet1',
+    };
+    let exchange = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input)).pathname;
+        if (path === '/sync/v2/status') return json(status(2));
+        exchange += 1;
+        if (exchange > 1) return json(page('c2'));
+        return json({
+          ...page('c2'),
+          changes: [
+            {
+              changeSeq: 1,
+              entityType: 'focus_ledger_v2',
+              entityId: remoteSession.id,
+              revision: 1,
+              fingerprint: fingerprintDeviceSyncValue({ deleted: false, payload: ledger }),
+              deleted: false,
+              payload: ledger,
+              sourceDeviceId: 'device-tablet1',
+            },
+            {
+              changeSeq: 2,
+              entityType: 'focus_metadata_v2',
+              entityId: remoteSession.id,
+              revision: 1,
+              fingerprint: fingerprintDeviceSyncValue({ deleted: false, payload: metadata }),
+              deleted: false,
+              payload: metadata,
+              sourceDeviceId: 'device-tablet1',
+            },
+          ],
+        });
+      }),
+    );
+
+    await expect(runDesktopSyncV2()).resolves.toMatchObject({ imported: 1, cursor: 'c2' });
+    expect(harness.insertedBundles).toHaveLength(1);
+    expect(harness.remoteWritebackIntents).toEqual([
+      { connectionScope: 'provider-account1', sessionId: remoteSession.id },
+    ]);
+
+    await runDesktopSyncV2();
+    expect(harness.insertedBundles).toHaveLength(1);
+    expect(harness.remoteWritebackIntents).toHaveLength(1);
+
+    // Simulate a session projected by v0.12.75, before remote_writeback_queue existed.
+    harness.remoteWritebackIntents = [];
+    await runDesktopSyncV2();
+    expect(harness.remoteWritebackIntents).toEqual([
+      { connectionScope: 'provider-account1', sessionId: remoteSession.id },
+    ]);
+    await runDesktopSyncV2();
+    expect(harness.remoteWritebackIntents).toHaveLength(1);
+  });
+
   it('writes paired tombstones before removing a locally confirmed session', () => {
     harness.state = {
       entityType: 'focus_metadata_v2',
@@ -478,7 +655,7 @@ function focusGuardEnvelope(entityKind: 'rule' | 'state' | 'completion' | 'confi
     product: 'focus-guard',
     entityKind,
     nonce: 'abcdefghijklmnop',
-    ciphertext: 'abcdefghijklmnop',
+    ciphertext: 'A'.repeat(22),
     aadHash: 'a'.repeat(64),
     aadBaseRevision: 0,
     operation: 'put',

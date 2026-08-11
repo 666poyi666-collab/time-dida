@@ -88,6 +88,42 @@ public class FocusAuthorityProjectionV1Test {
     }
 
     @Test
+    public void terminalAttentionPreservesVerifiedFreshnessAndSafeRedaction() {
+        assertTrue(FocusAuthorityProjectionV1.isAttentionError("conflict_present"));
+        assertTrue(FocusAuthorityProjectionV1.isAttentionError("rejected_operation"));
+        assertFalse(FocusAuthorityProjectionV1.isAttentionError("network_error"));
+
+        assertEquals(
+            "unknown",
+            FocusAuthorityProjectionV1.freshness(true, 0L, 11L, "conflict_present", 12L)
+        );
+        assertTrue(FocusAuthorityProjectionProvider.shouldRedactProjection("unknown", 17L));
+
+        assertEquals(
+            "fresh",
+            FocusAuthorityProjectionV1.freshness(true, 10L, 11L, "conflict_present", 12L)
+        );
+        assertEquals(
+            "fresh",
+            FocusAuthorityProjectionV1.freshness(true, 10L, 11L, "rejected_operation", 12L)
+        );
+        assertFalse(FocusAuthorityProjectionProvider.shouldRedactProjection("fresh", 17L));
+
+        assertEquals(
+            "stale",
+            FocusAuthorityProjectionV1.freshness(
+                true,
+                10L,
+                11L,
+                "conflict_present",
+                10L + FocusAuthorityProjectionV1.FRESH_AFTER_MS + 1L
+            )
+        );
+        assertTrue(FocusAuthorityProjectionProvider.shouldRedactProjection("blocked", 17L));
+        assertTrue(FocusAuthorityProjectionProvider.shouldRedactProjection("fresh", -1L));
+    }
+
+    @Test
     public void historyProjectionKeepsExactTaskAndTimingFields() throws Exception {
         JSONObject task = new JSONObject()
             .put("taskId", "task-chemistry")
@@ -174,6 +210,47 @@ public class FocusAuthorityProjectionV1Test {
         );
         assertLedgerCheckpointRejected(2, 8L, "sync-2", "cursor-2", "rollback");
         assertLedgerCheckpointRejected(2, 9L, "sync-drift", "cursor-2", "conflict");
+    }
+
+    @Test
+    public void terminalLedgerRemainsVisibleAfterAnUnrelatedAppliedRecord() {
+        FocusLedgerNativeOutboxStore.TerminalStatus terminal =
+            new FocusLedgerNativeOutboxStore.TerminalStatus(1, "conflict_present");
+        assertEquals(
+            "conflict_present",
+            FocusAuthorityProjectionProvider.terminalAwareError("", terminal)
+        );
+        assertEquals(
+            "authentication_failed",
+            FocusAuthorityProjectionProvider.terminalAwareError("authentication_failed", terminal)
+        );
+        assertEquals(
+            "network_error",
+            FocusAuthorityProjectionProvider.terminalAwareError("network_error", terminal)
+        );
+        assertEquals("conflict_present", FocusAuthorityProjectionStore.safeErrorCode("conflict_present"));
+        assertEquals("rejected_operation", FocusAuthorityProjectionStore.safeErrorCode("rejected_operation"));
+        assertEquals(1, FocusAuthorityProjectionProvider.logicalPendingCount(0, 0, 1, 0));
+        assertEquals(2, FocusAuthorityProjectionProvider.logicalPendingCount(0, 1, 1, 1));
+    }
+
+    @Test
+    public void projectionSanitizesLegacyOrDamagedPollErrorsBeforeTheyReachCompanions() {
+        assertEquals(
+            "sync_failed",
+            FocusAuthorityProjectionProvider.projectionErrorCode(
+                "HTTP 500 upstream detail bearer=do-not-expose"
+            )
+        );
+        assertEquals(
+            "conflict_present",
+            FocusAuthorityProjectionProvider.projectionErrorCode("conflict_present")
+        );
+        assertEquals(
+            "rejected_operation",
+            FocusAuthorityProjectionProvider.projectionErrorCode("rejected_operation")
+        );
+        assertEquals("", FocusAuthorityProjectionProvider.projectionErrorCode(null));
     }
 
     @Test

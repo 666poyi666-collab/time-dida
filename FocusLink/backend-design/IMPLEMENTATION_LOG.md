@@ -1,5 +1,109 @@
 # FocusLink 实施日志
 
+## 2026-08-11 · v0.12.85 候选身份升级：loopback 端口安全与打包 smoke 收口
+
+- **候选身份升级**：0.12.84 二进制从干净提交 `1c800a8` 打包，Windows/小米安装回读已作为候选证据记录；此后 loopback 同步服务器的 Fetch forbidden-port 修复与打包 smoke 收口（提交 `ba3ca82`）落地，当前源码已不再对应 0.12.84 二进制。按候选不可复用与三设备安装门禁规则，0.12.84 不得回填或复用，本轮唯一候选升为 `0.12.85/1285`（release-v01285）。0.12.84 的 EXE/APK 与卸载项版本只保留为历史证据，不作为本轮安装矩阵。
+- **Bug-07（loopback 同步服务分配到 Fetch forbidden port 的间歇 flake）**：回环协议测试与嵌入测试后端在未显式指定端口时绑定动态端口 0，若 OS 分配的临时端口落入 WHATWG Fetch forbidden-port 列表（如 0、1、25、465、587、6000、6667、10080 等），客户端 `fetch` 会在发出前直接拒绝该 URL（`TypeError: fetch failed`），即使服务端实际正在监听，形成类似断线的间歇失败。修复契约：显式 forbidden port 在 bind 前拒绝；动态端口 0 至多有界重试（`MAX_DYNAMIC_PORT_BIND_ATTEMPTS=16`）且每次先关闭 forbidden listener 再重试；标准 forbidden 列表不可被测试 seam 绕开；并发 `listen()` 合并为同一次 in-flight bind 并返回同一地址；重试耗尽后服务保持关闭。回归见 `tests/deviceSyncServerPortSafety.test.ts`（标准端口判定、bind 前拒绝、seam 不可绕开、动态重绑、耗尽关闭、并发合并）。定向回归已在干净源码（提交 `e75e466`）复跑通过：全量 Vitest 114 文件 / 801 项全部通过，聚焦回归（`tests/releaseLfsHygiene.test.ts` + `tests/deviceSyncServerPortSafety.test.ts`）10/10 全部通过。
+- **打包 smoke 收口**：live fallback 由 `scripts/smoke/write-synthetic-device-credential.cjs` 在隔离 userData 内用 Electron `safeStorage` 现场加密 synthetic 非生产令牌；helper 拒绝系统临时目录之外的目标与非 `focuslink-live-fallback-` 前缀目录，`safeStorage` 不可用或加解密失败时在有界超时内明确失败，不以 `SKIP` 计过；smoke 只读隔离 profile、绝不读取或复制当前账户真实凭据，端点使用已关闭的 loopback 端口验证“首次实时握手失败 → 本机计时可开始 → 可结束”。mini smoke 增加 bring-to-front 断言：置顶动作后收起态几何与 Win32 前台窗口身份（handle/processId/title）保持不变；临时 userData 清理采用有界重试且不覆盖首个产品/断言错误。上述脚本已在干净源码 `e75e466` 的 `npm run dist` 产物上实跑通过：packaged UI smoke、mini bring-to-front smoke、隔离 live fallback smoke 均 exit 0，产物内嵌 `APP_COMMIT='e75e466'` 且无 `-dirty`。
+- **LFS 事故记录保持**：2026-08-10 Bug-06 的 1.02 GiB（1,094,854,656 B）事件时间线仍以本日志 Bug-06 与 `INSTALLER_TROUBLESHOOTING.md` `FL-INSTALL-006` 为唯一记录，不另建平行报告。
+- **当前状态（主流程已回填）**：0.12.85 已从干净提交 `e75e466` 正式打包（installer/portable，`npm run dist`，Node 22.22.2），packaged UI/mini/live-fallback smoke 均通过。Windows、华为 DBY-W09（`f8630574`）和小米 xaga 均已安装同版 `0.12.85/1285` 并完成启动回读；三设备门禁已闭合。小米恢复证据按时间先后同时保留：恢复前旧 TCP serial `192.168.50.250:5555` 处于 offline；2026-08-11 起以 mDNS serial `adb-D68P65855TPBHYWS-P0OKFa._adb-tls-connect._tcp` 重新在线，并完成 `0.12.85/1285` 实装回读，旧 offline 不当作当前连接故障。OPPO OWW221 已按 2026-08-11 用户决定退役，不再开发或纳入新版本门禁。`release-v01285/` 恰为四文件；LFS 门禁回读 0 文件 / 0 B，正式 SHA-256 已回填。本迭代未打 tag、未创建 GitHub Release；推送 main 仍受历史超大非 LFS blob 拒绝。
+
+## 2026-08-10 · v0.12.84 Electron 旧 chunk 构建事故收口
+
+- **Bug-05（重复 build 污染 app.asar）**：0.12.82 打包后只读展开 `app.asar`，入口指向新 `main-CDnq42AK.js`，但 archive 同时残留上一轮 `main-BZNWRpZc.js`，并各有两份 `deviceSyncV2Service` chunks。根因是多套 Vite Electron build 共享 `dist-electron` 且总 build 前未清目录；版本/commit 虽正确且无 `-dirty`，候选仍必须作废。
+- **Bug-06（Codex review 触发 LFS 临时文件暴涨）**：2026-08-10 09:56:10～09:59:40，0.12.84 dist 完成后 `.git/lfs/tmp` 从 0 增至 10 文件 / 1,094,854,656 B。现行进程链为 Codex desktop `ChatGPT.exe` → `git diff --no-index ... release-v01284/FocusLink-0.12.84-x64*.exe` → `git-lfs filter-process`，不是 builder、计划任务或普通 source diff。停止该精确扫描链并把两份 EXE 暂移到项目忽略目录后，目录连续 109 秒不再增长且无 git/git-lfs 进程；只删除 `.git/lfs/tmp` 后回读 0 文件 / 0 B，未触碰 `.git/lfs/objects`。后续按 `FL-INSTALL-006` 先以本地 `.git/info/exclude` 隔离未跟踪 EXE，再单件恢复并观察；正式暂存前必须移除本地 attributes guard 并复核 LFS 属性。
+- **版本身份**：0.12.82 EXE/APK 已隔离且不得回填；并行隔离树已生成 `0.12.83/1283`，为避免复用任何已生成 build number，主线唯一候选升为 `0.12.84/1284`。
+- **修复**：新增 `clean:desktop-build`，在 gen-version 后、TypeScript/Vite 前删除经过路径约束的当前工作区 `dist-electron`；隔离临时目录测试验证真实 stale chunk 被移除，并锁定 package build 顺序。后续 app.asar 必须只有当前入口引用的一套 main/preload/service chunks。
+- **当前验证**：Node 22.22.2/npm 10.9.9 下 format/typecheck/lint 通过，全量 Vitest 113 文件/792 项通过，其中 desktop build hygiene 2/2 真实删除隔离 stale chunk；0.12.84 Windows app.asar 只含当前 `main-InPGSVQQ.js`、`deviceSyncV2Service-zqrX8mpq.js`、main/preload，内嵌版本 0.12.84、commit `1c800a8` 且无 `-dirty`。packaged mini smoke 最新实跑 exit 0（28.5 秒），隔离 live fallback smoke exit 0（2.3 秒）；live fallback 使用隔离 userData，由 Electron `safeStorage` helper 在临时 profile 生成 synthetic 非生产令牌，未读取或复制当前账户真实凭据；mini smoke 额外实测置顶调用不改变收起态位置、viewport 或吸附边。Windows 已静默覆盖并回读卸载项 `DisplayName=FocusLink 0.12.84`、`DisplayVersion=0.12.84` 和文件版本后重启。Android 0.12.84/1284 JVM 36/36、lint 0 error、AndroidTest 编译与 assemble 通过。小米 `192.168.50.250:5555` 当前在线并回读 `app.focuslink.mobile=0.12.84/1284`；华为 `192.168.1.7:5555` 当前已转 offline，本轮不能据此形成 0.12.84/1284 回读证据；OPPO/手表按用户要求本轮不处理。正式四端发布门禁继续未完成，不得把本地 APK 构建、单台版本回读或旧版本设备记录计为完整实装矩阵。
+- **资产与 LFS 状态**：安装版 SHA-256 为 `D70A0DAFD54CCEF0A222F8BBB841B5992A17A0971E6DD0C1EF5EE7DC5ACB96B4`，便携版为 `3CD47A034D94A36565257246D81EF5A33D192EC2CF1F1D5620F7BD6F1035B510`。Bug-06 清理后 `.git/lfs/tmp` 回读 0 文件 / 0 B；但 `release-v01284/` 当前仍含 `win-unpacked/`、`builder-debug.yml` 和 blockmap，尚未达到四文件发布目录门禁。正式暂存前仍须移除本地 attributes 防护、复核两份 EXE 的 `filter: lfs` / `diff: lfs`，并再次确认 tmp 稳定为 0；这些步骤未发生前不得写成 LFS 发布门禁已通过。
+
+## 2026-08-09 · v0.12.82 候选身份升级与实时连接修复收口
+
+- **候选不可复用**：0.12.81 APK 生成后又修复了 Android failover-first、第二 origin 的 401/403 状态保真，以及移动备用域名 long-poll 的语义超时；因此 0.12.81 不得安装或回填，本轮唯一源码候选升为 `0.12.82/1282`。
+- **本轮 Bug 结论**：保留 v0.12.81 的 Bug-01（workers.dev DNS/443 阻断）、Bug-02（前后台旧请求与备用长轮询超时）和 Bug-03（Android failover 顺序/身份状态）记录；当前实现已统一固定备用域名优先、权威 HTTP 结果不跨域吞掉、长轮询按请求语义等待。
+- **Bug-04（renderer 仍猜测旧中文状态）**：终审发现设置 presenter 仍以中文正则兼容旧 transport/conflict 文案，违反 machine-code-only 合同。现已从 renderer 完全移除本地化正则；Electron 读取 durable meta 时通过共享纯函数把三类已知旧值迁移为 `network_error/timeout/conflict_present` 并原位回写，未知文本统一降为 `sync_failed`，不会跨 IPC 或泄露到 UI。
+- **最终接线收口**：任何 HTTP 响应（包括 408/425/429/5xx）都视为当前 authority 的权威结果，只有 transport/network/timeout 才允许尝试另一固定 origin；Capacitor `appStateChange` 的 active 状态与 DOM visibility 分别持久保留，`pageshow` 不再把 native inactive 错写成 active；live effect 在创建请求前再次经过组件级 active/visibility gate，后台发生 online、凭据恢复或其他依赖更新也不能重新启动 long-poll；结构化连接原因同时进入顶部状态条和专注控制台详情，成功 snapshot 后立即清除，不再残留旧“自动重连”文案。
+- **当前验证**：Node 22.22.2/npm 10.9.9 下全量 Vitest 112 文件/790 项，typecheck/lint/format 通过；Android JVM 36/36、lint 与 AndroidTest 编译通过。尚未构建或安装 0.12.82；Windows/Xiaomi/Huawei 同版安装、前后台/网络切换真机 smoke 待执行；按用户本轮要求不处理 OPPO/手表，正式四端发布门禁保持未完成。
+
+## 2026-08-09 · v0.12.81 实时连接故障与桌面小窗置顶修复候选
+
+- **Bug-01（真实 transport 阻断）**：小米 `D68P65855TPBHYWS` 与华为 `f8630574` 在 v0.12.80 前台实时控制均显示“实时连接中断 · 自动重试中”。只读证据显示两台设备都在普通 Wi‑Fi、无 VPN/HTTP 代理；`workers.dev` DNS 答案持续漂移到异常地址，TCP 443 在 TLS 前超时，未产生 401/403，因此不是凭据或权限错误。小米 WebView Resource Timing 的 `/sync/v2/live`、`/sync/v2/tasks`、`/sync/v2/status` 均 `transferSize=0`；native authority 也写入本轮 `network_error`。
+- **根因与可逆处理**：当前网络对 `*.workers.dev` 存在持续 DNS/443 阻断。受控自定义同步域名 `https://focuslink.pyzzgk.dpdns.org` 在同一网络只读返回 `/healthz=200`、无凭据 `/sync/v2/status=401`，证明它仍指向同一云端 authority。客户端新增固定白名单 failover：实时控制、任务快照、移动 Sync v2 和 Android 原生 CloudClient 优先走该数据面备用域名，失败再回 canonical；不接受任意用户域名、不改变账号登录域、不得清 token/cache/checkpoint 掩盖故障。
+- **Bug-02（生命周期重连与 long-poll timeout）**：WebView/Capacitor 隐藏时旧 live long-poll 未显式中止，OEM 恢复可能继续占用旧请求；同时 failover-first 接线仍把 `candidate !== stored endpoint` 的请求截为 8 秒，导致备用 origin 的合法 25 秒 bounded wait 在无 revision 变化时被客户端提前中止，随后误落到受阻 canonical。现在 document visibility、pageshow 与 Capacitor `appStateChange` 共用单一 lifecycle policy；inactive 立即 abort，active 以 generation/epoch 启动唯一新 loop；两个固定候选都保留当前请求的语义 timeout。401/403、协议错误和非重试拒绝不再显示“自动重试中”；网络、超时、409、5xx/rate-limit 保持有界退避。
+- **Bug-03（Android failover 顺序与身份状态）**：候选回读发现 `FocusCloudClient` 仍先请求已知受阻的 canonical，最坏先等待 8 秒 connect timeout 才切备用域名；且首个 transport 失败后，第二个 origin 的 HTTP `CloudException` 被重新包装，401/403 的结构化状态丢失，账本 Worker 会把确定性身份拒绝误判为可恢复错误继续排程。现与 TypeScript 统一为固定备用 origin 优先、仅首个 `IOException` 后回 canonical；任一 origin 的 HTTP 响应都原样保留，未知 origin 不派生候选，401/403 可被 Worker 明确停止重试。
+- **桌面小窗可用性**：新增独立 `mini:bring-to-front` IPC 与设置页“置于最顶层”按钮。动作只 `showInactive → setAlwaysOnTop(true) → moveTop()`，不抢焦点、不改变两态尺寸、位置、吸附或拖动语义。
+- **当前验证**：Node 22.22.2/npm 10.9.9 下定向实时/生命周期/mini 与相邻回归已通过，全量 Vitest 112 文件/789 项，typecheck/lint/format 通过；Android unit 36/36、lint、AndroidTest 编译通过，新增 failover 顺序、未知 origin 与 401/403 保真回归。该 v0.12.81 候选已被 v0.12.82 取代，不得安装或回填；Windows/Xiaomi/Huawei 同版安装和真机前后台/备用域名 smoke 待在 v0.12.82 执行；按用户本轮明确要求不处理 OPPO/手表，正式四端发布门禁保持未完成。
+
+## 2026-08-09 · v0.12.80 终态拒绝与 authority freshness 修正
+
+- **候选身份升级**：v0.12.79 构建后又发现桌面 `rejected_operation` 仍被误报为整体“跨设备同步失败”、Android authority 将 terminal attention 混入 offline freshness，且旧 `dist-electron` 目录残留 `aba1f59-dirty` chunks。按四端候选不可复用规则，0.12.79 不晋级，版本升为 `0.12.80/1280`；旧 EXE/APK 不得回填。
+- **状态语义修复**：桌面 presenter 将 `rejected_operation` 独立呈现为 warning“同步已连接，部分记录未同步”，保留记录并等待处理；Android `conflict_present/rejected_operation` 作为 attention，不再因 `lastAttemptAt > lastVerifiedAt` 伪报 offline；已有 verified projection 保持 fresh/stale，无 verified projection 保持 unknown 并继续脱敏。
+- **时序 Bug 修复**：发现上一轮 ledger `network_error` 会在本轮 status 已完整校验、随后收到 terminal ACK 时继续污染 authority freshness。现由 `recordLedgerCheckpoint()` 在同一持久化提交中仅清除 ledger projection 的旧错误，live poll diagnostics 不受影响；新增隔离 instrumentation 序列断言 `network_error → validated checkpoint → terminal attention` 不再得到 `offline`。
+- **构建卫生修复**：正式构建前清空 `dist-electron`，确保 app.asar 不含上一轮 dirty chunk；版本元数据由干净源码提交重新生成。
+- **门禁**：Node `22.22.2` / npm `10.9.9` 下 format/typecheck/lint、全量 Vitest 110 文件/778 项、cross-device 6 文件/47 项、Android JVM 7 个 suite/32 个测试与 lint 0 error 已通过；干净 Windows app.asar 无旧 dirty hash。Windows 已静默安装并回读 0.12.80；小米 `D68P65855TPBHYWS`（`.4:5555`）与华为 `f8630574`（`.7:5555`）已安装同一 `0.12.80/1280` APK，启动无崩溃/ANR，terminal lifecycle instrumentation 各 4/4 真机通过；APK 已备份并复核 SHA256。旧 0.12.79 小米 instrumentation 首次执行暴露的 `nextCursor="isolated-cursor"` 夹具已改为合法 `c1`。OPPO OWW221（历史 `.44:5555`）仍不可达且无可核验序列号，四端正式门禁、最终四文件目录和发布仍未完成。
+
+## 2026-08-08 · v0.12.79 同步连接事故语义收口
+
+- **事故事实**：已安装 v0.12.78 的脱敏配置指向 canonical `foxlink-cloud-mcp` HTTPS origin，设备同步、自动同步和实时控制均启用。Windows 日志在 `2026-08-08T05:42:40Z`～`05:42:44Z` 记录两次 canonical Sync v2 `network_error`（periodic/resume），liveFocus 又在 `05:42:41Z`、`06:30:53Z`、`08:10:02Z` 记录连接丢失和 2 秒重试；这些是当时真实发生的失败，不能因后续恢复而删除或改写。
+- **当前恢复证据**：同日稍后，系统 DNS 可解析但落入 `198.18.0.0/15` 合成地址范围，提示本机代理/TUN 路径；TCP 443 建连成功。公开 adapter 的正确匿名探针 `GET /healthz` 连续三次返回 HTTP 200（服务标识 `foxlink-cloud-mcp`），无认证 `GET /sync/v2/status` 返回 401，证明当前 DNS/TCP/TLS、adapter 路由和鉴权拒绝边界正常。旧 Node loopback 的 `/health` 在该公网 adapter 返回 404 属路径不匹配；bootstrap 为远端写操作，未用于探测。
+- **Windows UI Bug 与修复**：同步成功后 Electron v2 服务会在存在未解决冲突时持久化机器码 `lastError=conflict_present`。`getDeviceSyncStatus()` 优先返回该 stored error，而 v0.12.78 设置页只匹配中文“未解决的跨设备冲突”，使机器码落入 danger/“跨设备同步失败”。v0.12.79 新增纯函数 presenter 并由 `SettingsPanel` 实际接线：transport、conflict、authentication、authorization 与协议/拒绝错误按机器码分域；`conflict_present` 只有在 `unresolvedConflicts > 0` 时显示“同步已连接，有记录待确认”，count 归零时忽略陈旧码并回到最近成功状态。组件接线契约禁止旧中文正则回流。
+- **跨端同类修复**：移动账本只有 legacy/V2 pending、conflict、unresolved conflict 与 rejected 全为 0 时才显示“账本同步已确认”；任一非零都进入 `partial`，安全保留待处理数量和结构化诊断码，deferred V2 retry 也计入 UI 与原生投影。待处理数量按 completed-session identity 做 legacy/V2 并集，排除已绑定其他 device 的记录；未绑定 legacy record 由当前 device 一次性 CAS 认领，后续设备不可重新认领。分页/物化成功只更新 transport `lastSyncAt`，只有全 clean round 才更新 scoped `lastVerifiedAt`；partial、重启和 retry 均保留上次完整确认时间。Android completed-ledger 对 conflict/rejected ACK 写入独立 terminal sidecar，保留原始 outbox但从普通 WorkManager 队列排除；authority projection 合并 terminal 数量/安全错误码，其他记录成功不能清掉该 attention 状态。OPPO watch 对 applied/duplicate/conflict/rejected 四类 ACK 都明确展示结果，未知拒绝码不直接展示。
+- **安全收口**：Windows 主进程 durable status、renderer 刷新失败与 presenter 未知输入全部压成 allowlisted code/固定安全文案，不持久化或回显任意上游 `error.message`。Android outbox 的 forbidden-key case fold 使用 `Locale.ROOT`，避免区域设置绕过敏感字段过滤。
+- **根因与边界**：同一个 `lastError` 字符串混用了 transport/auth 错误和已成功同步后的 durable attention 状态，renderer 又以本地化文本正则推断类别。0.12.79 必须按稳定结构化 code + `unresolvedConflicts` + 最近成功证据渲染；不得通过清 token、清 checkpoint、删 SQLite、重做 bootstrap 或吞掉历史 `network_error` 修饰结果。
+- **禁止复发门禁**：每轮开始前先读本日志、`SYNC_TROUBLESHOOTING.md` 对应稳定编号和完整 `TEST_AND_RELEASE.md`。桌面状态回归至少覆盖 `null/success`、`network_error`、timeout、401/403、`conflict_present`（count 0/>0）与 `rejected_operation`；移动账本必须分别断言 clean/applied、conflict、rejected 和 transport failure 的 projection、notice 与 pending 数；Android Worker 必须断言 applied/duplicate 才删除 outbox，conflict/rejected 进入可见的持久终态且不自动无限 retry，只有瞬时 transport/5xx/rate-limit 才退避重试；watch 必须逐一显示 applied/duplicate/conflict/rejected ack，且 conflict/rejected 不得静默或写成“已确认”。transport、auth、冲突和第三方投递文案不得互相冒充，并以“历史日志 → 当前无凭据 health/route → 产品结构化状态”的顺序留证。
+- **Android terminal 修复闭环**：原始 outbox 仍在 conflict/rejected 后保留并退出普通 WorkManager 队列；用户先在电脑端处理，再在 Android 原生控制区显式点击“重新检查”。Plugin 先通过当前 device + connection lease barrier，再提交携带持久 expected device id 的独立 unique work + `REPLACE`；terminal marker 在执行前保持不变，普通 `KEEP` worker 永远不可读取，排程失败、进程重启和 A→B 账号切换都不能形成裸 pending。只有 expected device 仍匹配时，显式 Worker 才读取 terminal 记录；applied/duplicate 后删除 outbox 并同步清 sidecar，孤立/重复 marker 不计入 requeue 且会安全回收。隔离 SharedPreferences instrumentation 覆盖 terminal→排除普通 retry→显式 recheck→applied/duplicate→双清理、错误 device/lease、账号切换、排程失败与孤立/foreign marker 边界。
+- **当前状态**：版本源已统一升为 `0.12.79/1279`。Node `22.22.2` / npm `10.9.9` 下 format/typecheck/lint、110 文件/778 项全量 Vitest、6 文件/47 项 cross-device、Web/Cloud/桌面 build、Electron regression、Cloudflare 本地协议与 production viewport smoke 已通过；Android JVM 31/31、lint 0 error，隔离 terminal lifecycle instrumentation 已编译通过但尚未在真机执行。干净提交、正式 dist/APK 和 Windows/小米/华为/OPPO 四设备同版实装仍未完成，不得写成发布完成。
+- **真机门禁夹具修正**：首次在小米 runner 执行 terminal lifecycle 时，两个断言连锁失败；根因是 instrumentation 的 synthetic Sync v2 status 使用了不符合正式协议的 `nextCursor="isolated-cursor"`，而协议只接受 `^c[0-9a-z]+$`，Worker 因此在 status 校验阶段提前进入通用失败/重试分支。已将夹具改为合法 `c1`；这是测试数据合同错误，不是产品云端故障，后续新增夹具必须复用协议 validator 约束并先执行真实 runner。
+
+## 2026-08-08 · v0.12.78 强制版本身份升级
+
+- **候选替代**：`0.12.77/1277` 已在小米安装，之后继续修改移动横屏 UI 与 Cloudflare 同步行为；按三设备安装门禁，任何已安装候选在后续变更后均不可复用，当前版本统一升为 `0.12.78/1278`。
+- **横屏首屏修复**：`915×412` 隐藏重复专注标题栏，主读数与操作区保持双列；production viewport smoke 直接校验操作区和主按钮完整处于视口内，并复跑 360/412/640/760、平板、亮暗主题、字体 profile 与两种 OPPO renderer。
+- **任务快照防冻结合同**：Cloudflare Account DO 与 loopback store 对齐 `publishedAt <= serverTime + 5 分钟` 的上限；超限为 `422 task_snapshot_timestamp_too_far_ahead`，旧 `publishedAt` 仍为 `409 stale_task_snapshot`，同时间异文为 `409 task_snapshot_conflict`。持久化的 legacy far-future 快照允许被合法新快照恢复。桌面 pending 只在当前 scope/generation 的该 422 分支至多 GET 一次可信 `serverTime` 并重戳重试一次；stale 可清除，conflict、第二次 422 与所有读取/解析/重试失败都保留 pending。
+- **Cloudflare gate 状态边界**：external run/verify 只允许显式 opt-in 的 loopback disposable Worker；`FOCUSLINK_TEST_STATE` 限定受控临时目录、直系允许文件名、真实目录/普通文件与 identity 复核，创建使用 exclusive create，状态序列化不含 credential。external verify 不自动删除外部状态文件；只有 local 隔离 gate 清理自己创建的临时状态与持久化目录。
+- **平台合同收口**：Android Focus Guard 拒绝 same-root rotation，Windows root store 的共享 mutex/CAS、不可逆 `revoked`、account/generation key binding 与 main-process writer 边界完成复核。
+- **Cloudflare 正式工具链升级**：Worker 保持 `compatibility_date: 2026-07-25`。Node `20.20.2` 下可运行的 Wrangler `4.86.0` 仅携带支持到 `2026-05-03` 的 workerd；支持当前日期的 Wrangler `4.114.0` 则要求 Node 22。正式运行时因此升为 Node `22.22.2` / npm `10.9.9`，并精确锁定 Wrangler `4.114.0` 与 `@cloudflare/workers-types` `5.20260724.1`；不通过回退 compatibility date 规避门禁。
+- **代码与真实服务门禁**：format/typecheck/lint、107 文件/741 项 Vitest、Electron regression、44 项 cross-device、Web/Cloud/Android build、Android unit/lint 与 Focus Guard 5/5 均在 Node `22.22.2` / npm `10.9.9` 下通过。Cloudflare Sync v2 隔离 run/verify/persistence 连续通过，canonical bootstrap 为脱敏 `deployed-login-required`；真实 dida 与 TomaToDo bridge/upload smoke 通过，TomaToDo cleanup 仅为 `local-record-only`。
+- **当前门禁**：v0.12.77 未完成 Windows、小米、华为与 OPPO OWW221 的四设备同版门禁，也未发布。v0.12.78 不继承旧候选的安装证据，须在重新构建后完成同版安装回读与强制验证。
+
+## 2026-08-04 · v0.12.77 跨凭据 provider 回写与四端门禁收口
+
+- **版本替代**：0.12.76 候选仅实装 Windows、小米、华为，强制 OPPO OWW221 未在线；候选生成后又补了跨端 UI 与 provider 行为，按硬规则作废并升为 `0.12.77/1277`，不复用旧安装包或 APK。
+- **稳定 provider scope**：Sync v2 transport checkpoint 仍按 endpoint + 完整 device token 隔离；dida/TomaToDo durable queue 对 canonical `fl2` 改按 endpoint + `accountPublicId` 匿名哈希，同账号 token 轮换不会把旧工作永久搁置，legacy loopback 仍按凭据隔离。
+- **历史回填**：每轮 canonical sync 从 `focus_ledger_v2` / `focus_metadata_v2` 的远端来源状态扫描已物化会话，在 SQLite 事务内幂等补齐 dida/TomaToDo 意图对；完整 pair 已存在时不再调用 enqueue，completed/pending/claimed 状态均不被重置。
+- **Cloudflare Sync v2 任务快照**：Account DO 与 loopback store 都把 `publishedAt` 作为单调 register；相同 device/payload 可重放，较旧 timestamp 返回 `stale_task_snapshot`，同 timestamp 异文返回 `task_snapshot_conflict`，移动端仍只按 server revision 前进。
+- **TomaToDo 清理语义**：`cloudSyncUploadRecord` success 仅为上传确认；当前没有 PCRecord 远端回读/删除 API，cleanup 固定为 `local-record-only`，不得写成远端删除已验证。
+- **移动补漏**：production viewport 首轮发现 360px 设置页主题选择器只有 38px；源码复核又发现 640×1024 虽保持四列导航，旧 620px sidebar 的 `top/grid-auto-rows` 却把 fixed 控制层拉成整页覆盖。主题选择器提升到 44px，Apple base 显式重置遗留 geometry，smoke 新增导航 top/bottom/height 断言；修复后 360/412/640/760/915×412 的亮暗四页面、任务展开及 189×248/320×420 手表 renderer 全部通过，无横向溢出。
+- **候选终止状态**：该版本在四设备实装前被后续横屏 UI 与 Cloudflare 修改取代；完整 107 文件/741 项测试、真实 dida/TomaToDo 与 Cloudflare 门禁结果归入 v0.12.78。0.12.77 不补做同版安装、最终资产或发布。
+
+### Stage B 边界（2026-08-04）
+
+- 32-byte account root、独立 recovery/rotation envelope、V1 guard payload crypto、Windows `safeStorage` vault 与 Android Keystore vault 已在本地源码和合成 fixture 中实现；V1 `focus_guard_*` envelope 字段未增加 root generation 或恢复字段。
+- 覆盖 wrong root/account/AAD/entity/revision/operation、nonce/tag/ciphertext/AAD 篡改与截断、generation rollback/replay、corrupt/lost/recovery-required/revoked 和 secure-storage unavailable；安全存储失败不降级明文，root/recovery secret/解密明文不进入日志、WebView、renderer、APK 常量或云端 payload。
+- 本阶段仅本地源码、JVM/Vitest 自动化与 Android unit test；未部署 Worker/DO/gateway，未读取或写入 production secret，未打包、未安装任何设备，未接入“不做手机控”的提交/解密桥。Stage C/D 仍需单独批准。
+- 追加收口：Android Keystore alias 丢失时，READY 快照的恢复 high-water 自动推进到下一代；SharedPreferences 状态写入同时拒绝跨账号、generation 回退和从 revoked 状态降级，避免旧 recovery envelope 或篡改状态重新激活旧 root。
+- Windows root store 按 root 文件共享 mutex，并以落盘前记录版本 CAS 防止多实例覆盖；加密 material 与 account/generation/keyId 三元组交叉校验，`revoked` 不可降级。writer 仍限 Electron main 本地 vault，未向 renderer/IPC 或 Cloudflare Sync v2 发布面暴露。
+
+## 2026-08-03 · v0.12.76 移动端平台化 UI 与远端 provider 自动回写
+
+- **移动交互**：主专注页删除 `<select> + 横排浏览按钮`，改为单一「从云端任务清单选择」disclosure；云端快照任务页保留项目分组、父子树、搜索、完整父路径、独立选择和开始动作。
+- **视觉边界**：手机、平板和移动 Web 共用 Apple HIG 启发的 grouped content 与系统字体；内容层保持高可读标准材质，导航/控制层只允许克制材质增强并提供不支持 blur、减少透明度和减少动效回退。Windows renderer、两态 mini、华为胶囊、小米系统表面和手表 renderer 不改。
+- **同步事务边界**：Sync v2 物化新的远端 completed bundle 时只在当前 SQLite 事务登记 `dida` / `tomatodo` 两条幂等意图；事务提交后的 coordinator 才执行外部副作用。每个 provider 独立 claim/lease、独立完成或指数退避，过期 lease 可跨重启回收。
+- **队列复用**：滴答回写复用 marker 幂等的 `sync_queue`；番茄 To-Do 复用 durable segment 队列，后台路径不启动外部程序，桥不可用或未确认上传时继续保留 pending。
+- **版本候选**：全端版本提升到 `0.12.76/1276`；测试、构建、实装和哈希证据在完成后追加到本节。
+
+### 2026-08-03 · v0.12.76 操作日志 / 进度 / Bug 记录
+
+- **进度**：代码（39 文件、+2902/-465）与版本源已在 8/3 自动快照提交（3d838d6/b69fda7）中就绪；本轮完成门禁、打包、三端实装与推送。
+- **Bug-01（升版断言遗漏）**：`tests/mobileAccountBootstrap.test.ts:123` 的 `appVersion` 断言停在 `0.12.75`，升版到 0.12.76 后未同步，全量测试失败 1 项。修复：改为 `0.12.76`，提交 `6ee371c`。
+- **Bug-02（格式漂移）**：`electron/sync/deviceSyncV2Service.ts`、`electron/sync/remoteWritebackStore.ts` 未过 prettier；`npm run format:check` 报 2 个文件。修复：`prettier --write` 归一，提交 `af4dfd7`。
+- **门禁**：format/typecheck/lint 全过；104 个 Vitest 文件/709 项全部通过；Android `:app:testDebugUnitTest`/`:app:lintDebug`/`:app:assembleDebug` 通过；`npm run build` 通过。
+- **打包**：干净提交 `af4dfd7` 生成 `release-v01276` 四件套；win-unpacked `FocusLink.exe` FileVersion `0.12.76`，打包内 commit 无 dirty；portable 启动存活。installer SHA-256 `392df75b...6f23f`，portable `1bb571ca...c5dbe`。
+- **APK 备份**：`.tmp/android-apk-backups/FocusLink-0.12.76-1276-debug.apk`，SHA-256 `02ae4444...83e768`，`aapt2` 回读 `versionCode=1276 / versionName=0.12.76`。
+- **三端实装矩阵**：Windows 静默覆盖退出码 0，卸载注册表 `DisplayVersion=0.12.76`，安装 EXE `FileVersion=0.12.76`；小米 `192.168.1.84:5555` 与华为 `192.168.1.61:5555` 均 `adb install -r` 成功并回读 `versionName=0.12.76`。OPPO 手表未在线，未纳入矩阵。
+- **LFS 卫生**：打包前后 `.git/lfs/tmp` 保持 12K，无泄漏。
+- **遗留**：远端回写（滴答/番茄）需要在真实远端会话导入后做一次端到端确认；移动端新 UI 的三视口浏览器验收与华为真机视觉检查待执行。
+
 ## 2026-08-02 · v0.12.75 设备授权登录修复（Android 浏览器打开 + 授权页重定向）
 
 - **根因一：Android 11+ package visibility 导致浏览器打不开**。0.12.72–0.12.74 手机点「登录」提示
@@ -39,7 +143,6 @@
 - **后续建议**：若要让无代理网络下的华为/其他设备直接可用，需给两个 worker（foxlink-mcp、
   poyi-oauth-as）都挂自定义域名并切换客户端 canonical origin（本轮未做，保持现状）。
 
-
 ## 2026-08-02 · 设备授权登录网关落地（跨仓）
 
 - 补齐公网 `/account/v1/device/bootstrap`：`foxlink-cloud-mcp` 新增 D1 `bootstrap_flows` 流程表与
@@ -51,7 +154,6 @@
 - 设备绑定语义与 README 对齐：单账号（Poyi）多设备；每台设备以 installationId 登记，重启/重装
   不变，恢复出厂或换机后重新授权；Windows/华为平板/小米手机为已绑定设备。
 - 公网 404→`failed to fetch` 的根因（`errorJson` 无 CORS 头 + 端点不存在）随端点落地一并消除。
-
 
 ## 2026-08-01 · v0.12.74 账号过渡与 native lease 最终封口
 

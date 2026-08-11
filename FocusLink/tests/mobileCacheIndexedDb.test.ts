@@ -5,6 +5,7 @@ import type { DeviceSyncSessionBundle } from '@shared/sync/deviceProtocol';
 import type { TaskSnapshotResponse } from '@shared/sync/taskSnapshotProtocol';
 import {
   clearCachedTaskSnapshot,
+  claimPendingDeviceSyncBundle,
   completeOfflineFocusRuntime,
   createOfflineFocusRuntime,
   markPendingDeviceSyncFailure,
@@ -61,6 +62,20 @@ describe('mobile IndexedDB local-first persistence', () => {
       attemptCount: 2,
     });
     expect(await readLocalSessionSyncMeta('legacy-session')).toBeNull();
+  });
+
+  it('claims an unbound legacy record once and rejects a later cross-device claim', async () => {
+    await seedVersionTwo([
+      { opId: 'legacy-op', entityId: 'legacy-session', bundle: makeBundle('legacy-session') },
+    ]);
+
+    await expect(claimPendingDeviceSyncBundle('legacy-op', 'device-a')).resolves.toMatchObject({
+      syncDeviceId: 'device-a',
+    });
+    await expect(claimPendingDeviceSyncBundle('legacy-op', 'device-b')).resolves.toBeNull();
+    expect(await readPendingDeviceSyncBundles()).toEqual([
+      expect.objectContaining({ syncDeviceId: 'device-a' }),
+    ]);
   });
 
   it('stores runtime and authority metadata together, then completes into pending', async () => {

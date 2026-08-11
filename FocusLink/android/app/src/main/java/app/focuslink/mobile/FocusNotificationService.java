@@ -308,6 +308,22 @@ public final class FocusNotificationService extends Service {
             context,
             DIAGNOSTICS_PREFERENCES
         );
+        int terminalLedgerCount = 0;
+        String terminalLedgerErrorCode = "";
+        FocusRuntimeConnectionStore.Connection connection = FocusRuntimeConnectionStore.get(context);
+        if (connection != null) {
+            try {
+                FocusLedgerNativeOutboxStore.TerminalStatus terminal =
+                    FocusLedgerNativeOutboxStore.terminalStatusForDevice(context, connection.deviceId);
+                terminalLedgerCount = terminal.count;
+                terminalLedgerErrorCode = terminal.lastErrorCode;
+            } catch (RuntimeException exception) {
+                // Diagnostics must remain readable even if an old sidecar was
+                // interrupted while being written. Never expose exception text
+                // because it may contain upstream transport details.
+                terminalLedgerErrorCode = "sync_failed";
+            }
+        }
         try {
             return new JSONObject()
                 .put("attemptCount", preferences.getLong("attemptCount", 0L))
@@ -315,7 +331,9 @@ public final class FocusNotificationService extends Service {
                 .put("lastSuccessAtEpochMs", preferences.getLong("lastSuccessAtEpochMs", 0L))
                 .put("lastRevision", preferences.getLong("lastRevision", -1L))
                 .put("lastError", preferences.getString("lastError", ""))
-                .put("lastErrorCode", preferences.getString("lastError", ""));
+                .put("lastErrorCode", preferences.getString("lastError", ""))
+                .put("terminalLedgerCount", terminalLedgerCount)
+                .put("terminalLedgerErrorCode", terminalLedgerErrorCode);
         } catch (JSONException exception) {
             return new JSONObject();
         }

@@ -1,9 +1,12 @@
 /**
- * The Huawei DBY-W09 reports a 640 CSS-pixel portrait viewport at its native
- * 1600x2560 / 400 dpi configuration. Keep the breakpoint below that value so
- * the physical tablet does not fall back to the phone bottom-navigation shell.
+ * The Huawei DBY-W09 reports a 640 CSS-pixel short edge at its native
+ * 1600x2560 / 400 dpi configuration. Requiring both viewport axes to clear
+ * this boundary keeps wide phone-landscape viewports out of tablet-only UI.
  */
-export const TABLET_FOCUS_MIN_WIDTH = 620;
+export const TABLET_FOCUS_MIN_SHORT_EDGE = 620;
+
+/** Retained for callers that still use the original breakpoint name. */
+export const TABLET_FOCUS_MIN_WIDTH = TABLET_FOCUS_MIN_SHORT_EDGE;
 
 export const WATCH_FOCUS_MAX_CSS_LONG_EDGE = 460;
 export const WATCH_FOCUS_MAX_NATIVE_PHYSICAL_SHORT_EDGE = 480;
@@ -41,8 +44,12 @@ export function isWatchFocusViewport(
   );
 }
 
-export function isTabletFocusViewport(width: number): boolean {
-  return Number.isFinite(width) && width >= TABLET_FOCUS_MIN_WIDTH;
+export function isTabletFocusViewport(width: number, height: number): boolean {
+  return (
+    Number.isFinite(width) &&
+    Number.isFinite(height) &&
+    Math.min(width, height) >= TABLET_FOCUS_MIN_SHORT_EDGE
+  );
 }
 
 export function focusDeviceLabel(

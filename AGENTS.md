@@ -13,6 +13,12 @@ FocusLink is a desktop productivity tool:
 
 Do not turn it into a chat app, generic dashboard, or landing page.
 
+## Iteration Preflight (Hard Gate)
+
+- Before planning or changing any iteration, read the current-version entry and unresolved Bug records in `FocusLink/backend-design/IMPLEMENTATION_LOG.md`, the applicable stable error entries in `FocusLink/backend-design/SYNC_TROUBLESHOOTING.md`, and all of `FocusLink/backend-design/TEST_AND_RELEASE.md`.
+- This read is a hard gate, not optional background material. Record new product-level Bug evidence and root cause in `IMPLEMENTATION_LOG.md`; put repeatable diagnosis under a stable `FL-SYNC-*` or `FL-INSTALL-*` entry. Do not create parallel Bug logs, one-off incident reports, or a new `docs/` tree.
+- When a prior failure and the current probe disagree, preserve both facts with timestamps. Classify transport reachability, authentication, durable conflicts, and third-party delivery separately; a non-empty historical `lastError` must not by itself be presented as a current connection failure.
+
 ## Directory Ownership
 
 - `FocusLink/src/`: renderer UI only.
@@ -73,15 +79,15 @@ Keep state labels precise:
 - After a native drag is released near a display work-area edge, snap first and then auto-collapse. Never steal the pointer during drag.
 - Expand toward the inside of the current display and clamp to its work area; cover multi-display and DPI behavior in layout tests and smoke tests.
 
-## Three-Device Install Gate (硬性死命令, user directive 2026-07-26)
+## Three-Device Install Gate (硬性死命令, OPPO retired 2026-08-11)
 
 - Every cross-device UI or behavior candidate must increment the patch version. Do not reuse an APK or Windows build number for another iteration.
 - Every iteration ends by ACTUALLY INSTALLING the new build, not just packaging it:
   - Windows: silent overwrite install (`installer /S`) on this PC, then read back the uninstall-registry DisplayVersion and the installed `FocusLink.exe` file version, and relaunch the app.
   - The designated Xiaomi phone and the designated Huawei tablet: `adb install -r` the same-version APK and read back `versionName/versionCode`.
-- The OPPO watch (OWW221) is a fourth mandatory install target for any iteration that touches mobile or watch code; it receives the same APK.
-- Windows, Xiaomi and Huawei must run the same version before the iteration is marked complete, packaged, tagged, or released. Record the install matrix; a missing, stale, or unreachable endpoint is a failed gate and must be reported as such — never claim an install that did not happen.
-- Preserve the two-state Windows mini window, the active Huawei capsule layout module, and the Xiaomi system-surface path unless the current change explicitly replaces them and re-runs their acceptance tests.
+- OPPO OWW221 is retired from FocusLink development and release validation as of 2026-08-11; do not install, smoke, or claim support for the watch in new iterations. Preserve historical watch records as history only.
+- Windows, Xiaomi and Huawei must run the same version before the iteration is marked complete, packaged, tagged, or released. Record the three-device install matrix; a missing, stale, or unreachable endpoint is a failed gate and must be reported as such — never claim an install that did not happen.
+- Preserve the two-state Windows mini window, the active Huawei capsule layout module, and the Xiaomi system-surface path unless the current change explicitly replaces them and re-runs their acceptance tests. The retired OPPO renderer is frozen and out of scope.
 
 ## Verification Before Release
 

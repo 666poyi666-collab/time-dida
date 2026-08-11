@@ -13,6 +13,7 @@ import {
 } from '@shared/sync/deviceProtocol';
 import {
   makeDeviceSyncConnectionScope,
+  makeDeviceSyncProviderScope,
   packDeviceSyncMutations,
 } from '../electron/sync/deviceSyncPolicy';
 
@@ -59,6 +60,29 @@ describe('device sync desktop transport policy', () => {
     expect(first).not.toBe(
       makeDeviceSyncConnectionScope('https://sync.example/a', `${token}-rotated`),
     );
+  });
+
+  it('keeps provider write-back stable across canonical device credentials for one account', () => {
+    const first = `fl2_account1_desktop1_${'a'.repeat(32)}`;
+    const rotated = `fl2_account1_desktop2_${'b'.repeat(32)}`;
+    const otherAccount = `fl2_account2_desktop1_${'c'.repeat(32)}`;
+
+    expect(makeDeviceSyncProviderScope('https://sync.example/a', first)).toBe(
+      makeDeviceSyncProviderScope('https://sync.example/a', rotated),
+    );
+    expect(makeDeviceSyncProviderScope('https://sync.example/a', first)).not.toBe(
+      makeDeviceSyncProviderScope('https://sync.example/a', otherAccount),
+    );
+    expect(makeDeviceSyncProviderScope('https://sync.example/a', first)).not.toBe(
+      makeDeviceSyncProviderScope('https://sync.example/b', first),
+    );
+  });
+
+  it('keeps legacy loopback provider queues isolated by credential', () => {
+    const first = makeDeviceSyncProviderScope('http://127.0.0.1:8787', 'legacy-a');
+    const second = makeDeviceSyncProviderScope('http://127.0.0.1:8787', 'legacy-b');
+    expect(first).not.toBe(second);
+    expect(first).not.toContain('legacy-a');
   });
 
   it('packs valid mutations by serialized bytes as well as item count', () => {

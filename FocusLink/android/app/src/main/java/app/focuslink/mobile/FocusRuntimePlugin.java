@@ -13,6 +13,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -251,6 +252,40 @@ public final class FocusRuntimePlugin extends Plugin {
         } catch (IllegalArgumentException | IllegalStateException exception) {
             call.reject(exception.getMessage(), "invalid_completed_ledger");
         }
+    }
+
+    /**
+     * Releases only the current device's terminal completed-ledger markers after an explicit
+     * foreground user action. Terminal markers stay intact; the dedicated worker can read them
+     * only when its persisted expected device still matches the current connection.
+     */
+    @PluginMethod
+    public void requeueTerminalLedger(PluginCall call) {
+        FocusLedgerTerminalRequeue.requeue(
+            getContext(),
+            call.getString("deviceId"),
+            call.getString("connectionLease"),
+            ContextCompat.getMainExecutor(getContext()),
+            new FocusLedgerTerminalRequeue.Listener() {
+                @Override
+                public void onRequeued(int requeued) {
+                    call.resolve(new JSObject().put("requeued", requeued));
+                }
+
+                @Override
+                public void onStaleConnection() {
+                    call.reject("账号连接已变化，请重新打开设置后重试", "stale_connection");
+                }
+
+                @Override
+                public void onFailure() {
+                    call.reject(
+                        "暂时无法重新检查已结束专注，请稍后重试",
+                        "terminal_ledger_requeue_failed"
+                    );
+                }
+            }
+        );
     }
 
     @PluginMethod
@@ -611,12 +646,15 @@ public final class FocusRuntimePlugin extends Plugin {
         PowerManager powerManager = getContext().getSystemService(PowerManager.class);
         ActivityManager activityManager = getContext().getSystemService(ActivityManager.class);
         MainActivity activity = mainActivity();
+        FocusRuntimeConnectionStore.Connection connection = FocusRuntimeConnectionStore.get(
+            getContext()
+        );
         boolean batteryOptimizationExempt = powerManager != null &&
         powerManager.isIgnoringBatteryOptimizations(getContext().getPackageName());
         boolean backgroundRestricted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
         activityManager != null &&
         activityManager.isBackgroundRestricted();
-        return new JSObject()
+        JSObject result = new JSObject()
             .put("notificationPermission", FocusNotificationPermission.status(getContext()))
             .put("canPostNotification", FocusNotificationPermission.canPost(getContext()))
             .put("quickSettingsSupported", true)
@@ -638,11 +676,16 @@ public final class FocusRuntimePlugin extends Plugin {
                 "immersiveSystemBars",
                 activity != null && activity.isFocusImmersiveSystemBarsEnabled()
             )
-            .put("nativeConnectionConfigured", FocusRuntimeConnectionStore.get(getContext()) != null)
+            .put("nativeConnectionConfigured", connection != null)
             .put("controlsAvailable", snapshot.allowsCommands(getContext()))
             .put("pendingCommandCount", FocusRuntimeStore.pendingCount(getContext()))
             .put("cloudPoll", FocusNotificationService.pollDiagnostics(getContext()))
             .put("snapshot", snapshot.toPublicJson());
+        if (connection != null) {
+            result.put("nativeConnectionDeviceId", connection.deviceId);
+            result.put("nativeConnectionLease", FocusRuntimeConnectionStore.leaseFor(connection));
+        }
+        return result;
     }
 
     private JSObject notificationPermissionResult() {

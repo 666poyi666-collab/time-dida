@@ -1,7 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { ConnectionSheet } from '../src/mobile/ConnectionSheet';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -37,5 +40,37 @@ describe('mobile owner account entry', () => {
       expect(sheet).not.toContain(forbidden);
       expect(watch).not.toContain(forbidden);
     }
+  });
+
+  it('lets a new credential-free profile stay in and return to local focus mode', () => {
+    const mobile = fs.readFileSync(
+      path.join(projectRoot, 'src', 'mobile', 'MobileApp.tsx'),
+      'utf8',
+    );
+    const sheet = fs.readFileSync(
+      path.join(projectRoot, 'src', 'mobile', 'ConnectionSheet.tsx'),
+      'utf8',
+    );
+    const markup = renderToStaticMarkup(
+      createElement(ConnectionSheet, {
+        authenticated: false,
+        accountLabel: null,
+        busy: false,
+        notice: null,
+        onClose: () => undefined,
+        onLogin: () => undefined,
+        onLogout: () => undefined,
+        onClearCache: () => undefined,
+      }),
+    );
+
+    expect(mobile).toContain('const [configOpen, setConfigOpen] = useState(false);');
+    expect(mobile).toContain('onClose={() => setConfigOpen(false)}');
+    expect(markup).toContain('aria-label="关闭账号设置，返回本机模式"');
+    expect(markup).toContain('不登录也可关闭此页，直接使用本机专注');
+    expect(markup).toContain('登录 FocusLink 账号');
+    expect(markup).not.toContain('这台设备已加入云同步');
+    expect(sheet).toContain('onMouseDown={onClose}');
+    expect(sheet).toContain("if (event.key !== 'Escape') return;");
   });
 });

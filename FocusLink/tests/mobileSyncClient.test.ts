@@ -1,17 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  classifyMobileLiveRequestError,
   exchangeDeviceSyncPairingCode,
   fetchLiveFocusSnapshot,
   fetchTaskSnapshot,
   pullDeviceSyncPage,
   pushPendingDeviceSyncBundle,
+  waitForLiveFocusSnapshot,
 } from '../src/mobile/syncClient';
 import {
   cloudOnlyMobileSyncEndpoint,
   configuredNativeEndpoint,
   loadConnectionPreferences,
 } from '../src/mobile/preferences';
-import { FOCUSLINK_CANONICAL_SYNC_ORIGIN } from '../shared/sync/identityProtocol';
+import {
+  FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+  FOCUSLINK_SYNC_FAILOVER_ORIGIN,
+} from '../shared/sync/identityProtocol';
 
 const DEVICE_TOKEN = `fl2_account1_mobile1_${'x'.repeat(32)}`;
 
@@ -102,9 +107,152 @@ describe('mobile sync client request recovery', () => {
       endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
       token: DEVICE_TOKEN,
     });
-    const assertion = expect(request).rejects.toThrow('实时同步请求超时，正在重连');
-    await vi.advanceTimersByTimeAsync(15_000);
+    const assertion = expect(request).rejects.toMatchObject({
+      code: 'timeout',
+      retryable: true,
+      message: '实时同步请求超时',
+    });
+    await vi.runAllTimersAsync();
     await assertion;
+  });
+
+  it('allows the preferred failover origin to complete a valid bounded long poll', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (!String(input).startsWith(FOCUSLINK_SYNC_FAILOVER_ORIGIN)) {
+        return Promise.reject(new Error('canonical should not be reached'));
+      }
+      return new Promise<Response>((resolve) => {
+        globalThis.setTimeout(
+          () =>
+            resolve(
+              Response.json({
+                protocolVersion: 1,
+                snapshot: { revision: 4, state: 'idle', session: null },
+                serverTime: 9_000,
+                changed: false,
+              }),
+            ),
+          9_000,
+        );
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const request = waitForLiveFocusSnapshot({
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+      token: DEVICE_TOKEN,
+      afterRevision: 4,
+      waitMs: 10_000,
+    });
+    await vi.advanceTimersByTimeAsync(9_000);
+
+    await expect(request).resolves.toMatchObject({
+      changed: false,
+      snapshot: { revision: 4, state: 'idle' },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `${FOCUSLINK_SYNC_FAILOVER_ORIGIN}/sync/v2/live/wait?afterRevision=4&waitMs=10000`,
+    );
+  });
+
+  it('stops retrying a rejected credential instead of presenting it as transport loss', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json(
+            { error: { code: 'invalid_token', message: 'upstream credential detail' } },
+            { status: 401 },
+          ),
+        ),
+    );
+
+    await expect(
+      fetchLiveFocusSnapshot({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        token: DEVICE_TOKEN,
+      }),
+    ).rejects.toMatchObject({
+      code: 'authentication_failed',
+      retryable: false,
+      status: 401,
+      message: '登录凭据已失效，请重新登录',
+    });
+  });
+
+  it('keeps the first authoritative availability response retryable without crossing origins', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json(
+          { error: { code: 'unavailable', message: 'internal origin detail' } },
+          { status: 503 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      fetchLiveFocusSnapshot({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        token: DEVICE_TOKEN,
+      }),
+    ).rejects.toMatchObject({
+      code: 'service_unavailable',
+      retryable: true,
+      status: 503,
+      message: '实时同步服务暂时不可用',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not replace an authoritative revision mismatch with another origin outcome', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: { code: 'invalid_live_revision', message: 'revision is ahead' } },
+          { status: 409 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ protocolVersion: 1, snapshot: { revision: 1 }, serverTime: 1 }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      fetchLiveFocusSnapshot({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        token: DEVICE_TOKEN,
+      }),
+    ).rejects.toMatchObject({
+      code: 'revision_mismatch',
+      retryable: true,
+      status: 409,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a malformed authoritative live response forever', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ protocolVersion: 1 })));
+
+    const request = fetchLiveFocusSnapshot({
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+      token: DEVICE_TOKEN,
+    });
+    await expect(request).rejects.toMatchObject({
+      code: 'contract_error',
+      retryable: false,
+      message: '实时状态响应异常，请手动刷新后重试',
+    });
+    expect(classifyMobileLiveRequestError(new Error('arbitrary upstream text'))).toEqual({
+      code: 'contract_error',
+      message: '实时状态响应异常，请手动刷新后重试',
+      retryable: false,
+      status: null,
+    });
   });
 
   it('preserves an explicit caller abort so stale account requests stay silent', async () => {
@@ -146,7 +294,7 @@ describe('mobile sync client request recovery', () => {
       fetchTaskSnapshot({ endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN, token: DEVICE_TOKEN }),
     ).resolves.toMatchObject({ revision: 37 });
     expect(fetchMock).toHaveBeenCalledWith(
-      `${FOCUSLINK_CANONICAL_SYNC_ORIGIN}/sync/v2/tasks`,
+      `${FOCUSLINK_SYNC_FAILOVER_ORIGIN}/sync/v2/tasks`,
       expect.objectContaining({ cache: 'no-store', credentials: 'omit' }),
     );
   });

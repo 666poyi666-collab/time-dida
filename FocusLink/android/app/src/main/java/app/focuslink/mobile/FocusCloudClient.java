@@ -155,20 +155,67 @@ final class FocusCloudClient {
         byte[] body,
         String operation
     ) throws CloudException {
+        String preferredUrl = preferFailoverUrl(url);
         try {
-            Response response = transport.execute(method, url, accessToken, body);
-            if (response.status != HttpURLConnection.HTTP_OK) {
-                throw new CloudException(
-                    operation + " returned HTTP " + response.status,
-                    response.status
-                );
+            return executeJsonOnce(method, preferredUrl, accessToken, body, operation);
+        } catch (IOException firstTransportFailure) {
+            String fallbackUrl = canonicalFallbackUrl(preferredUrl);
+            if (fallbackUrl == null) {
+                throw new CloudException(operation + " failed", firstTransportFailure);
             }
-            return new JSONObject(new String(response.body, StandardCharsets.UTF_8));
+            try {
+                return executeJsonOnce(method, fallbackUrl, accessToken, body, operation);
+            } catch (CloudException secondFailure) {
+                throw secondFailure;
+            } catch (IOException | JSONException secondFailure) {
+                throw new CloudException(operation + " failed", secondFailure);
+            }
         } catch (CloudException exception) {
             throw exception;
-        } catch (IOException | JSONException exception) {
+        } catch (JSONException exception) {
             throw new CloudException(operation + " failed", exception);
         }
+    }
+
+    private JSONObject executeJsonOnce(
+        String method,
+        String url,
+        String accessToken,
+        byte[] body,
+        String operation
+    ) throws CloudException, IOException, JSONException {
+        Response response = transport.execute(method, url, accessToken, body);
+        if (response.status != HttpURLConnection.HTTP_OK) {
+            throw new CloudException(
+                operation + " returned HTTP " + response.status,
+                response.status
+            );
+        }
+        return new JSONObject(new String(response.body, StandardCharsets.UTF_8));
+    }
+
+    static String preferFailoverUrl(String url) {
+        String preferred = replaceFixedOrigin(
+            url,
+            BuildConfig.CANONICAL_SYNC_ORIGIN,
+            BuildConfig.SYNC_FAILOVER_ORIGIN
+        );
+        return preferred == null ? url : preferred;
+    }
+
+    static String canonicalFallbackUrl(String url) {
+        return replaceFixedOrigin(
+            url,
+            BuildConfig.SYNC_FAILOVER_ORIGIN,
+            BuildConfig.CANONICAL_SYNC_ORIGIN
+        );
+    }
+
+    private static String replaceFixedOrigin(String url, String sourceOrigin, String targetOrigin) {
+        if (url.equals(sourceOrigin)) return targetOrigin;
+        String sourcePrefix = sourceOrigin + "/";
+        if (!url.startsWith(sourcePrefix)) return null;
+        return targetOrigin + url.substring(sourceOrigin.length());
     }
 
     private static final class HttpTransport implements Transport {

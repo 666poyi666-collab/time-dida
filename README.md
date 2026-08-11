@@ -2,9 +2,9 @@
 
 FocusLink 是一个本地优先的 Windows 桌面专注工具：主进程精确记录专注、暂停与自然跨度，把片段关联到滴答清单任务，并通过彼此独立的队列同步滴答清单与番茄 To-do。
 
-> 当前版本：v0.12.75（设备授权登录修复：浏览器打开与授权页重定向）
+> 当前候选版本：v0.12.85（Windows、华为平板与小米手机已安装回读；OPPO 手表已退役，不再开发或纳入发布验证；GitHub main 推送仍受历史大文件阻塞）
 >
-> 版本主题：登录即同步 · 切号竞态零窗口 · 四端同版实装 · 生产偏好不被 instrumentation 改写
+> 版本主题：固定公网数据面 failover · 生命周期单连接 · 小窗置顶动作 · Fetch 安全端口 · 隔离 synthetic 凭据 smoke
 
 ## 产品边界
 
@@ -19,17 +19,17 @@ FocusLink 不是聊天应用、营销页或通用仪表盘。界面和实现规�
 
 ## 三时间模型
 
-| 字段 | 含义 |
-| --- | --- |
-| `activeElapsedMs` | 真正专注时长，不含暂停 |
-| `pauseElapsedMs` | 暂停累计 |
-| `wallElapsedMs` | 会话开始到结束的自然跨度 |
+| 字段              | 含义                     |
+| ----------------- | ------------------------ |
+| `activeElapsedMs` | 真正专注时长，不含暂停   |
+| `pauseElapsedMs`  | 暂停累计                 |
+| `wallElapsedMs`   | 会话开始到结束的自然跨度 |
 
 例如 45 分钟专注、5 分钟暂停、45 分钟专注，结果固定为 90 分钟有效专注、5 分钟暂停、95 分钟总历时。暂停后继续会创建新 Segment，并继承会话默认任务。
 
 ## 快速开始
 
-环境：Windows 10/11、Node.js 20.x、npm 10.x。SQLite 原生依赖按 Node 20 与 Electron ABI 构建，不要使用 Node 24 安装依赖。
+环境：Windows 10/11、Node.js 22.x、npm 10.x（当前门禁基线为 Node 22.22.2 / npm 10.9.9）。SQLite 原生依赖按 Node 22 与 Electron ABI 构建，不要使用 Node 24 安装依赖。
 
 ```bash
 cd FocusLink
@@ -78,16 +78,16 @@ FocusLink 的任务页固定表达“滴答清单”，不再把本地、CLI 和
 
 FocusLink 先以稳定 marker 原子写入本地 PCRecord，再通过经过身份校验的原生桥批量上传。用户手动同步时，若番茄 To-do 未运行，FocusLink 可以使用参数数组按需启动客户端并指定 `--remote-debugging-port=0`，只在标题与特征 API 都通过后连接。若客户端已以普通模式运行却没有可验证桥接，FocusLink 绝不自动杀进程或重启，界面会要求完全退出番茄 To-do 后再连接。FocusLink 启动和后台周期重试只会使用已存在的可验证桥，不会擅自启动外部应用。
 
-只有 `cloudSyncUploadRecord` 明确返回 success 且本地同步状态持久化后才记为“上传已确认”。已有 marker 的学科修改若暂时无法写入番茄桥，会进入持久补传队列，旧学科的 `isSynced=1` 不会冒充新学科已上传。当前番茄 To-do 1.6.2 不提供专注记录的独立云端回读或远端删除接口，诊断会明确区分“上传已确认”和“本地 marker 已清理”，不会虚报云端回读/删除。无法识别学科的 FocusLink 记录归入“学习”，不会迁移用户的其他记录。
+只有 `cloudSyncUploadRecord` 明确返回 success 且本地同步状态持久化后才记为“上传已确认”。已有 marker 的学科修改若暂时无法写入番茄桥，会进入持久补传队列，旧学科的 `isSynced=1` 不会冒充新学科已上传。当前番茄 To-do 1.6.2 不提供专注记录的独立云端回读或远端删除接口，诊断会明确区分“上传已确认”和“本地 marker 已清理”；清理结果固定为 `local-record-only`，不会虚报云端回读/删除。无法识别学科的 FocusLink 记录归入“学习”，不会迁移用户的其他记录。
 
 ### FocusLink 跨设备同步（单账号 · 设备授权绑定）
 
 FocusLink 使用**一个账号、多台设备**的模型：账号就是你的 FocusLink 账号（`Poyi`），数据在所有设备间通用。
-已绑定的设备包括这台 Windows 电脑、华为平板与小米手机（OPPO 手表为第四台候选目标）。绑定的含义是：每台设备
+已绑定的设备包括这台 Windows 电脑、华为平板与小米手机。OPPO 手表已退役，不再开发或纳入新版本绑定/发布验证。绑定的含义是：每台设备
 用自己的安装身份（installationId，重启、重装 App 后不变；恢复出厂或换机后需重新授权）向云端登记，获得各自的
 `fl2` 设备凭据，之后这台设备就固定属于该账号。
 
-**登录 = 设备授权，不是输入账号密码。** 手机/平板/手表上点「登录」后，设备会打开云端授权页面
+**登录 = 设备授权，不是输入账号密码。** 手机/平板上点「登录」后，设备会打开云端授权页面
 （`/owner/device-registrations`，需要主人用一次性验证码在网页上确认），你在网页上点「允许」，云端就给这台
 设备签发凭据并开始自动同步；同一账号的数据（专注账本、任务关联）在所有已绑定设备间通用。
 
@@ -97,6 +97,12 @@ Capacitor Android 使用同一界面按服务端 cursor 增量拉取，并在 In
 本机会话并完整暂停、继续和结束。重连发现不同云端活动 UUID 时，本机会话进入 `forked-local`：
 本地与云端分别保持自己的控制域、结束并入账，不互相覆盖或拼接。结束的本机会话先原子写入
 IndexedDB 队列，只有 `applied/duplicate` 才出队；冲突和拒绝保留为可诊断记录。
+
+Cloudflare Sync v2 的 Account DO 是跨设备数据事实源。电脑任务快照以 `publishedAt` 作为单调
+register：同一来源/内容可幂等重放，较旧时间戳或同时间的不同内容均被拒绝，移动端只接受更高
+revision。传输 checkpoint 继续按 endpoint + device token 隔离；dida/TomaToDo 回写队列在 canonical
+`fl2` 下按 endpoint + accountPublicId 的匿名 scope 分桶，以便同账号轮换 Windows device token 后
+继续消费原有工作；legacy loopback 仍按凭据分桶。
 
 Android 壳只提供可见前台通知、暂停/继续/结束动作、快捷设置 Tile 与至少一次原生命令队列；业务
 状态机仍在共享协议和 Web 层，陈旧 session/revision 动作不会作用于下一轮。移动端不直接执行 dida
@@ -170,12 +176,12 @@ React renderer
 
 ## 数据与日志
 
-| 类型 | 默认位置 |
-| --- | --- |
-| 安装版 SQLite | `%APPDATA%/FocusLink/focuslink.db` |
-| 安装版设置 | `%APPDATA%/FocusLink/settings.json` |
-| 日志 | `%APPDATA%/FocusLink/logs/` |
-| 便携版数据 | 可执行文件同目录的 `focuslink-data/` |
+| 类型          | 默认位置                             |
+| ------------- | ------------------------------------ |
+| 安装版 SQLite | `%APPDATA%/FocusLink/focuslink.db`   |
+| 安装版设置    | `%APPDATA%/FocusLink/settings.json`  |
+| 日志          | `%APPDATA%/FocusLink/logs/`          |
+| 便携版数据    | 可执行文件同目录的 `focuslink-data/` |
 
 回归和自测必须使用隔离目录，不得读取或修改真实用户数据。凭据不写入日志或导出。
 
@@ -192,11 +198,14 @@ RELEASE_NOTES.md
 
 当前本地保留的版本资产（线上状态以 GitHub Releases 为准）：
 
-| 版本 | 本地安装版 | 版本说明 |
-| --- | --- | --- |
-| 0.12.75 | 设备授权登录修复：Android 浏览器打开与授权页重定向 | [v0.12.75](release-v01275/RELEASE_NOTES.md) |
-| 0.12.74 | 账号过渡与 native lease 最终封口、instrumentation 生产偏好隔离 | [v0.12.74](release-v01274/RELEASE_NOTES.md) |
-| 0.12.72 | 单账号 canonical 同步与 Windows/Android 四端实装 | [v0.12.72](release-v01272/RELEASE_NOTES.md) |
+| 版本    | 本地安装版                                                     | 版本说明                                    |
+| ------- | -------------------------------------------------------------- | ------------------------------------------- |
+| 0.12.85 | 三设备已安装回读；OPPO 已退役；main 推送受历史大文件阻塞 | [v0.12.85](release-v01285/RELEASE_NOTES.md) |
+| 0.12.84 | 已被 0.12.85 取代：Windows/小米曾回读；华为/OPPO 与四端门禁未完成；不完整发布目录已移除 | v0.12.84 |
+| 0.12.76 | 作废候选：漏装 OPPO 且候选后继续修改跨端行为                   | [v0.12.76](release-v01276/RELEASE_NOTES.md) |
+| 0.12.75 | 设备授权登录修复：Android 浏览器打开与授权页重定向             | [v0.12.75](release-v01275/RELEASE_NOTES.md) |
+| 0.12.74 | 账号过渡与 native lease 最终封口、instrumentation 生产偏好隔离 | v0.12.74 |
+| 0.12.72 | 单账号 canonical 同步与 Windows/Android 四端实装               | v0.12.72 |
 
 每次版本迭代必须同步更新 `CHANGELOG.md`、本地 `RELEASE_NOTES.md`、四文件发布目录与 Android APK 备份，并推送 GitHub `main`。只有用户明确要求时才创建公开 tag、上传资产和 GitHub Release；该正式发布流程中只推送代码或 tag 不算发布完成。
 
@@ -220,7 +229,7 @@ v0.12.11 因校验表格式被阻断；v0.12.12 的源码、回归和便携版�
 
 ### 当前发布
 
-- [v0.12.74 账号过渡封口与 native lease 版本说明](release-v01274/RELEASE_NOTES.md)
+- v0.12.74 账号过渡封口与 native lease 版本说明（历史记录，发布目录已移除）
 - [版本历史](CHANGELOG.md)
 
 ## License

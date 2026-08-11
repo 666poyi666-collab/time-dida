@@ -7,6 +7,8 @@ export const TASK_SNAPSHOT_MAX_BODY_BYTES = 512 * 1024;
 export const TASK_SNAPSHOT_MAX_TASKS = 5_000;
 export const TASK_SNAPSHOT_MAX_PROJECTS = 500;
 export const TASK_SNAPSHOT_REFRESH_INTERVAL_MS = 15_000;
+/** Server accepts small client clock drift but never lets one future value freeze the register. */
+export const TASK_SNAPSHOT_MAX_FUTURE_SKEW_MS = 5 * 60 * 1_000;
 const MAX_TEXT_LENGTH = 1_000;
 
 export interface SyncedTaskProject {
@@ -162,6 +164,21 @@ export function validateTaskSnapshotPublishRequest(
     value.protocolVersion === TASK_SNAPSHOT_PROTOCOL_VERSION &&
     isId(value.deviceId) &&
     validateTaskSnapshotPayload(value.snapshot)
+  );
+}
+
+/**
+ * `publishedAt` is a client-provided ordering hint. Authorities must bound it against their own
+ * clock before making it monotonic, otherwise a clock-skewed legacy client can freeze updates.
+ */
+export function isTaskSnapshotPublishedAtWithinFutureSkew(
+  publishedAt: number,
+  serverTime: number,
+): boolean {
+  return (
+    isTimestamp(publishedAt) &&
+    isTimestamp(serverTime) &&
+    publishedAt <= serverTime + TASK_SNAPSHOT_MAX_FUTURE_SKEW_MS
   );
 }
 

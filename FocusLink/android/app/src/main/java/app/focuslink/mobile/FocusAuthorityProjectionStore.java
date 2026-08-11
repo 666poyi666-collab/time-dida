@@ -56,12 +56,14 @@ final class FocusAuthorityProjectionStore {
         "authentication_failed",
         "authorization_failed",
         "cache_corrupt",
+        "conflict_present",
         "contract_error",
         "cursor_ahead",
         "network_error",
         "response_too_large",
         "revision_conflict",
         "revision_rollback",
+        "rejected_operation",
         "sync_failed",
         "timeout"
     );
@@ -229,6 +231,9 @@ final class FocusAuthorityProjectionStore {
             .putLong(KEY_LEDGER_CHANGE_SEQ, changeSeq)
             .putString(KEY_LEDGER_SYNC_EPOCH, syncEpoch)
             .putString(KEY_LEDGER_CURSOR_EPOCH, cursorEpoch)
+            // A validated authority status is current ledger reachability evidence. Clear only
+            // the ledger projection error; live poll diagnostics use a separate preference store.
+            .putString(KEY_LAST_ERROR_CODE, "")
             .commit();
         if (!committed) throw new IllegalStateException("unable to persist ledger checkpoint");
     }
@@ -503,7 +508,7 @@ final class FocusAuthorityProjectionStore {
         return value;
     }
 
-    private static String safeErrorCode(String value) {
+    static String safeErrorCode(String value) {
         String normalized = value == null ? "" : value;
         if (!SAFE_ERROR_CODES.contains(normalized)) return "sync_failed";
         return normalized;

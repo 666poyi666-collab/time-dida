@@ -6,6 +6,8 @@ import {
   makeNativeDisplaySnapshot,
   nativeFocusCommandSuccessCopy,
   normalizeNativePauseReminderDelayMinutes,
+  readNativeFocusStatus,
+  requeueNativeTerminalLedger,
   restoreOrMigrateNativeFocusConnection,
   updateNativeAuthorityProjectionHistory,
 } from '../src/mobile/nativeFocusRuntime';
@@ -20,8 +22,10 @@ const capacitorHarness = vi.hoisted(() => ({ native: false, pluginAvailable: fal
 const nativePluginHarness = vi.hoisted(() => ({
   configureConnection: vi.fn(),
   enqueueCompletedLedgerBundle: vi.fn(),
+  requeueTerminalLedger: vi.fn(),
   updateAuthorityProjectionHistory: vi.fn(),
   getConnection: vi.fn(),
+  getNativeStatus: vi.fn(),
 }));
 
 vi.mock('@capacitor/core', () => ({
@@ -44,6 +48,8 @@ describe('mobile native focus display projection', () => {
       queued: true,
       pending: 1,
     });
+    nativePluginHarness.requeueTerminalLedger.mockReset();
+    nativePluginHarness.requeueTerminalLedger.mockResolvedValue({ requeued: 0 });
     nativePluginHarness.updateAuthorityProjectionHistory.mockReset();
     nativePluginHarness.updateAuthorityProjectionHistory.mockResolvedValue({
       accepted: 1,
@@ -53,6 +59,10 @@ describe('mobile native focus display projection', () => {
     nativePluginHarness.getConnection.mockResolvedValue({
       configured: false,
       connectionLease: '0',
+    });
+    nativePluginHarness.getNativeStatus.mockReset();
+    nativePluginHarness.getNativeStatus.mockResolvedValue({
+      cloudPoll: { terminalLedgerCount: 0 },
     });
   });
 
@@ -247,6 +257,27 @@ describe('mobile native focus display projection', () => {
     ).toBe(true);
   });
 
+  it('does not release terminal ledger records until an explicit recheck passes device and lease', async () => {
+    capacitorHarness.native = true;
+    capacitorHarness.pluginAvailable = true;
+    nativePluginHarness.getNativeStatus.mockResolvedValue({
+      cloudPoll: {
+        terminalLedgerCount: 2,
+        terminalLedgerErrorCode: 'conflict_present',
+      },
+    });
+    nativePluginHarness.requeueTerminalLedger.mockResolvedValue({ requeued: 2 });
+
+    await readNativeFocusStatus();
+    expect(nativePluginHarness.requeueTerminalLedger).not.toHaveBeenCalled();
+
+    await expect(requeueNativeTerminalLedger('device-native', '12')).resolves.toBe(2);
+    expect(nativePluginHarness.requeueTerminalLedger).toHaveBeenCalledWith({
+      deviceId: 'device-native',
+      connectionLease: '12',
+    });
+  });
+
   it('projects confirmed history and specific tasks with the exact read-only V1 fields', async () => {
     const cached = cachedBundle();
     expect(buildNativeAuthorityHistory([cached])).toEqual([
@@ -288,6 +319,31 @@ describe('mobile native focus display projection', () => {
       pendingCount: 0,
       lastErrorCode: '',
     });
+  });
+
+  it('forwards a partial-ledger diagnostic to native instead of clearing it as confirmed', async () => {
+    const cached = cachedBundle();
+    capacitorHarness.native = true;
+    capacitorHarness.pluginAvailable = true;
+
+    await expect(
+      updateNativeAuthorityProjectionHistory({
+        deviceId: 'device-native',
+        connectionLease: '12',
+        records: [cached],
+        lastVerifiedAt: 70_000,
+        lastAttemptAt: 69_000,
+        pendingCount: 2,
+        lastErrorCode: 'conflict_present',
+      }),
+    ).resolves.toBe(true);
+
+    expect(nativePluginHarness.updateAuthorityProjectionHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pendingCount: 2,
+        lastErrorCode: 'conflict_present',
+      }),
+    );
   });
 
   it('omits a legacy history row whose durations cannot satisfy the consumer contract', () => {

@@ -261,14 +261,8 @@ export async function applyMobileV2ChangesAndCheckpoint(input: {
 
         metaStore.put({ key: BOOTSTRAP_KEY, value: input.checkpoint });
         metaStore.put({ key: 'cursor', value: input.checkpoint.cursor });
-        const verifiedAt = Date.now();
-        metaStore.put({ key: 'lastSyncAt', value: verifiedAt });
+        metaStore.put({ key: 'lastSyncAt', value: Date.now() });
         metaStore.put({ key: 'serverTime', value: input.serverTime });
-        metaStore.put({
-          key: LAST_VERIFIED_KEY,
-          value: { deviceId: input.deviceId, at: verifiedAt },
-        });
-        metaStore.put({ key: LAST_ERROR_KEY, value: { deviceId: input.deviceId, code: null } });
         return { imported, conflicts };
       },
     );
@@ -705,6 +699,7 @@ export async function readMobileV2Status(boundDeviceId: string): Promise<{
   pending: number;
   conflicts: number;
   rejected: number;
+  outstandingEntityIds: string[];
   lastVerifiedAt: number | null;
   lastErrorCode: string | null;
 }> {
@@ -723,16 +718,26 @@ export async function readMobileV2Status(boundDeviceId: string): Promise<{
   await done(transaction);
   database.close();
   const currentOutbox = outbox.filter((item) => item.deviceId === boundDeviceId);
+  const pendingOutbox = currentOutbox.filter(
+    (item) => item.state === 'pending' || item.state === 'uploading' || item.state === 'retry',
+  );
+  const conflictOutbox = currentOutbox.filter((item) => item.state === 'conflict');
+  const rejectedOutbox = currentOutbox.filter((item) => item.state === 'rejected');
+  const openConflicts = conflicts.filter((item) => item.status === 'open');
+  const outstandingEntityIds = Array.from(
+    new Set(
+      [...pendingOutbox, ...conflictOutbox, ...rejectedOutbox, ...openConflicts].map(
+        (item) => item.entityId,
+      ),
+    ),
+  ).sort();
   const verified = scopedStatusValue(lastVerified?.value, boundDeviceId);
   const error = scopedStatusValue(lastError?.value, boundDeviceId);
   return {
-    pending: currentOutbox.filter(
-      (item) => item.state === 'pending' || item.state === 'uploading' || item.state === 'retry',
-    ).length,
-    conflicts:
-      conflicts.filter((item) => item.status === 'open').length +
-      currentOutbox.filter((item) => item.state === 'conflict').length,
-    rejected: currentOutbox.filter((item) => item.state === 'rejected').length,
+    pending: pendingOutbox.length,
+    conflicts: openConflicts.length + conflictOutbox.length,
+    rejected: rejectedOutbox.length,
+    outstandingEntityIds,
     lastVerifiedAt: typeof verified?.at === 'number' ? verified.at : null,
     lastErrorCode: typeof error?.code === 'string' ? error.code : null,
   };
@@ -745,6 +750,22 @@ export async function writeMobileV2SyncFailure(deviceId: string, errorCode: stri
     key: LAST_ERROR_KEY,
     value: { deviceId, code: errorCode.slice(0, 80) },
   });
+  await done(transaction);
+  database.close();
+}
+
+export async function writeMobileV2SyncSuccess(
+  deviceId: string,
+  verifiedAt: number,
+): Promise<void> {
+  if (!Number.isSafeInteger(verifiedAt) || verifiedAt < 0) {
+    throw new Error('移动账本确认时间无效');
+  }
+  const database = await openMobileDatabase();
+  const transaction = database.transaction(META, 'readwrite');
+  const meta = transaction.objectStore(META);
+  meta.put({ key: LAST_VERIFIED_KEY, value: { deviceId, at: verifiedAt } });
+  meta.put({ key: LAST_ERROR_KEY, value: { deviceId, code: null } });
   await done(transaction);
   database.close();
 }

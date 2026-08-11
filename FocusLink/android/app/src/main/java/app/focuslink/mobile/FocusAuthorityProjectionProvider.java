@@ -42,7 +42,12 @@ public final class FocusAuthorityProjectionProvider extends ContentProvider {
             JSONObject diagnostics = FocusNotificationService.pollDiagnostics(getContext());
             long liveVerifiedAt = diagnostics.optLong("lastSuccessAtEpochMs", 0L);
             long liveAttemptAt = diagnostics.optLong("lastAttemptAtEpochMs", 0L);
-            String liveErrorCode = diagnostics.optString("lastErrorCode", "");
+            // Poll diagnostics can predate the structured-code migration. Never let a
+            // legacy preference value (or a damaged preference) escape through the
+            // same-signature projection or influence freshness as arbitrary text.
+            String liveErrorCode = projectionErrorCode(
+                diagnostics.optString("lastErrorCode", "")
+            );
             boolean hasProjectedHistory = projectionCache.history.length() > 0;
             long lastVerifiedAt = hasProjectedHistory
                 ? oldestPositive(liveVerifiedAt, projectionCache.lastVerifiedAt)
@@ -56,6 +61,13 @@ public final class FocusAuthorityProjectionProvider extends ContentProvider {
                 projectionCache.lastAttemptAt,
                 projectionCache.lastVerifiedAt
             );
+            FocusLedgerNativeOutboxStore.TerminalStatus terminalLedger = connection == null
+                ? new FocusLedgerNativeOutboxStore.TerminalStatus(0, "")
+                : FocusLedgerNativeOutboxStore.terminalStatusForDevice(
+                    getContext(),
+                    connection.deviceId
+                );
+            lastErrorCode = projectionErrorCode(terminalAwareError(lastErrorCode, terminalLedger));
             String freshness = FocusAuthorityProjectionV1.freshness(
                 connection != null,
                 lastVerifiedAt,
@@ -71,7 +83,6 @@ public final class FocusAuthorityProjectionProvider extends ContentProvider {
                 .put("primaryElapsedMs", snapshot.primaryElapsedMs)
                 .put("primaryAdvances", snapshot.primaryAdvances)
                 .put("controlsEnabled", snapshot.allowsCommands(getContext()));
-            boolean blocked = "blocked".equals(freshness) || "unknown".equals(freshness);
             int nativeLedgerPending = connection == null
                 ? 0
                 : FocusLedgerNativeOutboxStore.countForDevice(
@@ -85,7 +96,7 @@ public final class FocusAuthorityProjectionProvider extends ContentProvider {
                 exposedLastVerifiedAt = 0L;
             }
             if (exposedRevision >= 0L) currentFocus.put("revision", exposedRevision);
-            boolean redactProjection = blocked || exposedRevision < 0L;
+            boolean redactProjection = shouldRedactProjection(freshness, exposedRevision);
             JSONObject projection = FocusAuthorityProjectionV1.build(
                 exposedRevision,
                 exposedLastVerifiedAt,
@@ -95,6 +106,7 @@ public final class FocusAuthorityProjectionProvider extends ContentProvider {
                 logicalPendingCount(
                     FocusRuntimeStore.pendingCount(getContext()),
                     nativeLedgerPending,
+                    terminalLedger.count,
                     projectionCache.webPendingCount
                 ),
                 redactProjection ? null : currentFocus,
@@ -149,16 +161,50 @@ public final class FocusAuthorityProjectionProvider extends ContentProvider {
         return "paired";
     }
 
-    private static int logicalPendingCount(
+    static String terminalAwareError(
+        String existingError,
+        FocusLedgerNativeOutboxStore.TerminalStatus terminalLedger
+    ) {
+        if (existingError != null && !existingError.isEmpty()) return existingError;
+        if (terminalLedger == null || terminalLedger.count <= 0) {
+            return "";
+        }
+        if (
+            "conflict_present".equals(terminalLedger.lastErrorCode) ||
+            "rejected_operation".equals(terminalLedger.lastErrorCode)
+        ) {
+            return terminalLedger.lastErrorCode;
+        }
+        return "sync_failed";
+    }
+
+    /**
+     * The provider is a cross-process contract, so it must not rely on every
+     * historical diagnostics writer having already normalized its value.
+     */
+    static String projectionErrorCode(String value) {
+        return FocusAuthorityProjectionStore.safeErrorCode(value);
+    }
+
+    static int logicalPendingCount(
         int commandPending,
         int nativeLedgerPending,
+        int terminalLedgerPending,
         int webLedgerPending
     ) {
+        long nativeLedgerTotal = (long) Math.max(0, nativeLedgerPending) + Math.max(
+            0,
+            terminalLedgerPending
+        );
         long total = Math.max(0, commandPending) + Math.max(
-            Math.max(0, nativeLedgerPending),
+            nativeLedgerTotal,
             Math.max(0, webLedgerPending)
         );
         return total > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) total;
+    }
+
+    static boolean shouldRedactProjection(String freshness, long revision) {
+        return revision < 0L || "blocked".equals(freshness) || "unknown".equals(freshness);
     }
 
     @Nullable

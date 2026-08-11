@@ -208,9 +208,9 @@ export function listFinishedSessionsForDeviceSync(): FocusSession[] {
 }
 
 /**
- * Atomically imports a completed session bundle received from FocusLink device sync. External
- * dida/TomaToDo queues are intentionally untouched: third-party side effects remain owned by the
- * device that created the record.
+ * Atomically imports a completed session bundle received from FocusLink device sync. This low-level
+ * projection function never performs external work; Sync v2 records provider write-back intents in
+ * its enclosing transaction and consumes them only after commit.
  */
 export function insertDeviceSyncBundleIfMissing(bundle: DeviceSyncSessionBundle): boolean {
   const database = getDb();

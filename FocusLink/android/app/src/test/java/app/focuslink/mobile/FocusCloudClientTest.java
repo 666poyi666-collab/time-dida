@@ -1,12 +1,15 @@
 package app.focuslink.mobile;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import org.json.JSONObject;
 import org.junit.Test;
@@ -33,7 +36,7 @@ public class FocusCloudClientTest {
             assertEquals(status, response.getJSONObject("ack").getString("status"));
             assertEquals("POST", transport.method);
             assertEquals(
-                BuildConfig.CANONICAL_SYNC_ORIGIN + "/sync/v2/live/command",
+                BuildConfig.SYNC_FAILOVER_ORIGIN + "/sync/v2/live/command",
                 transport.url
             );
             JSONObject request = new JSONObject(
@@ -84,26 +87,118 @@ public class FocusCloudClientTest {
 
         assertEquals(9, response.getInt("revision"));
         assertEquals("GET", transport.method);
-        assertEquals(BuildConfig.CANONICAL_SYNC_ORIGIN + "/sync/v2/live", transport.url);
+        assertEquals(BuildConfig.SYNC_FAILOVER_ORIGIN + "/sync/v2/live", transport.url);
         assertEquals("test-token", transport.accessToken);
     }
 
     @Test
-    public void usesCanonicalSyncV2RoutesForCompletedLedgerDelivery() throws Exception {
+    public void retriesFailoverTransportFailureThroughTheCanonicalOrigin() throws Exception {
+        List<String> urls = new ArrayList<>();
+        FocusCloudClient.Transport transport = (method, url, token, body) -> {
+            urls.add(url);
+            if (urls.size() == 1) throw new IOException("failover unavailable");
+            return new FocusCloudClient.Response(
+                200,
+                "{\"protocolVersion\":1,\"revision\":9,\"session\":null}"
+                    .getBytes(StandardCharsets.UTF_8)
+            );
+        };
+
+        JSONObject response = new FocusCloudClient(transport).fetchLive(CONNECTION);
+
+        assertEquals(9, response.getInt("revision"));
+        assertEquals(
+            BuildConfig.SYNC_FAILOVER_ORIGIN + "/sync/v2/live",
+            urls.get(0)
+        );
+        assertEquals(
+            BuildConfig.CANONICAL_SYNC_ORIGIN + "/sync/v2/live",
+            urls.get(1)
+        );
+    }
+
+    @Test
+    public void preservesFailoverAuthenticationAndAuthorizationStatus() throws Exception {
+        for (int status : new int[] { 401, 403 }) {
+            List<String> urls = new ArrayList<>();
+            FocusCloudClient.Transport transport = (method, url, token, body) -> {
+                urls.add(url);
+                if (urls.size() == 1) throw new IOException("failover unavailable");
+                return new FocusCloudClient.Response(status, "{}".getBytes(StandardCharsets.UTF_8));
+            };
+
+            try {
+                new FocusCloudClient(transport).fetchSyncV2Status(CONNECTION);
+                fail("Expected failover authentication failure");
+            } catch (FocusCloudClient.CloudException expected) {
+                assertEquals(status, expected.httpStatus);
+                assertEquals(status == 401, expected.isAuthenticationFailure());
+                assertEquals(status == 403, expected.isAuthorizationFailure());
+                assertFalse(expected.getCause() instanceof FocusCloudClient.CloudException);
+            }
+            assertEquals(2, urls.size());
+            assertEquals(
+                BuildConfig.CANONICAL_SYNC_ORIGIN + "/sync/v2/status",
+                urls.get(1)
+            );
+        }
+    }
+
+    @Test
+    public void doesNotSwitchOriginsAfterAnAuthoritativeHttpFailure() throws Exception {
+        for (int status : new int[] { 401, 403 }) {
+            List<String> urls = new ArrayList<>();
+            FocusCloudClient.Transport transport = (method, url, token, body) -> {
+                urls.add(url);
+                return new FocusCloudClient.Response(status, "{}".getBytes(StandardCharsets.UTF_8));
+            };
+
+            try {
+                new FocusCloudClient(transport).fetchSyncV2Status(CONNECTION);
+                fail("Expected authentication failure");
+            } catch (FocusCloudClient.CloudException expected) {
+                assertEquals(status, expected.httpStatus);
+                assertEquals(status == 401, expected.isAuthenticationFailure());
+                assertEquals(status == 403, expected.isAuthorizationFailure());
+            }
+            assertEquals(1, urls.size());
+            assertEquals(
+                BuildConfig.SYNC_FAILOVER_ORIGIN + "/sync/v2/status",
+                urls.get(0)
+            );
+        }
+    }
+
+    @Test
+    public void neverDerivesAFallbackForAnUnknownOrigin() {
+        String unknownUrl = "https://focuslink.invalid.example/sync/v2/status";
+
+        assertEquals(unknownUrl, FocusCloudClient.preferFailoverUrl(unknownUrl));
+        assertNull(FocusCloudClient.canonicalFallbackUrl(unknownUrl));
+        assertEquals(
+            BuildConfig.SYNC_FAILOVER_ORIGIN + "/sync/v2/status",
+            FocusCloudClient.preferFailoverUrl(
+                BuildConfig.CANONICAL_SYNC_ORIGIN + "/sync/v2/status"
+            )
+        );
+    }
+
+    @Test
+    public void usesPreferredFailoverSyncV2RoutesForCompletedLedgerDelivery() throws Exception {
         RecordingTransport statusTransport = new RecordingTransport(
             200,
             "{\"protocolVersion\":2}"
         );
         new FocusCloudClient(statusTransport).fetchSyncV2Status(CONNECTION);
         assertEquals("GET", statusTransport.method);
-        assertEquals(BuildConfig.CANONICAL_SYNC_ORIGIN + "/sync/v2/status", statusTransport.url);
+        assertEquals(BuildConfig.SYNC_FAILOVER_ORIGIN + "/sync/v2/status", statusTransport.url);
 
         RecordingTransport exchangeTransport = new RecordingTransport(200, "{}");
         JSONObject body = new JSONObject().put("protocolVersion", 2);
         new FocusCloudClient(exchangeTransport).exchangeSyncV2(CONNECTION, body);
         assertEquals("POST", exchangeTransport.method);
         assertEquals(
-            BuildConfig.CANONICAL_SYNC_ORIGIN + "/sync/v2/exchange",
+            BuildConfig.SYNC_FAILOVER_ORIGIN + "/sync/v2/exchange",
             exchangeTransport.url
         );
         assertEquals(

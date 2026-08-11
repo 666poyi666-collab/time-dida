@@ -19,13 +19,17 @@ import {
   type SyncV2Response,
 } from '@shared/sync/v2Protocol';
 import { readDeviceSyncJsonResponse } from '@shared/sync/httpTransport';
-import { isCanonicalFocusLinkDeviceConnection } from '@shared/sync/identityProtocol';
+import {
+  focusLinkSyncEndpointCandidates,
+  isAllowedFocusLinkDeviceConnection,
+} from '@shared/sync/identityProtocol';
 import {
   SyncV2ClientError,
   classifySyncV2Error,
   safeSyncV2Error,
 } from '@shared/sync/v2ClientError';
 import {
+  claimPendingDeviceSyncBundle,
   readMobileCache,
   readPendingDeviceSyncBundles,
   removePendingDeviceSyncBundle,
@@ -41,6 +45,7 @@ import {
   resetMobileV2Epoch,
   retryMobileV2Lease,
   writeMobileV2SyncFailure,
+  writeMobileV2SyncSuccess,
   writeMobileV2BootstrapIfOwned,
   type MobileV2BootstrapCheckpoint,
 } from './v2Cache';
@@ -59,8 +64,12 @@ interface MobileSyncV2Result {
   uploaded: number;
   downloaded: number;
   imported: number;
+  /** Outbox records still deferred for a later retry after this round. */
+  pending: number;
   conflicts: number;
   rejected: number;
+  outstandingEntityIds: string[];
+  lastVerifiedAt: number | null;
   cursor: string;
   unresolvedConflicts: number;
 }
@@ -91,7 +100,7 @@ async function runMobileSyncV2Internal(input: MobileSyncV2Input): Promise<Mobile
   assertNotAborted(input.signal);
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
   const routed = parseDeviceToken(input.token.trim());
-  if (!routed || !isCanonicalFocusLinkDeviceConnection(endpoint, input.token)) {
+  if (!routed || !isAllowedFocusLinkDeviceConnection(endpoint, input.token)) {
     throw new Error('canonical Sync v2 只接受通过设备配对签发的 fl2 凭据');
   }
   const connection = {
@@ -130,15 +139,21 @@ async function runMobileSyncV2Internal(input: MobileSyncV2Input): Promise<Mobile
     throw new SyncV2ClientError('cursor_ahead');
   }
 
-  const result = {
+  const result: MobileSyncV2Result = {
     uploaded: 0,
     downloaded: 0,
     imported: 0,
+    pending: 0,
     conflicts: 0,
     rejected: 0,
+    outstandingEntityIds: [],
+    lastVerifiedAt: null,
     cursor: checkpoint.cursor ?? 'c0',
     unresolvedConflicts: 0,
   };
+  const priorLocalStatus = await readMobileV2Status(connection.deviceId);
+  assertNotAborted(connection.signal);
+  result.lastVerifiedAt = priorLocalStatus.lastVerifiedAt;
 
   // Pull the entire authority first.  No local outbox is claimed until the
   // bootstrap cursor and materialized entities have reached the current tail.
@@ -158,8 +173,29 @@ async function runMobileSyncV2Internal(input: MobileSyncV2Input): Promise<Mobile
   assertNotAborted(connection.signal);
   const localStatus = await readMobileV2Status(connection.deviceId);
   assertNotAborted(connection.signal);
+  result.pending = localStatus.pending;
   result.unresolvedConflicts = localStatus.conflicts;
   result.rejected = Math.max(result.rejected, localStatus.rejected);
+  result.outstandingEntityIds = localStatus.outstandingEntityIds;
+  const partialErrorCode =
+    result.conflicts > 0 || result.unresolvedConflicts > 0
+      ? 'conflict_present'
+      : result.rejected > 0
+        ? 'rejected_operation'
+        : result.pending > 0
+          ? 'sync_failed'
+          : null;
+  if (partialErrorCode) {
+    // A conflict/rejection/deferred mutation is only a partial success. Keep a
+    // safe durable diagnostic and preserve the previous full-confirmation time.
+    await writeMobileV2SyncFailure(connection.deviceId, partialErrorCode);
+    assertNotAborted(connection.signal);
+  } else {
+    const verifiedAt = Date.now();
+    await writeMobileV2SyncSuccess(connection.deviceId, verifiedAt);
+    assertNotAborted(connection.signal);
+    result.lastVerifiedAt = verifiedAt;
+  }
   return result;
 }
 
@@ -251,13 +287,24 @@ async function enqueueLegacyPendingBundles(
   for (const record of records) {
     assertNotAborted(signal);
     if (record.state === 'conflict' || record.state === 'rejected') continue;
-    if (record.syncDeviceId !== null && record.syncDeviceId !== deviceId) continue;
-    const split = splitBundleForSyncV2(record.bundle, deviceId);
+    const ownedRecord =
+      record.syncDeviceId === null
+        ? await claimPendingDeviceSyncBundle(record.opId, deviceId)
+        : record.syncDeviceId === deviceId
+          ? record
+          : null;
+    assertNotAborted(signal);
+    if (!ownedRecord) continue;
+    const split = splitBundleForSyncV2(ownedRecord.bundle, deviceId);
     for (const entity of [
-      { entityType: 'focus_ledger_v2' as const, entityId: record.entityId, payload: split.ledger },
+      {
+        entityType: 'focus_ledger_v2' as const,
+        entityId: ownedRecord.entityId,
+        payload: split.ledger,
+      },
       {
         entityType: 'focus_metadata_v2' as const,
-        entityId: record.entityId,
+        entityId: ownedRecord.entityId,
         payload: split.metadata,
       },
     ]) {
@@ -329,7 +376,7 @@ async function removeConfirmedLegacyPending(deviceId: string, signal?: AbortSign
   assertNotAborted(signal);
   for (const record of records) {
     assertNotAborted(signal);
-    if (record.syncDeviceId !== null && record.syncDeviceId !== deviceId) continue;
+    if (record.syncDeviceId !== deviceId) continue;
     const split = splitBundleForSyncV2(record.bundle, deviceId);
     const ledgerFingerprint = fingerprintDeviceSyncValue({ deleted: false, payload: split.ledger });
     const metadataFingerprint = fingerprintDeviceSyncValue({
@@ -392,6 +439,28 @@ async function requestJson(
   method: 'GET' | 'POST',
   body?: unknown,
 ): Promise<unknown> {
+  let lastTransportError: unknown = null;
+  for (const endpoint of focusLinkSyncEndpointCandidates(input.endpoint)) {
+    try {
+      return await requestJsonOnce(input, endpoint, path, method, body);
+    } catch (error) {
+      if (input.signal?.aborted) throw abortError();
+      if (error instanceof SyncV2ClientError && !isRetryableSyncTransportError(error)) {
+        throw error;
+      }
+      lastTransportError = error;
+    }
+  }
+  throw lastTransportError ?? new SyncV2ClientError('network_error');
+}
+
+async function requestJsonOnce(
+  input: { endpoint: string; token: string; signal?: AbortSignal },
+  endpoint: string,
+  path: string,
+  method: 'GET' | 'POST',
+  body?: unknown,
+): Promise<unknown> {
   const controller = new AbortController();
   let timedOut = false;
   const abort = () => controller.abort(input.signal?.reason);
@@ -402,7 +471,7 @@ async function requestJson(
     controller.abort();
   }, REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(`${input.endpoint}${path}`, {
+    const response = await fetch(`${endpoint}${path}`, {
       method,
       headers: {
         accept: 'application/json',
@@ -440,11 +509,16 @@ async function requestJson(
   } catch (error) {
     if (input.signal?.aborted) throw abortError();
     if (timedOut) throw new SyncV2ClientError('timeout');
+    if (error instanceof TypeError) throw new SyncV2ClientError('network_error');
     throw error;
   } finally {
     window.clearTimeout(timer);
     input.signal?.removeEventListener('abort', abort);
   }
+}
+
+function isRetryableSyncTransportError(error: SyncV2ClientError): boolean {
+  return error.code === 'network_error' || error.code === 'timeout';
 }
 
 function assertNotAborted(signal: AbortSignal | undefined): void {

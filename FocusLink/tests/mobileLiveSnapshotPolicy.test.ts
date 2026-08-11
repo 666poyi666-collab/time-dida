@@ -4,6 +4,7 @@ import {
   commandAckNotice,
   restoreCachedLiveSnapshot,
   shouldApplyLiveSnapshot,
+  watchCommandAckNotice,
 } from '../src/mobile/liveSnapshotPolicy';
 import { idleLiveFocusSnapshot, type LiveFocusSnapshotLike } from '../src/mobile/runtimeModel';
 
@@ -68,6 +69,54 @@ describe('mobile authoritative live snapshot policy', () => {
     expect(commandAckNotice('pause', 8, response)).toBe(
       '重复请求未再次执行；云端当前为专注中（rev 9）',
     );
+  });
+
+  it('gives the watch one safe refreshed-but-not-executed notice for terminal command outcomes', () => {
+    const conflict = commandResponse({
+      status: 'conflict',
+      revision: 12,
+      state: 'paused',
+      errorCode: 'revision_conflict',
+    });
+    const rejected = commandResponse({
+      status: 'rejected',
+      revision: 13,
+      state: 'idle',
+      errorCode: 'no_active_session',
+    });
+    const applied = commandResponse({
+      status: 'applied',
+      revision: 14,
+      state: 'running',
+      errorCode: null,
+    });
+    const duplicate = commandResponse({
+      status: 'duplicate',
+      revision: 14,
+      state: 'running',
+      errorCode: null,
+    });
+    const unknown = commandResponse({
+      status: 'rejected',
+      revision: 15,
+      state: 'idle',
+      errorCode: 'internal_rejection_reason',
+    });
+
+    expect(watchCommandAckNotice('resume', 11, conflict)).toBe(
+      '本次未执行，已刷新云端状态：提交基于 rev 11，云端当前为 rev 12 · 已暂停',
+    );
+    expect(watchCommandAckNotice('finish', 12, rejected)).toBe(
+      '本次未执行，已刷新云端状态：当前没有活动会话；云端保持待开始（rev 13）',
+    );
+    expect(watchCommandAckNotice('start', 13, applied)).toBe(
+      '操作已完成，已刷新云端状态：专注中（rev 14）',
+    );
+    expect(watchCommandAckNotice('start', 13, duplicate)).toBe(
+      '重复请求未再次执行，已刷新云端状态：专注中（rev 14）',
+    );
+    expect(commandAckNotice('finish', 14, unknown)).toContain('云端拒绝了这条命令');
+    expect(watchCommandAckNotice('finish', 14, unknown)).not.toContain('internal_rejection_reason');
   });
 });
 

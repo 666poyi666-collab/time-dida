@@ -25,6 +25,18 @@ describe('desktop FocusLink account settings', () => {
     expect(source).toContain('退出登录');
   });
 
+  it('renders device-sync health from the machine-code presentation with its durable conflict count', () => {
+    expect(source).toContain(
+      "import { presentDeviceSyncError } from './deviceSyncStatusPresentation';",
+    );
+    expect(source).toMatch(
+      /presentDeviceSyncError\(\s*deviceSyncStatus\?\.lastError,\s*deviceSyncStatus\?\.unresolvedConflicts,\s*\)/,
+    );
+    expect(source).not.toContain('deviceSyncTransportUnavailable');
+    expect(source).not.toContain('deviceSyncConflictOnly');
+    expect(source).not.toContain('无法连接跨设备同步服务|跨设备同步请求超时');
+  });
+
   it('does not expose retired endpoint, token or pairing writes through renderer IPC', () => {
     expect(preloadSource).not.toContain('device-sync:configure');
     expect(preloadSource).not.toContain('device-sync:quick-setup');

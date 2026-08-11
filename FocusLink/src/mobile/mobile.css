@@ -144,7 +144,7 @@ code {
 }
 
 .appearance-select-row select {
-  min-height: 38px;
+  min-height: 44px;
   padding: 7px 10px;
   border: 1px solid var(--border-strong);
   border-radius: 4px;
@@ -1050,7 +1050,7 @@ code {
 }
 
 .sheet-secondary-actions button {
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 4px;
   border: 0;
   background: transparent;
@@ -3332,7 +3332,8 @@ code {
   white-space: nowrap;
 }
 
-.sync-status-ledger.state-error .sync-copy span {
+.sync-status-ledger.state-error .sync-copy span,
+.sync-status-ledger.state-partial .sync-copy span {
   display: block;
   overflow: visible;
   overflow-wrap: anywhere;
@@ -3349,6 +3350,10 @@ code {
 .sync-status-live.state-offline .network-dot,
 .sync-status-ledger.state-error .network-dot {
   background: var(--pause);
+}
+
+.sync-status-ledger.state-partial .network-dot {
+  background: var(--warning);
 }
 
 .sync-status-ledger.state-pulling .network-dot,
@@ -3613,6 +3618,7 @@ code {
 
 .native-pause-reminder label {
   display: inline-flex;
+  min-height: 44px;
   align-items: center;
   gap: 7px;
   color: var(--muted);
@@ -3620,14 +3626,14 @@ code {
 }
 
 .native-pause-reminder input[type='checkbox'] {
-  width: 17px;
-  height: 17px;
+  width: 24px;
+  height: 24px;
   accent-color: var(--focus);
 }
 
 .native-pause-reminder input[type='number'] {
   width: 62px;
-  min-height: 34px;
+  min-height: 44px;
   padding: 5px 7px;
   border: 1px solid var(--border-strong);
   border-radius: 3px;
@@ -3670,7 +3676,7 @@ code {
 .focus-system-tool-actions button {
   display: inline-flex;
   min-width: 84px;
-  min-height: 40px;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
   gap: 6px;
@@ -4970,40 +4976,53 @@ code {
   }
 }
 
-/* Liquid control layer ------------------------------------------------------
- * Content stays opaque and quiet. Translucency belongs only to navigation,
- * segmented controls, the thumb-zone action tray and transient overlays.
- * The solid declarations are the deliberate no-backdrop-filter fallback. */
+/* Apple platform surface ----------------------------------------------------
+ * v0.12.77 mobile visual pass. Content uses opaque grouped surfaces while
+ * Liquid Glass is reserved for the distinct navigation/control layer only.
+ * This mirrors Apple's current split between readable list/form content and
+ * sparingly applied material in bars, controls and sheets. */
 
 :root {
-  --mobile-topbar-block-size: 58px;
-  --mobile-glass-fill: var(--surface);
-  --mobile-glass-edge: color-mix(in srgb, var(--border-strong) 78%, transparent);
-  --mobile-glass-highlight: rgb(255 255 255 / 0.62);
-  --mobile-glass-shadow: 0 18px 44px rgb(22 31 27 / 0.16), inset 0 1px 0 rgb(255 255 255 / 0.48);
-  --mobile-glass-solid-shadow: 0 10px 28px rgb(22 31 27 / 0.16);
-  --mobile-glass-sheen: linear-gradient(
-    145deg,
-    rgb(255 255 255 / 0.46),
-    rgb(255 255 255 / 0.08) 42%,
-    rgb(var(--app-accent) / 0.08)
+  /* The appearance picker owns --font-ui. Keep the Apple system stack as the
+   * fallback, but do not mask the user's selected local family. */
+  --mobile-font: var(
+    --font-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'SF Pro Text',
+    'SF Pro Display',
+    'Noto Sans SC',
+    'Microsoft YaHei',
+    sans-serif
   );
+  --mobile-radius-sm: 10px;
+  --mobile-radius-md: 14px;
+  --mobile-radius-lg: 18px;
+  --mobile-topbar-block-size: 58px;
+  --mobile-hairline: color-mix(in srgb, var(--border) 88%, transparent);
+  --mobile-group-fill: color-mix(in srgb, var(--surface) 96%, var(--canvas));
+  --mobile-muted-fill: color-mix(in srgb, var(--surface-2) 88%, var(--canvas));
+  --mobile-focus-fill: color-mix(in srgb, var(--focus-soft) 76%, var(--surface));
+  --mobile-elevation: 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 24px rgb(15 23 42 / 0.05);
 }
 
 :root.dark {
-  --mobile-glass-edge: color-mix(in srgb, var(--border-strong) 86%, transparent);
-  --mobile-glass-highlight: rgb(255 255 255 / 0.1);
-  --mobile-glass-shadow: 0 20px 48px rgb(0 0 0 / 0.42), inset 0 1px 0 rgb(255 255 255 / 0.08);
-  --mobile-glass-solid-shadow: 0 12px 32px rgb(0 0 0 / 0.38);
-  --mobile-glass-sheen: linear-gradient(
-    145deg,
-    rgb(255 255 255 / 0.1),
-    rgb(255 255 255 / 0.025) 44%,
-    rgb(var(--app-accent) / 0.07)
-  );
+  --mobile-hairline: color-mix(in srgb, var(--border) 92%, transparent);
+  --mobile-group-fill: color-mix(in srgb, var(--surface) 96%, var(--canvas));
+  --mobile-muted-fill: color-mix(in srgb, var(--surface-2) 94%, var(--canvas));
+  --mobile-focus-fill: color-mix(in srgb, var(--focus-soft) 74%, var(--surface));
+  --mobile-elevation: 0 1px 2px rgb(0 0 0 / 0.26), 0 8px 24px rgb(0 0 0 / 0.18);
 }
 
-/* Reassert the content plane: none of these reading surfaces participate in blur. */
+html,
+body,
+#root,
+.mobile-shell {
+  font-family: var(--mobile-font);
+}
+
+/* Reading planes are always opaque. Do not let the legacy layer re-enable
+ * blur, sheen or high-contrast shadows behind text and task rows. */
 .mobile-topbar,
 .sync-strip,
 .view-surface,
@@ -5011,80 +5030,256 @@ code {
 .focus-console-body,
 .focus-instrument,
 .live-context,
-.dashboard-band,
+.task-browser,
 .task-toolbar,
 .task-project-list,
 .task-selection-detail,
+.settings-view,
 .settings-card,
 .mobile-appearance-panel {
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.mobile-shell {
+  width: 100%;
+  max-width: 1120px;
+  min-height: 100dvh;
+  border: 0;
+  background: var(--canvas);
+}
+
+.mobile-topbar {
+  min-height: calc(58px + env(safe-area-inset-top));
+  align-items: center;
+  padding: calc(8px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 8px
+    max(16px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--mobile-hairline);
+  background: var(--surface) !important;
+  color: var(--text);
+}
+
+.mobile-topbar .mobile-brand-mark .brand-mark-f,
+.mobile-topbar .mobile-brand-mark .brand-mark-cross {
+  stroke: var(--text);
+}
+
+.mobile-topbar .mobile-brand-mark .brand-mark-l {
+  stroke: var(--focus);
+}
+
+.mobile-topbar .eyebrow {
+  color: var(--muted);
+  font-family: var(--mobile-font);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.brand-lockup {
+  gap: 10px;
+}
+
+.brand-lockup h1 {
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.mobile-topbar .icon-button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--mobile-radius-sm);
+  color: var(--focus);
+}
+
+.mobile-topbar .icon-button:hover {
+  border-color: transparent;
+  background: var(--mobile-focus-fill);
+  color: var(--focus);
 }
 
 .app-frame {
   display: block;
+  min-height: calc(100dvh - 58px - env(safe-area-inset-top));
+  background: var(--canvas);
 }
 
 .mobile-main {
-  padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  min-width: 0;
+  padding-bottom: calc(74px + env(safe-area-inset-bottom));
+}
+
+.sync-strip {
+  min-height: 58px;
+  padding: 9px max(16px, env(safe-area-inset-right)) 9px max(16px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--mobile-hairline);
+  background: var(--surface);
+}
+
+.sync-status .sync-copy strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.sync-status .sync-copy span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.sync-button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--mobile-radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.sync-button:hover:not(:disabled) {
+  border-color: var(--focus);
+  background: var(--mobile-focus-fill);
+  color: var(--focus);
+}
+
+.mobile-workspace {
+  min-width: 0;
+  background: var(--canvas);
+}
+
+.focus-console-body,
+.task-browser-workspace,
+.dashboard-hero,
+.task-toolbar,
+.settings-status-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.view-surface,
+.focus-console {
+  min-height: calc(100dvh - 116px);
+  background: var(--canvas);
+}
+
+.view-heading,
+.focus-console-header {
+  min-height: 72px;
+  padding: 14px max(16px, env(safe-area-inset-right)) 14px max(16px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--mobile-hairline);
+  background: var(--canvas);
+}
+
+.view-heading > div:first-child,
+.focus-console-header > div:first-child {
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--focus);
+}
+
+.view-heading h2,
+.focus-console-header h2 {
+  color: var(--text);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.view-heading-meta strong {
+  color: var(--text);
+  font-family: var(--number);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.view-heading-meta span {
+  color: var(--muted);
 }
 
 .app-navigation {
   position: fixed;
   z-index: 40;
   top: auto;
-  right: max(10px, env(safe-area-inset-right, 0px));
-  bottom: max(8px, env(safe-area-inset-bottom, 0px));
-  left: max(10px, env(safe-area-inset-left, 0px));
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  left: max(10px, env(safe-area-inset-left));
+  display: grid;
   width: auto;
+  height: auto;
   max-width: 600px;
-  height: 64px;
   min-height: 64px;
+  grid-auto-rows: auto;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-auto-rows: 1fr;
-  align-content: stretch;
-  gap: 3px;
+  align-content: normal;
   margin: 0 auto;
   padding: 5px;
-  overflow: hidden;
-  border: 1px solid var(--mobile-glass-edge);
+  border: 1px solid var(--mobile-hairline);
   border-radius: 24px;
-  background: var(--mobile-glass-fill);
-  box-shadow: var(--mobile-glass-shadow);
+  background: var(--surface) !important;
+}
+
+/* Web/Capacitor cannot inherit UIKit's material automatically, so only the
+ * top-level navigation and a small set of high-value controls opt into a
+ * restrained approximation. Their normal path stays fully opaque. */
+.focus-actions,
+.dashboard-range,
+.connection-sheet {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: var(--surface) !important;
+  background-image: none !important;
+}
+
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .app-navigation,
+  .focus-actions,
+  .dashboard-range,
+  .connection-sheet {
+    background: rgb(var(--app-surface) / 0.82) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(1.2) !important;
+    backdrop-filter: blur(18px) saturate(1.2) !important;
+  }
+
+  :root.dark .app-navigation,
+  :root.dark .focus-actions,
+  :root.dark .dashboard-range,
+  :root.dark .connection-sheet {
+    background: rgb(var(--app-surface) / 0.9) !important;
+  }
 }
 
 .app-navigation button {
+  position: relative;
   display: grid;
   min-width: 44px;
   min-height: 52px;
-  grid-template-columns: 1fr;
-  grid-template-rows: 24px 16px;
   place-content: center;
   justify-items: center;
-  gap: 2px;
+  gap: 3px;
   padding: 4px 2px;
-  border: 1px solid transparent;
-  border-radius: 18px;
+  border: 0;
+  border-radius: var(--mobile-radius-sm);
   background: transparent;
   color: var(--muted);
+  font-size: 10px;
   transition:
-    color 140ms ease,
-    background-color 140ms ease,
-    transform 140ms ease;
+    background-color 140ms ease-out,
+    color 140ms ease-out,
+    transform 140ms ease-out;
 }
 
 .app-navigation button small {
   display: none;
 }
 
-.app-navigation button svg,
-.app-navigation button span {
-  grid-column: 1;
-}
-
 .app-navigation button svg {
   width: 21px;
   height: 21px;
+  stroke-width: 1.9;
 }
 
 .app-navigation button span {
@@ -5097,63 +5292,455 @@ code {
 }
 
 .app-navigation button.is-active {
-  border-color: color-mix(in srgb, var(--focus) 24%, transparent);
-  background: color-mix(in srgb, var(--focus-soft) 72%, transparent);
+  background: var(--mobile-focus-fill);
   color: var(--focus);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--mobile-glass-highlight) 68%, transparent);
 }
 
 .app-navigation button:active:not(:disabled) {
   transform: scale(0.96);
 }
 
-.focus-console-body,
-.task-browser-workspace,
-.dashboard-hero,
-.task-toolbar,
-.settings-status-grid {
-  grid-template-columns: minmax(0, 1fr);
+/* Grouped task selector ----------------------------------------------------- */
+
+.task-browser {
+  background: var(--canvas);
+}
+
+.task-toolbar {
+  display: grid;
+  gap: 10px;
+  padding: 12px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--mobile-hairline);
+  background: var(--canvas);
+}
+
+.task-search,
+.project-filter {
+  min-height: 46px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--mobile-radius-sm);
+  background: var(--surface);
+}
+
+.task-search:focus-within,
+.project-filter:focus-within {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 16%, transparent);
+}
+
+.task-search input,
+.project-filter select {
+  min-height: 44px;
+  font-size: 16px;
+}
+
+.task-snapshot-meta {
+  min-height: 36px;
+  padding: 7px max(16px, env(safe-area-inset-right)) 7px max(16px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--mobile-hairline);
+  background: var(--surface);
+  color: var(--muted);
+  font-family: var(--number);
+  font-size: 10px;
+}
+
+.task-browser-workspace {
+  display: grid;
+  min-width: 0;
+  background: var(--canvas);
 }
 
 .task-project-list {
-  border-right: 0;
+  display: grid;
+  gap: 10px;
+  padding: 12px max(12px, env(safe-area-inset-right)) 18px max(12px, env(safe-area-inset-left));
+  border: 0;
+  background: var(--canvas);
+}
+
+.task-project-group {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--mobile-hairline);
+  border-radius: var(--mobile-radius-md);
+  background: var(--mobile-group-fill);
+  box-shadow: var(--mobile-elevation);
+}
+
+.task-selection-detail.is-empty {
+  position: static;
+  z-index: auto;
+  border-color: var(--mobile-hairline);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.task-project-toggle {
+  min-height: 52px;
+  padding: 8px 12px;
+  border-bottom: 1px solid transparent;
+  background: var(--mobile-group-fill);
+  color: var(--text);
+}
+
+.task-project-group.is-open .task-project-toggle {
+  border-bottom-color: var(--mobile-hairline);
+  background: var(--mobile-group-fill);
+  color: var(--text);
+}
+
+.task-project-toggle strong {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.task-project-toggle > span:nth-last-of-type(1) {
+  min-width: 24px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--mobile-muted-fill);
+  color: var(--muted);
+  text-align: center;
+}
+
+.task-project-icon {
+  color: var(--focus);
+}
+
+.task-project-chevron {
+  color: var(--muted);
+}
+
+.task-list {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: var(--mobile-muted-fill);
+}
+
+.task-tree-branch[data-depth='0'] {
+  overflow: hidden;
+  border: 1px solid var(--mobile-hairline);
+  border-radius: var(--mobile-radius-sm);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.task-row,
+.task-tree-branch[data-depth='0'] > .task-row,
+.task-children .task-row {
+  min-height: 60px;
+  border-bottom-color: var(--mobile-hairline);
+  background: var(--surface);
+}
+
+.task-row.is-selected,
+.task-tree-branch[data-depth='0'] > .task-row.is-selected {
+  background: var(--mobile-focus-fill);
+}
+
+.task-row-main {
+  min-height: 60px;
+  padding: 8px 10px 8px 0;
+}
+
+.task-row-copy strong {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.task-row-copy small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.task-branch-toggle {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  margin-left: calc(var(--task-depth, 0) * 14px);
+  border-radius: 8px;
+}
+
+.task-branch-toggle:hover {
+  background: var(--mobile-muted-fill);
+}
+
+.task-status-mark {
+  width: 11px;
+  height: 11px;
+  border-color: var(--border-strong);
+}
+
+.task-start-button {
+  min-width: 60px;
+  min-height: 52px;
+  border-left-color: var(--mobile-hairline);
+  color: var(--focus);
+  font-size: 11px;
+}
+
+.task-start-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.task-children {
+  /* Row indentation is capped by --task-depth. Nesting another 22px wrapper
+   * at every level made deep trees progressively narrower despite that cap. */
+  margin: 0 8px 8px 0 !important;
+  border: 1px solid var(--mobile-hairline);
+  border-left: 2px solid color-mix(in srgb, var(--focus) 36%, var(--border));
+  border-radius: var(--mobile-radius-sm);
+  background: var(--mobile-muted-fill);
 }
 
 .task-selection-detail {
-  display: none;
+  position: sticky;
+  z-index: 2;
+  bottom: calc(64px + env(safe-area-inset-bottom));
+  display: grid;
+  gap: 9px;
+  min-height: 0;
+  margin: 0 12px 12px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--focus) 28%, var(--border));
+  border-radius: var(--mobile-radius-md);
+  background: var(--mobile-focus-fill);
+  box-shadow: var(--mobile-elevation);
 }
 
-.focus-rate {
-  border-top: 1px solid var(--border);
-  border-left: 0;
+.task-selection-detail > strong {
+  font-size: 16px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.task-selection-detail p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.task-selection-detail button {
+  min-height: 46px;
+  border: 1px solid var(--focus);
+  border-radius: var(--mobile-radius-sm);
+  background: var(--focus);
+  color: rgb(var(--app-accent-fg));
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.task-selection-detail button:disabled {
+  opacity: 0.5;
+}
+
+.task-selection-tags span {
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--focus) 28%, var(--border));
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.task-empty {
+  min-height: 300px;
+  margin: 12px;
+  border: 1px solid var(--mobile-hairline);
+  border-radius: var(--mobile-radius-md);
+  background: var(--mobile-group-fill);
+  box-shadow: var(--mobile-elevation);
+}
+
+/* Focus and history use the same grouped reading plane. */
+
+.focus-console-header {
+  background: var(--canvas);
+}
+
+.focus-state-chip {
+  min-height: 32px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.focus-instrument,
+.live-context {
+  padding: 18px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left));
+}
+
+.focus-start-fields,
+.active-title-block {
+  padding: 14px;
+  border: 1px solid var(--mobile-hairline);
+  border-left: 3px solid var(--focus);
+  border-radius: var(--mobile-radius-md);
+  background: var(--mobile-group-fill);
+}
+
+.focus-title-field input,
+.focus-title-field select,
+.focus-task-picker button,
+.focus-task-picker select {
+  min-height: 48px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--mobile-radius-sm);
+  background: var(--surface);
+}
+
+.focus-task-picker {
+  display: block;
+}
+
+.focus-task-picker .focus-task-disclosure {
+  display: grid;
+  width: 100%;
+  min-height: 58px;
+  grid-template-columns: 24px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--mobile-radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+
+.focus-task-disclosure > svg {
+  width: 20px;
+  height: 20px;
+  color: var(--focus);
+  stroke-width: 1.8;
+}
+
+.focus-task-disclosure > svg:last-child {
+  width: 17px;
+  height: 17px;
+  color: var(--muted);
+}
+
+.focus-task-disclosure > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.focus-task-disclosure strong,
+.focus-task-disclosure small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focus-task-disclosure strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.focus-task-disclosure small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.focus-task-clear {
+  min-height: 44px;
+  justify-self: start;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--focus);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.focus-title-field input:focus,
+.focus-title-field select:focus,
+.focus-task-picker select:focus {
+  border-color: var(--focus);
+  outline: 0;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 16%, transparent);
+}
+
+.primary-readout {
+  min-height: 190px;
+  margin: 16px 0;
+  padding: 22px 12px;
+  border: 1px solid var(--mobile-hairline);
+  border-radius: var(--mobile-radius-lg);
+  background: var(--mobile-group-fill);
+  box-shadow: var(--mobile-elevation);
+}
+
+.primary-readout::before,
+.phase-running .primary-readout::before,
+.phase-paused .primary-readout::before {
+  display: none !important;
+  content: none;
+}
+
+.primary-readout > strong {
+  font-size: clamp(54px, 16vw, 82px);
+  font-weight: 550;
+}
+
+.mobile-temporal-ribbon {
+  margin: 0 0 16px;
+  padding-top: 14px;
+}
+
+.mobile-temporal-ribbon canvas {
+  border: 1px solid var(--mobile-hairline);
+  border-radius: var(--mobile-radius-md);
+  background: var(--surface);
+}
+
+.runtime-metrics {
+  overflow: hidden;
+  border: 1px solid var(--mobile-hairline);
+  border-radius: var(--mobile-radius-md);
+  background: var(--mobile-group-fill);
+}
+
+.runtime-metrics > div {
+  min-height: 72px;
 }
 
 .focus-actions {
-  position: sticky;
+  position: static;
   z-index: 32;
-  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-  border: 1px solid var(--mobile-glass-edge);
+  bottom: auto;
+  width: auto;
+  max-width: 100%;
+  gap: 8px;
+  margin: 20px 0 0;
+  padding: 5px;
+  border: 1px solid var(--mobile-hairline);
   border-radius: 20px;
-  background: var(--mobile-glass-fill);
-  box-shadow: var(--mobile-glass-shadow);
-}
-
-:root.dark .app-navigation,
-:root.dark .focus-actions {
-  background: var(--mobile-glass-fill);
+  box-shadow: none;
+  box-sizing: border-box;
 }
 
 .focus-action {
   min-width: 44px;
-  min-height: 50px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  min-height: 48px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--mobile-radius-sm);
+  background: var(--surface);
   color: var(--text);
 }
 
-.focus-action.connection-action {
-  border-color: color-mix(in srgb, var(--focus) 46%, var(--border-strong));
-  color: var(--focus);
+.focus-action.primary {
+  border-color: var(--focus);
+  background: var(--focus);
+  color: rgb(var(--app-accent-fg));
 }
 
 .focus-action.pause-action {
@@ -5163,134 +5750,207 @@ code {
 }
 
 .focus-action.finish-action {
-  border-color: color-mix(in srgb, var(--danger) 68%, var(--border-strong));
+  border-color: var(--danger);
   color: var(--danger);
 }
 
-:root.dark .focus-action.connection-action {
-  border-color: color-mix(in srgb, var(--focus) 46%, var(--border-strong));
-  color: var(--focus);
+.live-context {
+  background: var(--mobile-muted-fill);
 }
 
-:root.dark .focus-action.primary {
-  color: rgb(var(--app-accent-fg));
+.connection-callout,
+.runtime-facts,
+.desktop-delivery-note,
+.native-system-controls {
+  border: 1px solid var(--mobile-hairline);
+  border-radius: var(--mobile-radius-md);
+  background: var(--mobile-group-fill);
+  box-shadow: none;
 }
 
-:root.dark .focus-action.pause-action {
-  border-color: var(--text);
-  background: var(--text);
-  color: var(--surface);
+.connection-callout {
+  padding: 13px;
 }
 
-:root.dark .focus-action.finish-action {
-  color: var(--danger);
+.runtime-facts {
+  overflow: hidden;
+}
+
+.desktop-delivery-note,
+.native-system-controls {
+  padding: 14px;
+}
+
+.command-notice {
+  border: 1px solid color-mix(in srgb, var(--focus) 28%, var(--border));
+  border-left: 3px solid var(--focus);
+  border-radius: var(--mobile-radius-sm);
+  background: var(--mobile-focus-fill);
+}
+
+.dashboard-view {
+  background: var(--canvas);
 }
 
 .dashboard-range {
-  gap: 2px;
-  padding: 3px;
-  overflow: hidden;
-  border-color: var(--mobile-glass-edge);
-  border-radius: 16px;
-  background: var(--mobile-glass-fill);
-  box-shadow:
-    0 8px 24px rgb(22 31 27 / 0.1),
-    inset 0 1px 0 color-mix(in srgb, var(--mobile-glass-highlight) 76%, transparent);
+  min-height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--mobile-radius-sm);
+  background: var(--surface) !important;
 }
 
-.dashboard-range button,
-.dashboard-range button:last-child {
+.dashboard-range button {
   min-height: 44px;
-  border: 0;
-  border-radius: 12px;
-  transition:
-    color 140ms ease,
-    background-color 140ms ease;
+  border-radius: 8px;
 }
 
 .dashboard-range button.is-active {
-  background: color-mix(in srgb, var(--focus-soft) 78%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--focus) 24%, transparent);
+  background: var(--mobile-focus-fill);
+  color: var(--focus);
 }
 
-.dashboard-range button:focus-visible {
-  outline-offset: -2px;
+.dashboard-hero,
+.dashboard-kpis,
+.dashboard-band,
+.dashboard-pause-cost {
+  border-color: var(--mobile-hairline);
+  background: var(--canvas);
 }
 
-.connection-sheet {
-  border-color: var(--mobile-glass-edge);
-  border-radius: 28px 28px 0 0;
-  background: var(--mobile-glass-fill);
-  box-shadow:
-    0 -22px 64px rgb(10 16 13 / 0.24),
-    inset 0 1px 0 color-mix(in srgb, var(--mobile-glass-highlight) 76%, transparent);
+.dashboard-primary,
+.mobile-time-donut-wrap,
+.dashboard-metric,
+.analytics-heading,
+.mobile-day-ledger,
+.mobile-gap-ledger,
+.mobile-task-allocation,
+.dashboard-pause-cost {
+  background: var(--mobile-group-fill);
 }
 
-.sheet-close {
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
+.dashboard-primary {
+  padding: 24px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left));
 }
 
-.form-field .field-quick-action,
-.sheet-secondary-actions button {
-  min-height: 44px;
+.dashboard-primary > strong {
+  font-size: clamp(46px, 13vw, 76px);
 }
 
+.mobile-time-donut,
+.mobile-time-donut-wrap {
+  border-color: var(--mobile-hairline);
+}
+
+.dashboard-band,
+.dashboard-pause-cost {
+  border-bottom: 1px solid var(--mobile-hairline);
+}
+
+.analytics-heading {
+  min-height: 54px;
+  padding-inline: max(16px, env(safe-area-inset-right));
+  padding-inline-start: max(16px, env(safe-area-inset-left));
+}
+
+.dashboard-metric {
+  min-height: 82px;
+  padding-inline: max(16px, env(safe-area-inset-right));
+  padding-inline-start: max(16px, env(safe-area-inset-left));
+}
+
+.mobile-day-ledger,
+.mobile-task-allocation,
+.mobile-gap-ledger ol {
+  padding-inline: max(16px, env(safe-area-inset-right));
+  padding-inline-start: max(16px, env(safe-area-inset-left));
+}
+
+/* Settings and sheets follow iOS grouped-form spacing. */
+
+.settings-view {
+  background: var(--canvas);
+}
+
+.settings-status-grid,
+.settings-card,
+.mobile-appearance-panel,
+.endpoint-readout,
+.capability-boundary {
+  border-color: var(--mobile-hairline);
+  background: var(--mobile-group-fill);
+}
+
+.settings-status-line {
+  min-height: 58px;
+  border-color: var(--mobile-hairline);
+}
+
+.settings-edit-button,
 .appearance-select-row select,
 .appearance-color-choice,
 .appearance-font-choice,
-.native-pause-reminder input[type='number'],
-.focus-system-tool-actions button,
-.sync-button,
-.remember-row {
-  min-height: 44px;
+.native-pause-reminder input[type='number'] {
+  border-radius: var(--mobile-radius-sm);
 }
 
-.sync-button {
+.connection-sheet {
+  border: 1px solid var(--mobile-hairline);
+  border-bottom: 0;
+  border-radius: 24px 24px 0 0;
+  background: var(--surface) !important;
+}
+
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+
+.sheet-close {
   min-width: 44px;
-}
-
-.native-pause-reminder label {
   min-height: 44px;
+  border-radius: 50%;
+  background: var(--mobile-muted-fill);
 }
 
-.task-children .task-branch-toggle {
-  width: 44px;
-  min-width: 44px;
+.form-field input,
+.primary-button {
+  min-height: 48px;
+  border-radius: var(--mobile-radius-sm);
 }
 
-.task-children .task-row {
-  grid-template-columns: minmax(44px, auto) minmax(0, 1fr) 64px;
+.primary-button {
+  border-color: var(--focus);
+  background: var(--focus);
 }
 
-@media (max-width: 480px) {
-  .sync-strip {
-    grid-template-columns: minmax(0, 1fr) 44px;
+@media (max-width: 619px) {
+  .mobile-topbar .icon-button {
+    display: none;
   }
 
-  .sync-status-live,
-  .sync-status-ledger {
-    grid-column: 1;
+  .focus-console-header {
+    display: none;
   }
 
-  .sync-button {
-    width: 44px;
-    grid-column: 2;
-    grid-row: 1 / span 2;
-  }
-}
-
-@media (min-width: 481px) and (max-width: 619px) {
-  .sync-strip {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px;
+  .task-toolbar {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .sync-button {
-    width: 44px;
+  .task-selection-detail {
+    display: grid;
+  }
+
+  /* Only bottom-tab phones use the floating thumb control. The content plane
+   * reserves its full height so the bar never hides the timeline or fields. */
+  .focus-instrument {
+    padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .focus-actions {
+    position: sticky;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -5299,44 +5959,54 @@ code {
     --mobile-topbar-block-size: 72px;
   }
 
-  .connection-sheet {
-    border-radius: 28px;
+  .app-frame {
+    min-height: calc(100dvh - 72px - env(safe-area-inset-top));
+  }
+
+  .mobile-topbar {
+    min-height: calc(72px + env(safe-area-inset-top));
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+
+  /* A 640×1024 portrait tablet still follows the phone navigation and
+   * single-column content model. The split only begins at 760px/landscape. */
+}
+
+@media (min-width: 620px) and (max-width: 759px) and (orientation: portrait) {
+  /* 640px portrait is still a bottom-tab tablet, but follows the phone's
+   * information hierarchy: readout first, then task/title and the ledger. */
+  .focus-instrument {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .primary-readout {
+    order: 1;
+  }
+
+  .focus-start-fields,
+  .active-title-block {
+    order: 2;
+  }
+
+  .mobile-temporal-ribbon {
+    order: 3;
+  }
+
+  .runtime-metrics {
+    order: 4;
+  }
+
+  .focus-system-tools {
+    order: 5;
+  }
+
+  .focus-actions {
+    order: 7;
   }
 }
 
-/* The glass enhancement is opt-in. Browsers without backdrop-filter retain
- * the opaque surfaces above, so labels never compete with scrolling content. */
-@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .app-navigation,
-  .focus-actions,
-  .dashboard-range,
-  .connection-sheet {
-    background: var(--surface);
-    box-shadow: var(--mobile-glass-solid-shadow);
-  }
-}
-
-@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  :root {
-    --mobile-glass-fill: rgb(var(--app-surface) / 0.74);
-  }
-
-  :root.dark {
-    --mobile-glass-fill: rgb(var(--app-surface) / 0.84);
-  }
-
-  .app-navigation,
-  .focus-actions,
-  .dashboard-range,
-  .connection-sheet {
-    -webkit-backdrop-filter: blur(22px) saturate(1.42);
-    backdrop-filter: blur(22px) saturate(1.42);
-    background: var(--mobile-glass-sheen), var(--mobile-glass-fill);
-  }
-}
-
-/* A 640x1024 portrait tablet stays one column with bottom tabs. Side navigation
- * and split reading planes begin at 760px, or whenever the viewport is landscape. */
 @media (min-width: 760px), (orientation: landscape) {
   .app-frame {
     display: grid;
@@ -5344,115 +6014,125 @@ code {
     align-items: start;
   }
 
+  .mobile-main {
+    padding-bottom: 0;
+  }
+
   .app-navigation {
     position: sticky;
-    top: calc(var(--mobile-topbar-block-size) + env(safe-area-inset-top, 0px) + 10px);
+    top: calc(var(--mobile-topbar-block-size) + env(safe-area-inset-top) + 10px);
     right: auto;
     bottom: auto;
     left: auto;
     width: auto;
     max-width: none;
-    height: calc(100dvh - var(--mobile-topbar-block-size) - env(safe-area-inset-top, 0px) - 20px);
+    height: calc(100dvh - var(--mobile-topbar-block-size) - env(safe-area-inset-top) - 20px);
     min-height: 0;
-    grid-template-columns: 1fr;
     grid-auto-rows: minmax(44px, 1fr);
-    gap: 5px;
-    margin: 0 8px 10px;
-    padding: 7px;
-    overflow: hidden;
-    border: 1px solid var(--mobile-glass-edge);
-    border-radius: 26px;
-  }
-
-  .app-navigation button {
-    min-height: 44px;
     grid-template-columns: 1fr;
-    grid-template-rows: 24px 18px;
-    column-gap: 0;
-  }
-
-  .app-navigation button small {
-    display: none;
-  }
-
-  .app-navigation button svg,
-  .app-navigation button span {
-    grid-column: 1;
-  }
-
-  .mobile-main {
-    padding-bottom: 0;
+    padding: 10px 7px;
+    border: 1px solid var(--mobile-hairline);
+    border-radius: var(--mobile-radius-md);
+    margin: 0 8px 10px;
   }
 
   .focus-console-body {
     grid-template-columns: minmax(0, 1fr) minmax(220px, 0.32fr);
   }
 
-  .live-context {
-    display: grid;
-    grid-template-columns: 1fr;
-    border-top: 0;
-    border-left: 1px solid var(--border-strong);
-  }
-
   .task-browser-workspace {
     grid-template-columns: minmax(0, 1fr) minmax(250px, 0.38fr);
-    align-items: start;
-  }
-
-  .task-project-list {
-    border-right: 1px solid var(--border);
-  }
-
-  .task-selection-detail {
-    display: grid;
   }
 
   .task-toolbar {
     grid-template-columns: minmax(0, 1fr) minmax(190px, 0.42fr);
   }
 
-  .settings-status-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .task-selection-detail {
+    position: sticky;
+    top: calc(var(--mobile-topbar-block-size) + env(safe-area-inset-top));
+    bottom: auto;
+    min-height: 100%;
+    margin: 0;
+    border: 0;
+    border-left: 1px solid var(--mobile-hairline);
+    border-radius: 0;
+    background: var(--mobile-muted-fill);
+    box-shadow: none;
+    display: grid;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  /* A phone rotated to 915×412 keeps the sidebar, but it is not a tall tablet.
+   * Put the timer and primary action in the first visible column instead of
+   * letting the task form plus a sticky bar cover them. */
+  .focus-console-header {
+    /* The app chrome and sync strip already identify the screen and state.
+     * On a short landscape viewport this duplicated heading consumes the
+     * vertical room needed for the primary action. */
+    display: none;
   }
 
-  .dashboard-hero {
-    grid-template-columns: minmax(0, 1fr) minmax(210px, 0.34fr);
+  .focus-instrument {
+    display: grid;
+    grid-template-columns: minmax(190px, 0.72fr) minmax(260px, 1.28fr);
+    grid-template-areas:
+      'readout fields'
+      'actions fields'
+      'ribbon ribbon'
+      'metrics metrics'
+      'system system';
+    align-items: start;
+    gap: 10px 14px;
   }
 
-  .mobile-time-donut-wrap {
-    border-top: 0;
-    border-left: 1px solid var(--border);
+  .focus-start-fields,
+  .active-title-block {
+    grid-area: fields;
   }
 
-  .focus-rate {
-    border-top: 0;
-    border-left: 1px solid var(--border);
+  .primary-readout {
+    grid-area: readout;
+    min-height: 148px;
+    margin: 0;
+    padding: 14px 8px;
+  }
+
+  .primary-readout > strong {
+    font-size: clamp(48px, 8vw, 68px);
   }
 
   .focus-actions {
-    bottom: 12px;
+    position: static;
+    grid-area: actions;
+    margin: 0;
+  }
+
+  .mobile-temporal-ribbon {
+    grid-area: ribbon;
+  }
+
+  .runtime-metrics {
+    grid-area: metrics;
+  }
+
+  .focus-system-tools {
+    grid-area: system;
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  :root,
-  :root.dark {
-    --mobile-glass-fill: var(--surface);
-  }
-
+  .mobile-topbar,
   .app-navigation,
   .focus-actions,
   .dashboard-range,
   .connection-sheet {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    background: var(--surface);
-    box-shadow: var(--mobile-glass-solid-shadow);
-  }
-
-  .sheet-backdrop {
-    background: rgb(var(--app-bg) / 0.86);
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: var(--surface) !important;
+    background-image: none !important;
+    box-shadow: none !important;
   }
 }
 
@@ -5460,13 +6140,10 @@ code {
   .app-navigation button,
   .dashboard-range button,
   .focus-action,
-  .sheet-close {
-    transition: none;
-    transform: none !important;
-  }
-
-  .mobile-time-donut .segment,
-  .daily-ledger-stack {
+  .sheet-close,
+  .task-project-toggle,
+  .task-branch-toggle {
     transition: none !important;
+    transform: none !important;
   }
 }

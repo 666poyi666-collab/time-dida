@@ -11,15 +11,15 @@ function readProjectFile(...segments: string[]): string {
 }
 
 const mobileCss = readProjectFile('src', 'mobile', 'mobile.css');
-const liquidLayerMarker = '/* Liquid control layer';
-const liquidLayerOffset = mobileCss.indexOf(liquidLayerMarker);
+const mobileRoot = postcss.parse(mobileCss);
+const appleLayerMarker = '/* Apple platform surface';
+const appleLayerOffset = mobileCss.indexOf(appleLayerMarker);
 
-if (liquidLayerOffset < 0) {
-  throw new Error('mobile.css is missing the liquid control layer marker');
+if (appleLayerOffset < 0) {
+  throw new Error('mobile.css is missing the Apple platform surface marker');
 }
 
-const mobileRoot = postcss.parse(mobileCss);
-const liquidRoot = postcss.parse(mobileCss.slice(liquidLayerOffset));
+const appleRoot = postcss.parse(mobileCss.slice(appleLayerOffset));
 
 type RuleContext = {
   media?: string | null;
@@ -89,41 +89,53 @@ describe('mobile responsive and accessibility review contract', () => {
   it('keeps 360, 412 and 640x1024 on bottom tabs, then opens the sidebar at 760 or landscape', () => {
     const sidebarMedia = '(min-width: 760px), (orientation: landscape)';
 
-    expectRule(liquidRoot, '.app-frame', { display: 'block' }, { media: null });
+    expectRule(appleRoot, '.app-frame', { display: 'block' }, { media: null });
     expectRule(
-      liquidRoot,
+      appleRoot,
       '.app-navigation',
       {
         position: 'fixed',
         top: 'auto',
+        bottom: 'max(8px, env(safe-area-inset-bottom))',
+        height: 'auto',
+        'grid-auto-rows': 'auto',
         'grid-template-columns': 'repeat(4, minmax(0, 1fr))',
+        'align-content': 'normal',
       },
       { media: null },
     );
     expectRule(
-      liquidRoot,
+      appleRoot,
       '.focus-console-body',
       { 'grid-template-columns': 'minmax(0, 1fr)' },
       { media: null },
     );
     expectRule(
-      liquidRoot,
+      appleRoot,
       '.app-frame',
       { display: 'grid', 'grid-template-columns': '88px minmax(0, 1fr)' },
       { media: sidebarMedia },
     );
     expectRule(
-      liquidRoot,
+      appleRoot,
       '.app-navigation',
       { position: 'sticky', bottom: 'auto', 'grid-template-columns': '1fr' },
       { media: sidebarMedia },
     );
     expectRule(
-      liquidRoot,
+      appleRoot,
       '.focus-console-body',
       { 'grid-template-columns': 'minmax(0, 1fr) minmax(220px, 0.32fr)' },
       { media: sidebarMedia },
     );
+    expect(
+      findRule(
+        appleRoot,
+        '.app-navigation',
+        { position: 'sticky' },
+        { media: '(min-width: 620px)' },
+      ),
+    ).toBeUndefined();
 
     const modeAt = (width: number, height: number) =>
       width >= 760 || width > height ? 'sidebar' : 'bottom-tabs';
@@ -139,62 +151,54 @@ describe('mobile responsive and accessibility review contract', () => {
   it('keeps primary navigation, focus and settings targets at least 44 CSS pixels', () => {
     expectRule(mobileRoot, '.icon-button', { 'min-width': '52px', 'min-height': '44px' });
     expectRule(
-      liquidRoot,
+      appleRoot,
       '.app-navigation button',
       { 'min-width': '44px', 'min-height': '52px' },
       { media: null },
     );
-    expectRule(liquidRoot, '.focus-action', { 'min-width': '44px', 'min-height': '50px' });
-    expectRule(liquidRoot, '.sheet-close', {
-      width: '44px',
-      height: '44px',
-      'min-width': '44px',
-      'min-height': '44px',
-    });
-    expectRule(liquidRoot, '.dashboard-range button', { 'min-height': '44px' });
-    expectRule(liquidRoot, '.form-field .field-quick-action', { 'min-height': '44px' });
-    expectRule(liquidRoot, '.appearance-select-row select', { 'min-height': '44px' });
-    expectRule(liquidRoot, '.focus-system-tool-actions button', { 'min-height': '44px' });
-    expectRule(liquidRoot, '.sync-button', { 'min-width': '44px' });
-    expectRule(liquidRoot, '.sync-button', { 'min-height': '44px' });
+    expectRule(appleRoot, '.focus-action', { 'min-width': '44px', 'min-height': '48px' });
+    expectRule(appleRoot, '.sheet-close', { 'min-width': '44px', 'min-height': '44px' });
+    expectRule(appleRoot, '.dashboard-range button', { 'min-height': '44px' });
+    expectRule(appleRoot, '.focus-task-clear', { 'min-height': '44px' });
+    expectRule(appleRoot, '.task-project-toggle', { 'min-height': '52px' });
+    expectRule(appleRoot, '.task-row-main', { 'min-height': '60px' });
+    expectRule(appleRoot, '.task-start-button', { 'min-height': '52px' });
+    expectRule(appleRoot, '.sync-button', { 'min-width': '44px', 'min-height': '44px' });
+    expectRule(mobileRoot, '.appearance-select-row select', { 'min-height': '44px' });
   });
 
-  it('keeps the no-backdrop-filter path opaque in both light and dark themes', () => {
-    const unsupported =
-      'not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))';
+  it('keeps content opaque and scopes Liquid Glass to the functional chrome with a solid fallback', () => {
     const supported = '((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))';
+    const controls = ['.app-navigation', '.focus-actions', '.dashboard-range', '.connection-sheet'];
 
-    expectRule(liquidRoot, ':root', { '--mobile-glass-fill': 'var(--surface)' }, { media: null });
-    expectRule(
-      liquidRoot,
-      '.app-navigation',
-      { background: 'var(--mobile-glass-fill)' },
-      { media: null },
-    );
-    expectRule(
-      liquidRoot,
-      '.app-navigation',
-      { background: 'var(--surface)' },
-      { supports: unsupported },
-    );
-    expectRule(
-      liquidRoot,
-      ':root',
-      { '--mobile-glass-fill': 'rgb(var(--app-surface) / 0.74)' },
-      { supports: supported },
-    );
-    expectRule(
-      liquidRoot,
-      ':root.dark',
-      { '--mobile-glass-fill': 'rgb(var(--app-surface) / 0.84)' },
-      { supports: supported },
-    );
-    expectRule(
-      liquidRoot,
-      '.app-navigation',
-      { '-webkit-backdrop-filter': 'none', 'backdrop-filter': 'none' },
-      { media: '(prefers-reduced-transparency: reduce)' },
-    );
+    for (const selector of controls) {
+      expectRule(appleRoot, selector, { background: 'var(--surface) !important' });
+      expectRule(
+        appleRoot,
+        selector,
+        {
+          '-webkit-backdrop-filter': 'blur(18px) saturate(1.2) !important',
+          'backdrop-filter': 'blur(18px) saturate(1.2) !important',
+        },
+        { supports: supported },
+      );
+      expectRule(
+        appleRoot,
+        selector,
+        { '-webkit-backdrop-filter': 'none !important', 'backdrop-filter': 'none !important' },
+        { media: '(prefers-reduced-transparency: reduce)' },
+      );
+    }
+
+    expectRule(appleRoot, '.task-browser', {
+      '-webkit-backdrop-filter': 'none !important',
+      'backdrop-filter': 'none !important',
+      'background-image': 'none !important',
+    });
+    expect(appleRoot.toString()).not.toContain('--mobile-glass-sheen');
+
+    const confirmCss = readProjectFile('src', 'mobile', 'mobile-confirm.css');
+    expect(confirmCss).not.toMatch(/backdrop-filter:\s*blur/);
   });
 
   it('removes continuous and interaction motion when reduced motion is requested', () => {
@@ -212,15 +216,15 @@ describe('mobile responsive and accessibility review contract', () => {
     );
     expectRule(mobileRoot, '.mobile-workspace', { animation: 'none' }, { media: reducedMotion });
     expectRule(
-      liquidRoot,
+      appleRoot,
       '.app-navigation button',
-      { transition: 'none', transform: 'none !important' },
+      { transition: 'none !important', transform: 'none !important' },
       { media: reducedMotion },
     );
     expectRule(
-      liquidRoot,
+      appleRoot,
       '.focus-action',
-      { transition: 'none', transform: 'none !important' },
+      { transition: 'none !important', transform: 'none !important' },
       { media: reducedMotion },
     );
   });
@@ -241,6 +245,7 @@ describe('mobile responsive and accessibility review contract', () => {
     expect(connectionSheet).toContain('role="dialog"');
     expect(connectionSheet).toContain('aria-modal="true"');
     expect(connectionSheet).toContain('aria-labelledby="connection-title"');
-    expect(connectionSheet).toContain('aria-label="关闭账号设置"');
+    expect(connectionSheet).toContain("'关闭账号设置，返回本机模式'");
+    expect(connectionSheet).toContain('aria-label={authenticated');
   });
 });

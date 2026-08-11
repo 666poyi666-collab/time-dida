@@ -49,6 +49,7 @@ export function classifySyncV2Error(error: unknown): SyncV2ClientErrorCode {
     return 'authorization_failed';
   }
   if (/超时|timeout/i.test(message)) return 'timeout';
+  if (/无法连接|连接被拒绝|fetch failed|network error/i.test(message)) return 'network_error';
   if (/超过允许的字节上限|too large/i.test(message)) return 'response_too_large';
   if (/cursor.*ahead|ahead.*cursor/i.test(message)) return 'cursor_ahead';
   if (/响应|response|cursor|epoch|ACK|change feed|格式|JSON|UTF-8|revision/i.test(message)) {

@@ -32,7 +32,9 @@ export function ConnectionSheet({
     document.documentElement.classList.add('connection-sheet-open');
     primaryRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && authenticated) onClose();
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      onClose();
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => {
@@ -40,7 +42,7 @@ export function ConnectionSheet({
       document.documentElement.classList.remove('connection-sheet-open');
       previousFocus?.focus();
     };
-  }, [authenticated, onClose]);
+  }, [onClose]);
 
   const keepFocusInside = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== 'Tab') return;
@@ -63,7 +65,7 @@ export function ConnectionSheet({
     <motion.div
       className="sheet-backdrop"
       role="presentation"
-      onMouseDown={() => authenticated && onClose()}
+      onMouseDown={onClose}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -92,16 +94,14 @@ export function ConnectionSheet({
             <p className="eyebrow">FOCUSLINK ACCOUNT</p>
             <h2 id="connection-title">账号与云同步</h2>
           </div>
-          {authenticated && (
-            <button
-              className="sheet-close"
-              type="button"
-              onClick={onClose}
-              aria-label="关闭账号设置"
-            >
-              ×
-            </button>
-          )}
+          <button
+            className="sheet-close"
+            type="button"
+            onClick={onClose}
+            aria-label={authenticated ? '关闭账号设置' : '关闭账号设置，返回本机模式'}
+          >
+            ×
+          </button>
         </header>
 
         <div className="account-sheet-summary">
@@ -109,7 +109,7 @@ export function ConnectionSheet({
           <p>
             {authenticated
               ? `${accountLabel ?? 'FocusLink 账号'} · 这台设备已加入云同步。`
-              : '手机、平板和电脑登录同一个账号后，专注状态、任务和历史记录会自动同步。'}
+              : '登录后可跨设备同步；不登录也可关闭此页，直接使用本机专注。'}
           </p>
         </div>
 

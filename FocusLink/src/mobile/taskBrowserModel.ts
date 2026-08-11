@@ -15,6 +15,8 @@ export interface SyncedTaskGroup {
 
 export interface SyncedTaskTreeNode extends SyncedTask {
   children: SyncedTaskTreeNode[];
+  /** Completed parents stay hidden, but their titles remain part of an open descendant's path. */
+  hiddenAncestorTitles?: string[];
 }
 
 export interface SyncedTaskTreeEntry {
@@ -146,9 +148,19 @@ export function filterSyncedTaskForest(
     for (const node of nodes) {
       const children = filter(node.children);
       // A completed or otherwise hidden parent must not make an open descendant disappear.
-      // Promote the surviving children while retaining their own parentId for diagnostics.
+      // Promote the surviving children while carrying the hidden path explicitly; parentId alone
+      // cannot recover a title after the completed node leaves the rendered forest.
       if (node.isCompleted) {
-        result.push(...children);
+        result.push(
+          ...children.map((child) => ({
+            ...child,
+            hiddenAncestorTitles: [
+              ...(node.hiddenAncestorTitles ?? []),
+              node.title,
+              ...(child.hiddenAncestorTitles ?? []),
+            ],
+          })),
+        );
         continue;
       }
       const projectMatches =

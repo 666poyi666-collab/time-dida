@@ -444,9 +444,9 @@ export function isEncryptedFocusGuardEnvelopeV1(
     typeof record.entityKind === 'string' &&
     (expectedKind === null || record.entityKind === expectedKind) &&
     typeof record.nonce === 'string' &&
-    /^[A-Za-z0-9_-]{16,64}$/.test(record.nonce) &&
+    isCanonicalBase64Url(record.nonce, 12, 12) &&
     typeof record.ciphertext === 'string' &&
-    /^[A-Za-z0-9_-]{16,700000}$/.test(record.ciphertext) &&
+    isCanonicalBase64Url(record.ciphertext, 16, 525000) &&
     typeof record.aadHash === 'string' &&
     /^[a-f0-9]{64}$/i.test(record.aadHash) &&
     Number.isSafeInteger(record.aadBaseRevision) &&
@@ -460,6 +460,22 @@ export function isEncryptedFocusGuardEnvelopeV1(
 
 export function isSyncV2EntityType(value: unknown): value is SyncV2EntityType {
   return typeof value === 'string' && (SYNC_V2_ENTITY_TYPES as readonly string[]).includes(value);
+}
+
+function isCanonicalBase64Url(value: string, minimumBytes: number, maximumBytes: number): boolean {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) return false;
+  try {
+    const padded =
+      value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (value.length % 4)) % 4);
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    if (bytes.byteLength < minimumBytes || bytes.byteLength > maximumBytes) return false;
+    let encoded = '';
+    for (const byte of bytes) encoded += String.fromCharCode(byte);
+    return btoa(encoded).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '') === value;
+  } catch {
+    return false;
+  }
 }
 
 export function isFocusGuardEntityType(value: unknown): value is FocusGuardEntityType {

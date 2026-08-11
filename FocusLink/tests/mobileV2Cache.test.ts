@@ -19,6 +19,7 @@ import {
   retryMobileV2Lease,
   settleMobileV2Ack,
   writeMobileV2SyncFailure,
+  writeMobileV2SyncSuccess,
   writeMobileV2Bootstrap,
   writeMobileV2EntityState,
 } from '../src/mobile/v2Cache';
@@ -488,7 +489,12 @@ describe('mobile Sync v2 persistence', () => {
       deviceId: 'phone',
     });
     expect(await readMobileV2Status('phone')).toMatchObject({
-      lastVerifiedAt: expect.any(Number),
+      lastVerifiedAt: null,
+      lastErrorCode: 'network_error',
+    });
+    await writeMobileV2SyncSuccess('phone', 123);
+    expect(await readMobileV2Status('phone')).toMatchObject({
+      lastVerifiedAt: 123,
       lastErrorCode: null,
     });
   });

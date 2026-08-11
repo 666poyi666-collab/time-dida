@@ -5,11 +5,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FOCUSLINK_CANONICAL_SYNC_ORIGIN } from '../shared/sync/identityProtocol';
 import type { SyncV2Mutation } from '../shared/sync/v2Protocol';
 import {
+  claimMobileV2Outbox,
   enqueueMobileV2Mutation,
   readMobileV2Bootstrap,
   readMobileV2EntityState,
   readMobileV2Status,
+  retryMobileV2Lease,
   writeMobileV2Bootstrap,
+  writeMobileV2SyncSuccess,
+  type MobileV2BootstrapCheckpoint,
 } from '../src/mobile/v2Cache';
 import { runMobileSyncV2, validateMobileSyncV2ExchangeRequest } from '../src/mobile/v2Sync';
 
@@ -365,6 +369,94 @@ describe('mobile canonical Sync v2 recovery', () => {
       lastErrorCode: 'invalid_exchange_request',
     });
   });
+
+  it.each([
+    ['conflict', 'conflicts', 'conflict_present', { conflicts: 1, rejected: 0 }],
+    ['rejected', 'rejected', 'rejected_operation', { conflicts: 0, rejected: 1 }],
+  ] as const)(
+    'keeps a %s acknowledgement durable and records its partial-sync code',
+    async (ackStatus, resultKey, expectedErrorCode, expectedStatus) => {
+      const checkpoint = activeCheckpoint();
+      const mutation = partialMutation(ackStatus);
+      await writeMobileV2Bootstrap(checkpoint);
+      await writeMobileV2SyncSuccess(NEW_DEVICE_ID, 123);
+      await enqueueMobileV2Mutation(mutation, checkpoint, 1);
+
+      let exchanges = 0;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string | URL | Request) => {
+          const parsed = new URL(String(url));
+          if (parsed.pathname === '/sync/v2/status') return json(status(0));
+          exchanges += 1;
+          return json(
+            exchanges === 1
+              ? {
+                  ...page(),
+                  acks: [
+                    {
+                      opId: mutation.opId,
+                      entityType: mutation.entityType,
+                      entityId: mutation.entityId,
+                      status: ackStatus,
+                      revision: null,
+                      fingerprint: null,
+                      errorCode: `server_${ackStatus}`,
+                    },
+                  ],
+                }
+              : page(),
+          );
+        }),
+      );
+
+      await expect(
+        runMobileSyncV2({
+          endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+          token: NEW_TOKEN,
+          deviceId: 'ignored',
+        }),
+      ).resolves.toMatchObject({ [resultKey]: 1 });
+
+      expect(await readMobileV2Status(NEW_DEVICE_ID)).toMatchObject({
+        ...expectedStatus,
+        lastVerifiedAt: 123,
+        lastErrorCode: expectedErrorCode,
+      });
+    },
+  );
+
+  it('keeps a deferred retry visible and durable after a later empty sync round', async () => {
+    const checkpoint = activeCheckpoint();
+    await writeMobileV2Bootstrap(checkpoint);
+    await writeMobileV2SyncSuccess(NEW_DEVICE_ID, 123);
+    await enqueueMobileV2Mutation(partialMutation('conflict'), checkpoint, 1);
+    const claimed = await claimMobileV2Outbox(checkpoint, 1);
+    expect(claimed.items).toHaveLength(1);
+    await retryMobileV2Lease(claimed.leaseId, 'network_error', Date.now() + 60_000);
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const parsed = new URL(String(url));
+        if (parsed.pathname === '/sync/v2/status') return json(status(0));
+        return json(page());
+      }),
+    );
+
+    await expect(
+      runMobileSyncV2({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        token: NEW_TOKEN,
+        deviceId: 'ignored',
+      }),
+    ).resolves.toMatchObject({ pending: 1, conflicts: 0, rejected: 0 });
+    expect(await readMobileV2Status(NEW_DEVICE_ID)).toMatchObject({
+      pending: 1,
+      lastVerifiedAt: 123,
+      lastErrorCode: 'sync_failed',
+    });
+  });
 });
 
 function status(changeSeq: number) {
@@ -392,6 +484,45 @@ function page() {
   };
 }
 
+function activeCheckpoint(): MobileV2BootstrapCheckpoint {
+  return {
+    key: 'syncV2.bootstrap',
+    state: 'v2-active',
+    bootstrapId: null,
+    cursor: 'c0',
+    boundDeviceId: NEW_DEVICE_ID,
+    boundAccountId: 'account1',
+    syncEpoch: 'sync-epoch-1',
+    cursorEpoch: 'cursor-epoch-1',
+    accountGeneration: 1,
+    updatedAt: 1,
+  };
+}
+
+function partialMutation(status: 'conflict' | 'rejected'): SyncV2Mutation {
+  const entityId = `partial-${status}-session`;
+  return {
+    opId: `partial-${status}-operation`,
+    entityType: 'focus_metadata_v2',
+    entityId,
+    kind: 'put',
+    baseRevision: 0,
+    baseFingerprint: null,
+    payload: {
+      sessionId: entityId,
+      title: '待处理离线专注',
+      note: null,
+      subject: null,
+      tags: [],
+      taskAssociation: null,
+      updatedAt: 1,
+      updatedByDeviceId: NEW_DEVICE_ID,
+    },
+    deviceId: NEW_DEVICE_ID,
+    accountGeneration: 1,
+  };
+}
+
 function json(value: unknown, statusCode = 200): Response {
   return new Response(JSON.stringify(value), {
     status: statusCode,
@@ -415,7 +546,7 @@ function focusGuardEnvelope(entityKind: 'rule' | 'state' | 'completion' | 'confi
     product: 'focus-guard',
     entityKind,
     nonce: 'abcdefghijklmnop',
-    ciphertext: 'abcdefghijklmnop',
+    ciphertext: 'A'.repeat(22),
     aadHash: 'a'.repeat(64),
     aadBaseRevision: 0,
     operation: 'put',

@@ -17,9 +17,11 @@ import {
   parseV2DeviceCredential,
   readJson,
   rejectUnexpectedQuery,
+  validateV2Mutation,
   type V2DeviceCredentialRecord,
   type V2Identity,
 } from '../cloudflare/accountDurableObject';
+import type { EncryptedFocusGuardEnvelopeV1, SyncV2Mutation } from '../shared/sync/v2Protocol';
 
 describe('device public id encoding', () => {
   it('never emits the underscore reserved as an fl2 credential separator', () => {
@@ -211,6 +213,42 @@ describe('Account DO request boundaries', () => {
     expect(() =>
       rejectUnexpectedQuery(new URL('https://focuslink.internal/v1/live/command?retry=1')),
     ).toThrow(/query/);
+  });
+});
+
+const FOCUS_GUARD_ENVELOPE: EncryptedFocusGuardEnvelopeV1 = {
+  version: 1,
+  algorithm: 'A256GCM',
+  product: 'focus-guard',
+  entityKind: 'state',
+  nonce: 'AAAAAAAAAAAAAAAA',
+  ciphertext: 'AAAAAAAAAAAAAAAAAAAAAA',
+  aadHash: 'a'.repeat(64),
+  aadBaseRevision: 7,
+  operation: 'put',
+  createdAt: 1_700_000_000_000,
+};
+
+function focusGuardMutation(baseRevision: number): SyncV2Mutation {
+  return {
+    opId: `focus-guard-authority-${baseRevision}`,
+    entityType: 'focus_guard_state_v1',
+    entityId: 'guard-state-focuslink-live',
+    kind: 'put',
+    baseRevision,
+    baseFingerprint: null,
+    payload: FOCUS_GUARD_ENVELOPE,
+    deviceId: 'device-authority',
+    accountGeneration: 1,
+  };
+}
+
+describe('Account DO Focus Guard mutation authority', () => {
+  it('rejects old ciphertext attached to a new mutation revision', () => {
+    expect(validateV2Mutation(focusGuardMutation(7))).toBeNull();
+    expect(validateV2Mutation(focusGuardMutation(8))).toBe(
+      'invalid_encrypted_focus_guard_envelope',
+    );
   });
 });
 

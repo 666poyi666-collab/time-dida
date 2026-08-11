@@ -53,6 +53,10 @@ export interface NativeCloudPollStatus {
   lastSuccessAtEpochMs: number;
   lastRevision: number;
   lastError: string;
+  lastErrorCode?: string;
+  /** Completed-ledger records deliberately removed from ordinary retry. */
+  terminalLedgerCount?: number;
+  terminalLedgerErrorCode?: string;
 }
 
 export interface NativePauseReminderPreference {
@@ -102,6 +106,9 @@ export interface NativeFocusStatus {
   pictureInPictureActive?: boolean;
   immersiveSystemBars?: boolean;
   nativeConnectionConfigured?: boolean;
+  /** Safe connection identity used only to revalidate an explicit native repair action. */
+  nativeConnectionDeviceId?: string;
+  nativeConnectionLease?: string;
   controlsAvailable?: boolean;
   pendingCommandCount?: number;
   cloudPoll?: NativeCloudPollStatus;
@@ -181,6 +188,10 @@ interface FocusRuntimePlugin {
     deviceId: string;
     connectionLease: string;
   }): Promise<{ queued?: boolean; pending?: number }>;
+  requeueTerminalLedger(options: {
+    deviceId: string;
+    connectionLease: string;
+  }): Promise<{ requeued?: number }>;
   updateAuthorityProjectionHistory(options: {
     deviceId: string;
     connectionLease: string;
@@ -369,6 +380,25 @@ export async function enqueueNativeCompletedLedgerBundle(
 }
 
 /**
+ * Requests exactly one new completed-ledger check after the user has handled a terminal conflict
+ * on desktop. This does not run on status refreshes and never starts an automatic retry loop.
+ */
+export async function requeueNativeTerminalLedger(
+  deviceId: string,
+  connectionLease: string | null,
+): Promise<number> {
+  if (!isNativeFocusRuntimeAvailable()) return 0;
+  if (typeof deviceId !== 'string' || deviceId.length === 0 || deviceId.length > 200) {
+    throw new DOMException('Android 账号连接已变化', 'AbortError');
+  }
+  const result = await FocusRuntime.requeueTerminalLedger({
+    deviceId,
+    connectionLease: requireNativeConnectionLease(connectionLease),
+  });
+  return safeNativeRequeueCount(result.requeued);
+}
+
+/**
  * Builds the exact, credential-free V1 history consumed by 不做手机控.
  * Invalid or arithmetically inconsistent legacy rows are omitted fail-closed.
  */
@@ -548,6 +578,11 @@ function safeProjectionTimestamp(value: number): number {
     throw new Error('authority projection timestamp must be a safe integer');
   }
   return value;
+}
+
+function safeNativeRequeueCount(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) return 0;
+  return Math.min(128, value);
 }
 
 function requireNativeConnectionLease(value: unknown): string {

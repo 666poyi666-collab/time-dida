@@ -2,7 +2,7 @@
 
 > 适用版本：v0.12.x
 >
-> 当前实现：v0.12.75
+> 当前实现：v0.12.85
 >
 > 文档责任：Electron 主进程、SQLite、IPC、任务 Provider、同步、测试与发布。
 
@@ -18,14 +18,14 @@
 
 - [TEST_AND_RELEASE.md](TEST_AND_RELEASE.md)：自动化、真实服务、打包、校验和 GitHub Release 门禁。
 - [INSTALLER_TROUBLESHOOTING.md](INSTALLER_TROUBLESHOOTING.md)：Windows 安装、升级、卸载错误编号与可复现排查命令。
-- [SYNC_TROUBLESHOOTING.md](SYNC_TROUBLESHOOTING.md)：跨设备实时专注、账本同步和本地孤立暂停错误编号与排查命令。
+- [SYNC_TROUBLESHOOTING.md](SYNC_TROUBLESHOOTING.md)：跨设备实时专注、账本同步和本地孤立暂停的稳定故障编号、诊断顺序与可逆处理。
 - v0.12.53 已完成移动端本地优先、公网 Cloudflare 同步、Android 悬浮条性能、Windows 覆盖安装修复和三端同版门禁；小米超级岛在指定 HyperOS ROM 上得到明确的 OEM Focus 授权拒绝兼容性结论，标准通知与悬浮条继续可用。
 - [根 CHANGELOG](../../CHANGELOG.md)：跨版本历史的唯一索引；最近三个版本的完整正文保留在根 `release-v*/` 目录。
 
 ### 开发与交接
 
 - [AI_HANDOFF_CHECKLIST.md](AI_HANDOFF_CHECKLIST.md)：维护者接手、实现和交付清单。
-- [IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md)：关键实现决策、三端验证矩阵、部署结果和遗留风险。
+- [IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md)：产品级 Bug/事故证据与根因、关键实现决策、三端验证矩阵、部署结果和遗留风险。
 - [../frontend-design/FRONTEND_SPEC.md](../frontend-design/FRONTEND_SPEC.md)：用户可见行为、主题、动效与小窗表现。
 
 ## 源码责任
@@ -48,6 +48,7 @@
 ## 文档维护规则
 
 - 稳定规则只写一处；前端文稿描述体验，后端文稿描述事实和副作用。
+- 产品级 Bug/事故只在 `IMPLEMENTATION_LOG.md` 留事实记录；可重复故障只在对应 troubleshooting 文档分配稳定编号。每轮开始前必须先读当前实施日志、相关故障编号和完整 `TEST_AND_RELEASE.md`，不得另建平行 Bug 日志。
 - 一次性调试报告、命令输出、截图和生成 JSON 不进入仓库。
 - 新增 IPC、数据字段、Provider 能力或同步状态时，同一变更必须更新后端规范、类型、测试和 Release 正文源。
 - 每个发布目录只保留安装版、便携版、`SHA256SUMS.txt` 与 `RELEASE_NOTES.md`。

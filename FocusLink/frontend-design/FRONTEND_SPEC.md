@@ -1,6 +1,6 @@
 # FocusLink 前端设计规范
 
-> 目标版本：v0.12.x（当前实现：v0.12.74）
+> 目标版本：v0.12.x（当前实现：v0.12.85）
 >
 > 当前状态：「时间仪器 Time Instrument」设计系统已实现并取代 Linear Workbench；v0.12.63 起四个功能视图统一采用「工位横幅 → 主舞台 → 文脉栏」三段呈现语法（3单重构）。
 >
@@ -297,6 +297,10 @@ v0.12.63 起设置页呈现为「编号规格表」：工位横幅左侧显示�
 
 设置页「同步」提供默认关闭的「PC 参与实时专注」。开启后必须明确云端是活动计时唯一事实源、断线时控制不可确认，并显示实时连接、revision 与状态；不得继续展示“运行中的计时只归当前设备”。切换事实源只能在本地计时 idle 时生效。实时握手成功前不得把开始动作路由到未确认的云端；服务不可达时普通桌面计时保持本地优先，设置页显示断开状态并提供 [SYNC_TROUBLESHOOTING.md](../backend-design/SYNC_TROUBLESHOOTING.md) 排查入口。
 
+移动实时控制的数据面只允许 canonical origin 与固定的公网 failover origin；当 canonical 网络传输失败时，客户端可按固定顺序切换到 failover，不接受用户输入的任意域名，也不把 failover 用作账号登录域。页面隐藏或 Capacitor inactive 时必须中止当前 long-poll；恢复可见且在线后只能启动一个新的 generation loop。网络/超时/5xx/rate-limit 可有界退避，401/403 与协议错误必须停止盲目重试并给出可操作提示。
+
+同步状态呈现必须消费稳定机器码与结构化计数，不得用本地化文本正则猜测：`network_error/timeout` 是 transport warning，`conflict_present + unresolvedConflicts > 0` 是“同步已连接，有记录待确认”，身份/权限错误与协议/拒绝错误分别进入明确 danger；冲突数归零时陈旧 `conflict_present` 不得显示“0 条冲突”或继续标红。历史日志、当前 health、最近成功账本时间与实时连接 telemetry 是四份独立证据，任一非空 `lastError` 不能自动等同于当前云端断开。
+
 小窗尺寸唯一真值是 `shared/miniWindowLayout.ts`：
 
 - 收起 `184×44`：状态点 + 状态词、当前时间（25px）、2px 进度轨与状态粒子、展开入口；高度与 Windows 无框窗口稳定最小值一致，窗口外不得出现黑色残边。
@@ -304,6 +308,7 @@ v0.12.63 起设置页呈现为「编号规格表」：工位横幅左侧显示�
 - 不增加第三尺寸，不允许自由缩放；旧设置中的 320×124 由 `snapMiniWindowSize` 自动归一。
 - 原生拖拽释放后先吸附再 320ms 收束自动折叠；展开向显示器内部生长并 clamp 到 work area；平面实色 + 1px 边框 + 顶部状态边，禁玻璃/光晕/胶囊。
 - 收起后必须保留主进程确认的 side/corner placement，但贴边只改变位置和尺寸，不绘制绿色 docking cue、L 型签名或额外顶/底色条。纯展示的秒轨、时间和状态都属于原生可拖区，只有实际按钮使用 `no-drag`，不得因透明 canvas 或进度层造成局部拖不动。
+- 设置 → 专注小窗提供一次性「置于最顶层」动作。它只重申 native topmost Z-order，不抢焦点、不改变 bounds、两态尺寸、吸附或自动收起计时；mini renderer 的 collapsed/expanded 控件数量保持不变。
 - 时间与按钮分属独立网格行，结构上不允许重叠或换行；暂停粒子必须从当前分钟进度边界按真实毫秒相位分批消散，不得固定从轨道最右端喷出或无限重复同一条 CSS 轨迹。长任务名自动往返，reduced-motion 下提供可聚焦横向滚动；字体切换后必须重新测量。
 
 本次专注账本的所有条目都必须保留状态语义：专注条目使用当前全局强调色，暂停条目使用暂停红，至少覆盖左侧状态轨、时间轴刻点、标题与时长。`is-current` 只增加背景强调，不能成为唯一带颜色的条目。
@@ -317,7 +322,7 @@ Web/PWA 与 Capacitor Android 继续复用同一套 `src/mobile/` React 界面�
 
 - 首屏优先展示唯一活动会话。状态固定为待机、专注中、已暂停；可填写本次标题并开始，也可暂停、继续和结束。任何写操作等待云端确认期间都必须防重复提交。
 - 专注页在手机、平板和 Web 均显示同一真实墙钟时间之带：移动端使用紧凑自适应 canvas，不提供桌面近景/远景切换，但必须保留完整绿—红—绿区间、暂停残留和 reduced-motion 静态表达；画布下方继续显示三项累计时间与控制。
-- 待机时优先提供电脑端任务快照选择器：选择任务会带入标题与稳定任务上下文；无快照、任务不在清单中或用户不想关联时，仍可直接填写标题自由开始。任务快照写入 IndexedDB，PC 关闭后继续显示最后一次成功同步的任务。
+- 待机时优先提供「从云端任务清单选择」入口：云端内容是电脑从滴答清单读取并最后一次成功发布的任务快照；选择任务会带入标题与稳定任务上下文。无快照、任务不在清单中或用户不想关联时，仍可直接填写标题自由开始。任务快照写入 IndexedDB，PC 关闭后继续显示最后一次成功同步的版本；手机和平板不直接接触滴答凭据。
 - 电脑快照中的 `parentId` 必须在 renderer 重建为任务树：父任务是带子项完成数、展开按钮和主操作的独立摘要，子项进入内缩 child group；三级以上停止继续扩大缩进，改用短连接线和完整父级路径。搜索命中子项时保留祖先路径，开放子项不得被已完成父项吞掉，孤儿或循环父链安全降级为根项；选择、展开与“开始专注”是三个独立动作。选择只更新当前任务并留在任务页，只有“开始专注”才进入专注页；760px 起或横屏的任务页使用左侧任务树与右侧所选详情双栏，窄分屏回落单栏；桌面选择器保持相同层级和状态语义。
 - 移动时间之带至少使用稳定 60 秒近景窗口，逐步增长并在超长会话中显示最近 30 分钟；画布颜色只能使用 Android WebView 可解析的实色。手机首屏画布固定为 112px，平板为 176–260px，并显示起点、当前时刻、网格和刻度，不能在第一秒把整条画布填满。
 - 实时状态由云端 revision 作为权威事实。客户端以响应 `serverTime` 为显示基点逐秒外推三时间；断线时明确标记「离线推算」，不得把本机 tick 冒充另一设备已经确认的状态。
@@ -325,16 +330,17 @@ Web/PWA 与 Capacitor Android 继续复用同一套 `src/mobile/` React 界面�
 - 实时活动态是服务端权威的 compare-and-swap 寄存器，不做字段级或 CRDT 合并：客户端只接受更高 revision；同 revision 仅允许同一 session/state 的较新时间物化，禁止旧响应或同版本异态倒灌。连接身份切换后，旧 endpoint/token 的在途响应必须失效。未配置令牌时不得恢复或展示旧活动快照；离线缓存必须明确标记「缓存」，不能和已确认云端态并列成叠加态。
 - PC 关机、未配置连接或云端不可达时，移动端始终允许新建明确标为「本机」的独立 UUID；陈旧 running/paused 缓存只提示“其他设备可能仍有活动会话”，不得复用旧 sessionId。离线开始的整轮会话保持本机权威，不中途升级为云端 live。恢复连接只读探测；发现不同云端活动 UUID 时进入 `forked-local`，同时展示本机会话和远端会话提示，两个控制域互不操作、互不覆盖、分别结束入账。本机结束事务先写 completed bundle 再移除运行态，收到 `applied/duplicate` 才删除 pending 与同步元数据；`conflict/rejected` 保留诊断且不阻塞后续记录。存在本机活动态或待处理记录时禁止更换 endpoint/token 或移除令牌。
 - ACK 文案必须区分 applied、duplicate、conflict、rejected：duplicate 表示没有再次执行；conflict 表示本次操作未执行并显示提交 revision 与云端 revision；不得笼统宣称「另一设备覆盖」或「已同步到所有设备」。顶部连接色只表达实时控制连接，账本拉取失败不能把仍然正常的实时连接染成错误态。
+- 移动账本只有 legacy/V2 pending、conflict、unresolved conflict 与 rejected 全为 0 时才能显示“账本同步已确认”；任一非零都使用 partial/warning。待处理数按 completed-session identity 合并 legacy/V2，不把一场 ledger+metadata mutation 计成两场，不计入已绑定其他 device 的记录；partial、重启或再次失败都不得推进原生 `lastVerifiedAt`。Android completed-ledger 的 conflict/rejected 属需要人工处理的 terminal ACK：原始 outbox 与 terminal marker 必须保留、普通后台重试停止，authority projection 继续显示 terminal 数量和安全中文诊断，后续其他记录成功不得清掉。用户先在电脑端处理后，只有点击原生控制区“重新检查已结束专注”才能以当前 device/lease 安排一次绑定 expected device id 的独立 recheck；普通 Worker 仍不可读取 terminal，后台绝不自动重放，只有 applied/duplicate 才双清 outbox 与 sidecar。手表对 applied/duplicate/conflict/rejected 四类 ACK 都必须显示明确结果；未知内部 code 不直接展示。该手表 ACK 要求是 OPPO OWW221 退役后保留的冻结历史回归合同：只约束既有冻结 renderer 的自动化回归，不授权任何新的 OPPO/手表开发或新设备登记。
 - 在线时通过有界长轮询等待 revision 变化；页面隐藏、网络切换、连接参数变化和组件卸载必须取消旧请求，重连不得累加轮询或让旧账号数据回填。
 - 结束会话后继续复用完整的 Session / Segment / Pause 账本与 IndexedDB 缓存。关联状态仍使用「已关联 / 未关联」，来源设备不能写成任务来源；缓存命中、实时状态确认和账本拉取是三种不同结果。旧安装或账号切换留下的账本 cursor 被服务判定为 `invalid_cursor` 时，移动端应自动清空旧账号缓存并从头重建一次，不向用户暴露英文协议错误，也不得把旧账号会话与新账号结果叠加。
 - 移动端不直接调用 dida CLI 或番茄 To-do 本地桥。结束记录会进入 FocusLink 跨设备账本；只有桌面端先导入权威 completed bundle，再真实执行并确认第三方投递后，才能显示对应的「已同步」或「上传已确认」。PC 未开启实时控制时仍保持本地优先，不得暗示移动端已接管 PC 计时。
-- Web/PWA 与 Android 使用与桌面一致的四入口信息架构：专注、任务、统计、设置。v0.12.74 沿用的原创 Liquid Glass 只属于控制层：底部 tab、宽屏 sidebar、segmented controls、浮动主操作和弹层可以使用有边界的半透明材质；标题、状态带、计时面、任务树、统计正文和设置内容保持清楚、连续且不模糊，禁止复制 Apple UI Kit、SF Symbols 或堆成玻璃卡片墙。手机与 640×1024 竖屏固定使用底部四项导航和单列工作面，专注页按「主读数 → 任务/标题 → 时间之带 → 三时间」顺读，主操作条停在底部导航之上；只有宽度至少 760px 或横屏才切换 sidebar / split。所有控件至少 44px，文本输入不小于 16px；暗色主题、无 `backdrop-filter`、减少透明度和 `prefers-reduced-motion` 都必须退化为不透明、无位移动效的可读界面。使用 `100dvh`、safe-area 与 320px 下限，360×800、412×915、640×1024、760×1024、915×412 及更宽屏幕不得横向溢出。华为 capsule、小米系统表面与 OPPO 手表专用 renderer 不因这一表现层改写。
+- Web/PWA 与 Android 使用与桌面一致的四入口信息架构：专注、任务、统计、设置。v0.12.76 起移动端采用 Apple HIG 启发的系统化层级：系统字体回退、清楚的不透明 grouped surface、发丝分隔、44px 触控区、统一圆角和短促状态过渡。内容、任务树、表单与统计正文不得使用 blur、sheen、发光渐变或“液态玻璃”卡片墙；仅底部 tab / 宽屏 sidebar、主操作条、segmented controls 与 modal sheet 可作为稀疏的 Liquid Glass 控制层。每一处控制层必须有实色不透明基线，并在不支持 blur、减少透明度或减少动效时回退为同一信息层级；不得复制 Apple 控件或图标资产。这个取舍遵循 [Apple 的 2026 Liquid Glass 指引](https://developer.apple.com/documentation/TechnologyOverviews/adopting-liquid-glass)：material 是导航和控制的独立功能层，不能覆盖可读内容，也不能堆叠滥用。手机与 640×1024 竖屏固定使用底部四项导航和单列工作面，专注页按「主读数 → 任务/标题 → 时间之带 → 三时间」顺读，主操作条停在底部导航之上；只有宽度至少 760px 或横屏才切换 sidebar / split。所有控件至少 44px，文本输入不小于 16px；亮暗主题、减少透明度和 `prefers-reduced-motion` 均不能改变信息层级。使用 `100dvh`、safe-area 与 320px 下限，360×800、412×915、640×1024、760×1024、915×412 及更宽屏幕不得横向溢出。华为 capsule 与小米系统表面继续维护；OPPO 手表 renderer 已冻结并退出新开发。
 - 移动端直接加载 `temporal-foundation.css` 的语义 token、字体和五色强调映射，不再维护独立的硬编码绿色/Inter 主题。设置视图提供与桌面同名的明亮/深色/跟随系统、六套字体和五种强调色选择，并把选择持久化到该设备；响应式布局可以不同，但颜色、字体、焦点环、暂停红和危险深红必须保持同一语义。
-- 任务视图按电脑端项目/清单分组，默认只显示至少 52px 高的清单头与任务数量；用户展开后才渲染该清单任务。当前选中任务所在组自动展开，搜索或指定清单筛选时展开匹配组；不得在首屏一次铺开全部清单内容。
+- 任务视图按云端快照中的项目/清单分组，默认只显示至少 52px 高的清单头与任务数量；用户展开后才渲染该清单任务。当前选中任务所在组自动展开，搜索或指定清单筛选时展开匹配组；搜索、路径、选择、展开和「关联并开始专注」保留独立交互，窄屏也必须显示所选任务完整父路径；不得在首屏一次铺开全部清单内容。专注页不再并排放原生 `<select>` 和浏览按钮，只用一个统一 disclosure 进入同一任务树。
 - 统计视图只消费 `shared/dayLedgerAnalytics.ts` 派生出的有效日账本，renderer 不再实现第二套 gap 算法。今天/近 7 天/近 30 天三段切换共同展示 focus/pause/gap 甜甜圈、四项 KPI、每日三段构成、固定 00/07/12/22/24 的全天轴、精确 gap 明细、任务投入 100% 构成和唯一会话账本；无真实 focus 起点时显示“今日尚未启动”，不得生成全天空档，旧 duration-only 行只标 `estimated`。选择某日后，结论、KPI、甜甜圈、任务投入、全天轴、gap 明细与会话账本一起切换到该日，再次点击恢复范围；任务投入总量与同窗有效专注一致。gap 色块和明细保持只读，不制造额外 Tab 停靠点。
 - v0.12.72 起，普通设置页只呈现 FocusLink 账号、云同步状态、最近同步、立即同步、退出登录和清本机缓存；禁止出现服务地址、访问令牌、配对码、“编辑连接”或高级同步开关。已有合法 `fl2` 自动显示为已登录；新设备点击登录后进入系统浏览器 owner 流程，回到 App 后自动登记并同步，不要求复制任何字符串。
 - Windows 用 safeStorage、Android 用 Keystore 保存后台所需设备凭据；凭据、canonical endpoint 和 authority 配置都是内部实现，不能被普通 renderer读取或显示。退出登录只移除当前设备凭据并保留本机账本；存在本机活动会话或待补传记录时移动端必须阻止退出。账号/凭据切换后旧请求失效，旧账号缓存不得倒灌。
-- 生产同步只使用 canonical HTTPS Account DO authority，Windows、手机和平板都直接连接云端；Electron 运行期不得启动 ADB reverse、自动 Android 配对或本机回环中继。旧 pairing API 只作升级兼容，正常账号路径由 identity gateway 在 owner 登录成功后后台登记设备。OPPO 手表不得复制手机 token，只能请求“从手机登录”并获得自己的 deviceId/credential。旧 loopback endpoint 只可用于显式合同测试，不得暴露到局域网。
+- 生产同步只使用 canonical HTTPS Account DO authority，Windows、手机和平板都直接连接云端；Electron 运行期不得启动 ADB reverse、自动 Android 配对或本机回环中继。旧 pairing API 只作升级兼容，正常账号路径由 identity gateway 在 owner 登录成功后后台登记设备。OPPO 手表已退役，不再登记新设备或扩展同步能力。旧 loopback endpoint 只可用于显式合同测试，不得暴露到局域网。
 - PWA manifest、页面标题与离线 app shell 使用「FocusLink 专注」语义，不再写「只读预览」。Service Worker 只缓存同源静态资源，不缓存 Bearer 响应或跨源实时接口。
 - Capacitor 仅包装同一个 `dist-mobile`，Android 工程只提供薄原生集成。最低 API 24；禁止系统备份 WebView token/账本缓存，Network Security Config 仅为 localhost/127.0.0.1 回环测试开放明文，生产地址必须 HTTPS。
 - Android 活动会话使用可见前台通知，动作包含暂停/继续/结束；快捷设置 Tile 在已有活动快照时只转发暂停/继续，待机时打开 App 完成必要输入。原生层不推进业务时钟，也不先行改变状态；通知/Tile 动作进入至少一次命令队列，携带 session/revision。前台 Service 可直接用 Keystore 凭据提交同一个幂等命令，Web 层也可并发重试；只有云端返回 applied/duplicate/conflict/rejected 与最新快照后才移除队列，WebView 被回收不得让系统动作失效。

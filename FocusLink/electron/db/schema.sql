@@ -155,6 +155,23 @@ CREATE TABLE IF NOT EXISTS sync_device_identity (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS remote_writeback_queue (
+  connection_scope TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  provider TEXT NOT NULL CHECK(provider IN ('dida', 'tomatodo')),
+  state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending', 'claimed', 'completed')),
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_retry_at INTEGER NOT NULL DEFAULT 0,
+  lease_id TEXT,
+  lease_expires_at INTEGER,
+  last_error TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  completed_at INTEGER,
+  PRIMARY KEY(connection_scope, session_id, provider),
+  FOREIGN KEY(session_id) REFERENCES focus_sessions(id) ON DELETE CASCADE
+);
+
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_segments_session ON focus_segments(session_id);
 CREATE INDEX IF NOT EXISTS idx_pauses_session ON pause_events(session_id);
@@ -166,6 +183,14 @@ CREATE INDEX IF NOT EXISTS idx_sync_outbox_ready ON sync_outbox(state, next_retr
 CREATE INDEX IF NOT EXISTS idx_sync_outbox_lease ON sync_outbox(lease_expires_at);
 CREATE INDEX IF NOT EXISTS idx_sync_conflicts_status ON sync_conflicts(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_sync_operation_history_completed ON sync_operation_history(completed_at);
+CREATE INDEX IF NOT EXISTS idx_remote_writeback_scope_ready
+  ON remote_writeback_queue(connection_scope, state, next_retry_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_remote_writeback_scope_lease
+  ON remote_writeback_queue(connection_scope, lease_expires_at);
+CREATE INDEX IF NOT EXISTS idx_remote_writeback_ready
+  ON remote_writeback_queue(state, next_retry_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_remote_writeback_lease
+  ON remote_writeback_queue(lease_expires_at);
 
 -- 数据完整性约束（触发器）
 -- 不允许 segment_ended_at 早于 segment_started_at

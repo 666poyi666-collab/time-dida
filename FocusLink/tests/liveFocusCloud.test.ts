@@ -288,14 +288,35 @@ describe('live focus HTTP routes', () => {
   });
 
   async function startServer(): Promise<string> {
-    server = createDeviceSyncCloudServer({
-      tokenAccounts: new Map([
-        [TOKEN_A, ACCOUNT_A],
-        [TOKEN_B, ACCOUNT_B],
-      ]),
-      allowedOrigins: [ORIGIN],
-    });
-    return (await server.listen()).url;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      server = createDeviceSyncCloudServer({
+        tokenAccounts: new Map([
+          [TOKEN_A, ACCOUNT_A],
+          [TOKEN_B, ACCOUNT_B],
+        ]),
+        allowedOrigins: [ORIGIN],
+      });
+      const address = await server.listen();
+      try {
+        // Port 0 is intentionally used to avoid conflicts, but an OS may hand
+        // out a port that WHATWG fetch blocks. Probe the selected port and
+        // retry instead of making the HTTP contract randomly fail.
+        await fetch(`${address.url}/__focuslink_port_probe__`, { method: 'HEAD' });
+        return address.url;
+      } catch (error) {
+        await server.close();
+        server = null;
+        if (!isFetchBadPortError(error)) throw error;
+      }
+    }
+    throw new Error('could not allocate a loopback port accepted by fetch');
+  }
+
+  function isFetchBadPortError(error: unknown): boolean {
+    const candidate = error as { cause?: { message?: unknown }; message?: unknown };
+    return [candidate.message, candidate.cause?.message].some(
+      (message) => typeof message === 'string' && message.toLowerCase().includes('bad port'),
+    );
   }
 
   async function readJson<T>(response: Response): Promise<T> {

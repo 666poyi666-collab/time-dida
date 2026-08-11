@@ -26,15 +26,18 @@ import type { Project, Task } from '@shared/types';
 import {
   TASK_SNAPSHOT_PATH,
   TASK_SNAPSHOT_PROTOCOL_VERSION,
+  isTaskSnapshotPublishedAtWithinFutureSkew,
   parseTaskSnapshotResponse,
   toTaskSnapshotPayload,
   validateTaskSnapshotPayload,
   type TaskSnapshotPayload,
   type TaskSnapshotPublishRequest,
+  type TaskSnapshotResponse,
 } from '@shared/sync/taskSnapshotProtocol';
 import { parseDeviceToken } from '@shared/sync/v2Protocol';
 import { FOCUSLINK_CANONICAL_SYNC_ORIGIN } from '@shared/sync/identityProtocol';
 import { classifySyncV2Error, SyncV2ClientError } from '@shared/sync/v2ClientError';
+import { migrateStoredDeviceSyncError } from '@shared/sync/deviceSyncStatusCode';
 import {
   getSession,
   getMeta,
@@ -45,21 +48,33 @@ import {
   setMeta,
 } from '../db/index.js';
 import { getSettings, updateSettings } from '../settingsStore.js';
+import { runRemoteWritebacks } from './remoteWritebackCoordinator.js';
+import { getNextRemoteWritebackRetryAt } from './remoteWritebackStore.js';
 import { logger } from '../logger.js';
 import {
   getDeviceSyncToken,
   hasDeviceSyncToken,
   setDeviceSyncToken,
 } from './deviceSyncCredentials.js';
-import { makeDeviceSyncConnectionScope, packDeviceSyncMutations } from './deviceSyncPolicy.js';
+import {
+  makeDeviceSyncConnectionScope,
+  makeDeviceSyncProviderScope,
+  packDeviceSyncMutations,
+} from './deviceSyncPolicy.js';
 import { readDesktopV2Status } from './v2OutboxStore.js';
 
 const META_DEVICE_ID = 'deviceSync.deviceIdV1';
 const META_CHECKPOINT_PREFIX = 'deviceSync.checkpointV2';
 const META_LAST_SYNC_AT_PREFIX = 'deviceSync.lastSyncAtV2';
 const META_LAST_ERROR_PREFIX = 'deviceSync.lastErrorV2';
-const META_PENDING_TASK_SNAPSHOT = 'deviceSync.pendingTaskSnapshotV1';
+const META_PENDING_TASK_SNAPSHOT_PREFIX = 'deviceSync.pendingTaskSnapshotV1';
 const REQUEST_TIMEOUT_MS = 15_000;
+
+let remoteWritebackWakeup: {
+  connectionScope: string;
+  retryAt: number;
+  timer: ReturnType<typeof setTimeout>;
+} | null = null;
 
 interface LocalEntityState {
   revision: number;
@@ -109,6 +124,7 @@ interface DeviceSyncConnection {
   endpoint: string;
   accessToken: string;
   scope: string;
+  providerScope: string;
 }
 
 export interface DeviceSyncRuntimeConnection {
@@ -116,6 +132,7 @@ export interface DeviceSyncRuntimeConnection {
   accessToken: string;
   deviceId: string;
   scope: string;
+  providerScope: string;
   generation: number;
 }
 
@@ -138,7 +155,10 @@ class DeviceSyncHttpError extends Error {
 }
 
 let inFlight: { scope: string | null; promise: Promise<DeviceSyncRunResult> } | null = null;
-let taskPublishInFlight: Promise<boolean> | null = null;
+const taskPublishInFlight = new Map<
+  string,
+  { connection: DeviceSyncRuntimeConnection; promise: Promise<boolean> }
+>();
 
 export function getDeviceSyncStatus(): DeviceSyncStatus {
   const settings = getSettings().deviceSync;
@@ -160,7 +180,11 @@ export function getDeviceSyncStatus(): DeviceSyncStatus {
     // Database initialization owns the first status call during startup.  A
     // later refresh reports the persisted canonical v2 state.
   }
-  const storedError = connection ? getMeta(lastErrorMetaKey(connection.scope)) || null : null;
+  const storedErrorKey = connection ? lastErrorMetaKey(connection.scope) : null;
+  const rawStoredError = storedErrorKey ? getMeta(storedErrorKey) || null : null;
+  const storedError = migrateStoredDeviceSyncError(rawStoredError, (normalized) => {
+    if (storedErrorKey) setMeta(storedErrorKey, normalized);
+  });
   const accountMatch = connection?.accessToken.match(
     /^fl2_([A-Za-z0-9-]{6,80})_[A-Za-z0-9-]{6,80}_/,
   );
@@ -181,9 +205,7 @@ export function getDeviceSyncStatus(): DeviceSyncStatus {
     lastSyncAt: connection
       ? parseOptionalNumber(getMeta(lastSyncAtMetaKey(connection.scope)))
       : null,
-    lastError:
-      storedError ??
-      (unresolvedConflicts > 0 ? `存在 ${unresolvedConflicts} 个未解决的跨设备冲突` : null),
+    lastError: storedError ?? (unresolvedConflicts > 0 ? 'conflict_present' : null),
     unresolvedConflicts,
   };
 }
@@ -257,6 +279,82 @@ export function getDeviceSyncDataConnection(): DeviceSyncRuntimeConnection | nul
   return makeRuntimeConnection(endpoint, accessToken);
 }
 
+/**
+ * Provider write-back is local durable work, but its records remain tied to the canonical
+ * connection that imported them.  Do not let a later account/token switch replay an old queue
+ * through the current dida or TomaToDo configuration.
+ */
+function scheduleRemoteWritebackRecovery(connectionScope: string): void {
+  let retryAt: number | null;
+  try {
+    retryAt = getNextRemoteWritebackRetryAt(connectionScope);
+  } catch (error) {
+    logger.warn('remoteWriteback', 'failed to inspect durable retry queue', {
+      connectionScope,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+  if (retryAt === null) {
+    if (remoteWritebackWakeup?.connectionScope === connectionScope) {
+      clearTimeout(remoteWritebackWakeup.timer);
+      remoteWritebackWakeup = null;
+    }
+    return;
+  }
+  // A queue carries the account/token scope that created it. A switched or removed credential must
+  // leave the old durable row untouched instead of replaying it through a different account.
+  if (
+    resolveDeviceSyncConnection(getSettings().deviceSync.endpoint)?.providerScope !==
+    connectionScope
+  ) {
+    return;
+  }
+  if (
+    remoteWritebackWakeup?.connectionScope === connectionScope &&
+    remoteWritebackWakeup.retryAt <= retryAt
+  ) {
+    return;
+  }
+  if (remoteWritebackWakeup) clearTimeout(remoteWritebackWakeup.timer);
+  const delayMs = Math.max(1_000, retryAt - Date.now());
+  const timer = setTimeout(() => {
+    remoteWritebackWakeup = null;
+    if (
+      resolveDeviceSyncConnection(getSettings().deviceSync.endpoint)?.providerScope !==
+      connectionScope
+    ) {
+      return;
+    }
+    void drainRemoteWritebacks(connectionScope, 'scheduled provider delivery');
+  }, delayMs);
+  timer.unref?.();
+  remoteWritebackWakeup = { connectionScope, retryAt, timer };
+}
+
+async function drainRemoteWritebacks(
+  connectionScope: string | null,
+  reason: string,
+): Promise<void> {
+  if (!connectionScope) return;
+  try {
+    const writeback = await runRemoteWritebacks(connectionScope);
+    if (writeback.processed > 0) {
+      logger.info('remoteWriteback', reason, { connectionScope, ...writeback });
+    }
+  } catch (error) {
+    // A third-party retry queue must never make the canonical ledger sync unavailable. The item
+    // remains durable and the next startup/periodic pass will claim it again.
+    logger.warn('remoteWriteback', 'provider delivery coordinator failed', {
+      connectionScope,
+      reason,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    scheduleRemoteWritebackRecovery(connectionScope);
+  }
+}
+
 function makeRuntimeConnection(endpoint: string, accessToken: string): DeviceSyncRuntimeConnection {
   const routed = parseDeviceToken(accessToken);
   const effectiveEndpoint = routeDeviceSyncEndpoint(endpoint, accessToken);
@@ -265,6 +363,7 @@ function makeRuntimeConnection(endpoint: string, accessToken: string): DeviceSyn
     accessToken,
     deviceId: routed ? `device-${routed.devicePublicId}` : getOrCreateDeviceId(),
     scope: makeDeviceSyncConnectionScope(effectiveEndpoint, accessToken),
+    providerScope: makeDeviceSyncProviderScope(effectiveEndpoint, accessToken),
     generation: connectionGeneration,
   };
 }
@@ -276,16 +375,26 @@ export function setDeviceSyncLiveTelemetry(
 }
 
 export function runDeviceSync(): Promise<DeviceSyncRunResult> {
-  const requestedScope =
-    resolveDeviceSyncConnection(getSettings().deviceSync.endpoint)?.scope ?? null;
+  const requestedConnection = resolveDeviceSyncConnection(getSettings().deviceSync.endpoint);
+  const requestedScope = requestedConnection?.scope ?? null;
+  const providerScope = requestedConnection?.providerScope ?? null;
   if (inFlight) {
     if (inFlight.scope === requestedScope) return inFlight.promise;
     return Promise.reject(new Error('同步连接已变更，请等待当前连接同步结束后重试'));
   }
   const operation = import('./deviceSyncV2Service.js')
     .then(async ({ runDesktopSyncV2 }) => {
+      // Drain imports from a previous successful pull before doing network I/O. This keeps
+      // provider recovery alive when the sync endpoint is temporarily unavailable (for example
+      // an HTTP 503) and avoids coupling local retries to a fresh cloud exchange. It is
+      // deliberately non-blocking: third-party provider latency must not hold the Sync v2 lease.
+      void drainRemoteWritebacks(providerScope, 'pre-sync provider delivery');
       const result = await runDesktopSyncV2();
       if (!result) throw new Error('请先启用并配置 canonical Sync v2');
+      // Newly materialized remote sessions are now committed, so their external side effects can
+      // be consumed safely outside the SQLite projection transaction without delaying a successful
+      // cloud exchange result.
+      void drainRemoteWritebacks(providerScope, 'post-sync provider delivery');
       return result;
     })
     .catch((error) => {
@@ -302,7 +411,13 @@ export function runDeviceSync(): Promise<DeviceSyncRunResult> {
 /** Used by startup/finish hooks without turning a disabled feature into an error. */
 export async function runAutomaticDeviceSync(): Promise<DeviceSyncRunResult | null> {
   const settings = getSettings().deviceSync;
-  if (!settings.enabled || !settings.autoSync || !hasDeviceSyncToken()) return null;
+  const connectionScope = resolveDeviceSyncConnection(settings.endpoint)?.providerScope ?? null;
+  if (!settings.enabled || !settings.autoSync || !hasDeviceSyncToken()) {
+    // A disabled automatic cloud pull must not strand a session that was already imported. Keep
+    // retrying only while the same credential still identifies that connection scope.
+    await drainRemoteWritebacks(connectionScope, 'automatic local provider recovery');
+    return null;
+  }
   const result = await runDeviceSync();
   await flushPendingTaskSnapshot();
   return result;
@@ -316,23 +431,56 @@ export async function publishDeviceTaskSnapshot(
 ): Promise<boolean> {
   const settings = getSettings().deviceSync;
   if (!settings?.enabled || !hasDeviceSyncToken()) return false;
+  const connection = resolveTaskSnapshotConnection();
+  if (!connection) return false;
   const snapshot = toTaskSnapshotPayload(projects, tasks, refreshedAt);
-  setMeta(META_PENDING_TASK_SNAPSHOT, JSON.stringify(snapshot));
-  return flushPendingTaskSnapshot();
+  setMeta(pendingTaskSnapshotMetaKey(connection.providerScope), JSON.stringify(snapshot));
+  return flushPendingTaskSnapshot(connection);
 }
 
-async function flushPendingTaskSnapshot(): Promise<boolean> {
-  if (taskPublishInFlight) return taskPublishInFlight;
-  const operation = flushPendingTaskSnapshotInternal().finally(() => {
-    if (taskPublishInFlight === operation) taskPublishInFlight = null;
+async function flushPendingTaskSnapshot(
+  requestedConnection?: DeviceSyncRuntimeConnection,
+): Promise<boolean> {
+  const connection = requestedConnection ?? resolveTaskSnapshotConnection();
+  if (!connection || !isDeviceSyncConnectionCurrent(connection)) return false;
+
+  const existing = taskPublishInFlight.get(connection.providerScope);
+  if (existing) {
+    if (
+      existing.connection.scope === connection.scope &&
+      existing.connection.generation === connection.generation
+    ) {
+      return existing.promise;
+    }
+    const retryWithCurrentConnection = async (): Promise<boolean> => {
+      const current = resolveTaskSnapshotConnection();
+      if (!current || current.providerScope !== connection.providerScope) return false;
+      return flushPendingTaskSnapshot(current);
+    };
+    return existing.promise.then(retryWithCurrentConnection, retryWithCurrentConnection);
+  }
+
+  const operation = flushPendingTaskSnapshotInternal(connection).finally(() => {
+    if (taskPublishInFlight.get(connection.providerScope)?.promise === operation) {
+      taskPublishInFlight.delete(connection.providerScope);
+    }
   });
-  taskPublishInFlight = operation;
+  taskPublishInFlight.set(connection.providerScope, { connection, promise: operation });
   return operation;
 }
 
-async function flushPendingTaskSnapshotInternal(): Promise<boolean> {
+/** Contract-test hook for retrying the current account's durable task snapshot. */
+export function flushPendingTaskSnapshotForContractTest(): Promise<boolean> {
+  return flushPendingTaskSnapshot();
+}
+
+async function flushPendingTaskSnapshotInternal(
+  connection: DeviceSyncRuntimeConnection,
+): Promise<boolean> {
+  const metaKey = pendingTaskSnapshotMetaKey(connection.providerScope);
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const serialized = getMeta(META_PENDING_TASK_SNAPSHOT);
+    if (!isDeviceSyncConnectionCurrent(connection)) return false;
+    const serialized = getMeta(metaKey);
     if (!serialized) return true;
     let snapshot: TaskSnapshotPayload;
     try {
@@ -341,32 +489,40 @@ async function flushPendingTaskSnapshotInternal(): Promise<boolean> {
       snapshot = parsed;
     } catch (error) {
       logger.warn('deviceSync', 'discarding invalid pending task snapshot', {
+        providerScope: connection.providerScope,
         error: error instanceof Error ? error.message : String(error),
       });
-      setMeta(META_PENDING_TASK_SNAPSHOT, '');
+      if (getMeta(metaKey) === serialized) setMeta(metaKey, '');
       return false;
     }
-    const published = await postTaskSnapshot(snapshot);
+    const published = await postTaskSnapshot(connection, snapshot);
     if (!published) return false;
-    if (getMeta(META_PENDING_TASK_SNAPSHOT) === serialized) {
-      setMeta(META_PENDING_TASK_SNAPSHOT, '');
+    if (!isDeviceSyncConnectionCurrent(connection)) return false;
+    if (getMeta(metaKey) === serialized) {
+      setMeta(metaKey, '');
       return true;
     }
   }
   return false;
 }
 
-async function postTaskSnapshot(snapshot: TaskSnapshotPayload): Promise<boolean> {
-  let connection: DeviceSyncRuntimeConnection | null;
+function resolveTaskSnapshotConnection(): DeviceSyncRuntimeConnection | null {
   try {
-    connection = getDeviceSyncDataConnection();
+    return getDeviceSyncDataConnection();
   } catch (error) {
     logger.warn('deviceSync', 'desktop task snapshot connection invalid', {
       error: error instanceof Error ? error : String(error),
     });
-    return false;
+    return null;
   }
-  if (!connection) return false;
+}
+
+async function postTaskSnapshot(
+  connection: DeviceSyncRuntimeConnection,
+  snapshot: TaskSnapshotPayload,
+  allowTimestampRecovery = true,
+): Promise<boolean> {
+  if (!isDeviceSyncConnectionCurrent(connection)) return false;
   const { endpoint, accessToken, deviceId } = connection;
   const request: TaskSnapshotPublishRequest = {
     protocolVersion: TASK_SNAPSHOT_PROTOCOL_VERSION,
@@ -389,6 +545,27 @@ async function postTaskSnapshot(snapshot: TaskSnapshotPayload): Promise<boolean>
     });
     if (!response.ok) {
       const detail = await readDeviceSyncHttpError(response);
+      if (response.status === 409 && detail.code === 'stale_task_snapshot') {
+        logger.info('deviceSync', 'discarded superseded desktop task snapshot', {
+          providerScope: connection.providerScope,
+          errorCode: detail.code,
+        });
+        return true;
+      }
+      if (response.status === 409 && detail.code === 'task_snapshot_conflict') {
+        logger.warn('deviceSync', 'preserving conflicting desktop task snapshot', {
+          providerScope: connection.providerScope,
+          errorCode: detail.code,
+        });
+        return false;
+      }
+      if (
+        response.status === 422 &&
+        detail.code === 'task_snapshot_timestamp_too_far_ahead' &&
+        allowTimestampRecovery
+      ) {
+        return recoverTaskSnapshotTimestamp(connection, snapshot);
+      }
       throw new DeviceSyncHttpError(
         response.status,
         detail.code,
@@ -427,6 +604,77 @@ async function postTaskSnapshot(snapshot: TaskSnapshotPayload): Promise<boolean>
   }
 }
 
+async function recoverTaskSnapshotTimestamp(
+  connection: DeviceSyncRuntimeConnection,
+  snapshot: TaskSnapshotPayload,
+): Promise<boolean> {
+  const cloudSnapshot = await readTrustedTaskSnapshot(connection);
+  if (!cloudSnapshot) return false;
+  const cloudPublishedAt = cloudSnapshot.snapshot?.publishedAt;
+  const rebasedPublishedAt =
+    cloudPublishedAt !== undefined &&
+    isTaskSnapshotPublishedAtWithinFutureSkew(cloudPublishedAt, cloudSnapshot.serverTime)
+      ? Math.max(cloudSnapshot.serverTime, cloudPublishedAt + 1)
+      : cloudSnapshot.serverTime;
+  if (
+    !Number.isSafeInteger(rebasedPublishedAt) ||
+    !isTaskSnapshotPublishedAtWithinFutureSkew(rebasedPublishedAt, cloudSnapshot.serverTime)
+  ) {
+    logger.warn('deviceSync', 'could not safely rebase desktop task snapshot timestamp', {
+      providerScope: connection.providerScope,
+      errorCode: 'task_snapshot_timestamp_too_far_ahead',
+    });
+    return false;
+  }
+  logger.info('deviceSync', 'rebasing desktop task snapshot timestamp from cloud server time', {
+    providerScope: connection.providerScope,
+    legacyCloudTimestamp:
+      cloudPublishedAt !== undefined &&
+      !isTaskSnapshotPublishedAtWithinFutureSkew(cloudPublishedAt, cloudSnapshot.serverTime),
+  });
+  return postTaskSnapshot(connection, { ...snapshot, publishedAt: rebasedPublishedAt }, false);
+}
+
+async function readTrustedTaskSnapshot(
+  connection: DeviceSyncRuntimeConnection,
+): Promise<TaskSnapshotResponse | null> {
+  if (!isDeviceSyncConnectionCurrent(connection)) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const url = `${connection.endpoint}${TASK_SNAPSHOT_PATH}`;
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${connection.accessToken}` },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const detail = await readDeviceSyncHttpError(response);
+      throw new DeviceSyncHttpError(
+        response.status,
+        detail.code,
+        `任务快照服务返回 ${response.status}${detail.message ? `：${detail.message}` : ''}`,
+      );
+    }
+    const value = parseTaskSnapshotResponse(await readDeviceSyncJsonResponse(response));
+    assertDeviceSyncConnectionCurrent(connection);
+    if (!value) throw new Error('任务快照服务返回了无效响应');
+    return value;
+  } catch (error) {
+    logger.warn('deviceSync', 'could not read cloud task snapshot for timestamp recovery', {
+      providerScope: connection.providerScope,
+      error: isNetworkTransportError(error)
+        ? `无法连接跨设备同步服务（${url}），请检查服务是否启动、地址或网络`
+        : error instanceof Error
+          ? error.message
+          : String(error),
+    });
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function runDeviceSyncInternal(): Promise<DeviceSyncRunResult> {
   const settings = getSettings().deviceSync;
   if (!settings.enabled) throw new Error('请先启用 FocusLink 跨设备同步');
@@ -438,6 +686,7 @@ async function runDeviceSyncInternal(): Promise<DeviceSyncRunResult> {
     endpoint,
     accessToken,
     scope: makeDeviceSyncConnectionScope(endpoint, accessToken),
+    providerScope: makeDeviceSyncProviderScope(endpoint, accessToken),
   };
   try {
     try {
@@ -455,8 +704,7 @@ async function runDeviceSyncInternal(): Promise<DeviceSyncRunResult> {
       return await runDeviceSyncAttempt(connection);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    setMeta(lastErrorMetaKey(connection.scope), message.slice(0, 1_000));
+    setMeta(lastErrorMetaKey(connection.scope), classifySyncV2Error(error));
     throw error;
   }
 }
@@ -582,10 +830,7 @@ async function runDeviceSyncAttempt(
   result.unresolvedConflicts = Object.keys(conflictState).length;
   setMeta(lastSyncAtMetaKey(connection.scope), String(now));
   if (result.unresolvedConflicts > 0) {
-    setMeta(
-      lastErrorMetaKey(connection.scope),
-      `存在 ${result.unresolvedConflicts} 个未解决的跨设备冲突`,
-    );
+    setMeta(lastErrorMetaKey(connection.scope), 'conflict_present');
     logger.warn('deviceSync', 'sync completed with unresolved conflicts', result);
   } else {
     setMeta(lastErrorMetaKey(connection.scope), '');
@@ -892,6 +1137,7 @@ function resolveDeviceSyncConnection(rawEndpoint: string): DeviceSyncConnection 
       endpoint,
       accessToken,
       scope: makeDeviceSyncConnectionScope(endpoint, accessToken),
+      providerScope: makeDeviceSyncProviderScope(endpoint, accessToken),
     };
   } catch {
     return null;
@@ -916,6 +1162,11 @@ function lastSyncAtMetaKey(scope: string): string {
 
 function lastErrorMetaKey(scope: string): string {
   return `${META_LAST_ERROR_PREFIX}.${scope}`;
+}
+
+function pendingTaskSnapshotMetaKey(providerScope: string): string {
+  // Never fall back to the old unscoped key: its originating account cannot be recovered safely.
+  return `${META_PENDING_TASK_SNAPSHOT_PREFIX}.${providerScope}`;
 }
 
 function readCanonicalCheckpoint(scope: string): { cursor: string | null } | null {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { APP_VERSION } from '../shared/version';
 import {
   invalidateOwnerAccountBootstrap,
   isOwnerAccountCallback,
@@ -120,7 +121,7 @@ describe('mobile owner account bootstrap', () => {
         displayName: 'FocusLink Android',
         platform: 'web',
         deviceKind: 'phone',
-        appVersion: '0.12.75',
+        appVersion: APP_VERSION,
       },
     });
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({

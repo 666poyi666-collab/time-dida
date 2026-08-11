@@ -3,7 +3,10 @@ import {
   type DeviceSyncMutation,
   type DeviceSyncResponse,
 } from '@shared/sync/deviceProtocol';
-import { isCanonicalFocusLinkDeviceConnection } from '@shared/sync/identityProtocol';
+import {
+  focusLinkSyncEndpointCandidates,
+  isAllowedFocusLinkDeviceConnection,
+} from '@shared/sync/identityProtocol';
 import { readDeviceSyncJsonResponse } from '@shared/sync/httpTransport';
 import {
   LIVE_FOCUS_COMMAND_PATH,
@@ -109,6 +112,54 @@ export class DeviceSyncRequestError extends Error {
   }
 }
 
+export type MobileLiveRequestErrorCode =
+  | 'network_error'
+  | 'timeout'
+  | 'authentication_failed'
+  | 'authorization_failed'
+  | 'revision_mismatch'
+  | 'service_unavailable'
+  | 'request_rejected'
+  | 'configuration_error'
+  | 'contract_error';
+
+/** A safe, structured failure boundary for the mobile live-control loop. */
+export class MobileLiveRequestError extends Error {
+  constructor(
+    readonly code: MobileLiveRequestErrorCode,
+    message: string,
+    readonly retryable: boolean,
+    readonly status: number | null = null,
+  ) {
+    super(message);
+    this.name = 'MobileLiveRequestError';
+  }
+}
+
+export interface MobileLiveRequestFailure {
+  code: MobileLiveRequestErrorCode;
+  message: string;
+  retryable: boolean;
+  status: number | null;
+}
+
+export function classifyMobileLiveRequestError(error: unknown): MobileLiveRequestFailure {
+  if (error instanceof MobileLiveRequestError) {
+    return {
+      code: error.code,
+      message: error.message,
+      retryable: error.retryable,
+      status: error.status,
+    };
+  }
+  return {
+    code: 'contract_error',
+    message: '实时状态响应异常，请手动刷新后重试',
+    retryable: false,
+    status: null,
+  };
+}
+
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 
 export async function pullDeviceSyncPage(input: PullPageInput): Promise<DeviceSyncResponse> {
@@ -127,7 +178,11 @@ export async function fetchLiveFocusSnapshot(
   input: LiveFocusConnectionInput,
 ): Promise<LiveFocusSnapshotResponse> {
   const response = await liveFocusFetch(input, LIVE_FOCUS_SNAPSHOT_PATH);
-  return parseLiveSnapshotResponse(await readDeviceSyncJsonResponse(response));
+  try {
+    return parseLiveSnapshotResponse(await readDeviceSyncJsonResponse(response));
+  } catch (error) {
+    throwLiveContractError(error);
+  }
 }
 
 export async function fetchTaskSnapshot(
@@ -159,11 +214,15 @@ export async function waitForLiveFocusSnapshot(
     {},
     waitMs + 10_000,
   );
-  const value = await readDeviceSyncJsonResponse(response);
-  if (!isRecord(value) || typeof value.changed !== 'boolean') {
-    throw new Error('实时等待响应缺少 changed');
+  try {
+    const value = await readDeviceSyncJsonResponse(response);
+    if (!isRecord(value) || typeof value.changed !== 'boolean') {
+      throw new Error('实时等待响应缺少 changed');
+    }
+    return { ...parseLiveSnapshotResponse(value), changed: value.changed };
+  } catch (error) {
+    throwLiveContractError(error);
   }
-  return { ...parseLiveSnapshotResponse(value), changed: value.changed };
 }
 
 export async function sendLiveFocusCommand(
@@ -178,9 +237,13 @@ export async function sendLiveFocusCommand(
     method: 'POST',
     body: JSON.stringify(request),
   });
-  const value = await readDeviceSyncJsonResponse(response);
-  if (!isRecord(value)) throw new Error('实时命令响应必须是对象');
-  return { ...parseLiveSnapshotResponse(value), ack: parseLiveFocusAck(value.ack) };
+  try {
+    const value = await readDeviceSyncJsonResponse(response);
+    if (!isRecord(value)) throw new Error('实时命令响应必须是对象');
+    return { ...parseLiveSnapshotResponse(value), ack: parseLiveFocusAck(value.ack) };
+  } catch (error) {
+    throwLiveContractError(error);
+  }
 }
 
 async function liveFocusFetch(
@@ -190,62 +253,122 @@ async function liveFocusFetch(
   timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
-  requireMobileCloudEndpoint(endpoint, input.token);
-  const token = input.token.trim();
-  if (!token) throw new Error('请先登录 FocusLink 账号');
-
-  let response: Response;
   try {
-    response = await fetchWithTimeout(
-      `${endpoint}${path}`,
-      {
-        method: init.method ?? 'GET',
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${token}`,
-          ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-        },
-        body: init.body,
-        cache: 'no-store',
-        credentials: 'omit',
-        redirect: 'error',
-        referrerPolicy: 'no-referrer',
-      },
-      input.signal,
-      timeoutMs,
+    requireMobileCloudEndpoint(endpoint, input.token);
+  } catch {
+    throw new MobileLiveRequestError(
+      'configuration_error',
+      '移动端只允许连接 HTTPS 云端同步服务，请重新登录',
+      false,
     );
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw error;
-    if (error instanceof RequestTimeoutError) throw new Error('实时同步请求超时，正在重连');
-    throw new Error(
-      navigator.onLine ? unreachableMobileServiceMessage('实时同步服务') : '当前离线',
-    );
+  }
+  const token = input.token.trim();
+  if (!token) {
+    throw new MobileLiveRequestError('configuration_error', '请先登录 FocusLink 账号', false);
   }
 
-  if (!response.ok) {
-    const detail = await readErrorDetail(response);
-    if (response.status === 401 || response.status === 403) {
-      throw new Error(detail || '登录已失效，请重新登录');
+  let lastTransportError: unknown = null;
+  for (const candidate of focusLinkSyncEndpointCandidates(endpoint)) {
+    try {
+      const response = await fetchWithTimeout(
+        `${candidate}${path}`,
+        {
+          method: init.method ?? 'GET',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+            ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          },
+          body: init.body,
+          cache: 'no-store',
+          credentials: 'omit',
+          redirect: 'error',
+          referrerPolicy: 'no-referrer',
+        },
+        input.signal,
+        timeoutMs,
+      );
+
+      if (!response.ok) {
+        const detail = await readErrorResponse(response);
+        if (response.status === 401 || response.status === 403) {
+          throw new MobileLiveRequestError(
+            response.status === 401 ? 'authentication_failed' : 'authorization_failed',
+            response.status === 401 ? '登录凭据已失效，请重新登录' : '当前设备没有实时控制权限',
+            false,
+            response.status,
+          );
+        }
+        if (response.status === 409) {
+          throw new MobileLiveRequestError(
+            'revision_mismatch',
+            '云端实时版本已变化，正在重新确认',
+            true,
+            response.status,
+          );
+        }
+        if (
+          response.status === 408 ||
+          response.status === 425 ||
+          response.status === 429 ||
+          response.status >= 500
+        ) {
+          throw new MobileLiveRequestError(
+            'service_unavailable',
+            '实时同步服务暂时不可用',
+            true,
+            response.status,
+          );
+        }
+        throw new MobileLiveRequestError(
+          'request_rejected',
+          detail.code === 'invalid_scope' ? '当前设备没有实时控制权限' : '实时同步请求被拒绝',
+          false,
+          response.status,
+        );
+      }
+      return response;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw error;
+      if (error instanceof MobileLiveRequestError) {
+        // `retryable` controls a later live-loop attempt. Origin failover is narrower:
+        // every HTTP response is authoritative and must not be replaced by an outcome
+        // from the other hostname, including retryable 408/429/5xx responses.
+        throw error;
+      }
+      lastTransportError = error;
     }
-    throw new Error(detail || `实时同步服务返回 HTTP ${response.status}`);
   }
-  return response;
+
+  if (lastTransportError instanceof MobileLiveRequestError) {
+    throw lastTransportError;
+  }
+  if (lastTransportError instanceof RequestTimeoutError) {
+    throw new MobileLiveRequestError('timeout', '实时同步请求超时', true);
+  }
+  throw new MobileLiveRequestError(
+    'network_error',
+    navigator.onLine ? '暂时无法连接实时同步服务' : '当前离线',
+    true,
+  );
 }
 
 class RequestTimeoutError extends Error {}
-
-function unreachableMobileServiceMessage(service: string): string {
-  return `无法连接${service}，请检查 HTTPS 地址、CORS 或网络`;
-}
 
 function requireMobileCloudEndpoint(endpoint: string, accessToken = ''): void {
   const token = accessToken.trim();
   if (
     new URL(endpoint).protocol !== 'https:' ||
-    (token.length > 0 && !isCanonicalFocusLinkDeviceConnection(endpoint, token))
+    (token.length > 0 && !isAllowedFocusLinkDeviceConnection(endpoint, token))
   ) {
     throw new Error('移动端只允许连接 HTTPS 云端同步服务');
   }
+}
+
+function throwLiveContractError(error: unknown): never {
+  if (error instanceof MobileLiveRequestError) throw error;
+  if (error instanceof DOMException && error.name === 'AbortError') throw error;
+  throw new MobileLiveRequestError('contract_error', '实时状态响应异常，请手动刷新后重试', false);
 }
 
 async function fetchWithTimeout(
@@ -422,10 +545,6 @@ function parseLiveFocusAck(value: unknown): LiveFocusCommandAck {
     errorCode: value.errorCode,
     completedEntityId: value.completedEntityId,
   };
-}
-
-async function readErrorDetail(response: Response): Promise<string> {
-  return (await readErrorResponse(response)).message;
 }
 
 async function readErrorResponse(response: Response): Promise<{

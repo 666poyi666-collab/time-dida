@@ -9,6 +9,7 @@ import {
   openNativeOverlayPermissionSettings,
   readNativeFocusStatus,
   readNativePauseReminderPreference,
+  requeueNativeTerminalLedger,
   requestNativeNotificationPermission,
   requestNativeQuickSettingsTile,
   setNativeOverlayEnabled,
@@ -26,7 +27,14 @@ export function NativeSystemControls() {
     delayMinutes: DEFAULT_NATIVE_PAUSE_REMINDER_DELAY_MINUTES,
   });
   const [busy, setBusy] = useState<
-    'notification' | 'tile' | 'background' | 'autostart' | 'overlay' | 'pause-reminder' | null
+    | 'notification'
+    | 'tile'
+    | 'background'
+    | 'autostart'
+    | 'overlay'
+    | 'pause-reminder'
+    | 'terminal-ledger'
+    | null
   >(null);
 
   const refreshStatus = useCallback(async () => {
@@ -67,6 +75,7 @@ export function NativeSystemControls() {
 
   const permission = status?.notificationPermission ?? null;
   const poll = status?.cloudPoll;
+  const terminalLedgerCount = Math.max(0, poll?.terminalLedgerCount ?? 0);
   const activeSnapshot =
     status?.snapshot?.state === 'running' || status?.snapshot?.state === 'paused';
   const pollHealthy =
@@ -196,6 +205,28 @@ export function NativeSystemControls() {
     }
   };
 
+  const requeueTerminalLedger = async () => {
+    if (busy !== null) return;
+    setBusy('terminal-ledger');
+    setNotice(null);
+    try {
+      const deviceId = status?.nativeConnectionDeviceId;
+      const connectionLease = status?.nativeConnectionLease ?? null;
+      if (!deviceId || !connectionLease) {
+        setNotice('账号连接已变化，请重新打开设置后再试。');
+        return;
+      }
+      const requeued = await requeueNativeTerminalLedger(deviceId, connectionLease);
+      setNotice(terminalLedgerRequeueNotice(requeued));
+      await refreshStatus();
+    } catch (error) {
+      setNotice(terminalLedgerRequeueFailureCopy(error));
+      await refreshStatus().catch(() => undefined);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <section className="native-system-controls" aria-label="Android 系统控制">
       <div>
@@ -220,9 +251,16 @@ export function NativeSystemControls() {
           <span className={pollHealthy ? 'is-ok' : 'is-warning'}>
             {pollHealthy
               ? `后台同步正常 · 第 ${poll?.attemptCount ?? 0} 轮`
-              : `后台同步待恢复${poll?.lastError ? ` · ${poll.lastError}` : ''}`}
+              : `后台同步待恢复${poll?.lastError ? ` · ${nativeCloudPollErrorCopy(poll.lastErrorCode ?? poll.lastError)}` : ''}`}
           </span>
         )}
+        <TerminalLedgerRepairControl
+          count={terminalLedgerCount}
+          errorCode={poll?.terminalLedgerErrorCode}
+          disabled={busy !== null}
+          requeueing={busy === 'terminal-ledger'}
+          onRequeue={() => void requeueTerminalLedger()}
+        />
         {poll?.lastSuccessAtEpochMs ? (
           <span>最近确认 {formatStatusTime(poll.lastSuccessAtEpochMs)}</span>
         ) : null}
@@ -298,6 +336,70 @@ export function NativeSystemControls() {
   );
 }
 
+export function TerminalLedgerRepairControl({
+  count,
+  errorCode,
+  disabled,
+  requeueing,
+  onRequeue,
+}: {
+  count: number;
+  errorCode: string | undefined;
+  disabled: boolean;
+  requeueing: boolean;
+  onRequeue: () => void;
+}) {
+  const safeCount = Math.max(0, Math.trunc(count));
+  if (safeCount === 0) return null;
+  return (
+    <div className="native-terminal-ledger-repair">
+      <span className="is-warning">{terminalLedgerDiagnosticCopy(safeCount, errorCode)}</span>
+      <small>请先在电脑端处理冲突或拒绝，再点“重新检查”；不会自动重试。</small>
+      <button type="button" onClick={onRequeue} disabled={disabled}>
+        {requeueing ? '正在重新检查…' : '重新检查已结束专注'}
+      </button>
+    </div>
+  );
+}
+
+export function nativeCloudPollErrorCopy(code: string | undefined): string {
+  if (code === 'network_error') return '暂时无法连接云端';
+  if (code === 'timeout') return '云端连接超时';
+  if (code === 'authentication_failed') return '登录凭据已失效，请重新登录';
+  if (code === 'authorization_failed') return '当前设备没有云端同步权限';
+  if (code === 'contract_error') return '云端响应异常';
+  if (code === 'revision_conflict' || code === 'revision_rollback') return '云端状态存在版本差异';
+  return '后台同步暂时失败';
+}
+
+export function terminalLedgerDiagnosticCopy(count: number, code: string | undefined): string {
+  const safeCount = Math.max(0, Math.trunc(count));
+  if (code === 'conflict_present') {
+    return `已暂停自动补传 · ${safeCount} 场已结束专注与云端存在差异，请在电脑端处理`;
+  }
+  if (code === 'rejected_operation') {
+    return `已暂停自动补传 · ${safeCount} 场已结束专注被云端拒绝，请在电脑端处理`;
+  }
+  return `已暂停自动补传 · ${safeCount} 场已结束专注需要处理`;
+}
+
+export function terminalLedgerRequeueNotice(requeued: number): string {
+  const safeCount = Math.max(0, Math.trunc(requeued));
+  if (safeCount === 0) return '没有可重新检查的已结束专注；请刷新状态后再试。';
+  return `已安排重新检查 ${safeCount} 场已结束专注；仅本次由你手动触发。`;
+}
+
+export function terminalLedgerRequeueFailureCopy(error: unknown): string {
+  const code = nativeErrorCode(error);
+  if (
+    code === 'stale_connection' ||
+    (error instanceof DOMException && error.name === 'AbortError')
+  ) {
+    return '账号连接已变化，请重新打开设置后再试。';
+  }
+  return '暂时无法重新检查已结束专注，请稍后再试。';
+}
+
 function systemSurfaceLabel(status: NativeFocusStatus | null): string {
   const surface = status?.systemSurface;
   if (surface?.selected === 'xiaomi-island') {
@@ -318,4 +420,10 @@ function formatStatusTime(epochMs: number): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function nativeErrorCode(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : null;
 }

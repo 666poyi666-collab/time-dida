@@ -16,7 +16,7 @@ import {
   NO_PROJECT,
   projectNameForTask,
 } from '../src/mobile/taskBrowserModel';
-import { createTaskBranchActions, TaskBrowser } from '../src/mobile/TaskBrowser';
+import { createTaskBranchActions, isTaskBranchOpen, TaskBrowser } from '../src/mobile/TaskBrowser';
 import {
   ANONYMOUS_BIOLOGY_EXPECTED_PREORDER,
   ANONYMOUS_BIOLOGY_PARENT_ID_TASKS,
@@ -133,6 +133,39 @@ describe('mobile task browser model', () => {
     );
 
     expect(flattenForest(filtered).map((task) => task.id)).toEqual(['open-child']);
+    expect(filtered[0].hiddenAncestorTitles).toEqual(['任务']);
+  });
+
+  it('renders the hidden completed-parent title in a promoted descendant path', () => {
+    const completedParentTasks = [
+      makeTask({
+        id: 'completed-parent',
+        title: '已完成父任务',
+        projectId: 'study',
+        isCompleted: true,
+      }),
+      makeTask({
+        id: 'open-child',
+        title: '仍待办子任务',
+        projectId: 'study',
+        parentId: 'completed-parent',
+      }),
+    ];
+    const markup = renderToStaticMarkup(
+      createElement(TaskBrowser, {
+        tasks: completedParentTasks,
+        projects,
+        publishedAt: null,
+        revision: 3,
+        selectedTaskId: 'open-child',
+        canStart: true,
+        onSelect: () => undefined,
+        onStart: () => undefined,
+      }),
+    );
+
+    expect(markup).toContain('父级 学习 / 已完成父任务');
+    expect(markup).not.toContain('aria-label="选择 已完成父任务"');
   });
 
   it('degrades missing and cyclic parent links to roots without duplicates or loss', () => {
@@ -220,6 +253,16 @@ describe('mobile task browser model', () => {
     expect(onStart).toHaveBeenCalledWith(task);
   });
 
+  it('reopens the selected ancestor chain without overriding unrelated manual folds', () => {
+    const collapsed = new Set(['local:root', 'local:other']);
+    const selectedPath = new Set(['local:root', 'local:child']);
+
+    expect(isTaskBranchOpen('local:root', collapsed, selectedPath, false)).toBe(true);
+    expect(isTaskBranchOpen('local:child', collapsed, selectedPath, false)).toBe(true);
+    expect(isTaskBranchOpen('local:other', collapsed, selectedPath, false)).toBe(false);
+    expect(isTaskBranchOpen('local:other', collapsed, selectedPath, true)).toBe(true);
+  });
+
   it('keeps selection on the task page while start alone returns to focus', () => {
     const appSource = fs.readFileSync(
       new URL('../src/mobile/MobileApp.tsx', import.meta.url),
@@ -233,6 +276,19 @@ describe('mobile task browser model', () => {
                   setSelectedTaskId(task.id);
                   setTitleDraft(task.title);
                   setActiveView('focus');`);
+  });
+
+  it('uses one cloud task-tree disclosure instead of the old select plus browse row', () => {
+    const consoleSource = fs.readFileSync(
+      new URL('../src/mobile/FocusConsole.tsx', import.meta.url),
+      'utf8',
+    );
+
+    expect(consoleSource).toContain('从云端任务清单选择');
+    expect(consoleSource).toContain('className="focus-task-disclosure"');
+    expect(consoleSource).toContain('轻触展开项目与父子任务');
+    expect(consoleSource).not.toContain('<select\n                    id="focus-task"');
+    expect(consoleSource).not.toContain('从电脑任务清单选择');
   });
 
   it('renders project groups collapsed before the user opens them', () => {

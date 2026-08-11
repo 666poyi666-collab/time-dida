@@ -837,6 +837,20 @@ function toggleMiniWindow(): void {
   }
 }
 
+/**
+ * Reassert the native topmost Z-order as an explicit user action. Keep this separate from
+ * automatic mini-window showing so settings never steal focus or disturb drag/dock state.
+ */
+function bringMiniWindowToFront(): boolean {
+  if (!miniWindow || miniWindow.isDestroyed()) {
+    miniWindow = createMiniWindow();
+  }
+  if (!miniWindow.isVisible()) miniWindow.showInactive();
+  miniWindow.setAlwaysOnTop(true);
+  miniWindow.moveTop();
+  return miniWindow.isAlwaysOnTop();
+}
+
 function toggleMainWindow(): void {
   if (!mainWindow) return;
   if (mainWindow.isVisible() && mainWindow.isFocused()) {
@@ -1199,6 +1213,7 @@ app.whenReady().then(() => {
   ipcMain.on('mini:show', () => showMiniWindow());
   ipcMain.on('mini:hide', () => hideMiniWindow());
   ipcMain.on('mini:toggle', () => toggleMiniWindow());
+  ipcMain.handle('mini:bring-to-front', () => bringMiniWindowToFront());
   ipcMain.on('mini:collapse', () => collapseMiniWindow());
   ipcMain.on('mini:expand', () => expandMiniWindow());
   ipcMain.on('mini:reset', () => resetMiniWindow());

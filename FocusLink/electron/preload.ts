@@ -105,6 +105,7 @@ const api = {
     show: () => ipcRenderer.send('mini:show'),
     hide: () => ipcRenderer.send('mini:hide'),
     toggle: () => ipcRenderer.send('mini:toggle'),
+    bringToFront: () => ipcRenderer.invoke('mini:bring-to-front'),
     collapse: () => ipcRenderer.send('mini:collapse'),
     expand: () => ipcRenderer.send('mini:expand'),
     reset: () => ipcRenderer.send('mini:reset'),

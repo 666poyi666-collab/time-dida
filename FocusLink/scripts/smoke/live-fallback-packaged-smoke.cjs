@@ -8,14 +8,13 @@
 // Usage:
 //   node scripts/smoke/live-fallback-packaged-smoke.cjs [path-to-FocusLink.exe]
 //
-// The encrypted device-sync credential is copied from the current user's profile only. The token
-// is never printed or decoded by this script. If the credential cannot be decrypted by Electron's
-// safeStorage under the current account, the smoke reports an explicit SKIP and exits successfully.
+// A synthetic non-production credential is encrypted inside the isolated profile by Electron's
+// safeStorage helper. The smoke never reads or copies the user's real device-sync credential.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
-const { spawn } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const WebSocket = require('ws');
 
 const root = path.resolve(__dirname, '..', '..');
@@ -27,11 +26,7 @@ const defaultExecutableCandidates = [
   path.join(root, 'dist', 'win-unpacked', 'FocusLink.exe'),
 ];
 const executable = path.resolve(process.argv[2] || defaultExecutableCandidates[0]);
-const sourceUserData = resolveSourceUserData();
-const sourceCredential = sourceUserData
-  ? path.join(sourceUserData, 'focuslink-device-sync-credential.json')
-  : null;
-const sourceSettings = sourceUserData ? path.join(sourceUserData, 'focuslink-settings.json') : null;
+const credentialHelper = path.join(__dirname, 'write-synthetic-device-credential.cjs');
 
 let userDataDir = '';
 let appProcess = null;
@@ -51,33 +46,6 @@ function writeLine(message) {
   process.stdout.write(`[live-fallback] ${message}\n`);
 }
 
-function skip(reason) {
-  writeLine(`SKIP: ${reason}`);
-  process.exitCode = 0;
-}
-
-function resolveSourceUserData() {
-  const explicit = String(
-    process.env.FOCUSLINK_SOURCE_USER_DATA || process.env.FOCUSLINK_USER_DATA || '',
-  ).trim();
-  const candidates = explicit
-    ? [explicit]
-    : [
-        path.join(process.env.APPDATA || '', 'focuslink'),
-        path.join(process.env.APPDATA || '', 'FocusLink'),
-        path.join(process.env.LOCALAPPDATA || '', 'focuslink'),
-        path.join(process.env.LOCALAPPDATA || '', 'FocusLink'),
-      ];
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    const resolved = path.resolve(candidate);
-    if (fs.existsSync(path.join(resolved, 'focuslink-device-sync-credential.json'))) {
-      return resolved;
-    }
-  }
-  return null;
-}
-
 function assertExecutable() {
   if (fs.existsSync(executable)) return;
   const alternatives = defaultExecutableCandidates.filter((candidate) => fs.existsSync(candidate));
@@ -85,25 +53,8 @@ function assertExecutable() {
   throw new Error(`FocusLink executable not found: ${executable}${hint}`);
 }
 
-function readSettings() {
-  if (!sourceSettings || !fs.existsSync(sourceSettings)) return {};
-  try {
-    const raw = fs
-      .readFileSync(sourceSettings, 'utf8')
-      .replace(/^\uFEFF/, '')
-      .trim();
-    return raw ? JSON.parse(raw) : {};
-  } catch (error) {
-    throw new Error(
-      `current FocusLink settings are unreadable: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-}
-
 function makeIsolatedSettings(endpoint) {
-  const source = readSettings();
   return {
-    ...source,
     autoStart: false,
     startMinimizedToTray: false,
     minimizeToTray: false,
@@ -111,13 +62,11 @@ function makeIsolatedSettings(endpoint) {
     showMiniOnStart: false,
     taskSource: 'local',
     tomatodo: {
-      ...(source.tomatodo && typeof source.tomatodo === 'object' ? source.tomatodo : {}),
       enabled: false,
       dbPath: '',
       defaultSubject: '学习',
     },
     miniWindow: {
-      ...(source.miniWindow && typeof source.miniWindow === 'object' ? source.miniWindow : {}),
       autoShowOnMainHide: false,
       autoShowOnFocusStart: false,
       autoHideOnFocusEnd: false,
@@ -129,7 +78,6 @@ function makeIsolatedSettings(endpoint) {
       height: 70,
     },
     deviceSync: {
-      ...(source.deviceSync && typeof source.deviceSync === 'object' ? source.deviceSync : {}),
       enabled: true,
       endpoint,
       // The smoke is about the live handshake, not finished-ledger uploads.
@@ -182,20 +130,12 @@ function writeIsolatedUserData(endpoint) {
     `${JSON.stringify(settings)}\n`,
     'utf8',
   );
-  if (!sourceCredential || !fs.existsSync(sourceCredential)) {
-    throw new Error('current user has no encrypted device-sync credential');
-  }
-  // Copy bytes only; do not read, log, or rewrite the protected token.
-  fs.copyFileSync(
-    sourceCredential,
-    path.join(userDataDir, 'focuslink-device-sync-credential.json'),
-  );
-  const sourceLocalState = path.join(sourceUserData, 'Local State');
-  if (fs.existsSync(sourceLocalState)) {
-    // Chromium stores the app-scoped safeStorage wrapping key in Local State. Copy
-    // only this metadata file; the smoke never copies the user's SQLite/renderer data.
-    fs.copyFileSync(sourceLocalState, path.join(userDataDir, 'Local State'));
-  }
+  const electronExecutable = require('electron');
+  execFileSync(electronExecutable, [credentialHelper, userDataDir], {
+    stdio: 'pipe',
+    windowsHide: true,
+    timeout: 20_000,
+  });
 }
 
 function discoverPort() {
@@ -386,10 +326,6 @@ function removeTempDirectory(target, label) {
 
 async function main() {
   assertExecutable();
-  if (!sourceUserData || !sourceCredential || !fs.existsSync(sourceCredential)) {
-    skip('current user has no encrypted device-sync credential; configure sync once, then rerun');
-    return;
-  }
   const port = await reserveClosedLoopbackPort();
   const endpoint = `http://127.0.0.1:${port}`;
   await assertLoopbackClosed(endpoint);
@@ -422,8 +358,7 @@ async function main() {
 
   const configured = await evaluate('window.focuslink.deviceSync.status()');
   if (!configured.tokenConfigured) {
-    skip('copied encrypted token could not be read by the packaged app (safeStorage key mismatch)');
-    return;
+    throw new Error('packaged app could not decrypt the isolated synthetic credential');
   }
   assert(configured.enabled === true, 'isolated settings did not enable device sync');
   assert(configured.liveControlEnabled === true, 'isolated settings did not enable live control');

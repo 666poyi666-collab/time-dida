@@ -14,6 +14,7 @@ import { resolveFontProfile, resolveTimerStyle } from '@shared/theme';
 import { motion } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
 import { TimerDial } from '../focus/TimerDial';
+import { presentDeviceSyncError } from './deviceSyncStatusPresentation';
 import '../../styles/settings-motion.css';
 
 const HOTKEY_LABELS: Record<keyof AppSettings['hotkeys'], string> = {
@@ -257,13 +258,13 @@ export function SettingsPanel() {
   const refreshDeviceSyncStatus = async () => {
     try {
       setDeviceSyncStatus(await window.focuslink.deviceSync.status());
-    } catch (error) {
+    } catch {
       setDeviceSyncStatus((current) =>
         current
           ? {
               ...current,
               running: false,
-              lastError: error instanceof Error ? error.message : String(error),
+              lastError: 'sync_failed',
             }
           : null,
       );
@@ -584,6 +585,18 @@ export function SettingsPanel() {
     addToast('已恢复默认快捷键', 'success');
   };
 
+  const bringMiniWindowToFront = async () => {
+    try {
+      const topmost = await window.focuslink.mini.bringToFront();
+      addToast(
+        topmost ? '专注小窗已置于最顶层' : '小窗层级未确认，请重试',
+        topmost ? 'success' : 'error',
+      );
+    } catch (error) {
+      addToast(`无法置顶专注小窗：${ipcErrorMessage(error)}`, 'error');
+    }
+  };
+
   const handleLogin = async () => {
     if (!clientId.trim() || !clientSecret.trim()) {
       addToast('请填写 Client ID 和 Secret', 'info');
@@ -706,12 +719,10 @@ export function SettingsPanel() {
         ]
           .filter(Boolean)
           .join(' · ');
-  const deviceSyncTransportUnavailable = /无法连接跨设备同步服务|跨设备同步请求超时/i.test(
-    deviceSyncStatus?.lastError ?? '',
+  const deviceSyncError = presentDeviceSyncError(
+    deviceSyncStatus?.lastError,
+    deviceSyncStatus?.unresolvedConflicts,
   );
-  const deviceSyncConflictOnly =
-    (deviceSyncStatus?.unresolvedConflicts ?? 0) > 0 &&
-    /未解决的跨设备冲突/i.test(deviceSyncStatus?.lastError ?? '');
 
   const tomatodoBridgeLabel = (() => {
     switch (tomatodoBridge?.state) {
@@ -948,6 +959,18 @@ export function SettingsPanel() {
               </div>
             </Row>
           )}
+          <Row
+            label="窗口层级"
+            desc="小窗被其他窗口遮挡时，可在不改变位置与收纳状态的前提下重新置顶"
+          >
+            <button
+              type="button"
+              className="btn-outline text-[11px]"
+              onClick={() => void bringMiniWindowToFront()}
+            >
+              置于最顶层
+            </button>
+          </Row>
           <Row label={`小窗透明度（${Math.round(settings.miniWindow.opacity * 100)}%）`}>
             <input
               type="range"
@@ -1286,8 +1309,8 @@ export function SettingsPanel() {
           </Row>
           <div
             className={`settings-status-strip ${
-              deviceSyncStatus?.lastError
-                ? deviceSyncTransportUnavailable || deviceSyncConflictOnly
+              deviceSyncError
+                ? deviceSyncError.tone === 'warning'
                   ? 'tone-warning'
                   : 'tone-danger'
                 : deviceSyncStatus?.lastSyncAt
@@ -1299,9 +1322,7 @@ export function SettingsPanel() {
             aria-live="polite"
           >
             <span className="settings-status-strip-icon">
-              {deviceSyncStatus?.lastError &&
-              !deviceSyncTransportUnavailable &&
-              !deviceSyncConflictOnly ? (
+              {deviceSyncError?.tone === 'danger' ? (
                 <Icon.AlertCircle size="sm" />
               ) : (
                 <Icon.Cloud size="sm" />
@@ -1309,12 +1330,8 @@ export function SettingsPanel() {
             </span>
             <div className="settings-status-strip-copy">
               <p className="settings-status-strip-title">
-                {deviceSyncStatus?.lastError
-                  ? deviceSyncConflictOnly
-                    ? '同步已连接，有记录待确认'
-                    : deviceSyncTransportUnavailable
-                      ? '同步服务未连接，配置已保存'
-                      : '跨设备同步失败'
+                {deviceSyncError
+                  ? deviceSyncError.title
                   : deviceSyncStatus?.lastSyncAt
                     ? '账本已完成跨设备同步'
                     : deviceSyncStatus?.configured
@@ -1331,10 +1348,10 @@ export function SettingsPanel() {
                 </span>
               </p>
               <p className="settings-status-strip-desc">
-                {deviceSyncConflictOnly
+                {deviceSyncError?.kind === 'conflict-present'
                   ? `${deviceSyncStatus?.unresolvedConflicts ?? 0} 条记录存在设备间差异，已安全保留，不会自动覆盖`
-                  : deviceSyncStatus?.lastError && deviceSyncStatus?.signedIn
-                    ? deviceSyncStatus.lastError
+                  : deviceSyncError
+                    ? (deviceSyncError.detail ?? '同步状态等待确认')
                     : deviceSyncStatus?.liveControlEnabled
                       ? deviceSyncStatus.liveConnected
                         ? `实时连接已确认 · rev ${deviceSyncStatus.liveRevision ?? 0} · ${deviceSyncStatus.liveState}${deviceSyncStatus.lastSyncAt ? ` · 上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}` : ''}`

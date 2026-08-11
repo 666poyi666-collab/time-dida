@@ -12,6 +12,7 @@ import { useId, useMemo, useState, type CSSProperties } from 'react';
 import type { SyncedTask, SyncedTaskProject } from '@shared/sync/taskSnapshotProtocol';
 import {
   ALL_PROJECTS,
+  buildSyncedTaskForest,
   countSyncedTaskTree,
   findSyncedTaskPath,
   filterSyncedTaskForest,
@@ -55,11 +56,16 @@ export function TaskBrowser({
   const totalOpen = useMemo(() => tasks.filter((task) => !task.isCompleted).length, [tasks]);
   const groups = useMemo(() => groupSyncedTaskForest(taskForest, projects), [projects, taskForest]);
   const forceGroupsOpen = query.trim().length > 0 || projectFilter !== ALL_PROJECTS;
+  const allTaskForest = useMemo(() => buildSyncedTaskForest(tasks), [tasks]);
   const selectedTaskPath = useMemo(
-    () => findSyncedTaskPath(taskForest, selectedTaskId),
-    [selectedTaskId, taskForest],
+    () => findSyncedTaskPath(allTaskForest, selectedTaskId),
+    [allTaskForest, selectedTaskId],
   );
   const selectedTask = selectedTaskPath?.[selectedTaskPath.length - 1] ?? null;
+  const selectedPathKeys = useMemo(
+    () => new Set((selectedTaskPath ?? []).map((task) => `${task.source}:${task.id}`)),
+    [selectedTaskPath],
+  );
   const selectedParentPath =
     selectedTaskPath
       ?.slice(0, -1)
@@ -88,8 +94,8 @@ export function TaskBrowser({
     <section className="task-browser view-surface" aria-labelledby="task-browser-title">
       <header className="view-heading">
         <div>
-          <p className="eyebrow">TASK SNAPSHOT</p>
-          <h2 id="task-browser-title">电脑任务</h2>
+          <p className="eyebrow">CLOUD TASK SNAPSHOT</p>
+          <h2 id="task-browser-title">云端任务清单</h2>
         </div>
         <div className="view-heading-meta">
           <strong>{totalOpen}</strong>
@@ -125,25 +131,25 @@ export function TaskBrowser({
       </div>
 
       <div className="task-snapshot-meta">
-        <span>快照 rev {revision}</span>
+        <span>云端快照 rev {revision}</span>
         <span>
-          {publishedAt ? `电脑更新于 ${formatSnapshotTime(publishedAt)}` : '等待电脑发布任务'}
+          {publishedAt ? `云端更新于 ${formatSnapshotTime(publishedAt)}` : '等待电脑同步任务清单'}
         </span>
       </div>
 
       {taskForest.length === 0 ? (
         <div className="task-empty">
           <Target aria-hidden="true" />
-          <strong>{tasks.length === 0 ? '还没有电脑任务快照' : '没有符合条件的待办'}</strong>
+          <strong>{tasks.length === 0 ? '还没有云端任务快照' : '没有符合条件的待办'}</strong>
           <p>
             {tasks.length === 0
-              ? '电脑端读取第一张清单后会自动同步到这里。'
+              ? '电脑端读取滴答清单并成功同步后，最后一份快照会显示在这里。'
               : '调整搜索词或清单筛选。'}
           </p>
         </div>
       ) : (
         <div className="task-browser-workspace">
-          <div className="task-project-list" aria-label="电脑端待办任务">
+          <div className="task-project-list" aria-label="云端待办任务">
             {groups.map((group, groupIndex) => {
               const selectedInside = treeContainsTask(group.tasks, selectedTaskId);
               const open = forceGroupsOpen || expandedGroups.has(group.key) || selectedInside;
@@ -180,6 +186,7 @@ export function TaskBrowser({
                           selectedTaskId={selectedTaskId}
                           canStart={canStart}
                           collapsedTasks={collapsedTasks}
+                          selectedPathKeys={selectedPathKeys}
                           forceOpen={forceGroupsOpen}
                           onToggle={toggleTask}
                           onSelect={onSelect}
@@ -192,7 +199,10 @@ export function TaskBrowser({
               );
             })}
           </div>
-          <aside className="task-selection-detail" aria-label="所选任务详情">
+          <aside
+            className={`task-selection-detail ${selectedTask ? 'has-selection' : 'is-empty'}`}
+            aria-label="所选任务详情"
+          >
             {selectedTask ? (
               <>
                 <div className="task-selection-kicker">SELECTED TASK</div>
@@ -214,7 +224,7 @@ export function TaskBrowser({
                 </button>
               </>
             ) : (
-              <p>在左侧选择一个任务，平板会在这里显示完整路径和开始操作。</p>
+              <p>选择一个任务后，这里会显示完整路径和开始操作。</p>
             )}
           </aside>
         </div>
@@ -231,6 +241,7 @@ function TaskBranch({
   selectedTaskId,
   canStart,
   collapsedTasks,
+  selectedPathKeys,
   forceOpen,
   onToggle,
   onSelect,
@@ -243,6 +254,7 @@ function TaskBranch({
   selectedTaskId: string;
   canStart: boolean;
   collapsedTasks: ReadonlySet<string>;
+  selectedPathKeys: ReadonlySet<string>;
   forceOpen: boolean;
   onToggle: (key: string) => void;
   onSelect: (task: SyncedTask) => void;
@@ -251,9 +263,14 @@ function TaskBranch({
   const key = `${task.source}:${task.id}`;
   const selected = task.id === selectedTaskId;
   const hasChildren = task.children.length > 0;
-  const open = forceOpen || !collapsedTasks.has(key);
+  const open = isTaskBranchOpen(key, collapsedTasks, selectedPathKeys, forceOpen);
   const visibleDepth = Math.min(depth, 2);
-  const parentPath = [projectNameForTask(task, projects), ...ancestorTitles]
+  const hiddenAncestorTitles = task.hiddenAncestorTitles ?? [];
+  const parentPath = [
+    projectNameForTask(task, projects),
+    ...ancestorTitles,
+    ...hiddenAncestorTitles,
+  ]
     .filter(Boolean)
     .join(' / ');
   const actions = createTaskBranchActions(task, key, { onToggle, onSelect, onStart });
@@ -285,7 +302,7 @@ function TaskBranch({
           <span className="task-row-copy">
             <strong>{task.title}</strong>
             <small>
-              {depth > 0 && parentPath
+              {(depth > 0 || hiddenAncestorTitles.length > 0) && parentPath
                 ? `父级 ${parentPath}`
                 : hasChildren
                   ? `${countSyncedTaskTree(task.children)} 项子任务`
@@ -314,11 +331,12 @@ function TaskBranch({
               key={`${child.source}:${child.id}`}
               task={child}
               depth={depth + 1}
-              ancestorTitles={[...ancestorTitles, task.title]}
+              ancestorTitles={[...ancestorTitles, ...hiddenAncestorTitles, task.title]}
               projects={projects}
               selectedTaskId={selectedTaskId}
               canStart={canStart}
               collapsedTasks={collapsedTasks}
+              selectedPathKeys={selectedPathKeys}
               forceOpen={forceOpen}
               onToggle={onToggle}
               onSelect={onSelect}
@@ -345,6 +363,16 @@ export function createTaskBranchActions(
     select: () => handlers.onSelect(task),
     start: () => handlers.onStart(task),
   };
+}
+
+/** A programmatic selection must remain reachable even after its parents were manually collapsed. */
+export function isTaskBranchOpen(
+  key: string,
+  collapsedTasks: ReadonlySet<string>,
+  selectedPathKeys: ReadonlySet<string>,
+  forceOpen: boolean,
+): boolean {
+  return forceOpen || selectedPathKeys.has(key) || !collapsedTasks.has(key);
 }
 
 function treeContainsTask(nodes: readonly SyncedTaskTreeNode[], taskId: string): boolean {

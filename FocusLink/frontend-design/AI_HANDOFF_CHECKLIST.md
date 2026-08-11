@@ -17,7 +17,7 @@
 
 - [ ] 四个顶级入口仍是专注、任务、统计、设置，没有重复管理入口。
 - [ ] 颜色、间距、圆角、阴影和动效来自共享 token，不在组件内散落近似值。
-- [ ] 主工作面使用冷瓷白 / 深墨蓝画布、高不透明哑光表面、1px 发丝边界；正文没有 backdrop blur、文字发光或高频全屏扫光。移动端仅底部 tab、宽屏 sidebar、segmented controls、浮动操作和弹层可使用受限 Liquid Glass，并有暗色、无 blur、减少透明度回退。
+- [ ] 主工作面使用冷瓷白 / 深墨蓝画布、高不透明哑光表面、1px 发丝边界；正文没有 backdrop blur、文字发光或高频全屏扫光。移动端只允许底部 tab / 宽屏 sidebar、segmented controls、主操作条和弹层使用稀疏 Liquid Glass；任务、表单、统计和阅读面保持不透明 grouped surface，且每个材料控件都有暗色、无 blur、减少透明度回退。
 - [ ] 主窗可读/可操作文案不小于 11px，10px 只用于非核心辅助标签；小窗当前时间保持收起 25px / 展开至少 21px。
 - [ ] 颜色、间距、圆角、阴影和动效来自共享 token（`temporal-foundation.css`），表现层只有 `linear-workbench.css` 一套；`legacy-support.css` 只保留任务/设置/浮层的清理版规则，不新增主题。
 - [ ] 所选强调色同时映射 `--app-accent*` 与 `--app-success*` 并贯穿导航、按钮、任务、统计和专注；暂停红与危险深红保持独立。

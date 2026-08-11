@@ -1,4 +1,9 @@
 import type { EncryptedFocusGuardEnvelopeV1, SyncV2Mutation } from './v2Protocol';
+import {
+  encryptFocusGuardPayload,
+  focusGuardAad,
+  type FocusGuardCryptoContext,
+} from './focusGuardCrypto';
 
 export const FOCUS_GUARD_STATE_ENTITY_ID = 'guard-state-focuslink-live';
 export const FOCUS_GUARD_STATE_TTL_MS = 90_000;
@@ -46,7 +51,7 @@ export function projectFocusGuardState(
 }
 
 export async function encryptFocusGuardStateEnvelope(input: {
-  rootKey: Uint8Array;
+  context: FocusGuardCryptoContext;
   plaintext: FocusGuardStatePlaintext;
   baseRevision: number;
   operation?: 'put' | 'restore';
@@ -57,40 +62,17 @@ export async function encryptFocusGuardStateEnvelope(input: {
   const entityId = input.entityId ?? FOCUS_GUARD_STATE_ENTITY_ID;
   const operation = input.operation ?? 'put';
   const createdAt = input.createdAt ?? Date.now();
-  validateEnvelopeInput(input.rootKey, input.plaintext, entityId, input.baseRevision, createdAt);
-  const nonce = input.nonce ?? crypto.getRandomValues(new Uint8Array(12));
-  if (nonce.byteLength !== 12) throw new Error('guard nonce must be 12 bytes');
-
-  const aad = focusGuardStateAad(entityId, input.baseRevision, operation);
-  const aadBytes = new TextEncoder().encode(aad);
-  const key = await crypto.subtle.importKey('raw', exactBuffer(input.rootKey), 'AES-GCM', false, [
-    'encrypt',
-  ]);
-  const plaintextBytes = new TextEncoder().encode(JSON.stringify(input.plaintext));
-  const ciphertext = await crypto.subtle.encrypt(
-    {
-      name: 'AES-GCM',
-      iv: exactBuffer(nonce),
-      additionalData: exactBuffer(aadBytes),
-      tagLength: 128,
-    },
-    key,
-    exactBuffer(plaintextBytes),
-  );
-  const aadHash = await crypto.subtle.digest('SHA-256', exactBuffer(aadBytes));
-
-  return {
-    version: 1,
-    algorithm: 'A256GCM',
-    product: 'focus-guard',
-    entityKind: 'state',
-    nonce: encodeBase64Url(nonce),
-    ciphertext: encodeBase64Url(new Uint8Array(ciphertext)),
-    aadHash: hex(new Uint8Array(aadHash)),
-    aadBaseRevision: input.baseRevision,
+  validateEnvelopeInput(input.plaintext, entityId, input.baseRevision, createdAt);
+  return encryptFocusGuardPayload({
+    context: input.context,
+    entityType: 'focus_guard_state_v1',
+    entityId,
+    baseRevision: input.baseRevision,
     operation,
+    plaintext: input.plaintext,
+    nonce: input.nonce,
     createdAt,
-  };
+  });
 }
 
 /**
@@ -99,7 +81,7 @@ export async function encryptFocusGuardStateEnvelope(input: {
  * root: provisioning must come from the paired account recovery flow.
  */
 export async function buildEncryptedFocusGuardStateMutation(input: {
-  rootKey: Uint8Array;
+  context: FocusGuardCryptoContext;
   snapshot: FocusGuardLiveSnapshot;
   observedAt: number;
   baseRevision: number;
@@ -115,7 +97,7 @@ export async function buildEncryptedFocusGuardStateMutation(input: {
   }
   const plaintext = projectFocusGuardState(input.snapshot, input.observedAt);
   const payload = await encryptFocusGuardStateEnvelope({
-    rootKey: input.rootKey,
+    context: input.context,
     plaintext,
     baseRevision: input.baseRevision,
     entityId: FOCUS_GUARD_STATE_ENTITY_ID,
@@ -146,17 +128,15 @@ export function focusGuardStateAad(
   baseRevision: number,
   operation: 'put' | 'restore',
 ): string {
-  return `focus-guard|focus_guard_state_v1|${entityId}|${baseRevision}|${operation}`;
+  return focusGuardAad('focus_guard_state_v1', entityId, baseRevision, operation);
 }
 
 function validateEnvelopeInput(
-  rootKey: Uint8Array,
   plaintext: FocusGuardStatePlaintext,
   entityId: string,
   baseRevision: number,
   createdAt: number,
 ): void {
-  if (rootKey.byteLength !== 32) throw new Error('guard sync root must be 32 bytes');
   if (!isSafeId(entityId)) throw new Error('guard entityId is invalid');
   if (!Number.isSafeInteger(baseRevision) || baseRevision < 0) {
     throw new Error('guard baseRevision is invalid');
@@ -191,12 +171,6 @@ function isSafeId(value: string | null): value is string {
     value.length <= 160 &&
     !/[\u0000-\u001f\u007f]/.test(value)
   );
-}
-
-function encodeBase64Url(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 function hex(bytes: Uint8Array): string {

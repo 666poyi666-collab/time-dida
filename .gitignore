@@ -5,12 +5,16 @@
 /FocusLink/dist-mobile/
 /FocusLink/dist-cloud/
 /FocusLink/.tmp/
+/FocusLink/.wrangler/
 /FocusLink/.visual-dist*/
 /FocusLink/.visual-review-*/
 /FocusLink/NVIDIA Corporation/
 release/
 # Versioned release-v*/ directories are the reproducible delivery record. Their
 # two LFS executables, SHA256SUMS.txt and RELEASE_NOTES.md must remain visible.
+/release-v*/win-unpacked/
+/release-v*/builder-debug.yml
+/release-v*/*.blockmap
 /visual-unpacked-v*/
 *.log
 .env
@@ -25,3 +29,4 @@ design-pack/
 
 # design workshop assets
 /test-data/
+/.wrangler/

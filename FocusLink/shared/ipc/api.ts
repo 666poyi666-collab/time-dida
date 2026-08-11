@@ -460,6 +460,8 @@ export interface FocusLinkAPI {
     show(): void;
     hide(): void;
     toggle(): void;
+    /** Show the mini window if needed and reassert its native topmost Z-order without focusing it. */
+    bringToFront(): Promise<boolean>;
     collapse(): void;
     expand(): void;
     reset(): void;

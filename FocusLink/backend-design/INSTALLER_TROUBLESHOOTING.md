@@ -77,6 +77,21 @@ FocusLink 使用分步安装器。首屏标题是「FocusLink 安装」，需要
 
 这是 NSIS 在 Windows 文件访问冲突时可能出现的瞬时退出码，不等同于“FocusLink 无法关闭”。先确认没有残留的安装器或 `FocusLink.exe` 进程，再从工作区 `release-v01222/` 重新运行一次；发布门禁只允许对这个退出码做最多 4 次、每次清理临时安装目录后的递增退避。其他退出码不能静默重试，应立即保留日志并停止。
 
+## FL-INSTALL-006：生成 release EXE 后 `.git/lfs/tmp` 快速增长
+
+典型现象是打包本身已结束，但 `.git/lfs/tmp` 仍持续出现几十到几百 MiB 的新文件；进程树可见桌面 Git/review watcher 执行 `git diff --no-index`，并派生 `git-lfs filter-process` 读取尚未暂存的 release EXE。2026-08-10 的实证触发源是 Codex desktop 自动 review，不是 electron-builder；约 3 分钟内临时文件增长到 1,094,854,656 B。
+
+处理顺序必须固定：
+
+1. 立即停止会重复发现 release EXE 的 review/status 扫描，记录命令行、PID、父 PID、文件数、字节数和最后写入时间。
+2. 只把本轮生成的 EXE 暂移到工作区内忽略目录，禁止删除或改写候选；不得清理 `.git/lfs/objects`。
+3. 确认所有 `git-lfs filter-process` 退出，且 `.git/lfs/tmp` 至少一个完整 watcher 周期不再增长；两项缺一不可。
+4. 仅清理已确认的 `.git/lfs/tmp` 普通文件并回读 0 文件 / 0 B。
+5. 在未提交的 `.git/info/exclude` 中精确排除本轮两个 EXE，并保留本地 attributes 防护；先恢复 installer、观察，再恢复 portable、观察。恢复后重新计算 SHA-256，必须与暂移前一致；任一文件不一致或 tmp 重新增长都立即停止晋级。
+6. 正式暂存前移除 attributes 防护，运行 `git check-attr filter diff -- <installer> <portable>`，两者必须同时显示 `filter: lfs` 与 `diff: lfs`；使用显式路径一次性暂存，不运行无边界 GUI change scan。
+
+只看“当前没有 git-lfs 进程”不够：filter-process 可能在两次采样之间完成一次大文件转换。必须同时保存稳定时间窗口和 tmp 字节数。历史大文件仍存在也不能直接判断当前仍在增长；按时间戳分别记录历史残留和当前进程事实。
+
 ## 维护规则
 
 - 新增安装错误时，先分配稳定错误编号，再补充触发条件、可逆处理和验证命令。

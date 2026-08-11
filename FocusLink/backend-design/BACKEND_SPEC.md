@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相；当前实现 v0.12.74
+> 状态：v0.12.x 后端单一真相；当前实现 v0.12.85
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -55,14 +55,14 @@ shared/ipc/api.ts + shared/types.ts
 
 ## 2. 计时数据模型
 
-| 实体/字段 | 语义 |
-| --- | --- |
-| `FocusSession` | 一次完整会话及默认任务 |
-| `FocusSegment` | 一段连续有效专注，可覆盖默认任务 |
-| `PauseEvent` | 独立暂停区间 |
-| `activeElapsedMs` | 有效专注，不含暂停 |
-| `pauseElapsedMs` | 暂停累计 |
-| `wallElapsedMs` | 从开始到结束的自然跨度 |
+| 实体/字段         | 语义                             |
+| ----------------- | -------------------------------- |
+| `FocusSession`    | 一次完整会话及默认任务           |
+| `FocusSegment`    | 一段连续有效专注，可覆盖默认任务 |
+| `PauseEvent`      | 独立暂停区间                     |
+| `activeElapsedMs` | 有效专注，不含暂停               |
+| `pauseElapsedMs`  | 暂停累计                         |
+| `wallElapsedMs`   | 从开始到结束的自然跨度           |
 
 核心不变量：
 
@@ -77,11 +77,11 @@ shared/ipc/api.ts + shared/types.ts
 
 任务工作台的产品语义固定为滴答清单，CLI 与 OAuth 是连接方式，不是可暴露给用户的“任务来源”。
 
-| 字段/概念 | 取值 | 含义 |
-| --- | --- | --- |
-| `Task.source` | `local` / `ticktick` | 关联记录的逻辑身份；`local` 只为旧数据和内部兼容保留，CLI 与 OAuth 都归一为 `ticktick` |
-| `AppSettings.taskSource` | `local` / `ticktick-cli` / `ticktick-oauth` | 旧设置与连接偏好的兼容字段；不决定任务页显示什么产品来源 |
-| 工作台连接策略 | CLI 优先 / OAuth 后备 | 每次刷新先探测 dida CLI；不可用时才使用已登录 OAuth；两者都不可用则返回可诊断错误 |
+| 字段/概念                | 取值                                        | 含义                                                                                   |
+| ------------------------ | ------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `Task.source`            | `local` / `ticktick`                        | 关联记录的逻辑身份；`local` 只为旧数据和内部兼容保留，CLI 与 OAuth 都归一为 `ticktick` |
+| `AppSettings.taskSource` | `local` / `ticktick-cli` / `ticktick-oauth` | 旧设置与连接偏好的兼容字段；不决定任务页显示什么产品来源                               |
+| 工作台连接策略           | CLI 优先 / OAuth 后备                       | 每次刷新先探测 dida CLI；不可用时才使用已登录 OAuth；两者都不可用则返回可诊断错误      |
 
 Provider 的稳定能力应包括：
 
@@ -221,17 +221,31 @@ base64url `ciphertext`、64 位十六进制 `aadHash`、`aadBaseRevision`、
 解密后的 V1 明文字段冻结如下；这些字段只存在于受信客户端内存和设备安全存储，不进入
 authority 日志或服务端索引：
 
-| entity type | 稳定 entity id | V1 明文字段 |
-| --- | --- | --- |
-| `focus_guard_rule_v1` | `guard-rule:<uuid>` | `ruleId`、`ruleType=supervision|sleep`、`name`、`enabled`、`priority`、`schedule{timeZone,weekdays,startMinute,endMinute}`、`limits{continuousUseMs,cumulativeUseMs,lockMs}`、`applicationPolicies[]`、`whitelistPackages[]`、`lockMode=normal|strong|brick`、`allowSkip`、`maxPauseMs`、`expiresAt`、`updatedAt` |
-| `focus_guard_state_v1` | `guard-state-focuslink-live` | `state=idle|running|paused`、`sessionId`、`revision`、`observedAt`、`expiresAt`；TTL 默认 90 秒、最大 300 秒，只供短期展示，永不作为永久锁机授权 |
-| `focus_guard_completion_v1` | `guard-completion:<uuid>` | `completionId`、`ruleId`、`ruleType`、`outcome=completed|skipped|interrupted`、`startedAt`、`endedAt`、`activeMs`、`lockedMs`、`sourceRevision` |
-| `focus_guard_config_v1` | `guard-config:global` | `supervisionEnabled`、`sleepEnabled`、`notificationsEnabled`、`ladder{enabled,thresholdMs,useMs,lockMs}`、`updatedAt` |
+| entity type                 | 稳定 entity id               | V1 明文字段                                                                                                                                                                                                                                                                                                                |
+| --------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `focus_guard_rule_v1`       | `guard-rule:<uuid>`          | `ruleId`、`ruleType=supervision \| sleep`、`name`、`enabled`、`priority`、`schedule{timeZone,weekdays,startMinute,endMinute}`、`limits{continuousUseMs,cumulativeUseMs,lockMs}`、`applicationPolicies[]`、`whitelistPackages[]`、`lockMode=normal \| strong \| brick`、`allowSkip`、`maxPauseMs`、`expiresAt`、`updatedAt` |
+| `focus_guard_state_v1`      | `guard-state-focuslink-live` | `state=idle \| running \| paused`、`sessionId`、`revision`、`observedAt`、`expiresAt`；TTL 默认 90 秒、最大 300 秒，只供短期展示，永不作为永久锁机授权                                                                                                                                                                     |
+| `focus_guard_completion_v1` | `guard-completion:<uuid>`    | `completionId`、`ruleId`、`ruleType`、`outcome=completed \| skipped \| interrupted`、`startedAt`、`endedAt`、`activeMs`、`lockedMs`、`sourceRevision`                                                                                                                                                                      |
+| `focus_guard_config_v1`     | `guard-config:global`        | `supervisionEnabled`、`sleepEnabled`、`notificationsEnabled`、`ladder{enabled,thresholdMs,useMs,lockMs}`、`updatedAt`                                                                                                                                                                                                      |
 
 字段级边界：`applicationPolicies` 只保存用户声明的可移植包名、模式和时长/次数阈值；
 `whitelistPackages` 只保存用户选择的包名。Android UID、应用是否已安装、权限结果、ROM
 能力、解析后的本机组件、Keystore 材料、token、root、当前锁机授权、日志和原数据库行均禁止
 进入明文。跨设备恢复必须把包不存在或能力不匹配保留为本机待处理状态，不能改写云端规则。
+
+阶段 B 的本地 root 实现另有独立合同：32-byte account root 由受信本地 provisioning 生成，
+owner recovery 使用 HKDF-SHA256 recovery envelope，rotation 使用旧 root 加密的新 root，
+二者都绑定 account、fromGeneration/generation、purpose、AAD 与 createdAt。Windows 只允许
+Electron `safeStorage` 包裹 root material 并做 temp/fsync/rename/readback；Android 只允许独立
+Keystore alias 包裹 root material，普通偏好仅存密文 envelope 与非敏感 metadata。root generation
+或 rotation 字段不得添加到 V1 guard envelope；生产 publisher、解密桥、Worker/DO/gateway 和
+schema 变更仍未接线，阶段 C/D 需单独批准。
+
+Windows 的 root material 写入在同一 root 文件的进程内 mutex 下执行，并在落盘前复核记录
+SHA-256 版本，避免两个 desktop store 实例互相覆盖。加密 material 与记录 metadata 必须同时
+绑定 `accountPublicId + generation + keyId`；`revoked` 是不可逆终态，任何降级、恢复或旧 generation
+写入都被拒绝。root writer 只在 Electron main 的本地 vault 中存在，不向 renderer/IPC 暴露，也不等同于
+已批准的跨设备 Focus Guard publisher。
 
 冲突和兼容规则：
 
@@ -250,11 +264,11 @@ authority 日志或服务端索引：
 - 账本平面仍只复制 `finished` / `aborted` 会话；活动快照和控制命令绝不塞进 completed bundle，也不改变现有桌面端已结束会话补传语义。
 - `cloudFocusId`、第三方投递结果、CLI/OAuth 凭据、TomaToDo 路径、窗口/快捷键/小窗设置均不进入会话包。
 - 服务端以 `(account, opId)` 去重；稳定 `opId` 同时包含实体、正文与 `baseRevision`，相同 op 重放返回 `duplicate`，`baseRevision` 过期返回 `conflict`，不使用客户端 `updatedAt` 静默覆盖。
-- Electron 以 SQLite 完成会话为耐久事实源，网络失败后下次重新扫描补传；cursor、每个会话的已确认 revision/fingerprint 与未解决冲突写入同一个原子 `app_meta` 检查点。检查点按“规范化 endpoint + token 的不可逆摘要”分区，切换服务/账号不得复用旧状态；服务明确返回 `invalid_cursor` 时清理当前分区并完整重试一次。Web/PWA/Android 若从旧安装或旧账号缓存恢复出无效 cursor，也必须识别结构化 `invalid_cursor` 错误码，清空该设备的旧账本缓存并从空 cursor 重建一次；禁止保留旧账号会话或按错误文本无限重试。
+- Electron 以 SQLite 完成会话为耐久事实源，网络失败后下次重新扫描补传；cursor、每个会话的已确认 revision/fingerprint 与未解决冲突写入同一个原子 `app_meta` 检查点。Sync v2 transport checkpoint 按“规范化 endpoint + 完整 device token 的不可逆摘要”分区；dida/TomaToDo provider queue 则使用独立 `providerScope`：canonical `fl2` 为 endpoint + accountPublicId 的匿名哈希，legacy loopback 才按凭据哈希。切换服务/账号不得复用旧状态；服务明确返回 `invalid_cursor` 时清理当前分区并完整重试一次。Web/PWA/Android 若从旧安装或旧账号缓存恢复出无效 cursor，也必须识别结构化 `invalid_cursor` 错误码，清空该设备的旧账本缓存并从空 cursor 重建一次；禁止保留旧账号会话或按错误文本无限重试。
 - Android/Web 的本机离线会话使用同一 completed bundle 协议，不新增移动端业务服务。活动草稿和待上传 bundle 分开存入 IndexedDB；结束操作必须在一个事务中写入稳定 `opId` 的 pending 记录并删除活动草稿。每次在线账本拉取前先串行补传 pending，只有 `applied/duplicate` 删除，`conflict/rejected` 或网络失败保留；普通“清缓存”不得删除 pending。移动端应用沙箱保护账本，Android token 仍只存 Keystore，Electron token 仍只存 `safeStorage`，日志、overlay 和通知均不得输出令牌或 endpoint。
 - Windows 登录项的有效策略为“用户显式自动启动”或“跨设备同步已启用且 autoSync 已启用”。后一种情况必须隐藏启动并常驻托盘；睡眠恢复后重新确认 canonical HTTPS 连接并立即跑一次同步。回环开发后端只允许测试进程显式启动并监听 `127.0.0.1:18787`，不得由 Electron 自动启动或开放 LAN。
 - ADB 只用于显式构建、安装、版本回读和 instrumentation；Electron 运行期不得枚举设备、维护 `adb reverse`、自动配对或把手机流量中继到本机测试后端。生产移动端始终直连 canonical HTTPS authority。
-- 拉回的全新会话在一个 SQLite 事务中插入 session/segments/pauses；不会自动触发 dida 或 TomaToDo 副作用。同一次 cursor catch-up 的所有响应页先在内存按实体折叠到最新 revision，完整收敛后才写 SQLite 与原子检查点；中途断网不会暴露旧 revision。拉取完成后的既有记录或已改动的同 ID 正文写入耐久冲突箱。冲突未解决时界面不得清空错误或宣称完全收敛。
+- 拉回的全新会话在一个 SQLite 事务中插入 session/segments/pauses，并在同一事务写入按 `(connectionScope, sessionId, provider)` 唯一的 `dida` / `tomatodo` 回写意图；事务内绝不执行外部副作用。提交后 coordinator 才以 SQLite 原子 claim/lease 消费，两个 provider 分别完成或指数退避，过期 lease 可跨重启回收；滴答复用 marker 幂等的 `sync_queue`，番茄 To-do 复用 durable segment queue，后台不得启动外部客户端。同一次 cursor catch-up 的所有响应页先在内存按实体折叠到最新 revision，完整收敛后才写 SQLite 与原子检查点；中途断网不会暴露旧 revision。拉取完成后的既有记录或已改动的同 ID 正文写入耐久冲突箱。冲突未解决时界面不得清空错误或宣称完全收敛。
 - 服务端对 cursor 之后同一实体的多次历史 revision 先折叠为最新状态，再按 change sequence、条数与响应字节预算分页；全新设备不得先导入旧 revision 再把同一批历史误判为本地冲突。
 - 当前桌面端不执行远端删除，也不自动覆盖已有会话；删除/编辑冲突需要后续显式清理与合并流程。
 - Electron 访问令牌只经 `safeStorage` 加密落盘，不进入 `AppSettings`、renderer 日志或多端 payload。
@@ -266,7 +280,7 @@ authority 日志或服务端索引：
 `FOCUSLINK_CLOUD_TEST_TOKEN`，执行精确 CORS allowlist、Bearer 鉴权、512 KiB 单会话包上限与请求/响应各 1 MiB 字节预算；请求和响应都按序列化字节切页，可用
 忽略目录中的单进程 JSON 文件持久化。
 
-生产同步的唯一数据 authority 是 `cloudflare/accountDurableObject.ts` 的 Account Durable Object。`cloudflare/worker.ts` 只作为私有 service-binding authority adapter：`wrangler.jsonc` 固定 `workers_dev=false`、`preview_urls=false` 且没有 `routes`，不得创建 `workers.dev`、preview 或自定义域名入口。生产客户端只保存 canonical `foxlink-cloud-mcp` HTTPS origin；公网 OAuth、owner session、CSRF、resource/audience 与 CORS 由该 adapter 校验，再通过 service binding 调用私有 FocusLink Worker。客户端不得改指向私有 Worker。
+生产 Cloudflare Sync v2 的唯一数据 authority 是 `cloudflare/accountDurableObject.ts` 的 Account Durable Object。`cloudflare/worker.ts` 只作为私有 service-binding authority adapter：`wrangler.jsonc` 固定 `workers_dev=false`、`preview_urls=false`；不得创建未经登记的 `workers.dev`、preview 或任意用户自定义入口。生产客户端仍以 canonical `foxlink-cloud-mcp` HTTPS origin 作为身份与默认地址；为应对部分网络对 `workers.dev` 的 DNS/443 阻断，数据面额外允许固定的 `https://focuslink.pyzzgk.dpdns.org` failover，两个 origin 必须指向同一 adapter，且只在传输失败时按固定顺序重试。OAuth、owner session、CSRF、resource/audience 与登录 URL 仍只走 identity gateway；客户端不得接受任意用户域名、不得把 failover 当作登录域、不得改指向私有 Worker。
 
 新设备登录的部署顺序不可交换：先在私有 FocusLink Worker 与 canonical gateway 分别配置同一代、独立于 device/OAuth/MCP 的 `fia_*` authority secret；再部署私有 `/sync/v1/devices/register` 与 Account DO migration；随后部署 gateway 的 bootstrap flow store、owner session/CSRF approval 和私有登记转发；最后运行 start/poll 正负测试并撤销旧 secret。回滚时先停止新 flow，再保留旧 `fl2` 数据面和已登录设备，不得撤销现有 device credential。仓库内合同通过或 dry-run 均不等于 gateway 已上线。
 
@@ -274,20 +288,31 @@ Node `cloud/server.ts` 仅保留显式 token 的 `127.0.0.1` 合同测试后端�
 
 canonical adapter 与私有 authority 的路由表如下。`/v1/*`、`/v2/*` 和 `/sync/push` 均为已退休外部路径，adapter 与私有 Worker 都不得回退：
 
-| Canonical path | 方法 | 凭据 / scope | 私有 Account DO 路径 |
-| --- | --- | --- | --- |
-| `/sync/v2/status` | GET | device token · `sync:read` | `/v2/sync/epoch` |
-| `/sync/v2/exchange` | POST | device token · 无 mutation 时 `sync:read`，有 mutation 时 `sync:write` | `/v2/sync` |
-| `/sync/v2/tasks` | GET / POST | device token · `sync:read` / `sync:write` | `/v1/tasks`（仅 DO 内部） |
-| `/sync/v2/live` | GET | device token · `live:read` | `/v1/live`（仅 DO 内部） |
-| `/sync/v2/live/wait` | GET | device token · `live:read` | `/v1/live/wait`（仅 DO 内部） |
-| `/sync/v2/live/command` | POST | device token · `live:write` | `/v1/live/command`（仅 DO 内部） |
-| `/sync/v1/pair/offers` | POST | adapter 先验 owner session + CSRF；fl2 token 仍由 DO 校验 `devices:manage` | `/v2/pair/offers` |
-| `/sync/v1/pair/exchange` | POST | 一次性高熵 nonce；不得要求已有 bearer | `/v2/pair/exchange` |
-| `/sync/v1/devices/register` | POST | 仅 identity gateway 的独立 `fia_*` + 精确 `poyi-owner`；公网客户端不得直连 | `/v2/devices/register` |
-| `/internal/mcp/v1/focus/summary` | GET | 仅 MCP service binding credential；公网 OAuth 由 `foxlink-cloud-mcp` 校验 `focuslink:read` | 同名内部投影 |
+| Canonical path                   | 方法       | 凭据 / scope                                                                               | 私有 Account DO 路径             |
+| -------------------------------- | ---------- | ------------------------------------------------------------------------------------------ | -------------------------------- |
+| `/sync/v2/status`                | GET        | device token · `sync:read`                                                                 | `/v2/sync/epoch`                 |
+| `/sync/v2/exchange`              | POST       | device token · 无 mutation 时 `sync:read`，有 mutation 时 `sync:write`                     | `/v2/sync`                       |
+| `/sync/v2/tasks`                 | GET / POST | device token · `sync:read` / `sync:write`                                                  | `/v1/tasks`（仅 DO 内部）        |
+| `/sync/v2/live`                  | GET        | device token · `live:read`                                                                 | `/v1/live`（仅 DO 内部）         |
+| `/sync/v2/live/wait`             | GET        | device token · `live:read`                                                                 | `/v1/live/wait`（仅 DO 内部）    |
+| `/sync/v2/live/command`          | POST       | device token · `live:write`                                                                | `/v1/live/command`（仅 DO 内部） |
+| `/sync/v1/pair/offers`           | POST       | adapter 先验 owner session + CSRF；fl2 token 仍由 DO 校验 `devices:manage`                 | `/v2/pair/offers`                |
+| `/sync/v1/pair/exchange`         | POST       | 一次性高熵 nonce；不得要求已有 bearer                                                      | `/v2/pair/exchange`              |
+| `/sync/v1/devices/register`      | POST       | 仅 identity gateway 的独立 `fia_*` + 精确 `poyi-owner`；公网客户端不得直连                 | `/v2/devices/register`           |
+| `/internal/mcp/v1/focus/summary` | GET        | 仅 MCP service binding credential；公网 OAuth 由 `foxlink-cloud-mcp` 校验 `focuslink:read` | 同名内部投影                     |
 
 Account DO 保存实体、revision、reservation/result、change feed、任务快照、实时会话、commandId 与设备 credential HMAC；每个请求在 DO 内执行真实 scope、过期、撤销、跨账号和 `deviceId` 绑定检查。任何日志、响应或同步实体都不得返回 token。`/healthz` 只证明进程存活；`/readyz` 必须验证必需 secrets 与 Account DO SQLite probe，不能把配置存在冒充 authority 可写。
+
+### 同步健康与错误呈现合同
+
+- canonical `foxlink-cloud-mcp` 公网 adapter 的匿名存活探针是 `GET /healthz`；本机 loopback 测试后端才使用 `GET /health`。`/healthz` 成功只证明当前 DNS/TCP/TLS/adapter 请求链可达，不证明设备 token、scope、Account DO 读写或历史同步已成功。
+- `GET /sync/v2/status` 是只读 canonical 状态路由；无凭据返回 401 只能证明路由存在且鉴权 fail-closed，不能冒充已存凭据通过。bootstrap inventory/entities 是会创建或更新服务端 bootstrap 状态的 POST 路由，禁止作为 health probe。
+- `deviceSync.lastErrorV2.<scope>` 保存的是最近一次结构化同步结果码，不是单一的连接布尔值。`network_error`、超时与 HTTP/credential 错误属于 transport/auth 失败；`conflict_present` 表示同步请求已完成但本机仍有耐久冲突，`rejected_operation` 表示操作被拒绝。后两者不得显示为“当前连接失败”。
+- 一次成功同步可以同时留下 `lastSyncAt` 和 `conflict_present`。界面必须结合结构化 error code、`unresolvedConflicts`、最近一次已验证 transport 时间和 live telemetry 呈现；禁止依赖本地化错误文案的正则匹配，也禁止把任意非空 `lastError` 统一映射为 danger/“跨设备同步失败”。
+- `conflict_present` 且 `unresolvedConflicts > 0` 的固定语义是 warning：“同步已连接，有记录待确认”；冲突记录继续安全保留，不自动覆盖。`network_error` 只有在最近一次真实请求失败且尚无更新的成功证据时才能呈现“同步服务未连接”。
+- 诊断必须同时保留历史失败和当前探针事实：日志中的早先 `network_error` 不因当前 health 恢复而被改写；当前 health 恢复也不能清除尚未解决的冲突。不得通过清 token、清缓存、删数据库或重做 bootstrap 掩盖状态分类错误。
+
+Cloudflare 外部协议 gate 是受限测试操作，不是部署入口：external run/verify 必须显式 opt-in，目标只能是 `127.0.0.1` 的 disposable Worker。`FOCUSLINK_TEST_STATE` 只能是项目 `.tmp` 或系统临时目录下允许名称的直系状态文件；父目录与文件均须拒绝 junction/symlink/非普通类型，创建使用 exclusive create，读取与删除前复核文件身份，序列化状态不得包含 credential。external verify 不自动删除外部状态文件，因为它没有可证明的所有权能力；只有 local 隔离 gate 在自建临时根内自动清理自己的状态与持久化目录。
 
 中央 authority 读取 FocusLink 状态时只能绑定 named entrypoint `FocusLinkAuthorityObservation`，默认 Worker 对 `/internal/authority-observation/v1` 固定返回 `service_binding_required`。中央 canonical registry 将 FocusLink 固定映射为 `productId=identity-focus`；请求必须精确携带 vendor `Accept`、32–512 字符安全 token 形式的独立 `Capability` secret 和完整 HTTPS `/authority/identity-focus` audience，device/OAuth/MCP/pair 凭据均不能替代该 capability，产品不得另加中央不识别的前缀约束。Account DO 以真实 v2 change sequence、live revision、device watermark、generation、maintenance 与 conflict 状态生成 checkpoint fingerprint；fingerprint 改变时立即递增 observation revision。有效 TTL 内的 named GET 先在同一 DO SQLite 事务中探测 schema/meta/live 依赖，再原字节返回既有 snapshot；snapshot 缺失、损坏或到期时，只有依赖探测通过才推进新的 verification checkpoint revision 并持久化新 snapshot，相同业务 fingerprint 也不改写旧 revision。DO 内部 `authority_observation_schema_version=2` 移除旧 `state_hash` 唯一约束以保存这些续期 checkpoint。同一 revision 的 truth、`observedAt`、`expiresAt` 与序列化正文永不重写；缺配置、依赖失败、额外字段或不可用 revision 全部非 200，由中央 authority 在校验后另行计算 observation hash 和签名。
 
@@ -314,12 +339,12 @@ Account DO 保存实体、revision、reservation/result、change feed、任务�
 - Android 的沉浸系统栏与画中画由 `MainActivity` 通过公开 API 提供，Capacitor 插件只暴露能力、当前状态和显式用户动作。结束活动会话后 renderer 必须恢复系统栏；画中画不支持时返回结构化 `supported: false`。这些显示能力不得引入第二套计时器、kiosk/设备所有者权限或厂商私有 API 依赖。
 - Android 桌面后备计时使用 `TYPE_APPLICATION_OVERLAY` 和显式 `SYSTEM_ALERT_WINDOW` 特殊授权，默认关闭且不得因通知可用而自动显示。点按显示关闭按钮并在 3 秒无操作后收起；关闭持久禁用 overlay，但不结束会话或通知，重新启用只能来自应用设置。拖动目标坐标通过 `postOnAnimation` 每帧最多更新一次，拖动期间缓存安全区/尺寸，背景 drawable 按状态复用；位置继续归一化持久化并在配置变化后重新夹取。
 
-电脑任务清单使用独立的权威快照平面，协议真值位于 `shared/sync/taskSnapshotProtocol.ts`：
+云端任务清单使用独立的权威快照平面，协议真值位于 `shared/sync/taskSnapshotProtocol.ts`；其内容来源是电脑最后一次成功读取并发布的滴答任务清单：
 
 - 电脑端每次成功读取滴答工作台后自动发布项目与活动任务快照；发布失败只记诊断，不得让已经成功的本地任务刷新变成失败。
 - 快照只包含选择专注所需的任务 ID、来源、标题、项目、优先级、到期日、标签、父子关系和完成状态；不包含任务正文、原始 JSON、CLI/OAuth 凭据或第三方写入能力。Checklist 子项在传输时展平并保留 `parentId`。
 - 云端按账号保留最后一份完整快照，内容相同的同设备重放不增加 revision。Web/PWA/Android 使用 `GET /sync/v2/tasks` 读取并写入 IndexedDB；PC 关闭或任务服务暂时不可达时继续使用最后一次缓存。
-- 任务快照 GET/POST 必须 `Cache-Control: no-store`；移动端前台每 15 秒自动拉取并在恢复可见、登录或连接 epoch 变化时立即拉取。revision 只能前进：低 revision 响应不得覆盖缓存；同 revision 若 source/payload 不同视为 authority 不一致并保留当前快照。PC 仅在服务端回读同一 source device 与同一 payload 后清除耐久 pending snapshot，防止代理旧响应把未发布内容误报为成功。
+- 任务快照 GET/POST 必须 `Cache-Control: no-store`；`publishedAt` 只是客户端排序提示，Account DO 与 loopback 必须只接受 `publishedAt <= serverTime + 5 分钟`，超限统一返回 HTTP `422` / `task_snapshot_timestamp_too_far_ahead`。已保存且超出该窗口的旧快照是 legacy far-future 状态，下一份合法快照可替换它；正常 register 保持相同 source/payload 幂等、较旧 timestamp 为 `409 stale_task_snapshot`、同 timestamp 异文为 `409 task_snapshot_conflict`。移动端前台每 15 秒自动拉取并在恢复可见、登录或连接 epoch 变化时立即拉取。revision 只能前进：低 revision 响应不得覆盖缓存；同 revision 若 source/payload 不同视为 authority 不一致并保留当前快照。桌面端仅在当前 connection scope/generation 内收到上述 422 时，至多一次 GET 可信 `serverTime`、重戳原 payload 后重试一次；成功回读同一 source device/payload 或 stale 才可清除 durable pending，conflict、第二次 422、GET/解析/重试失败或连接变化均必须保留 pending，不能递归重试。
 - 移动端开始实时会话时可以携带快照中的任务上下文，也可以不关联任务自由开始。任务上下文最终进入 completed bundle，PC 拉回后仍由桌面端执行 dida/TomaToDo 副作用。
 - 任务快照解决的是“PC 已读取内容的跨设备可选副本”，不是移动端直连滴答，也不把本地测试后端提升为生产云。PC 尚未成功发布过快照时，其他端只能自由标题开始。
 

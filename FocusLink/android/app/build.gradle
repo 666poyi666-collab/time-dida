@@ -10,11 +10,12 @@ android {
         applicationId "app.focuslink.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1275
-        versionName "0.12.75"
+        versionCode 1285
+        versionName "0.12.85"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "DEFAULT_SYNC_ENDPOINT", '""'
         buildConfigField "String", "CANONICAL_SYNC_ORIGIN", '"https://foxlink-mcp.focuslink-poyi-6465e9.workers.dev"'
+        buildConfigField "String", "SYNC_FAILOVER_ORIGIN", '"https://focuslink.pyzzgk.dpdns.org"'
         manifestPlaceholders = [appScheme: "focuslink"]
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

@@ -143,6 +143,70 @@ if (-not $script:messageSent) { throw 'Could not find the isolated FocusLink Min
   });
 }
 
+function readForegroundWindow() {
+  if (process.platform !== 'win32') {
+    return Promise.reject(new Error('Native foreground-window smoke requires Windows'));
+  }
+  const script = String.raw`
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class FocusLinkForegroundWindow {
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")]
+  public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+  public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+}
+'@
+$handle = [FocusLinkForegroundWindow]::GetForegroundWindow()
+[uint32]$windowProcessId = 0
+[void][FocusLinkForegroundWindow]::GetWindowThreadProcessId($handle, [ref]$windowProcessId)
+$title = New-Object System.Text.StringBuilder 512
+[void][FocusLinkForegroundWindow]::GetWindowText($handle, $title, $title.Capacity)
+[pscustomobject]@{
+  handle = $handle.ToInt64()
+  processId = $windowProcessId
+  title = $title.ToString()
+} | ConvertTo-Json -Compress
+`;
+
+  return new Promise((resolve, reject) => {
+    const powershellPath =
+      process.env.POWERSHELL_PATH ||
+      path.join(
+        process.env.SystemRoot || 'C:\\Windows',
+        'System32',
+        'WindowsPowerShell',
+        'v1.0',
+        'powershell.exe',
+      );
+    execFile(
+      powershellPath,
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      { windowsHide: true, timeout: 15_000, maxBuffer: 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(`Foreground-window probe failed: ${stderr.trim() || error.message}`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(stdout.trim()));
+        } catch (parseError) {
+          reject(
+            new Error(
+              `Foreground-window probe returned invalid JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+            ),
+          );
+        }
+      },
+    );
+  });
+}
+
 async function listTargets() {
   const response = await fetch(`http://127.0.0.1:${port}/json/list`);
   if (!response.ok) throw new Error(`CDP target list returned HTTP ${response.status}`);
@@ -1179,6 +1243,50 @@ async function main() {
     COLLAPSED_SIZE,
   );
 
+  process.stderr.write('[mini-smoke] verify bring-to-front preserves collapsed geometry\n');
+  await mainSession.send('Page.bringToFront');
+  await delay(150);
+  const foregroundBeforeBringToFront = await readForegroundWindow();
+  const beforeBringToFront = await waitForMiniState(miniSession, 'running', true, COLLAPSED_SIZE);
+  const beforeBringToFrontConfig = await miniSession.evaluate('window.focuslink.mini.getConfig()');
+  const broughtToFront = await mainSession.evaluate('window.focuslink.mini.bringToFront()');
+  await delay(200);
+  const foregroundAfterBringToFront = await readForegroundWindow();
+  const afterBringToFront = await waitForMiniState(miniSession, 'running', true, COLLAPSED_SIZE);
+  const afterBringToFrontConfig = await miniSession.evaluate('window.focuslink.mini.getConfig()');
+  const beforeBringToFrontGeometry = summarizeWindowState(beforeBringToFront);
+  const afterBringToFrontGeometry = summarizeWindowState(afterBringToFront);
+  if (
+    broughtToFront !== true ||
+    foregroundBeforeBringToFront.handle <= 0 ||
+    foregroundAfterBringToFront.handle !== foregroundBeforeBringToFront.handle ||
+    foregroundAfterBringToFront.processId !== foregroundBeforeBringToFront.processId ||
+    foregroundAfterBringToFront.title !== foregroundBeforeBringToFront.title ||
+    beforeBringToFrontConfig?.collapsed !== true ||
+    afterBringToFrontConfig?.collapsed !== true ||
+    JSON.stringify(afterBringToFrontGeometry) !== JSON.stringify(beforeBringToFrontGeometry)
+  ) {
+    throw new Error(
+      `Bring-to-front changed collapsed mini geometry: ${JSON.stringify({
+        broughtToFront,
+        foregroundBeforeBringToFront,
+        foregroundAfterBringToFront,
+        beforeBringToFrontConfig,
+        afterBringToFrontConfig,
+        beforeBringToFrontGeometry,
+        afterBringToFrontGeometry,
+      })}`,
+    );
+  }
+  results.bringToFront = {
+    confirmed: broughtToFront,
+    preservedCollapsed: afterBringToFrontConfig.collapsed,
+    foregroundBefore: foregroundBeforeBringToFront,
+    foregroundAfter: foregroundAfterBringToFront,
+    before: beforeBringToFrontGeometry,
+    after: afterBringToFrontGeometry,
+  };
+
   process.stderr.write('[mini-smoke] expand from mini button and verify idempotence\n');
   await clickMini(miniSession, 'button[aria-label="展开"]', 'expand');
   await waitForMiniState(miniSession, 'running', false, EXPANDED_SIZE);
@@ -1446,11 +1554,36 @@ main()
     miniSession?.close();
     mainSession?.close();
     await delay(300);
-    if (!app.killed) app.kill();
-    fs.rmSync(userDataDir, {
-      recursive: true,
-      force: true,
-      maxRetries: 10,
-      retryDelay: 100,
-    });
+    if (app.exitCode === null && !app.killed) app.kill();
+    if (app.exitCode === null) {
+      await new Promise((resolve) => {
+        const timeout = setTimeout(resolve, 5_000);
+        app.once('close', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+    }
+    let cleanupError = null;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      try {
+        fs.rmSync(userDataDir, {
+          recursive: true,
+          force: true,
+          maxRetries: 2,
+          retryDelay: 100,
+        });
+        cleanupError = null;
+        break;
+      } catch (error) {
+        cleanupError = error;
+        await delay(250);
+      }
+    }
+    if (cleanupError && fs.existsSync(userDataDir)) {
+      process.stderr.write(
+        `[mini-smoke] cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}\n`,
+      );
+      if (!process.exitCode) process.exitCode = 1;
+    }
   });

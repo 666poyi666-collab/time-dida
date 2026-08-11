@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import {
   FOCUSLINK_CANONICAL_SYNC_ORIGIN,
-  isCanonicalFocusLinkDeviceConnection,
+  isAllowedFocusLinkDeviceConnection,
 } from '@shared/sync/identityProtocol';
 
 const ENDPOINT_KEY = 'focuslink.mobile.endpoint';
@@ -95,7 +95,7 @@ export function cloudOnlyMobileSyncEndpoint(endpoint: string, accessToken = ''):
     }
     const normalized = url.toString().replace(/\/$/, '');
     const token = accessToken.trim();
-    return !token || isCanonicalFocusLinkDeviceConnection(normalized, token) ? normalized : '';
+    return !token || isAllowedFocusLinkDeviceConnection(normalized, token) ? normalized : '';
   } catch {
     return '';
   }

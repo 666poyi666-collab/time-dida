@@ -40,6 +40,7 @@ import {
 } from '../shared/sync/liveFocusProtocol';
 import {
   TASK_SNAPSHOT_PROTOCOL_VERSION,
+  isTaskSnapshotPublishedAtWithinFutureSkew,
   validateTaskSnapshotPublishRequest,
   type TaskSnapshotPayload,
   type TaskSnapshotPublishRequest,
@@ -61,6 +62,7 @@ import {
   type FocusLedgerCorrectionV2,
   type FocusLedgerV2,
   type FocusMetadataV2,
+  type EncryptedFocusGuardEnvelopeV1,
   type SyncV2Change,
   type SyncV2EntityType,
   type SyncV2Epoch,
@@ -2430,6 +2432,14 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
   }
 
   private publishTaskSnapshot(request: TaskSnapshotPublishRequest): TaskSnapshotResponse {
+    const serverTime = Date.now();
+    if (!isTaskSnapshotPublishedAtWithinFutureSkew(request.snapshot.publishedAt, serverTime)) {
+      throw new ProtocolError(
+        422,
+        'task_snapshot_timestamp_too_far_ahead',
+        'task snapshot publishedAt is too far in the future',
+      );
+    }
     const fingerprint = fingerprintDeviceSyncValue(request.snapshot);
     this.ctx.storage.transactionSync(() => {
       const row = this.sql
@@ -2438,6 +2448,34 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         )
         .one();
       if (row.fingerprint === fingerprint && row.source_device_id === request.deviceId) return;
+      const currentSnapshot = row.snapshot_json
+        ? (JSON.parse(row.snapshot_json) as TaskSnapshotPayload)
+        : null;
+      const currentSnapshotIsLegacyFuture =
+        currentSnapshot !== null &&
+        !isTaskSnapshotPublishedAtWithinFutureSkew(currentSnapshot.publishedAt, serverTime);
+      if (
+        currentSnapshot &&
+        !currentSnapshotIsLegacyFuture &&
+        request.snapshot.publishedAt < currentSnapshot.publishedAt
+      ) {
+        throw new ProtocolError(
+          409,
+          'stale_task_snapshot',
+          'task snapshot is older than the current cloud snapshot',
+        );
+      }
+      if (
+        currentSnapshot &&
+        !currentSnapshotIsLegacyFuture &&
+        request.snapshot.publishedAt === currentSnapshot.publishedAt
+      ) {
+        throw new ProtocolError(
+          409,
+          'task_snapshot_conflict',
+          'task snapshot timestamp is already bound to different content',
+        );
+      }
       this.sql.exec(
         'UPDATE task_state SET revision = ?, source_device_id = ?, fingerprint = ?, snapshot_json = ? WHERE singleton = 1',
         row.revision + 1,
@@ -2973,7 +3011,7 @@ function validateV2SyncRequest(value: SyncV2Request): void {
   }
 }
 
-function validateV2Mutation(mutation: SyncV2Mutation): string | null {
+export function validateV2Mutation(mutation: SyncV2Mutation): string | null {
   if (
     !mutation ||
     !isId(mutation.opId) ||
@@ -3006,7 +3044,9 @@ function validateV2Mutation(mutation: SyncV2Mutation): string | null {
     mutation.entityType.startsWith('focus_guard_') &&
     mutation.kind !== 'delete' &&
     mutation.kind !== 'purge' &&
-    !isEncryptedFocusGuardEnvelopeV1(mutation.payload, mutation.entityType)
+    (!isEncryptedFocusGuardEnvelopeV1(mutation.payload, mutation.entityType) ||
+      (mutation.payload as EncryptedFocusGuardEnvelopeV1).operation !== mutation.kind ||
+      (mutation.payload as EncryptedFocusGuardEnvelopeV1).aadBaseRevision !== mutation.baseRevision)
   ) {
     return 'invalid_encrypted_focus_guard_envelope';
   }

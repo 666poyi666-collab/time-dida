@@ -145,6 +145,23 @@ describe('sync queue rate limiting and batching', () => {
     expect(harness.createFocusRecord).toHaveBeenCalledTimes(8);
   });
 
+  it('preserves a pending dida rate-limit cooldown when remote write-back reuses the segment', async () => {
+    const [item] = addPendingItems(1);
+    item.retryCount = 2;
+    item.lastError = '[rate-limit:2] 请求频率受限';
+    const { ensureSessionSyncQueued } = await loadSyncService();
+
+    const reused = ensureSessionSyncQueued('session-0');
+
+    expect(reused).toEqual([item]);
+    expect(item).toMatchObject({
+      status: 'pending',
+      retryCount: 2,
+      lastError: '[rate-limit:2] 请求频率受限',
+    });
+    expect(harness.updateSyncQueue).not.toHaveBeenCalled();
+  });
+
   it('coalesces concurrent runPending calls into one in-flight run', async () => {
     addPendingItems(1);
     let resolveCreate!: (value: string) => void;

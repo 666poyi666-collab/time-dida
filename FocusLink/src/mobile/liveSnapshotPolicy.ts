@@ -63,6 +63,28 @@ export function nativeCommandAckNotice(
   return `${prefix}${commandAckNotice(action, expectedRevision, response)}`;
 }
 
+/**
+ * The watch only has room for one short status line. A valid server response
+ * with a conflict/rejection is not a transport failure: it refreshed the
+ * authority snapshot, but the requested action did not run.
+ */
+export function watchCommandAckNotice(
+  action: 'start' | 'pause' | 'resume' | 'finish',
+  expectedRevision: number,
+  response: LiveFocusCommandResponse,
+): string {
+  if (response.ack.status === 'applied') {
+    return `操作已完成，已刷新云端状态：${stateLabel(response.snapshot.state)}（rev ${response.snapshot.revision}）`;
+  }
+  if (response.ack.status === 'duplicate') {
+    return `重复请求未再次执行，已刷新云端状态：${stateLabel(response.snapshot.state)}（rev ${response.snapshot.revision}）`;
+  }
+  const detail = commandAckNotice(action, expectedRevision, response)
+    .replace(/^操作未执行：/, '')
+    .replace(/^操作未重复执行；/, '');
+  return `本次未执行，已刷新云端状态：${detail}`;
+}
+
 function appliedCopy(action: 'start' | 'pause' | 'resume' | 'finish'): string {
   if (action === 'start') return '云端已确认开始；其他在线设备将按新版本更新';
   if (action === 'pause') return '云端已确认暂停';
@@ -78,7 +100,7 @@ function rejectionCopy(ack: LiveFocusCommandAck, state: LiveFocusState, revision
   if (ack.errorCode === 'not_running' || ack.errorCode === 'not_paused') {
     return `操作未执行：当前状态不接受这条命令${suffix}`;
   }
-  return `云端拒绝操作${ack.errorCode ? `：${ack.errorCode}` : ''}${suffix}`;
+  return `操作未执行：云端拒绝了这条命令${suffix}`;
 }
 
 function actionResultState(action: 'start' | 'pause' | 'resume' | 'finish'): LiveFocusState {

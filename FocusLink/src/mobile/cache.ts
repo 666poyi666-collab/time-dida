@@ -200,6 +200,56 @@ export async function readPendingDeviceSyncBundles(): Promise<PendingDeviceSyncB
   return records.sort((left, right) => left.createdAt - right.createdAt);
 }
 
+export async function claimPendingDeviceSyncBundle(
+  opId: string,
+  deviceId: string,
+): Promise<PendingDeviceSyncBundle | null> {
+  if (!opId || !deviceId) return null;
+  const database = await openDatabase();
+  const transaction = database.transaction(PENDING_STORE, 'readwrite');
+  const completion = transactionDone(transaction);
+  const store = transaction.objectStore(PENDING_STORE);
+  try {
+    const claimed = await new Promise<PendingDeviceSyncBundle | null>((resolve, reject) => {
+      const request = store.get(opId) as IDBRequest<unknown>;
+      request.onerror = () => reject(request.error ?? new Error('读取待上传会话失败'));
+      request.onsuccess = () => {
+        try {
+          if (request.result === undefined) {
+            resolve(null);
+            return;
+          }
+          const record = normalizePendingRecord(request.result, Date.now());
+          if (record.syncDeviceId !== null && record.syncDeviceId !== deviceId) {
+            resolve(null);
+            return;
+          }
+          if (record.syncDeviceId === null) {
+            record.syncDeviceId = deviceId;
+            record.updatedAt = Date.now();
+            store.put(record);
+          }
+          resolve(record);
+        } catch (error) {
+          reject(error);
+        }
+      };
+    });
+    await completion;
+    return claimed;
+  } catch (error) {
+    try {
+      transaction.abort();
+    } catch {
+      // The request may already have aborted the transaction.
+    }
+    await completion.catch(() => undefined);
+    throw error;
+  } finally {
+    database.close();
+  }
+}
+
 export async function enqueuePendingDeviceSyncBundle(
   bundle: DeviceSyncSessionBundle,
 ): Promise<PendingDeviceSyncBundle> {

@@ -12,10 +12,10 @@
 .mobile-confirm-dialog {
   width: min(100%, 430px);
   padding: 22px;
-  border: 1px solid var(--mobile-glass-edge, var(--border-strong));
+  border: 1px solid var(--mobile-hairline, var(--border-strong));
   border-radius: 24px;
-  background: var(--mobile-glass-fill, var(--surface));
-  box-shadow: var(--mobile-glass-shadow, var(--shadow-modal));
+  background: var(--surface);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 0.22);
   animation: mobile-confirm-enter 180ms var(--ease-fluid) both;
 }
 
@@ -95,23 +95,6 @@
   }
 }
 
-@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .mobile-confirm-dialog {
-    background: var(--surface);
-    box-shadow: var(--mobile-glass-solid-shadow, 0 12px 32px rgb(10 16 13 / 0.22));
-  }
-}
-
-@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .mobile-confirm-dialog {
-    -webkit-backdrop-filter: blur(22px) saturate(1.42);
-    backdrop-filter: blur(22px) saturate(1.42);
-    background:
-      var(--mobile-glass-sheen, linear-gradient(145deg, rgb(255 255 255 / 0.3), transparent)),
-      var(--mobile-glass-fill, var(--surface));
-  }
-}
-
 @media (prefers-reduced-transparency: reduce) {
   .mobile-confirm-layer {
     background: rgb(var(--app-bg) / 0.86);
@@ -121,7 +104,7 @@
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background: var(--surface);
-    box-shadow: var(--mobile-glass-solid-shadow, 0 12px 32px rgb(10 16 13 / 0.22));
+    box-shadow: 0 12px 32px rgb(10 16 13 / 0.22);
   }
 }
 

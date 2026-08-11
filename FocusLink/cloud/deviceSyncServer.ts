@@ -52,6 +52,18 @@ export const DEFAULT_DEVICE_SYNC_TEST_ORIGINS = [
 export const DEVICE_SYNC_NATIVE_ORIGINS = ['https://localhost', 'capacitor://localhost'] as const;
 const REQUEST_KEYS = new Set(['protocolVersion', 'deviceId', 'cursor', 'mutations', 'pullLimit']);
 const MUTATION_KEYS = new Set(['opId', 'entity', 'entityId', 'kind', 'baseRevision', 'payload']);
+const FETCH_FORBIDDEN_PORTS = new Set([
+  0, 1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101, 102,
+  103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465,
+  512, 513, 514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993,
+  995, 1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668,
+  6669, 6697, 10080,
+]);
+const MAX_DYNAMIC_PORT_BIND_ATTEMPTS = 16;
+
+export function isFetchForbiddenPort(port: number): boolean {
+  return FETCH_FORBIDDEN_PORTS.has(port);
+}
 
 export interface DeviceSyncCloudServerOptions {
   store?: DeviceSyncCloudStore;
@@ -68,6 +80,8 @@ export interface DeviceSyncCloudServerOptions {
   maxRequestsPerMinute?: number;
   /** Optional one-time credential exchange, used by the loopback embedded service only. */
   pairingExchange?: (nonce: string, deviceId: string) => { accessToken: string } | null;
+  /** Test-only seam for deterministic dynamic-port retry coverage. */
+  isPortForbidden?: (port: number) => boolean;
   v2Store?: SyncV2Store;
   /**
    * Whether this node may accept authoritative v2 writes (mutations / base establish).
@@ -147,42 +161,83 @@ export function createDeviceSyncCloudServer(
   httpServer.headersTimeout = 10_000;
   httpServer.keepAliveTimeout = 5_000;
 
+  let listenInFlight: Promise<DeviceSyncCloudServerAddress> | null = null;
+  const listen = (): Promise<DeviceSyncCloudServerAddress> => {
+    if (listenInFlight) return listenInFlight;
+    const isPortForbidden = (candidatePort: number) =>
+      isFetchForbiddenPort(candidatePort) || options.isPortForbidden?.(candidatePort) === true;
+    const inFlight = listenOnFetchSafePort(httpServer, port, host, isPortForbidden).finally(() => {
+      if (listenInFlight === inFlight) listenInFlight = null;
+    });
+    listenInFlight = inFlight;
+    return inFlight;
+  };
+
+  const close = async (): Promise<void> => {
+    const pendingListen = listenInFlight;
+    if (pendingListen) {
+      await pendingListen.catch(() => undefined);
+    }
+    if (httpServer.listening) await closeOnce(httpServer);
+  };
+
   return {
     httpServer,
     store,
     v2Store,
-    listen: () =>
-      new Promise<DeviceSyncCloudServerAddress>((resolve, reject) => {
-        if (httpServer.listening) {
-          const address = httpServer.address();
-          if (!address || typeof address === 'string') {
-            reject(new Error('test sync server has no TCP address'));
-            return;
-          }
-          resolve(toServerAddress(address));
-          return;
-        }
-        const onError = (error: Error) => reject(error);
-        httpServer.once('error', onError);
-        httpServer.listen(port, host, () => {
-          httpServer.off('error', onError);
-          const address = httpServer.address();
-          if (!address || typeof address === 'string') {
-            reject(new Error('test sync server failed to bind a TCP address'));
-            return;
-          }
-          resolve(toServerAddress(address));
-        });
-      }),
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        if (!httpServer.listening) {
-          resolve();
-          return;
-        }
-        httpServer.close((error) => (error ? reject(error) : resolve()));
-      }),
+    listen,
+    close,
   };
+}
+
+async function listenOnFetchSafePort(
+  server: http.Server,
+  requestedPort: number,
+  host: string,
+  isPortForbidden: (port: number) => boolean,
+): Promise<DeviceSyncCloudServerAddress> {
+  if (requestedPort !== 0 && isPortForbidden(requestedPort)) {
+    throw new Error(`loopback sync server port ${requestedPort} is forbidden by Fetch`);
+  }
+
+  for (let attempt = 1; attempt <= MAX_DYNAMIC_PORT_BIND_ATTEMPTS; attempt += 1) {
+    const address = server.listening
+      ? readTcpAddress(server, 'test sync server has no TCP address')
+      : await listenOnce(server, requestedPort, host);
+    if (!isPortForbidden(address.port)) return toServerAddress(address);
+    await closeOnce(server);
+  }
+  throw new Error(
+    `loopback sync server could not allocate a Fetch-safe port after ${MAX_DYNAMIC_PORT_BIND_ATTEMPTS} attempts`,
+  );
+}
+
+function listenOnce(server: http.Server, port: number, host: string): Promise<AddressInfo> {
+  return new Promise<AddressInfo>((resolve, reject) => {
+    const onError = (error: Error) => reject(error);
+    server.once('error', onError);
+    server.listen(port, host, () => {
+      server.off('error', onError);
+      try {
+        resolve(readTcpAddress(server, 'test sync server failed to bind a TCP address'));
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
+
+function closeOnce(server: http.Server): Promise<void> {
+  if (!server.listening) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+}
+
+function readTcpAddress(server: http.Server, errorMessage: string): AddressInfo {
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error(errorMessage);
+  return address;
 }
 
 async function handleRequest(
@@ -645,7 +700,14 @@ function sendStoreError(response: http.ServerResponse, error: unknown): boolean 
     sendError(response, 500, 'store_corrupt', 'test sync store is corrupt');
     return true;
   }
-  const status = error.code === 'invalid_live_revision' ? 409 : 400;
+  const status =
+    error.code === 'invalid_live_revision' ||
+    error.code === 'stale_task_snapshot' ||
+    error.code === 'task_snapshot_conflict'
+      ? 409
+      : error.code === 'task_snapshot_timestamp_too_far_ahead'
+        ? 422
+        : 400;
   sendError(response, status, error.code, error.message);
   return true;
 }

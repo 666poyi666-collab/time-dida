@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Maximize2, Minimize2, PictureInPicture2 } from 'lucide-react';
+import { ChevronRight, ListTree, Maximize2, Minimize2, PictureInPicture2 } from 'lucide-react';
 import {
   formatClockDuration,
   idleLiveFocusSnapshot,
@@ -15,7 +15,6 @@ import type { LiveSnapshotSource } from './liveSnapshotPolicy';
 import type { MobileAuthorityMode } from './cache';
 import { MobileConfirmDialog } from './MobileConfirmDialog';
 import { MobileTemporalRibbon } from './MobileTemporalRibbon';
-import { flattenSyncedTaskTree } from './taskBrowserModel';
 import { focusDeviceLabel, isTabletFocusViewport } from './viewportPolicy';
 
 export type MobileFocusCommand = 'start' | 'pause' | 'resume' | 'finish';
@@ -31,6 +30,7 @@ export interface NativeFocusConsoleControls {
 export interface FocusConsoleProps {
   snapshot: LiveFocusSnapshotLike | null;
   connection: LiveConnectionState;
+  connectionNotice: string | null;
   titleDraft: string;
   pendingCommand: MobileFocusCommand | null;
   commandNotice: string | null;
@@ -54,6 +54,7 @@ export interface FocusConsoleProps {
 export function FocusConsole({
   snapshot,
   connection,
+  connectionNotice,
   titleDraft,
   pendingCommand,
   commandNotice,
@@ -76,12 +77,12 @@ export function FocusConsole({
   const [now, setNow] = useState(() => Date.now());
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
   const [tabletViewport, setTabletViewport] = useState(() =>
-    isTabletFocusViewport(window.innerWidth),
+    isTabletFocusViewport(window.innerWidth, window.innerHeight),
   );
   const current = snapshot ?? idleLiveFocusSnapshot(0, now);
   const active = current.state !== 'idle';
   const cachedRemoteOnly = allowOfflineStart && !localOfflineMode;
-  const taskEntries = flattenSyncedTaskTree(tasks);
+  const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? null;
 
   useEffect(() => {
     setNow(Date.now());
@@ -99,7 +100,8 @@ export function FocusConsole({
   }, [active, current.revision, current.serverTime, current.state]);
 
   useEffect(() => {
-    const update = () => setTabletViewport(isTabletFocusViewport(window.innerWidth));
+    const update = () =>
+      setTabletViewport(isTabletFocusViewport(window.innerWidth, window.innerHeight));
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
   }, []);
@@ -113,7 +115,7 @@ export function FocusConsole({
     localSession: localOfflineMode,
     allowOfflineStart,
   });
-  const connectionCopy = liveConnectionCopy(connection, snapshot !== null);
+  const connectionCopy = liveConnectionCopy(connection, snapshot !== null, connectionNotice);
   const recentDevice = focusDeviceLabel(current.ownerDeviceId, localDeviceId, tabletViewport);
   const showingCachedSnapshot = snapshotSource === 'cache' && connection !== 'live';
 
@@ -152,29 +154,41 @@ export function FocusConsole({
           ) : (
             <div className="focus-start-fields">
               <div className="focus-title-field">
-                <span>从电脑任务清单选择</span>
+                <span>从云端任务清单选择</span>
                 <div className="focus-task-picker">
-                  <select
-                    id="focus-task"
-                    value={selectedTaskId}
-                    onChange={(event) => onTaskChange(event.target.value)}
+                  <button
+                    className="focus-task-disclosure"
+                    type="button"
+                    onClick={onOpenTasks}
                     disabled={pendingCommand !== null}
+                    aria-label={
+                      selectedTask
+                        ? `当前已选择 ${selectedTask.title}，展开云端任务树重新选择`
+                        : '展开云端任务树选择任务'
+                    }
                   >
-                    <option value="">自由专注（不关联任务）</option>
-                    {taskEntries.map(({ task, depth, hasChildren }) => (
-                      <option key={`${task.source}:${task.id}`} value={task.id}>
-                        {`${'　'.repeat(depth)}${depth > 0 ? '└ ' : ''}${task.title}${hasChildren ? ' ▸' : ''}`}
-                      </option>
-                    ))}
-                  </select>
-                  <button type="button" onClick={onOpenTasks} disabled={pendingCommand !== null}>
-                    浏览任务树
+                    <ListTree aria-hidden="true" />
+                    <span>
+                      <strong>{selectedTask?.title ?? '自由专注（不关联任务）'}</strong>
+                      <small>{selectedTask ? '已从云端快照选择' : '轻触展开项目与父子任务'}</small>
+                    </span>
+                    <ChevronRight aria-hidden="true" />
                   </button>
                 </div>
+                {selectedTask && (
+                  <button
+                    className="focus-task-clear"
+                    type="button"
+                    onClick={() => onTaskChange('')}
+                    disabled={pendingCommand !== null}
+                  >
+                    改为自由专注
+                  </button>
+                )}
                 <small>
                   {tasks.length > 0
-                    ? `已缓存电脑端 ${tasks.length} 个任务`
-                    : '电脑刷新任务后会自动同步到这里'}
+                    ? `已缓存云端 ${tasks.length} 个任务`
+                    : '电脑同步滴答任务后，最后一份云端快照会显示在这里'}
                 </small>
               </div>
               <label className="focus-title-field" htmlFor="focus-title">
@@ -392,8 +406,8 @@ export function FocusConsole({
           </dl>
 
           <div className="desktop-delivery-note">
-            <strong>第三方投递仅在桌面端操作</strong>
-            <p>结束记录会同步回桌面账本；滴答清单与番茄 To-do 需在桌面端操作并确认。</p>
+            <strong>第三方投递由桌面端自动完成</strong>
+            <p>结束记录会先安全上传云端；桌面端在线时自动写回滴答清单与番茄 To-Do。</p>
           </div>
 
           {commandNotice && (

@@ -27,6 +27,7 @@ describe('canonical Sync v2 credential safety', () => {
     expect(classifySyncV2Error(new Error('HTTP 401'))).toBe('authentication_failed');
     expect(classifySyncV2Error(new Error('HTTP 403 scope denied'))).toBe('authorization_failed');
     expect(classifySyncV2Error(new Error('请求超时'))).toBe('timeout');
+    expect(classifySyncV2Error(new Error('无法连接跨设备同步服务'))).toBe('network_error');
     expect(classifySyncV2Error(new Error('ACK 格式无效'))).toBe('contract_error');
   });
 });

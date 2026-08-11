@@ -4,6 +4,13 @@ export const FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION = 1 as const;
 export const FOCUSLINK_CANONICAL_SYNC_ORIGIN =
   'https://foxlink-mcp.focuslink-poyi-6465e9.workers.dev' as const;
 
+/**
+ * Public data-plane failover for networks that block or poison workers.dev
+ * DNS. This is the same Cloudflare authority behind the canonical adapter;
+ * it is never accepted for account-login URLs or arbitrary user input.
+ */
+export const FOCUSLINK_SYNC_FAILOVER_ORIGIN = 'https://focuslink.pyzzgk.dpdns.org' as const;
+
 const FOCUSLINK_DEVICE_ACCESS_TOKEN_PATTERN =
   /^fl2_[A-Za-z0-9-]{6,80}_[A-Za-z0-9-]{6,80}_[A-Za-z0-9_-]{32,160}$/;
 
@@ -27,7 +34,32 @@ export function isCanonicalFocusLinkSyncEndpoint(value: string): boolean {
   }
 }
 
-/** Production account connections always pair one valid fl2 credential with the canonical origin. */
+export function isAllowedFocusLinkSyncEndpoint(value: string): boolean {
+  return (
+    isCanonicalFocusLinkSyncEndpoint(value) ||
+    isExactFocusLinkOrigin(value, FOCUSLINK_SYNC_FAILOVER_ORIGIN)
+  );
+}
+
+export function isAllowedFocusLinkDeviceConnection(endpoint: string, accessToken: string): boolean {
+  return (
+    isAllowedFocusLinkSyncEndpoint(endpoint) && isFocusLinkDeviceAccessToken(accessToken.trim())
+  );
+}
+
+/** Prefer the known reachable public adapter, then fall back to the canonical origin. */
+export function focusLinkSyncEndpointCandidates(endpoint: string): string[] {
+  const normalized = endpoint.replace(/\/$/, '');
+  if (normalized === FOCUSLINK_CANONICAL_SYNC_ORIGIN) {
+    return [FOCUSLINK_SYNC_FAILOVER_ORIGIN, FOCUSLINK_CANONICAL_SYNC_ORIGIN];
+  }
+  if (normalized === FOCUSLINK_SYNC_FAILOVER_ORIGIN) {
+    return [FOCUSLINK_SYNC_FAILOVER_ORIGIN, FOCUSLINK_CANONICAL_SYNC_ORIGIN];
+  }
+  return [normalized];
+}
+
+/** Production account connections pair one valid fl2 credential with an allowlisted data-plane origin. */
 export function isCanonicalFocusLinkDeviceConnection(
   endpoint: string,
   accessToken: string,
@@ -35,6 +67,22 @@ export function isCanonicalFocusLinkDeviceConnection(
   return (
     isCanonicalFocusLinkSyncEndpoint(endpoint) && isFocusLinkDeviceAccessToken(accessToken.trim())
   );
+}
+
+function isExactFocusLinkOrigin(value: string, expected: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      url.username === '' &&
+      url.password === '' &&
+      url.search === '' &&
+      url.hash === '' &&
+      url.toString().replace(/\/$/, '') === expected
+    );
+  } catch {
+    return false;
+  }
 }
 
 export const FOCUSLINK_ENROLLED_DEVICE_SCOPES = [

@@ -57,6 +57,7 @@ import {
   type LiveFocusSnapshotLike,
 } from './runtimeModel';
 import { flattenSyncedTaskTree } from './taskBrowserModel';
+import { watchCommandAckNotice } from './liveSnapshotPolicy';
 import './watch.css';
 
 type WatchView = 'main' | 'tasks';
@@ -420,6 +421,8 @@ export function WatchApp() {
         });
         if (!request.isCurrent() || connectionKeyRef.current !== sourceConnectionKey) return;
         setSnapshot(mapSnapshot(response, Date.now()));
+        const acknowledgement = watchCommandAckNotice(action, command.expectedRevision, response);
+        if (acknowledgement) setNotice(acknowledgement);
       } catch {
         if (request.isCurrent() && connectionKeyRef.current === sourceConnectionKey) {
           setNotice('指令未送达，请重试');

@@ -65,6 +65,10 @@ import {
   isDeviceSyncConnectionCurrent,
   type DeviceSyncRuntimeConnection,
 } from './deviceSyncService.js';
+import {
+  enqueueRemoteWritebackIntents,
+  hasRemoteWritebackIntentPair,
+} from './remoteWritebackStore.js';
 
 const CHECKPOINT_PREFIX = 'syncV2.desktop.checkpointV2';
 const LAST_SYNC_PREFIX = 'deviceSync.lastSyncAtV2';
@@ -158,6 +162,10 @@ async function runDesktopSyncV2WithConnection(
     }
 
     assertDeviceSyncConnectionCurrent(connection);
+    // v0.12.75 and earlier could already have projected a mobile session before automatic
+    // provider write-back existed. Rebuild those durable intents from canonical state. The queue
+    // key is account-stable and INSERT ... DO NOTHING keeps completed work completed.
+    getDb().transaction(() => backfillRemoteWritebackIntents(connection))();
     repairSyntheticCorrectionConflicts(connection.scope);
     getDb().transaction(() => enqueueChangedEntities(connection, checkpoint.accountGeneration))();
     checkpoint = await drainPages(connection, checkpoint, result, true);
@@ -422,12 +430,15 @@ function applyRemoteChange(
   if (change.entityType === 'focus_metadata_v2' && local !== null && !localChangedFromBase) {
     applyRemoteMetadata(change.payload as FocusMetadataV2);
   }
-  return materializeRemoteSession(connection.scope, change.entityId) ? 'imported' : 'stored';
+  return materializeRemoteSession(connection, change.entityId) ? 'imported' : 'stored';
 }
 
-function materializeRemoteSession(connectionScope: string, entityId: string): boolean {
+function materializeRemoteSession(
+  connection: DeviceSyncRuntimeConnection,
+  entityId: string,
+): boolean {
   if (getSession(entityId)) return false;
-  const states = listV2EntityStates(connectionScope, entityId);
+  const states = listV2EntityStates(connection.scope, entityId);
   const ledger = states.find((state) => state.entityType === 'focus_ledger_v2' && !state.deleted)
     ?.baseSnapshot as FocusLedgerV2 | undefined;
   const metadata = states.find(
@@ -437,7 +448,39 @@ function materializeRemoteSession(connectionScope: string, entityId: string): bo
   const bundle = joinV2Bundle(ledger, metadata);
   const validation = validateDeviceSyncBundle(bundle);
   if (!validation.ok) throw new Error(`远端 v2 会话无法物化：${validation.error ?? 'invalid'}`);
-  return insertDeviceSyncBundleIfMissing(bundle);
+  const inserted = insertDeviceSyncBundleIfMissing(bundle);
+  if (inserted) {
+    // applyRemoteChange runs inside applyPageAtomically's SQLite transaction.  Persist both
+    // provider intents here; the coordinator performs external writes only after this commits.
+    enqueueRemoteWritebackIntents(connection.providerScope, entityId);
+  }
+  return inserted;
+}
+
+function backfillRemoteWritebackIntents(connection: DeviceSyncRuntimeConnection): void {
+  const states = listV2EntityStates(connection.scope);
+  const completeMetadata = new Set(
+    states
+      .filter(
+        (state) =>
+          state.entityType === 'focus_metadata_v2' && !state.deleted && state.baseSnapshot !== null,
+      )
+      .map((state) => state.entityId),
+  );
+  for (const state of states) {
+    if (
+      state.entityType !== 'focus_ledger_v2' ||
+      state.deleted ||
+      state.baseSnapshot === null ||
+      state.sourceDeviceId === connection.deviceId ||
+      !completeMetadata.has(state.entityId) ||
+      !getSession(state.entityId) ||
+      hasRemoteWritebackIntentPair(connection.providerScope, state.entityId)
+    ) {
+      continue;
+    }
+    enqueueRemoteWritebackIntents(connection.providerScope, state.entityId);
+  }
 }
 
 function applyRemoteMetadata(metadata: FocusMetadataV2): void {

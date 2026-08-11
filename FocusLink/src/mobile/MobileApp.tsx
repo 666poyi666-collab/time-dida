@@ -6,7 +6,11 @@ import { Capacitor } from '@capacitor/core';
 import { AppNavigation, type MobileView } from './AppNavigation';
 import { normalizeDeviceSyncEndpoint } from '@shared/sync/deviceProtocol';
 import { parseDeviceToken } from '@shared/sync/v2Protocol';
-import { classifySyncV2Error } from '@shared/sync/v2ClientError';
+import {
+  SyncV2ClientError,
+  classifySyncV2Error,
+  type SyncV2ClientErrorCode,
+} from '@shared/sync/v2ClientError';
 import type { LiveFocusCommand, LiveFocusSnapshotResponse } from '@shared/sync/liveFocusProtocol';
 import {
   reconcileTaskSnapshot,
@@ -88,11 +92,13 @@ import {
   type MobileAppearance,
 } from './appearance';
 import {
+  classifyMobileLiveRequestError,
   fetchLiveFocusSnapshot,
   fetchTaskSnapshot,
   sendLiveFocusCommand,
   waitForLiveFocusSnapshot,
 } from './syncClient';
+import { resolveMobileLiveLifecycleAction } from './liveConnectionLifecycle';
 import {
   isOwnerAccountCallback,
   invalidateOwnerAccountBootstrap,
@@ -118,15 +124,21 @@ import {
   type LiveSnapshotSource,
 } from './liveSnapshotPolicy';
 import { remoteForkEvidence } from './authorityPolicy';
+import {
+  countOutstandingLedgerEntities,
+  mobileLedgerProjectionVerifiedAt,
+  presentMobileLedgerSync,
+} from './ledgerSyncPresentation';
 import { runMobileSyncV2 } from './v2Sync';
-import { readMobileV2Bootstrap } from './v2Cache';
+import { readMobileV2Bootstrap, readMobileV2Status } from './v2Cache';
 import { persistCompletedOfflineFocus } from './offlineCompletion';
 import {
   createTaskSnapshotRequestLifecycle,
   startVisibleTaskSnapshotRefresh,
 } from './taskSnapshotRefresh';
+import { isTabletFocusViewport } from './viewportPolicy';
 
-type PullState = 'idle' | 'pulling' | 'confirmed' | 'error';
+type PullState = 'idle' | 'pulling' | 'confirmed' | 'partial' | 'error';
 
 const EMPTY_CACHE: MobileCacheSnapshot = {
   bundles: [],
@@ -137,19 +149,15 @@ const EMPTY_CACHE: MobileCacheSnapshot = {
 
 export function MobileApp() {
   const initialPreferences = useRef(loadConnectionPreferences()).current;
-  const initialConnectionConfigured = useRef(
-    Boolean(initialPreferences.endpoint && initialPreferences.token),
-  ).current;
   const [preferences, setPreferences] = useState(initialPreferences);
   const [accountProfile, setAccountProfile] = useState(() => loadMobileAccountProfile());
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountLoginPolling, setAccountLoginPolling] = useState(false);
   const [cache, setCache] = useState<MobileCacheSnapshot>(EMPTY_CACHE);
   const [cacheReady, setCacheReady] = useState(false);
-  // Android ships with a loopback endpoint default, so endpoint presence alone
-  // does not mean the device is paired. Keep the first-run pairing entry
-  // reachable whenever either half of the credential is missing.
-  const [configOpen, setConfigOpen] = useState(() => !initialConnectionConfigured);
+  // Account sync is optional. A new installation starts in the local focus
+  // console and keeps login available as an explicit action.
+  const [configOpen, setConfigOpen] = useState(false);
   const [online, setOnline] = useState(() => navigator.onLine);
   const [pullState, setPullState] = useState<PullState>('idle');
   const [ledgerNotice, setLedgerNotice] = useState('正在读取本机会话账本…');
@@ -162,6 +170,7 @@ export function MobileApp() {
   const [selectedTaskId, setSelectedTaskId] = useState('');
   const [pendingCommand, setPendingCommand] = useState<MobileFocusCommand | null>(null);
   const [commandNotice, setCommandNotice] = useState<string | null>(null);
+  const [liveConnectionNotice, setLiveConnectionNotice] = useState<string | null>(null);
   const [connectionEpoch, setConnectionEpoch] = useState(0);
   const [activeView, setActiveView] = useState<MobileView>('focus');
   const [liveSnapshotSource, setLiveSnapshotSource] = useState<LiveSnapshotSource>('none');
@@ -200,6 +209,7 @@ export function MobileApp() {
   const nativeQueueRunning = useRef(false);
   const nativeConnectionLeaseRef = useRef<string | null>(null);
   const lastResumeRefreshAt = useRef(0);
+  const mobileAppActive = useRef(true);
   const connectionKeyRef = useRef(mobileAccountConnectionKey(initialPreferences));
   const accountLifecycle = useRef(createMobileAccountLifecycle()).current;
 
@@ -403,8 +413,11 @@ export function MobileApp() {
       try {
         const result = await ownerAccountBootstrapApi().bootstrap({
           installationId: getOrCreateInstallationId(),
-          deviceKind:
-            window.innerWidth >= 600 ? 'tablet' : Capacitor.isNativePlatform() ? 'phone' : 'web',
+          deviceKind: Capacitor.isNativePlatform()
+            ? isTabletFocusViewport(window.innerWidth, window.innerHeight)
+              ? 'tablet'
+              : 'phone'
+            : 'web',
           displayName: Capacitor.isNativePlatform() ? 'FocusLink Android' : 'FocusLink Web',
           callbackUrl,
         });
@@ -593,44 +606,78 @@ export function MobileApp() {
         const pending = await readPendingDeviceSyncBundles();
         if (!isCurrent()) return;
         const confirmedAt = Date.now();
+        const presentation = presentMobileLedgerSync({
+          uploaded: synced.uploaded,
+          downloaded: synced.downloaded,
+          bundleCount: snapshot.bundles.length,
+          outstandingCount: countOutstandingLedgerEntities(
+            pending,
+            synced.outstandingEntityIds,
+            deviceId,
+          ),
+          conflicts: synced.conflicts,
+          unresolvedConflicts: synced.unresolvedConflicts,
+          rejected: synced.rejected,
+        });
         await updateNativeAuthorityProjectionHistory({
           deviceId,
           connectionLease: sourceNativeLease,
           records: snapshot.bundles,
-          lastVerifiedAt: confirmedAt,
+          lastVerifiedAt: mobileLedgerProjectionVerifiedAt(
+            presentation.pullState,
+            synced.lastVerifiedAt,
+            synced.lastVerifiedAt ?? confirmedAt,
+          ),
           lastAttemptAt: attemptedAt,
-          pendingCount: pending.length + synced.unresolvedConflicts,
-          lastErrorCode: '',
+          pendingCount: presentation.pendingCount,
+          lastErrorCode: presentation.lastErrorCode,
         }).catch(() => false);
         if (!isCurrent()) return;
-        setPendingUploadCount(pending.length + synced.unresolvedConflicts);
+        setPendingUploadCount(presentation.pendingCount);
         cacheRef.current = snapshot;
         setCache(snapshot);
-        setPullState('confirmed');
-        setLedgerNotice(
-          synced.downloaded > 0 || synced.uploaded > 0
-            ? `账本同步已确认：补传 ${synced.uploaded}，处理 ${synced.downloaded} 条变更，现有 ${snapshot.bundles.length} 场会话`
-            : `账本同步已确认：没有新变更，保留 ${snapshot.bundles.length} 场会话`,
-        );
+        setPullState(presentation.pullState);
+        setLedgerNotice(presentation.notice);
       } catch (error) {
         if (!isCurrent() || isAbortError(error)) return;
-        const pending = await readPendingDeviceSyncBundles().catch(() => []);
+        const [pending, v2Status] = await Promise.all([
+          readPendingDeviceSyncBundles().catch(() => []),
+          readMobileV2Status(deviceId).catch(() => null),
+        ]);
         if (!isCurrent()) return;
+        const presentation = presentMobileLedgerSync({
+          uploaded: 0,
+          downloaded: 0,
+          bundleCount: cacheRef.current.bundles.length,
+          outstandingCount: countOutstandingLedgerEntities(
+            pending,
+            v2Status?.outstandingEntityIds ?? [],
+            deviceId,
+          ),
+          conflicts: v2Status?.conflicts ?? 0,
+          unresolvedConflicts: v2Status?.conflicts ?? 0,
+          rejected: v2Status?.rejected ?? 0,
+        });
         await updateNativeAuthorityProjectionHistory({
           deviceId,
           connectionLease: sourceNativeLease,
           records: cacheRef.current.bundles,
-          lastVerifiedAt: cacheRef.current.lastSyncAt,
+          lastVerifiedAt: v2Status?.lastVerifiedAt ?? null,
           lastAttemptAt: Date.now(),
-          pendingCount: pending.length,
+          pendingCount: presentation.pendingCount,
           lastErrorCode: classifySyncV2Error(error),
         }).catch(() => false);
         if (!isCurrent()) return;
+        setPendingUploadCount(presentation.pendingCount);
         setPullState('error');
         setLedgerNotice(
-          cacheRef.current.bundles.length > 0
-            ? `${errorMessage(error)}；已结束账本继续显示本机缓存`
-            : errorMessage(error),
+          [
+            errorMessage(error),
+            presentation.pullState === 'partial' ? presentation.notice : null,
+            cacheRef.current.bundles.length > 0 ? '已结束账本继续显示本机缓存' : null,
+          ]
+            .filter(Boolean)
+            .join('；'),
         );
       } finally {
         if (ledgerRequest.current === controller) ledgerRequest.current = null;
@@ -669,6 +716,7 @@ export function MobileApp() {
       readOfflineFocusRuntime(),
       readPendingDeviceSyncBundles(),
       readMobileV2Bootstrap(),
+      readMobileV2Status(deviceId),
     ])
       .then(
         ([
@@ -678,6 +726,7 @@ export function MobileApp() {
           savedOfflineRuntime,
           pendingUploads,
           checkpoint,
+          v2Status,
         ]) => {
           if (
             !active ||
@@ -690,14 +739,33 @@ export function MobileApp() {
             !cacheConnectionConfigured || checkpoint?.boundAccountId === cacheAccountId
               ? storedLedger
               : EMPTY_CACHE;
+          const currentV2Status =
+            cacheConnectionConfigured &&
+            checkpoint?.boundAccountId === cacheAccountId &&
+            checkpoint.boundDeviceId === deviceId
+              ? v2Status
+              : null;
+          const cachedPresentation = presentMobileLedgerSync({
+            uploaded: 0,
+            downloaded: 0,
+            bundleCount: ledger.bundles.length,
+            outstandingCount: countOutstandingLedgerEntities(
+              pendingUploads,
+              currentV2Status?.outstandingEntityIds ?? [],
+              deviceId,
+            ),
+            conflicts: currentV2Status?.conflicts ?? 0,
+            unresolvedConflicts: currentV2Status?.conflicts ?? 0,
+            rejected: currentV2Status?.rejected ?? 0,
+          });
           void updateNativeAuthorityProjectionHistory({
             deviceId,
             connectionLease: nativeConnectionLease,
             records: ledger.bundles,
-            lastVerifiedAt: ledger.lastSyncAt,
+            lastVerifiedAt: currentV2Status?.lastVerifiedAt ?? null,
             lastAttemptAt: ledger.lastSyncAt ?? 0,
-            pendingCount: pendingUploads.length,
-            lastErrorCode: '',
+            pendingCount: cachedPresentation.pendingCount,
+            lastErrorCode: currentV2Status?.lastErrorCode ?? cachedPresentation.lastErrorCode,
           }).catch(() => false);
           cacheRef.current = ledger;
           setCache(ledger);
@@ -719,7 +787,7 @@ export function MobileApp() {
             setLiveSnapshot(restoredLive);
             if (!savedOfflineRuntime) setLiveSnapshotSource('cache');
           }
-          setPendingUploadCount(pendingUploads.length);
+          setPendingUploadCount(cachedPresentation.pendingCount);
           if (
             cachedTasks &&
             cacheConnectionConfigured &&
@@ -728,11 +796,16 @@ export function MobileApp() {
             taskSnapshotRef.current = cachedTasks;
             setTaskSnapshot(cachedTasks);
           }
-          setLedgerNotice(
-            ledger.bundles.length > 0
-              ? `已从本机缓存载入 ${ledger.bundles.length} 场会话`
-              : '本机还没有已结束会话',
-          );
+          if (cachedPresentation.pullState === 'partial') {
+            setPullState('partial');
+            setLedgerNotice(cachedPresentation.notice);
+          } else {
+            setLedgerNotice(
+              ledger.bundles.length > 0
+                ? `已从本机缓存载入 ${ledger.bundles.length} 场会话`
+                : '本机还没有已结束会话',
+            );
+          }
         },
       )
       .catch((error: unknown) => {
@@ -751,14 +824,7 @@ export function MobileApp() {
       ledgerRequest.current?.abort();
       liveRequest.current?.abort();
     };
-  }, [
-    deviceId,
-    initialConnectionConfigured,
-    nativeConnectionLease,
-    preferences.endpoint,
-    preferences.token,
-    taskRequests,
-  ]);
+  }, [deviceId, nativeConnectionLease, preferences.endpoint, preferences.token, taskRequests]);
 
   useEffect(() => {
     const handleOnline = () => setOnline(true);
@@ -772,20 +838,49 @@ export function MobileApp() {
   }, []);
 
   useEffect(() => {
-    const reconnectAfterResume = () => {
-      if (document.visibilityState !== 'visible' || !navigator.onLine) return;
-      if (!preferencesRef.current.endpoint || !preferencesRef.current.token) return;
+    let disposed = false;
+    let removeAppStateListener: (() => Promise<void>) | null = null;
+    const applyLifecycle = () => {
+      if (disposed) return;
+      const action = resolveMobileLiveLifecycleAction({
+        appActive: mobileAppActive.current,
+        documentVisible: document.visibilityState === 'visible',
+        online: navigator.onLine,
+        configured: Boolean(preferencesRef.current.endpoint && preferencesRef.current.token),
+      });
+      if (action === 'suspend') {
+        // The next visible event must replace this aborted loop even when OEM lifecycle events
+        // arrive less than a second apart; the timestamp only deduplicates active-side events.
+        lastResumeRefreshAt.current = 0;
+        liveRequest.current?.abort();
+        return;
+      }
+      if (action === 'wait') {
+        if (!navigator.onLine) setOnline(false);
+        return;
+      }
       const now = Date.now();
       if (now - lastResumeRefreshAt.current < 1_000) return;
       lastResumeRefreshAt.current = now;
       setOnline(true);
       setConnectionEpoch((value) => value + 1);
     };
-    document.addEventListener('visibilitychange', reconnectAfterResume);
-    window.addEventListener('pageshow', reconnectAfterResume);
+    const handleVisibilityChange = () => applyLifecycle();
+    const reconnectAfterPageShow = () => applyLifecycle();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pageshow', reconnectAfterPageShow);
+    void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      mobileAppActive.current = isActive;
+      applyLifecycle();
+    }).then((handle) => {
+      if (disposed) void handle.remove();
+      else removeAppStateListener = () => handle.remove();
+    });
     return () => {
-      document.removeEventListener('visibilitychange', reconnectAfterResume);
-      window.removeEventListener('pageshow', reconnectAfterResume);
+      disposed = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pageshow', reconnectAfterPageShow);
+      if (removeAppStateListener) void removeAppStateListener();
     };
   }, []);
 
@@ -811,6 +906,7 @@ export function MobileApp() {
       setLiveSnapshot(null);
       setLiveSnapshotSource('none');
       setConnectionState('unconfigured');
+      setLiveConnectionNotice(null);
       void enqueueMutation(cacheMutationQueue, clearCachedLiveFocusSnapshot);
       return;
     }
@@ -822,6 +918,17 @@ export function MobileApp() {
         setAuthorityMode(offlineMode);
       }
       setConnectionState('offline');
+      setLiveConnectionNotice(null);
+      return;
+    }
+    if (
+      resolveMobileLiveLifecycleAction({
+        appActive: mobileAppActive.current,
+        documentVisible: document.visibilityState === 'visible',
+        online,
+        configured,
+      }) !== 'reconnect'
+    ) {
       return;
     }
 
@@ -842,6 +949,7 @@ export function MobileApp() {
         authorityModeRef.current = 'reconnecting';
         setAuthorityMode('reconnecting');
       }
+      setLiveConnectionNotice(null);
       setConnectionState('connecting');
       while (isCurrent()) {
         try {
@@ -867,11 +975,16 @@ export function MobileApp() {
           if (!mapped) return;
           lastRevision = response.snapshot.revision;
           setConnectionState('live');
+          setLiveConnectionNotice(null);
           retryDelay = 750;
         } catch (error) {
           if (!isCurrent() || isAbortError(error)) return;
+          const failure = classifyMobileLiveRequestError(error);
           setConnectionState(navigator.onLine ? 'error' : 'offline');
-          setCommandNotice(`${errorMessage(error)}；正在自动重连`);
+          setLiveConnectionNotice(
+            failure.retryable ? `${failure.message}；正在自动重连` : failure.message,
+          );
+          if (!failure.retryable) return;
           try {
             await abortableDelay(retryDelay, controller.signal);
           } catch {
@@ -1376,7 +1489,7 @@ export function MobileApp() {
               <span className={`network-dot ${online ? 'online' : 'offline'}`} aria-hidden="true" />
               <div className="sync-copy">
                 <strong>实时控制</strong>
-                <span>{connectionTitle(liveConnection)}</span>
+                <span>{liveConnectionNotice ?? connectionTitle(liveConnection)}</span>
               </div>
             </div>
             <div className={`sync-status sync-status-ledger state-${pullState}`}>
@@ -1407,6 +1520,7 @@ export function MobileApp() {
               <FocusConsole
                 snapshot={liveSnapshot}
                 connection={liveConnection}
+                connectionNotice={liveConnectionNotice}
                 titleDraft={titleDraft}
                 pendingCommand={pendingCommand}
                 commandNotice={commandNotice}
@@ -1626,7 +1740,7 @@ function connectionTitle(state: LiveConnectionState): string {
   if (state === 'live') return '实时状态已连接';
   if (state === 'connecting') return '正在连接多端状态';
   if (state === 'offline') return '当前离线 · 本机专注可用';
-  if (state === 'error') return '实时连接中断 · 自动重试中';
+  if (state === 'error') return '实时连接中断';
   return '尚未登录 FocusLink';
 }
 
@@ -1635,7 +1749,19 @@ function isAbortError(error: unknown): boolean {
 }
 
 function errorMessage(error: unknown): string {
+  if (error instanceof SyncV2ClientError) return syncV2ErrorMessage(error.code);
   return error instanceof Error ? error.message : String(error);
+}
+
+function syncV2ErrorMessage(code: SyncV2ClientErrorCode): string {
+  if (code === 'authentication_failed') return '登录凭据已失效，请重新登录';
+  if (code === 'authorization_failed') return '当前设备没有账本同步权限';
+  if (code === 'network_error') return '暂时无法连接云端';
+  if (code === 'timeout') return '云端连接超时';
+  if (code === 'response_too_large') return '云端账本超过单次同步上限';
+  if (code === 'cursor_ahead' || code === 'contract_error') return '云端账本响应异常';
+  if (code === 'aborted') return '本次同步已取消';
+  return '账本同步暂时失败';
 }
 
 function BrandMark() {

@@ -1,15 +1,31 @@
 package app.focuslink.mobile;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import androidx.work.ExistingWorkPolicy;
+import java.util.Locale;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
 
 public class FocusLedgerSyncProtocolTest {
     @Test
-    public void buildsCursorlessExchangeAndAcceptsOnlyMatchingTerminalAcks() throws Exception {
+    public void forbiddenLedgerKeysUseLocaleIndependentCaseFolding() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            assertTrue(FocusLedgerNativeOutboxStore.isForbiddenKey("AUTHORIZATION"));
+            assertTrue(FocusLedgerNativeOutboxStore.isForbiddenKey("ACCESS_TOKEN".replace("_", "")));
+        } finally {
+            Locale.setDefault(previous);
+        }
+    }
+
+    @Test
+    public void buildsCursorlessExchangeAndAcceptsOnlyMatchingAppliedOrDuplicateAcks() throws Exception {
         FocusLedgerNativeOutboxStore.Record record = record();
         JSONObject status = status();
         JSONObject request = FocusLedgerSyncProtocol.buildExchange(record, status);
@@ -23,15 +39,44 @@ public class FocusLedgerSyncProtocolTest {
             request.getJSONArray("mutations").getJSONObject(0).getInt("accountGeneration")
         );
 
-        JSONObject response = response(record, "applied");
-        FocusLedgerSyncProtocol.validateSuccessfulResponse(record, status, response);
+        FocusLedgerSyncProtocol.AcknowledgementResult applied =
+            FocusLedgerSyncProtocol.validateSuccessfulResponse(record, status, response(record, "applied"));
+        FocusLedgerSyncProtocol.AcknowledgementResult duplicate =
+            FocusLedgerSyncProtocol.validateSuccessfulResponse(record, status, response(record, "duplicate"));
+        assertFalse(applied.requiresManualResolution());
+        assertFalse(duplicate.requiresManualResolution());
+        assertFalse(FocusLedgerSyncWorker.stopsOrdinaryRetry(applied));
     }
 
     @Test
-    public void keepsConflictAndMismatchedAcknowledgementsInTheDurableOutbox() throws Exception {
+    public void classifiesConflictAndRejectedAcknowledgementsAsDurableTerminalReasons() throws Exception {
         FocusLedgerNativeOutboxStore.Record record = record();
-        assertRejected(record, response(record, "conflict"));
-        JSONObject mismatched = response(record, "applied");
+        FocusLedgerSyncProtocol.AcknowledgementResult conflict =
+            FocusLedgerSyncProtocol.validateSuccessfulResponse(record, status(), response(record, "conflict"));
+        assertTrue(conflict.requiresManualResolution());
+        assertTrue(FocusLedgerSyncWorker.stopsOrdinaryRetry(conflict));
+        assertEquals("conflict_present", conflict.terminalErrorCode);
+
+        FocusLedgerSyncProtocol.AcknowledgementResult rejected =
+            FocusLedgerSyncProtocol.validateSuccessfulResponse(record, status(), response(record, "rejected"));
+        assertTrue(rejected.requiresManualResolution());
+        assertTrue(FocusLedgerSyncWorker.stopsOrdinaryRetry(rejected));
+        assertEquals("rejected_operation", rejected.terminalErrorCode);
+
+        JSONObject mixed = response(record, "conflict");
+        mixed.getJSONArray("acks").getJSONObject(1).put("status", "rejected");
+        assertEquals(
+            "rejected_operation",
+            FocusLedgerSyncProtocol
+                .validateSuccessfulResponse(record, status(), mixed)
+                .terminalErrorCode
+        );
+    }
+
+    @Test
+    public void rejectsMismatchedAcknowledgementsEvenWhenTheyClaimTerminalStatus() throws Exception {
+        FocusLedgerNativeOutboxStore.Record record = record();
+        JSONObject mismatched = response(record, "conflict");
         mismatched
             .getJSONArray("acks")
             .getJSONObject(0)
@@ -58,6 +103,20 @@ public class FocusLedgerSyncProtocolTest {
             );
 
         FocusLedgerSyncProtocol.validateSuccessfulResponse(record, status(), response);
+    }
+
+    @Test
+    public void explicitTerminalRecheckReplacesAnInFlightOrdinaryWorker() {
+        assertEquals(ExistingWorkPolicy.KEEP, FocusLedgerSyncScheduler.ordinaryPolicy());
+        assertEquals(
+            ExistingWorkPolicy.REPLACE,
+            FocusLedgerSyncScheduler.explicitTerminalRecheckPolicy()
+        );
+        assertFalse(
+            FocusLedgerSyncScheduler.UNIQUE_WORK_NAME.equals(
+                FocusLedgerSyncScheduler.EXPLICIT_RECHECK_WORK_NAME
+            )
+        );
     }
 
     private static void assertRejected(
@@ -146,15 +205,16 @@ public class FocusLedgerSyncProtocolTest {
         JSONArray mutations = record.mutations();
         for (int index = 0; index < mutations.length(); index++) {
             JSONObject mutation = mutations.getJSONObject(index);
+            boolean accepted = "applied".equals(ackStatus) || "duplicate".equals(ackStatus);
             acknowledgements.put(
                 new JSONObject()
                     .put("opId", mutation.getString("opId"))
                     .put("entityType", mutation.getString("entityType"))
                     .put("entityId", mutation.getString("entityId"))
                     .put("status", ackStatus)
-                    .put("revision", index + 1)
-                    .put("fingerprint", "a".repeat(32))
-                    .put("errorCode", JSONObject.NULL)
+                    .put("revision", accepted ? index + 1 : JSONObject.NULL)
+                    .put("fingerprint", accepted ? "a".repeat(32) : JSONObject.NULL)
+                    .put("errorCode", accepted ? JSONObject.NULL : "server_terminal")
             );
         }
         return new JSONObject()

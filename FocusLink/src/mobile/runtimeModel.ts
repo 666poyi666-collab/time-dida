@@ -130,30 +130,39 @@ export function liveStateLabel(state: LiveFocusPhase): string {
 export function liveConnectionCopy(
   connection: LiveConnectionState,
   hasSnapshot: boolean,
+  connectionNotice: string | null = null,
 ): { title: string; detail: string } {
+  const withNotice = (copy: { title: string; detail: string }) =>
+    connectionNotice ? { ...copy, detail: connectionNotice } : copy;
   if (connection === 'live') {
-    return { title: '多端状态已连接', detail: '来自任一设备的操作会自动更新到这里' };
+    return withNotice({
+      title: '多端状态已连接',
+      detail: '来自任一设备的操作会自动更新到这里',
+    });
   }
   if (connection === 'connecting') {
-    return { title: '正在连接实时状态', detail: '完成握手后即可从此设备控制专注' };
+    return withNotice({ title: '正在连接实时状态', detail: '完成握手后即可从此设备控制专注' });
   }
   if (connection === 'offline') {
-    return {
+    return withNotice({
       title: '当前离线 · 本机专注可用',
       detail: hasSnapshot
         ? '云端状态仅供参考；可新建独立本机会话，结束后联网补传'
         : '可立即开始本机专注，结束后联网补传',
-    };
+    });
   }
   if (connection === 'error') {
-    return {
+    return withNotice({
       title: '实时连接中断',
       detail: hasSnapshot
         ? '保留最后确认状态；可新建独立本机会话，不会覆盖云端'
         : '可先使用本机专注，连接恢复后自动补传',
-    };
+    });
   }
-  return { title: '尚未登录 FocusLink', detail: '登录账号后启用多端控制与自动同步' };
+  return withNotice({
+    title: '尚未登录 FocusLink',
+    detail: '登录账号后启用多端控制与自动同步',
+  });
 }
 
 export function formatClockDuration(milliseconds: number): string {

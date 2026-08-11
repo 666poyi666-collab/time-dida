@@ -9,6 +9,7 @@ import {
   type DeviceSyncMutation,
   type DeviceSyncRequest,
 } from '@shared/sync/deviceProtocol';
+import { parseDeviceToken } from '@shared/sync/v2Protocol';
 
 const MAX_CURSOR_LENGTH = 512;
 
@@ -25,6 +26,24 @@ export function makeDeviceSyncConnectionScope(endpoint: string, accessToken: str
     .update(endpoint)
     .update('\0')
     .update(accessToken)
+    .digest('hex');
+}
+
+/**
+ * Stable local-provider scope for sessions imported from one cloud account.
+ *
+ * Canonical fl2 credentials are device credentials and can be rotated without changing the
+ * account.  Provider work therefore keys canonical queues by accountPublicId, while the legacy
+ * loopback transport keeps its credential-specific isolation.
+ */
+export function makeDeviceSyncProviderScope(endpoint: string, accessToken: string): string {
+  const canonical = parseDeviceToken(accessToken);
+  return crypto
+    .createHash('sha256')
+    .update('focuslink-remote-provider-writeback-v1\0')
+    .update(endpoint)
+    .update('\0')
+    .update(canonical ? `account:${canonical.accountPublicId}` : `credential:${accessToken}`)
     .digest('hex');
 }
 

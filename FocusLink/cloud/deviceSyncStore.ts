@@ -37,6 +37,7 @@ import {
 } from '../shared/sync/liveFocusProtocol';
 import {
   TASK_SNAPSHOT_PROTOCOL_VERSION,
+  isTaskSnapshotPublishedAtWithinFutureSkew,
   validateTaskSnapshotPayload,
   validateTaskSnapshotPublishRequest,
   type TaskSnapshotPayload,
@@ -171,6 +172,9 @@ export class DeviceSyncCloudStoreError extends Error {
       | 'invalid_cursor'
       | 'invalid_request'
       | 'invalid_live_revision'
+      | 'stale_task_snapshot'
+      | 'task_snapshot_conflict'
+      | 'task_snapshot_timestamp_too_far_ahead'
       | 'store_corrupt',
     message: string,
   ) {
@@ -282,12 +286,43 @@ export class DeviceSyncCloudStore {
     if (!validateTaskSnapshotPublishRequest(request)) {
       throw new DeviceSyncCloudStoreError('invalid_request', 'task snapshot is invalid');
     }
+    const serverTime = this.now();
+    if (!isTaskSnapshotPublishedAtWithinFutureSkew(request.snapshot.publishedAt, serverTime)) {
+      throw new DeviceSyncCloudStoreError(
+        'task_snapshot_timestamp_too_far_ahead',
+        'task snapshot publishedAt is too far in the future',
+      );
+    }
     const current = this.accounts.get(accountId) ?? createEmptyAccount();
     const fingerprint = fingerprintDeviceSyncValue(request.snapshot);
     if (
       current.tasks.fingerprint !== fingerprint ||
       current.tasks.sourceDeviceId !== request.deviceId
     ) {
+      const publishedAt = current.tasks.snapshot?.publishedAt;
+      const currentSnapshotIsLegacyFuture =
+        publishedAt !== undefined &&
+        !isTaskSnapshotPublishedAtWithinFutureSkew(publishedAt, serverTime);
+      if (
+        publishedAt !== undefined &&
+        !currentSnapshotIsLegacyFuture &&
+        request.snapshot.publishedAt < publishedAt
+      ) {
+        throw new DeviceSyncCloudStoreError(
+          'stale_task_snapshot',
+          'task snapshot is older than the current cloud snapshot',
+        );
+      }
+      if (
+        publishedAt !== undefined &&
+        !currentSnapshotIsLegacyFuture &&
+        request.snapshot.publishedAt === publishedAt
+      ) {
+        throw new DeviceSyncCloudStoreError(
+          'task_snapshot_conflict',
+          'task snapshot timestamp is already bound to different content',
+        );
+      }
       if (current.tasks.revision >= Number.MAX_SAFE_INTEGER) {
         throw new DeviceSyncCloudStoreError('store_corrupt', 'task revision exhausted');
       }

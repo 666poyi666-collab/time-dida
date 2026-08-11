@@ -4,6 +4,9 @@ import {
   FOCUSLINK_CANONICAL_SYNC_ORIGIN,
   FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
   FOCUSLINK_ENROLLED_DEVICE_SCOPES,
+  FOCUSLINK_SYNC_FAILOVER_ORIGIN,
+  focusLinkSyncEndpointCandidates,
+  isAllowedFocusLinkDeviceConnection,
   isCanonicalFocusLinkDeviceConnection,
   isCanonicalFocusLinkSyncEndpoint,
   isFocusLinkDeviceAccessToken,
@@ -88,12 +91,24 @@ describe('FocusLink identity device registration protocol', () => {
     expect(isCanonicalFocusLinkDeviceConnection(FOCUSLINK_CANONICAL_SYNC_ORIGIN, 'legacy')).toBe(
       false,
     );
+    expect(isAllowedFocusLinkDeviceConnection(FOCUSLINK_SYNC_FAILOVER_ORIGIN, token)).toBe(true);
+    expect(focusLinkSyncEndpointCandidates(FOCUSLINK_CANONICAL_SYNC_ORIGIN)).toEqual([
+      FOCUSLINK_SYNC_FAILOVER_ORIGIN,
+      FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+    ]);
+    expect(focusLinkSyncEndpointCandidates(FOCUSLINK_SYNC_FAILOVER_ORIGIN)).toEqual([
+      FOCUSLINK_SYNC_FAILOVER_ORIGIN,
+      FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+    ]);
   });
 
   it('keeps the Android native canonical origin aligned with the shared protocol', () => {
     const gradle = readFileSync(new URL('../android/app/build.gradle', import.meta.url), 'utf8');
     expect(gradle).toContain(
       `buildConfigField "String", "CANONICAL_SYNC_ORIGIN", '"${FOCUSLINK_CANONICAL_SYNC_ORIGIN}"'`,
+    );
+    expect(gradle).toContain(
+      `buildConfigField "String", "SYNC_FAILOVER_ORIGIN", '"${FOCUSLINK_SYNC_FAILOVER_ORIGIN}"'`,
     );
   });
 });

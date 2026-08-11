@@ -12,6 +12,24 @@ import org.json.JSONObject;
 final class FocusLedgerSyncProtocol {
     private static final int PROTOCOL_VERSION = 2;
 
+    /**
+     * A valid Sync v2 acknowledgement can still be terminal for this native
+     * writer.  A conflict/rejection must not be retried as though the request
+     * never reached the authority, but its original durable record remains
+     * available for explicit recovery.
+     */
+    static final class AcknowledgementResult {
+        final String terminalErrorCode;
+
+        AcknowledgementResult(String terminalErrorCode) {
+            this.terminalErrorCode = terminalErrorCode == null ? "" : terminalErrorCode;
+        }
+
+        boolean requiresManualResolution() {
+            return !terminalErrorCode.isEmpty();
+        }
+    }
+
     private FocusLedgerSyncProtocol() {}
 
     static JSONObject validateStatus(JSONObject status) throws JSONException {
@@ -53,7 +71,7 @@ final class FocusLedgerSyncProtocol {
             .put("accountGeneration", status.getInt("accountGeneration"));
     }
 
-    static void validateSuccessfulResponse(
+    static AcknowledgementResult validateSuccessfulResponse(
         FocusLedgerNativeOutboxStore.Record record,
         JSONObject status,
         JSONObject response
@@ -83,12 +101,12 @@ final class FocusLedgerSyncProtocol {
             expected.put(mutation.getString("opId"), mutation);
         }
         Set<String> seen = new HashSet<>();
+        String terminalErrorCode = "";
         for (int index = 0; index < acknowledgements.length(); index++) {
             JSONObject acknowledgement = acknowledgements.getJSONObject(index);
             String opId = acknowledgement.getString("opId");
             JSONObject mutation = expected.get(opId);
             String statusValue = acknowledgement.getString("status");
-            String fingerprint = acknowledgement.getString("fingerprint");
             if (
                 mutation == null ||
                 !seen.add(opId) ||
@@ -96,13 +114,35 @@ final class FocusLedgerSyncProtocol {
                     acknowledgement.getString("entityType")
                 ) ||
                 !mutation.getString("entityId").equals(acknowledgement.getString("entityId")) ||
-                (!"applied".equals(statusValue) && !"duplicate".equals(statusValue)) ||
-                acknowledgement.getInt("revision") < 1 ||
-                !fingerprint.matches("^[a-fA-F0-9]{32,128}$")
+                (!"applied".equals(statusValue) &&
+                    !"duplicate".equals(statusValue) &&
+                    !"conflict".equals(statusValue) &&
+                    !"rejected".equals(statusValue)) ||
+                !acknowledgement.has("revision") ||
+                !acknowledgement.has("fingerprint") ||
+                !acknowledgement.has("errorCode")
             ) {
                 throw new IllegalArgumentException("Sync v2 acknowledgement is invalid");
             }
+            if ("applied".equals(statusValue) || "duplicate".equals(statusValue)) {
+                String fingerprint = acknowledgement.getString("fingerprint");
+                if (
+                    acknowledgement.isNull("revision") ||
+                    acknowledgement.getInt("revision") < 1 ||
+                    acknowledgement.isNull("fingerprint") ||
+                    !fingerprint.matches("^[a-fA-F0-9]{32,128}$")
+                ) {
+                    throw new IllegalArgumentException("Sync v2 acknowledgement is invalid");
+                }
+            } else if ("rejected".equals(statusValue)) {
+                // A rejection is more specific than a conflict when a malformed
+                // response contains both across the record's paired mutations.
+                terminalErrorCode = "rejected_operation";
+            } else if (terminalErrorCode.isEmpty()) {
+                terminalErrorCode = "conflict_present";
+            }
         }
+        return new AcknowledgementResult(terminalErrorCode);
     }
 
     private static boolean validEpoch(String value) {
