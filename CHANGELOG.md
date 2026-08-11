@@ -6,7 +6,7 @@
 - **loopback 同步服务 Fetch 安全端口**：`cloud/deviceSyncServer.ts` 监听时拒绝 Node Fetch 禁止端口集合（0/1/7/9/13/53/110/143/465/6000/6667/10080 等），请求端口不安全时自动在有界次数内重新绑定 Fetch 安全端口，并提供 `isPortForbidden` 测试注入点；新增 `deviceSyncServerPortSafety.test.ts` 确定性回归，防止合同/测试后端落到浏览器 fetch 无法访问的端口。
 - **live fallback smoke 改为隔离 synthetic 凭据**：`live-fallback-packaged-smoke.cjs` 不再读取、复制或解密当前账户真实 device-sync 凭据与设置，改由新的 `write-synthetic-device-credential.cjs` 在隔离 profile 内用 Electron `safeStorage` 现场生成 synthetic 非生产令牌；helper 失败不再以 `SKIP` 计过，而是在有界超时内明确失败。
 - **mini smoke 增加置顶几何断言**：`mini-ui-smoke.cjs` 在 `mini.bringToFront()` 前后读取前台窗口与收起态几何，断言置顶动作不改变收起态位置、viewport 或吸附边。
-- **当前状态**：0.12.85 已完成 Windows、华为平板与小米手机同版安装回读；OPPO OWW221 按 2026-08-11 用户决定退役，不再开发或纳入门禁。正式 GitHub main 推送仍受未推送历史中的超大非 LFS blob 阻塞，未创建 tag 或 GitHub Release。
+- **当前状态**：0.12.85 已完成 Windows、华为平板与小米手机同版安装回读；OPPO OWW221 按 2026-08-11 用户决定退役，不再开发或纳入门禁。完整最终树已干净整合（历史超大非 LFS blob 已从提交历史剔除），并推送 GitHub main 为提交 `40d6dec`；未创建 tag 或 GitHub Release——用户未要求正式发布。
 
 ## v0.12.84 - 2026-08-10（实时连接与干净 Electron 构建候选）
 

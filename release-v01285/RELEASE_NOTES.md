@@ -6,7 +6,7 @@
 >
 > 发布类型：版本记录推送
 >
-> 验证状态：Windows、华为与小米已实装回读；OPPO OWW221 已退役，不再开发或纳入验证；main 推送受历史超大非 LFS blob 阻塞，未创建 tag、未创建 GitHub Release
+> 验证状态：Windows、华为与小米已实装回读；OPPO OWW221 已退役，不再开发或纳入验证；完整最终树已干净整合并推送 GitHub main（提交 40d6dec），未创建 tag、未创建 GitHub Release（用户未要求正式发布）
 
 ## 主要变化
 
@@ -26,7 +26,7 @@
   - OPPO OWW221：已退役，不安装、不 smoke、不纳入新版本矩阵。
 - APK 备份 SHA-256：`972FD825B9D1F5A3205AAFD92C9F8844F94F488810AD4CC918FAC9146C77D2D8`（`FocusLink-0.12.85-1285-debug.apk`，aapt 回读 `app.focuslink.mobile`、versionCode 1285）。
 - LFS 门禁：移除本地 `.git/info/attributes` 防护后 `git check-attr filter diff` 两份 EXE 均报 `filter: lfs` / `diff: lfs`；显式单次暂存；`.git/lfs/tmp` 清理后回读 0 文件 / 0 B，暂存后仍为 0 文件 / 0 B。
-- 说明：Windows、华为与小米三设备安装门禁已闭合；本记录不构成 tag 或 GitHub Release，main 推送仍受历史大文件阻塞。
+- 说明：Windows、华为与小米三设备安装门禁已闭合；完整最终树已干净整合并推送 GitHub main（提交 40d6dec），历史超大非 LFS blob 已从该整合提交历史剔除。本记录不构成 tag 或 GitHub Release（用户未要求正式发布）；历史超大非 LFS blob 推送阻塞仅按 Bug-06 / `FL-INSTALL-006` 保留为先前证据。
 
 ## 升级提示
 
