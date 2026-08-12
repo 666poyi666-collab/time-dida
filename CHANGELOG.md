@@ -6,6 +6,7 @@
 - **桌面视觉合同硬化**：主窗非零圆角统一取自 `--radius-*`，圆形与仪器槽位也进入 token；前景高光、遮罩与仪表阴影统一使用主题高光 token，新增静态合同阻止 literal 白/黑高光及散落圆角重新进入桌面组件。
 - **移动滚动验收补强**：360/412 手机 production viewport 除首屏无重叠外，新增滚到底部后的 sticky CTA 与底部导航几何断言；640/760/915×412、亮暗主题、四功能页继续保持无横向溢出与 ≥44px 触控目标。
 - **视觉审计边界**：2026-08-12 已人工检查桌面专注/任务/统计/设置、固定两态 mini，以及 360/640/760/915×412 代表截图，未见裁切、遮挡或卡片墙回归。多显示器混合 DPI 的真实拖拽、华为实体软键盘/胶囊与同版安装仍必须在可用硬件上完成，不以自动化替代。
+- **真实第三方与启动门禁**：0.12.87 的 TomaToDo bridge/real 与 dida real/state/packaged UI 五条真实 smoke 均通过，临时 marker/任务完成清理；TomaToDo 仅声明上传确认与本地清理，不冒充远端读回或远端删除。便携版直接启动并回读 `0.12.87 / f4b3ce3`。小米当前 foreground notification 携带 chronometer、`xiaomi-island` 与 MIUI island 参数，证明系统表面结构路径生效；视觉外观与 overlay 人工操作仍未执行。
 - **当前状态**：最终源码提交 `f4b3ce3` 的 format/typecheck/lint、全量 Vitest `117 files / 850 tests`、build、dist、Android 四项门禁和 production mobile viewport 均通过；packaged UI/mini/live-fallback 回读 build identity `0.12.87 / f4b3ce3`。`release-v01287/` 已收敛为四文件，APK 已备份并复核 SHA-256。Windows 与小米已实际安装回读 `0.12.87` / `0.12.87/1287` 并启动。华为 DBY-W09 未出现在 ADB/mDNS，历史地址不可达，未安装；因此三设备同版门禁和 GitHub `main` 推送仍未完成。未打 tag，未创建 GitHub Release。
 
 ## v0.12.86 - 2026-08-12（桌面密度/断点与小窗打磨、移动连续工作面与 640/760 响应式、IME/系统主题/a11y 修复）
