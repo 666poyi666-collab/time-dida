@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const net = require('node:net');
 const { execFile, spawn } = require('node:child_process');
 const WebSocket = require('ws');
 
@@ -18,7 +19,8 @@ const executable = path.resolve(
 const outputDir = path.resolve(
   process.argv[3] || path.join(os.tmpdir(), `focuslink-mini-states-${Date.now()}`),
 );
-const port = 9800 + Math.floor(Math.random() * 400);
+let port = 0;
+let app = null;
 
 const miniLayoutSource = fs.readFileSync(path.join(root, 'shared', 'miniWindowLayout.ts'), 'utf8');
 function readSharedSize(exportName) {
@@ -49,22 +51,43 @@ if (!packageVersion || !expectedCommit || expectedCommit.endsWith('-dirty')) {
 fs.mkdirSync(outputDir, { recursive: true });
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'focuslink-mini-smoke-'));
 
-const app = spawn(
-  executable,
-  [`--remote-debugging-port=${port}`, `--user-data-dir=${userDataDir}`, '--hidden'],
-  {
-    stdio: 'ignore',
-    windowsHide: true,
-    env: {
-      ...process.env,
-      FOXLINK_BUSINESS_API_TOKEN: '',
-      FOXLINK_BUSINESS_API_TOKEN_FILE: path.join(userDataDir, 'disabled-business-api-token'),
-    },
-  },
-);
-
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function allocateLoopbackPort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close(() => reject(new Error('Could not allocate an isolated CDP port')));
+        return;
+      }
+      server.close((error) => {
+        if (error) reject(error);
+        else resolve(address.port);
+      });
+    });
+  });
+}
+
+function startCandidate() {
+  return spawn(
+    executable,
+    [`--remote-debugging-port=${port}`, `--user-data-dir=${userDataDir}`, '--hidden'],
+    {
+      stdio: 'ignore',
+      windowsHide: true,
+      env: {
+        ...process.env,
+        FOXLINK_BUSINESS_API_TOKEN: '',
+        FOXLINK_BUSINESS_API_TOKEN_FILE: path.join(userDataDir, 'disabled-business-api-token'),
+      },
+    },
+  );
 }
 
 function sendMiniNativeWindowMessage(message) {
@@ -1443,6 +1466,8 @@ let mainSession;
 let miniSession;
 
 async function main() {
+  port = await allocateLoopbackPort();
+  app = startCandidate();
   process.stderr.write('[mini-smoke] waiting for main renderer\n');
   const mainTarget = await waitForTarget(
     (target) => target.type === 'page' && !String(target.url).includes('mini.html'),
@@ -1841,8 +1866,8 @@ main()
     miniSession?.close();
     mainSession?.close();
     await delay(300);
-    if (app.exitCode === null && !app.killed) app.kill();
-    if (app.exitCode === null) {
+    if (app && app.exitCode === null && !app.killed) app.kill();
+    if (app && app.exitCode === null) {
       await new Promise((resolve) => {
         const timeout = setTimeout(resolve, 5_000);
         app.once('close', () => {
