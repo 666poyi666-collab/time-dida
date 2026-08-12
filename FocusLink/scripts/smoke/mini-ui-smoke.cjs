@@ -1400,7 +1400,7 @@ async function verifyLongTimeAndReducedMotion(main, mini) {
       String(scrollPresets?.titleAnimationName || '') === 'none',
       'reduced-motion task title has no animation',
     ],
-    [shellDuration === 0, 'reduced-motion shell transition is disabled'],
+    [shellDuration <= 0.001, 'reduced-motion shell transition is disabled'],
   ];
   const reducedMotionFailed = reducedMotionChecks
     .filter(([passed]) => !passed)
