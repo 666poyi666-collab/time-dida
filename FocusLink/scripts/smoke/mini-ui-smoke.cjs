@@ -33,7 +33,7 @@ const COLLAPSED_SIZE = readSharedSize('MINI_WINDOW_COLLAPSED_SIZE');
 // 与 src/styles/temporal-foundation.css 唯一 token 来源保持一致（tests/themeTokens.test.ts 锁定）。
 const FOCUS_TOKEN = '52 211 153';
 const PAUSE_TOKEN = '244 112 103';
-const LIGHT_FOCUS_TOKEN = '14 159 110';
+const LIGHT_FOCUS_TOKEN = '11 122 85';
 const LIGHT_PAUSE_TOKEN = '210 67 57';
 const THEME_TOKENS = {
   dark: { focus: FOCUS_TOKEN, pause: PAUSE_TOKEN },

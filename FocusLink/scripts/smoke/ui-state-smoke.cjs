@@ -950,7 +950,7 @@ async function main() {
         !results.paused.primaryBackground.includes('210, 67, 57'),
       'resume uses interface action color, not pause red',
     ],
-    [results.running.successToken === '14 159 110', 'focus green token'],
+    [results.running.successToken === '11 122 85', 'focus green token'],
     [results.paused.pauseToken === '210 67 57', 'pause red token'],
     [
       results.paused.ledgerTones.some(
