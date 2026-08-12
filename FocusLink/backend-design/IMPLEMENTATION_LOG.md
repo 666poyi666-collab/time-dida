@@ -1,5 +1,13 @@
 # FocusLink 实施日志
 
+## 2026-08-12 · v0.12.87 候选身份升级与 UI 合同硬化
+
+- **候选不可复用**：v0.12.86 的干净提交 `85c1155` 已完成 installer/portable、packaged smoke、Windows 与小米实装；华为 DBY-W09 未在线。此后 5-worker 审计推动桌面视觉 token/radius 合同与手机滚动到底部的 sticky CTA 几何门禁发生源码变化，因此旧 0.12.86 产物不得继续冒充当前候选。所有版本源统一提升为 `0.12.87/1287`，目标目录为 `release-v01287`；0.12.86 安装与哈希只保留为历史事实。
+- **补修内容**：桌面主窗组件的非零 `border-radius` 统一通过 `--radius-*`；圆形和仪器槽位新增专用 token；literal 白/黑高光、遮罩与 dial shadow 改由主题高光 token 表达。`tests/styleContract.test.ts` 新增可失败合同，阻止散落圆角和 literal 高光回归。`mobile-viewport-screenshot.ts` 对 360/412 专注页新增滚动到底部后的 sticky CTA、底部导航和互不遮挡断言。
+- **2026-08-12 人工视觉审计**：已查看桌面 idle/running/history/settings、mini running-expanded/light-paused-collapsed、移动 360/640/760/915×412 的代表性亮暗截图；未观察到裁切、重叠、黑边、绿边或嵌套卡片墙回归。该审计不替代多显示器混合 DPI 的真实拖放，也不替代华为平板实体 IME、capsule 与安装回读。
+- **源码门禁结果**：Node `22.22.2` / npm `10.9.9` 下 format/typecheck/lint 均 exit 0；全量 Vitest `117 files / 850 tests` 通过；desktop `npm run build` 通过。Android `:app:testDebugUnitTest`、`:app:lintDebug`、`:app:compileDebugAndroidTestSources`、`:app:assembleDebug` 均成功。production mobile viewport 对 360/412/640/760/915×412 的亮暗四页面全部通过，无横向溢出，最小交互目标 44px；360/412 滚动到底部后的 sticky CTA 仍位于 bottom tabs 之上且无内容遮挡。
+- **当前门禁**：最终干净提交、dist/packaged smoke、四文件目录和实装尚在执行。华为不可达仍独立分类为设备门禁，不把历史 offline serial 伪装成当前安装。多显示器混合 DPI 拖拽仍未在对应硬件上执行。OPPO OWW221 保持退役/冻结；本轮不打 tag、不创建 GitHub Release，除非用户另行明确要求。
+
 ## 2026-08-12 · v0.12.86 UI 迭代（自动化与 packaged smoke 已完成，三设备实装待完成）
 
 - **候选身份升级**：v0.12.85 已从干净提交完成三设备实装回读并推送 main；跨端 UI/行为继续迭代，按候选身份不可复用规则，本轮唯一源码版本升为 `0.12.86/1286`（release-v01286）。0.12.85 的 EXE/APK、卸载项版本与安装矩阵只保留为历史证据，不作为本轮安装矩阵。OPPO OWW221 按 2026-08-11 用户决定保持退役/冻结，本迭代不开发、不安装、不验证。

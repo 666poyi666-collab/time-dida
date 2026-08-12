@@ -52,7 +52,7 @@
   min-height: 36px;
   padding: 7px 10px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 5px;
+  border-radius: var(--radius-lg);
   background: rgb(var(--app-elevated) / 0.6);
 }
 
@@ -259,7 +259,7 @@
 .task-navigation-status > span {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: rgb(var(--app-success));
 }
 
@@ -348,7 +348,7 @@
   width: 34px;
   height: 34px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 5px;
+  border-radius: var(--radius-lg);
   background: rgb(var(--app-elevated) / 0.5);
   color: rgb(var(--app-muted));
 }
@@ -447,7 +447,7 @@
 .picker-shell .task-tree-node[data-depth='0'] {
   overflow: hidden;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 9px;
+  border-radius: var(--radius-2xl);
   background: rgb(var(--app-surface));
 }
 
@@ -489,7 +489,7 @@
   height: 18px;
   flex: 0 0 18px;
   border: 1px solid rgb(var(--app-border-strong));
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   color: rgb(var(--app-accent-fg));
 }
 
@@ -628,7 +628,7 @@
   position: absolute;
   inset: 1px;
   border: 1.5px solid rgb(var(--app-border-strong));
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   transition:
     background var(--motion-normal),
     border-color var(--motion-normal),
@@ -808,7 +808,7 @@
 .task-skeleton-dot {
   width: 19px;
   height: 19px;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
 }
 
 .task-skeleton-lines {
@@ -888,7 +888,7 @@
 .history-subtitle i {
   width: 3px;
   height: 3px;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: rgb(var(--app-border-strong));
 }
 
@@ -1329,7 +1329,7 @@
   left: 3px;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: rgb(var(--app-elevated));
   box-shadow: var(--shadow-control-thumb);
   transition: transform var(--motion-normal) var(--ease-spring);
@@ -1396,7 +1396,7 @@
   width: 100%;
   padding: 12px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 5px;
+  border-radius: var(--radius-lg);
   background: transparent;
   text-align: left;
 }
@@ -1488,7 +1488,7 @@
   min-height: 58px;
   padding: 8px 10px;
   border: 1px solid rgb(var(--app-border));
-  border-radius: 5px;
+  border-radius: var(--radius-lg);
   background: rgb(var(--app-surface) / 0.44);
   text-align: left;
 }
@@ -1602,7 +1602,7 @@
 .picker-skeleton-dot {
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
 }
 
 .picker-skeleton-bar {

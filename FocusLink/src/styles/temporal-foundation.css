@@ -114,6 +114,7 @@
   --app-ink: 24 26 29;
   --app-ink-fg: 250 249 246;
   --app-grid: 24 26 29;
+  --app-highlight: 255 255 255;
 
   --bg-base: var(--app-bg);
   --bg-card: var(--app-surface);
@@ -147,6 +148,8 @@
      半截的梯子只会让下一个用到它的人得到一个没有圆角的方块。 */
   --radius-2xl: 8px;
   --radius-pill: 999px;
+  --radius-circle: 50%;
+  --radius-instrument-slot: 0.055em;
   --motion-fast: 120ms;
   --motion-normal: 200ms;
   --motion-slow: 360ms;
@@ -203,6 +206,7 @@
   --app-ink: 239 239 235;
   --app-ink-fg: 18 20 23;
   --app-grid: 239 239 235;
+  --app-highlight: 255 255 255;
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.32);
   --shadow-sm: 0 5px 16px -10px rgb(0 0 0 / 0.72);
   --shadow-md: 0 16px 38px -22px rgb(0 0 0 / 0.8);
@@ -378,7 +382,7 @@ button:disabled {
 }
 ::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
-  border-radius: 99px;
+  border-radius: var(--radius-pill);
   background-clip: padding-box;
   background-color: rgb(var(--app-border-strong) / 0.62);
 }

@@ -279,6 +279,34 @@ async function validateViewport(
           );
         }
       }
+      if (view === '专注' && viewport.width < 620) {
+        const focusLayout = await readFocusLayout(win);
+        assert(
+          focusLayout.navigationTop > 0,
+          `${viewport.id} bottom navigation missing for sticky CTA reservation`,
+        );
+        assert(
+          focusLayout.hasPrimaryAction &&
+            focusLayout.primaryActionBottom > 0 &&
+            focusLayout.primaryActionTop < focusLayout.innerHeight,
+          `${viewport.id} sticky primary focus action is not visible (${focusLayout.primaryActionTop}–${focusLayout.primaryActionBottom})`,
+        );
+        assert(
+          focusLayout.actionsBottom <= focusLayout.navigationTop + 1,
+          `${viewport.id} sticky focus CTA covers the bottom navigation (${focusLayout.actionsBottom} vs ${focusLayout.navigationTop})`,
+        );
+        await scrollFocusView(win, 'bottom');
+        const pinned = await readFocusLayout(win);
+        assert(
+          pinned.actionOverlaps.length === 0,
+          `${viewport.id} sticky focus CTA hides ${pinned.actionOverlaps.join(', ')} at the end of the instrument`,
+        );
+        assert(
+          pinned.actionsBottom <= pinned.navigationTop + 1,
+          `${viewport.id} sticky focus CTA covers the bottom navigation after scrolling (${pinned.actionsBottom} vs ${pinned.navigationTop})`,
+        );
+        await scrollFocusView(win, 'top');
+      }
       await capture(`${viewport.id}-${theme}-${view}`, win);
       if (
         view === '任务' &&

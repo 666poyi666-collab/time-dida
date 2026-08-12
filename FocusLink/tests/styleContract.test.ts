@@ -124,6 +124,53 @@ describe('style contract', () => {
     ).toEqual('');
   });
 
+  it('桌面组件的高光、遮罩与表盘阴影必须来自语义 token', () => {
+    const desktopSheets = new Set([
+      'focus-motion.css',
+      'legacy-support.css',
+      'linear-workbench.css',
+      'settings-motion.css',
+    ]);
+    const offenders: string[] = [];
+    for (const file of readStyles().filter((entry) => desktopSheets.has(entry.name))) {
+      file.text.split('\n').forEach((line, index) => {
+        if (/rgb\(\s*255\s+255\s+255\s*\//i.test(line)) {
+          offenders.push(`${file.name}:${index + 1} ${line.trim()}`);
+        }
+        if (/rgb\(\s*0\s+0\s+0\s*\//i.test(line)) {
+          offenders.push(`${file.name}:${index + 1} ${line.trim()}`);
+        }
+      });
+    }
+    expect(
+      offenders.join('；'),
+      '桌面组件不得散落字面黑白高光/遮罩，应使用 --app-highlight / --app-scrim',
+    ).toEqual('');
+  });
+
+  it('桌面非零圆角只允许来自 --radius-* 梯子', () => {
+    const desktopSheets = new Set([
+      'focus-motion.css',
+      'legacy-support.css',
+      'linear-workbench.css',
+      'settings-motion.css',
+      'temporal-foundation.css',
+    ]);
+    const offenders: string[] = [];
+    for (const file of readStyles().filter((entry) => desktopSheets.has(entry.name))) {
+      file.text.split('\n').forEach((line, index) => {
+        const match = /border-radius\s*:\s*([^;]+);/i.exec(line);
+        if (!match) return;
+        const value = match[1].replace(/\s*!important\s*$/i, '').trim();
+        if (value === 'inherit') return;
+        const parts = value.match(/var\(--radius-[\w-]+\)|0/g) ?? [];
+        if (parts.join(' ') === value.replace(/\s+/g, ' ')) return;
+        offenders.push(`${file.name}:${index + 1} border-radius: ${value}`);
+      });
+    }
+    expect(offenders.join('；'), '桌面圆角必须使用 --radius-* token').toEqual('');
+  });
+
   it('全局 :focus-visible 描边必须派生自强调色 token', () => {
     // 全局焦点环只定义在基础层 temporal-foundation.css；行内组件的 :focus-visible
     // 变体不承担全局描边契约，扫全量会先撞到它们。

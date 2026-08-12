@@ -161,7 +161,7 @@
   position: absolute;
   z-index: -1;
   inset: -7px;
-  border-radius: 8px;
+  border-radius: var(--radius-2xl);
   background: radial-gradient(closest-side, rgb(var(--app-accent) / 0.16), transparent);
   content: '';
   opacity: 0;
