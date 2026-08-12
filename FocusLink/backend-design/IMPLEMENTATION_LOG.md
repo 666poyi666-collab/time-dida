@@ -6,7 +6,10 @@
 - **补修内容**：桌面主窗组件的非零 `border-radius` 统一通过 `--radius-*`；圆形和仪器槽位新增专用 token；literal 白/黑高光、遮罩与 dial shadow 改由主题高光 token 表达。`tests/styleContract.test.ts` 新增可失败合同，阻止散落圆角和 literal 高光回归。`mobile-viewport-screenshot.ts` 对 360/412 专注页新增滚动到底部后的 sticky CTA、底部导航和互不遮挡断言。
 - **2026-08-12 人工视觉审计**：已查看桌面 idle/running/history/settings、mini running-expanded/light-paused-collapsed、移动 360/640/760/915×412 的代表性亮暗截图；未观察到裁切、重叠、黑边、绿边或嵌套卡片墙回归。该审计不替代多显示器混合 DPI 的真实拖放，也不替代华为平板实体 IME、capsule 与安装回读。
 - **源码门禁结果**：Node `22.22.2` / npm `10.9.9` 下 format/typecheck/lint 均 exit 0；全量 Vitest `117 files / 850 tests` 通过；desktop `npm run build` 通过。Android `:app:testDebugUnitTest`、`:app:lintDebug`、`:app:compileDebugAndroidTestSources`、`:app:assembleDebug` 均成功。production mobile viewport 对 360/412/640/760/915×412 的亮暗四页面全部通过，无横向溢出，最小交互目标 44px；360/412 滚动到底部后的 sticky CTA 仍位于 bottom tabs 之上且无内容遮挡。
-- **当前门禁**：最终干净提交、dist/packaged smoke、四文件目录和实装尚在执行。华为不可达仍独立分类为设备门禁，不把历史 offline serial 伪装成当前安装。多显示器混合 DPI 拖拽仍未在对应硬件上执行。OPPO OWW221 保持退役/冻结；本轮不打 tag、不创建 GitHub Release，除非用户另行明确要求。
+- **最终本地候选**：源码提交 `f4b3ce3` 的 `npm run dist` 精确生成 build identity `0.12.87 / f4b3ce3`，packaged UI、mini、live-fallback smoke 均 exit 0；`.git/lfs/tmp` 打包前后均为 `0 files / 0 B`。`release-v01287/` 恰为 installer、portable、SHA256、release notes 四文件，installer SHA-256 `84181999DABFD53C0F20EA72CC40F66E60D02C42315E28A650D09AD4F37AAF4D`，portable `B765B8C2D5A8E985858162C0897D9319091A14CFED75E670852DC3AC35EDBE0A`。Android APK 回读 `0.12.87/1287`，SHA-256 `A91F65C96F96CA110AF6ADD5B1AEF135BFA124633DF662E3071BEDE0A0385A0E`，备份为 `.tmp/android-apk-backups/FocusLink-0.12.87-1287-debug.apk`。
+- **安装矩阵（2026-08-12）**：Windows 安装器 `/S` exit 0，卸载项 `DisplayVersion=0.12.87`，已安装 EXE `FileVersion=0.12.87 / ProductVersion=0.12.87.0`，应用已重启；小米 xaga 当前地址 `192.168.1.4:5555`，覆盖安装后回读 `0.12.87/1287` 并启动，旧 `192.168.50.250:5555` 只保留为 offline 历史。华为 DBY-W09 未出现在 `adb devices` 或 mDNS，历史 `192.168.1.7:5555`、`192.168.1.61:5555` 在有界探测内不可达，未安装。因此三设备同版门禁仍为 **BLOCKED（Huawei unreachable）**，不得推送 GitHub `main` 或声明完整交付。
+- **日期冲突证据**：packaged UI smoke 的历史页因主机异常时钟显示 2026-08-13；本轮权威当前日期、实施日志、安装矩阵和发布说明严格使用 2026-08-12，同时保留该冲突事实，不以错误时钟覆盖用户给定日期。
+- **剩余门禁**：华为实体安装、IME/capsule 与多显示器混合 DPI 拖拽未执行。OPPO OWW221 保持退役/冻结；本轮不打 tag、不创建 GitHub Release，除非用户另行明确要求。
 
 ## 2026-08-12 · v0.12.86 UI 迭代（自动化与 packaged smoke 已完成，三设备实装待完成）
 
