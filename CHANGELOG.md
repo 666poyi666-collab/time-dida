@@ -7,7 +7,7 @@
 - **移动连续工作面取代嵌套卡片**：移动 renderer 以连续工作面替代嵌套卡片结构；640 竖屏下主操作粘性置于底部导航之上并预留高度；760 双栏（sidebar/树·详情）细化；清理半失效的 legacy 620 覆盖层。
 - **IME/系统主题/a11y 修复**：键盘输入时不遮挡粘性操作区（`interactive-widget` / `adjustResize` 边界）；`system` 主题跟随系统实时变化；`partial` 等状态文案完整换行与触控目标/对比度回归。
 - **自动化与 packaged 验证**：5 个锁定 DeepSeek worker 完成桌面、mini、移动、同步后端与验收规范的互斥审计；时间之带首分钟填充、IME、640/760 级联、触控目标与全主题 focus token 对比度进入静态/单元门禁。Node `22.22.2` / npm `10.9.9` 下 format/typecheck/lint、全量 Vitest `117 files / 848 tests`、build 与 Android unit/lint/AndroidTest 编译/assemble 已通过。干净候选的 packaged UI 与 mini smoke 已通过；mini smoke 由 OS 分配独立 loopback CDP 端口，消除随机端口竞态，并隔离本机 Foxlink business API 凭据/监听端口。
-- **当前状态**：Windows/小米/华为 `0.12.86/1286` 同版实装回读、最终四文件目录、APK 备份与推送 GitHub `main` 仍须以后续实际结果为准；当前 `adb devices -l` 无在线设备，不能把 Android 构建或旧版安装记录回填为本轮实装。OPPO OWW221 保持退役/冻结，不作为新版本门禁目标。本轮未打 tag、未创建 GitHub Release。
+- **当前状态**：提交 `85c1155` 的 installer/portable 已打包，packaged UI/mini/live-fallback 均通过；`release-v01286/` 已收敛为四文件，APK 已备份并复核 SHA-256。Windows 安装器 `/S` exit 0，卸载项与已安装 EXE 均回读 `0.12.86` 并已重启。小米 xaga 由 mDNS 发现当前地址 `192.168.1.4:5555`，`adb install -r` 成功并回读 `0.12.86/1286`、启动成功；旧 `192.168.50.250:5555` 只保留为 offline 历史。华为 DBY-W09 未出现在 `adb devices`/mDNS，历史 `192.168.1.7:5555` 及当前已发现邻居端口均不可达，故三设备同版门禁仍未闭合，不能推送为完整交付。OPPO OWW221 保持退役/冻结。本轮未打 tag、未创建 GitHub Release。
 
 ## v0.12.85 - 2026-08-11（版本源提升：loopback 服务 Fetch 安全端口与隔离 synthetic 凭据 smoke）
 
