@@ -278,4 +278,23 @@ describe('v0.12.86 semantic token contrast floor (WCAG)', () => {
       expect(ratio(tokens['app-success'], canvas)).toBeGreaterThanOrEqual(4.5);
     }
   });
+
+  it('all focus-color variants keep success text above AA on their theme canvas', () => {
+    for (const color of ['emerald', 'cobalt', 'violet', 'amber', 'graphite']) {
+      for (const [selector, canvas] of [
+        [`.focus-color-${color}`, light['app-surface-2']],
+        [`.dark.focus-color-${color}`, dark['app-surface-2']],
+      ] as const) {
+        const block = new RegExp(
+          '^' + selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([\\s\\S]*?)^\\}',
+          'm',
+        ).exec(foundation);
+        expect(block, `temporal-foundation.css 缺少 ${selector}`).not.toBeNull();
+        const value = /--app-success\s*:\s*([^;]+);/.exec(block![1]);
+        expect(value, `${selector} 缺少 --app-success`).not.toBeNull();
+        const parts = value![1].trim().split(/\s+/).map(Number) as [number, number, number];
+        expect(ratio(parts, canvas), `${selector} success 对比度不足`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
 });

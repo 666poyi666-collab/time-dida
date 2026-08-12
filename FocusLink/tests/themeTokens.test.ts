@@ -42,6 +42,11 @@ describe('专注/暂停颜色语义 token 契约', () => {
       }
     }
   });
+
+  it('亮色 emerald/amber 的专注语义使用可读 deep 值', () => {
+    expect(valueOf(blockOf('.focus-color-emerald'), '--app-success')).toBe('11 122 85');
+    expect(valueOf(blockOf('.focus-color-amber'), '--app-success')).toBe('139 85 14');
+  });
 });
 
 describe('危险语义 token 契约', () => {
