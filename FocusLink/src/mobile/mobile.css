@@ -3842,8 +3842,9 @@ code {
     height: clamp(176px, 20vw, 260px);
   }
 
-  /* The 640px portrait / 1024px landscape tablet has no bottom navigation.
-     Keep the primary controls in reach while its dense focus canvas scrolls. */
+  /* Generic >=620 fallback for wide/landscape canvases. The later 620-759
+     portrait rule deliberately overrides this bottom:0 position so the
+     primary controls stay above the retained bottom navigation. */
   .focus-actions {
     position: sticky;
     z-index: 3;

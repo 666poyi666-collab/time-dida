@@ -20,9 +20,9 @@ function valueOf(block: string, token: string): string {
 }
 
 describe('专注/暂停颜色语义 token 契约', () => {
-  it('浅色主题：专注绿 14 159 110、暂停红 210 67 57', () => {
+  it('浅色主题：专注绿满足小字 AA 的 11 122 85、暂停红 210 67 57', () => {
     const root = blockOf(':root');
-    expect(root).toContain('--app-success: 14 159 110;');
+    expect(root).toContain('--app-success: 11 122 85;');
     expect(root).toContain('--app-pause: 210 67 57;');
   });
 

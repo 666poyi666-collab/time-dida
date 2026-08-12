@@ -6,6 +6,39 @@ import type {
 import { particleCellHash } from '@shared/focus/bandMath';
 import type { LiveFocusPhase } from './runtimeModel';
 
+/**
+ * Temporal ribbon view-window policy (pure, deterministic, shared by the canvas
+ * renderer and its contract tests).
+ *
+ * The window always shows the full elapsed span plus a little future headroom,
+ * never less than {@link MOBILE_RIBBON_MIN_SPAN_MS}. A 90s floor means the first
+ * minute fills at most 2/3 of the band (gate: running/paused 时间之带在首分钟
+ * 不会铺满), and the 10s tick ladder inside that window stays readable on phone
+ * and tablet canvases. Very long sessions cap at 30 minutes so the band never
+ * degenerates into a wall of indistinguishable material.
+ */
+export const MOBILE_RIBBON_MIN_SPAN_MS = 90_000;
+export const MOBILE_RIBBON_MAX_SPAN_MS = 30 * 60_000;
+export const MOBILE_RIBBON_SPAN_HEADROOM = 1.12;
+
+export function mobileRibbonSpanMs(elapsedSpanMs: number): number {
+  return clamp(
+    elapsedSpanMs * MOBILE_RIBBON_SPAN_HEADROOM,
+    MOBILE_RIBBON_MIN_SPAN_MS,
+    MOBILE_RIBBON_MAX_SPAN_MS,
+  );
+}
+
+/** Grid step: 10s inside a 2-minute window, 60s up to 10 minutes, 5m beyond. */
+export function mobileRibbonTickMs(spanMs: number): number {
+  return spanMs <= 2 * 60_000 ? 10_000 : spanMs <= 10 * 60_000 ? 60_000 : 5 * 60_000;
+}
+
+/** Fraction of the window already elapsed, clamped to [0, 1]. */
+export function mobileRibbonFillRatio(elapsedSpanMs: number, spanMs: number): number {
+  return spanMs <= 0 ? 0 : clamp(elapsedSpanMs / spanMs, 0, 1);
+}
+
 export interface MobileTemporalRibbonProps {
   state: LiveFocusPhase;
   startedAt: number | null;
@@ -146,7 +179,7 @@ function drawRibbon(
   const sessionOrigin = input.startedAt ?? input.now - input.wallElapsedMs;
   const wallNow = input.state === 'idle' ? sessionOrigin + input.wallElapsedMs : input.now;
   const elapsedSpanMs = Math.max(0, wallNow - sessionOrigin);
-  const spanMs = clamp(elapsedSpanMs * 1.12, 60_000, 30 * 60_000);
+  const spanMs = mobileRibbonSpanMs(elapsedSpanMs);
   const origin = elapsedSpanMs > spanMs ? wallNow - spanMs : sessionOrigin;
   const left = 8;
   const right = width - 8;
@@ -207,7 +240,7 @@ function drawTimeGrid(
   muted: string,
   wallNow: number,
 ): void {
-  const tickMs = spanMs <= 2 * 60_000 ? 10_000 : spanMs <= 10 * 60_000 ? 60_000 : 5 * 60_000;
+  const tickMs = mobileRibbonTickMs(spanMs);
   ctx.strokeStyle = muted;
   ctx.fillStyle = muted;
   ctx.font = '9px sans-serif';

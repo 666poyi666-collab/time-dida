@@ -83,7 +83,7 @@
   --app-elevated: 255 255 253;
   --app-text: 24 26 29;
   --app-muted: 95 99 104;
-  --app-subtle: 154 157 162;
+  --app-subtle: 105 108 113;
   --app-border: 221 220 214;
   --app-border-strong: 198 197 190;
   --app-accent: 37 99 235;
@@ -91,7 +91,7 @@
   --app-accent-active: 30 64 175;
   --app-accent-fg: 255 255 255;
   --app-accent-soft: 231 238 252;
-  --app-success: 14 159 110;
+  --app-success: 11 122 85;
   --app-success-soft: 228 245 238;
   --app-success-deep: 11 122 85;
   --app-pause: 210 67 57;
@@ -179,7 +179,7 @@
   --app-elevated: 32 36 42;
   --app-text: 239 239 235;
   --app-muted: 158 159 156;
-  --app-subtle: 110 115 120;
+  --app-subtle: 130 135 140;
   --app-border: 47 50 54;
   --app-border-strong: 66 70 76;
   --app-accent: 96 165 250;

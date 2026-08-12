@@ -4,8 +4,9 @@
 
 - **候选身份升级**：v0.12.85 已从干净提交完成三设备实装回读并推送 main；跨端 UI/行为继续迭代，按候选身份不可复用规则，本轮唯一源码版本升为 `0.12.86/1286`（release-v01286）。0.12.85 的 EXE/APK、卸载项版本与安装矩阵只保留为历史证据，不作为本轮安装矩阵。OPPO OWW221 按 2026-08-11 用户决定保持退役/冻结，本迭代不开发、不安装、不验证。
 - **本轮方向（controller 已批准）**：桌面密度/断点打磨（980×660 仪器列与纪念碑级联冲突、账本宽度分层、辅助字号 ≥10px 下限）与固定两态 mini 打磨（不引入第三尺寸/自由缩放，保留置顶、吸附、320ms 收束折叠）；移动端连续工作面取代嵌套卡片、640 竖屏主操作粘性置于底部导航之上并预留高度、760 双栏（sidebar/树·详情）细化、清理半失效 legacy 620 覆盖层；IME/系统主题/a11y 修复（输入不遮挡粘性操作区、`system` 主题实时跟随、`partial` 状态完整换行与对比度/触控目标回归）。
-- **诚实状态记录**：本轮为**实施中**。版本源已统一升为 `0.12.86/1286`；尚未完成源码实现与回归、未执行 format/typecheck/lint/Vitest 全量门禁、未构建、未打包、未执行三设备安装矩阵、未创建 `release-v01286/`、未推送、未打 tag、未创建 GitHub Release。不得把上述未发生步骤写成已完成。
+- **诚实状态记录**：本轮为**实施中**。版本源已统一升为 `0.12.86/1286`；源码实现与本地回归正在收口，尚未从干净提交执行正式 `dist`、packaged smoke、三设备安装矩阵，未创建 `release-v01286/`、未推送、未打 tag、未创建 GitHub Release。不得把上述未发生步骤写成已完成。
 - **历史保留**：v0.12.85 的完整安装矩阵与既有 Bug-05/Bug-06/Bug-07 等记录原样保留，未改动；本轮不再新建平行 Bug 日志。
+- **2026-08-12 验收审计与补修**：5 个锁定 `opencode-go/deepseek-v4-flash / max / 1M` worker 将 FL-REQ-20260811-UI-ITER 拆成桌面、mini、移动、同步后端与验收规范五条互斥证据线。新增 `tests/v01286UIIterationContracts.test.ts`（10 项）与 `tests/mobileTemporalRibbonPolicy.test.ts`（5 项）：锁定 IME 合同、移动首屏压缩带、侧栏事实行扁平化、空统计态、640 竖屏级联序、token 级 WCAG，以及时间之带首分钟最多填充 2/3 且刻度可读。审计发现并已修复两项真实缺口：时间之带最小窗口由 60 秒提高到 90 秒；`--app-subtle` 与亮色 `--app-success` 调整为在亮暗画布均达到 ≥4.5:1。桌面/移动真实 Chromium viewport smoke 均 exit 0；Android `:app:testDebugUnitTest`、`:app:lintDebug`、`:app:compileDebugAndroidTestSources`、`:app:assembleDebug` 均 exit 0。另已清除误入快照提交且无产品引用的 73 个 `tmp/opencode-swarm-unbounded/**` runner 记录与 ignored `FocusLink/test-data/` 回归产物。Node `22.22.2` / npm `10.9.9` 下 format/typecheck/lint、全量 Vitest `117 files / 846 tests` 与 `npm run build` 已通过。干净提交后的正式 `dist`、packaged smoke、真实 dida/TomaToDo 与 Windows/小米/华为同版安装仍须以后续实际结果为准。
 
 ## 2026-08-11 · v0.12.85 候选身份升级：loopback 端口安全与打包 smoke 收口
 

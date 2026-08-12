@@ -349,6 +349,58 @@ Web/PWA 与 Capacitor Android 继续复用同一套 `src/mobile/` React 界面�
 - Android 后备悬浮条默认关闭，只能由用户显式启用；点按计时条显示关闭按钮，3 秒无操作自动收起，点关闭后持久写入禁用且不结束专注或常驻通知，只能回应用重新开启。长按进入拖动，位置更新每帧最多提交一次；拖动开始缓存安全区和尺寸，旋转、分屏和重启后根据 system bars、刘海与当前可用屏幕重新夹取。计时 tick 复用运行/暂停背景，不重复读取 WindowMetrics；系统通知可用时不得自动打开 overlay。
 - `cloud/` 仍是回环合同测试后端，不具备生产身份承诺；生产 authority 只允许 `cloudflare/accountDurableObject.ts`，客户端不得把 `cloud/`、ADB reverse 或电脑在线误读成云端同步前置条件。
 
+### 10.1 v0.12.86 跨端收口契约（FL-REQ-20260811-UI-ITER，实施中）
+
+本小节把 v0.12.86 的跨端 UI 收口写成可失败契约；对应验收映射见
+`tests/v01286UIIterationContracts.test.ts`、`tests/desktopResponsiveStyleContract.test.ts`、
+`tests/mobileResponsiveStyleContract.test.ts`、`tests/mobileResponsiveA11yContract.test.ts`
+与 `tests/styleContract.test.ts`。
+
+桌面（`linear-workbench.css` + `legacy-support.css`）：
+
+- 980×660 是保证的最小地板（与 `shared/mainWindowLayout.ts` 的 `MAIN_WINDOW_MIN_SIZE` 一致），
+  1280×720 为紧凑验收尺寸。宽度 ≤1080 时专注页折为单列时间之带；双列「仪表列 206px + 纪念碑」
+  只允许在 `min-width: 1081px` 且 `max-height: 760px` 同时成立时生效，低保档始终保留
+  `timer-dial-stage` 的 112px 最小舞台。
+- 账本宽度分层：<1100px 为 336px 列、默认 384px、≥1600px 升 440px；账本行任务标题可收缩、
+  时长列 `flex: 0 0 auto` 且 `white-space: nowrap`，长时长不得被标题挤压。
+- 信息密度：`view-console` 顶部横幅收紧为 58px 高、16px 间距；900–1239px 区间历史页头控制行
+  折入独立第二行，不得横向溢出。
+- 辅助字号确定性下限：`.text-meta` ≥11px、`.text-diag` ≥10px；桌面样式表禁止出现任何 <10px 字号
+  （小窗是独立紧凑面，不适用该下限）。圆角只允许来自 `--radius-*` 梯子；前景白、遮罩与深色表盘
+  阴影必须来自 `--app-danger-solid-fg` / `--app-scrim` token，禁止字面 `white/#fff` 与 `rgb(0 0 0 / …)`。
+- 键盘可访问性：`.settings-search-input` 与任务搜索框的 `:focus-visible` 必须是 2px
+  `--app-accent` 描边；实心按钮与表单控件必须有显式 `:disabled` 态。
+
+移动/平板（`mobile.css` v0.12.86 continuous work surface pass）：
+
+- 首屏压缩带：≤619px 手机 `mobile-topbar` 压到 `calc(52px + env(safe-area-inset-top))`、
+  `sync-strip` 46px，主读数与主操作留在首屏内；空统计态压缩为 64px 占位、`dashboard-primary`
+  150px、账本空态行 56px。
+- 连续工作面取代嵌套卡片：`primary-readout`、连接/运行时事实/投递/系统控制等侧栏事实行、
+  任务项目组与子项全部扁平为发丝分隔行（`border-radius: 0`、透明背景、`--mobile-hairline` 分隔），
+  只有导航/控制层保留受限材质。
+- 640×1024 竖屏（620–759 portrait）：保留底部四项导航；主操作条 `sticky` 于
+  `calc(72px + env(safe-area-inset-bottom))` 之上，`focus-instrument` 预留
+  `calc(112px + env(safe-area-inset-bottom))` 高度；该规则必须排在旧通用 `≥620px bottom:0`
+  覆盖层之后（级联序由测试锁定，「半失效 legacy 620 覆盖层」不得复活）。
+- 760px 或横屏：`live-context` 顶部对齐、`task-selection-detail` 取消最小高度，双栏不再留白。
+- IME：软键盘弹出不得遮挡粘性操作区——Web 入口 `viewport` 必须含
+  `interactive-widget=resizes-content`，Android `MainActivity` 必须声明
+  `android:windowSoftInputMode="adjustResize"`；文本输入保持 16px（iOS 不自动放大）。
+- 主题：`system`（跟随系统）必须在 OS 外观变化时实时重应用，无需重载；`watchMobileSystemTheme`
+  同时注册现代与 legacy 监听路径并在卸载时清理。
+
+对比度下限（WCAG，token 级，亮暗双主题；见 `tests/v01286UIIterationContracts.test.ts`）：
+
+- 正文 `--app-text` 对画布 ≥7:1；次要 `--app-muted`、辅助 `--app-subtle`、成功
+  `--app-success` 与危险 `--app-danger` ≥4.5:1；
+  实心按钮标签（`--app-danger-solid-fg` / `--app-accent-fg` 对各自实心底）≥4.5:1；暂停红 ≥3:1。
+
+小窗像素级精修（`temporal-mini.css` + `mini-ui-smoke.cjs`）：展开态状态徽标点 7px、
+收起态展开入口 24px 命中区（30px 列内）、秒轨 10px、指标字号 8.5/9.5px、按钮 9px/17px 高；
+仍严格两态 184×44 / 256×70，不引入第三尺寸或自由缩放。
+
 ## 11. 通用组件与状态
 
 - Tooltip、Toast、菜单、日期选择器、确认弹窗属于统一设计系统（发丝边框、3px 圆角、无玻璃）。Web/Android 的结束专注和清除本机缓存也必须使用可访问的 portal `alertdialog`，支持 Escape、Tab 焦点圈和 reduced-motion；不得回退到原生 `window.confirm`。

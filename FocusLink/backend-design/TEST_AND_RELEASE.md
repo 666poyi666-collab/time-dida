@@ -167,7 +167,13 @@ OPPO OWW221 已退役；新候选不再安装或验证手表 renderer，相关�
 - 契约断言覆盖六套真实界面字体、五套计时仪表、7×9 点阵（含窄冒号不越界）、翻页 `fold/unfold/steady` DOM 闭环与动画取消兜底、canvas 时间之带实时渲染与 finished 冻结、统计日报的 KPI/双尺度单日时间轴/多日堆叠柱/100% 任务构成带/暂停损耗，以及 Electron 原生全屏沉浸覆盖层、进入过渡和全页仅一个 TimerDial/TemporalRibbon 动画实例。
 - 视觉断言要确认主工作面无大面积 `backdrop-filter`/blur/光晕，文字对比与字号下限符合前端规范，reduced-motion 无持续呼吸或位移。
 - 覆盖默认尺寸、980×660 最小尺寸、1280×720、键盘焦点和无横向溢出；多日柱图的每日精确值必须可键盘聚焦。
+- v0.12.86 起主窗与移动 UI smoke 追加以下验收（对应 `FL-REQ-20260811-UI-ITER`）：
+  - 主窗：980×660 最小地板（与 `shared/mainWindowLayout.ts` 的 `MAIN_WINDOW_MIN_SIZE` 一致）与 1280×720 下仪表列/纪念碑无级联冲突，低保档保留 112px 计时舞台；账本列按 <1100px=336px / 默认 384px / ≥1600px=440px 分层，长时长不被任务标题挤压；桌面样式禁止 <10px 字号；`.text-meta` ≥11px、`.text-diag` ≥10px；搜索框 `:focus-visible` 为 2px 强调色描边；实心按钮与表单控件有显式 disabled 态；圆角只用 `--radius-*` 梯子，前景白/遮罩/表盘阴影必须 token 化。
+  - 移动/平板：≤619px 手机顶部栏与同步条压缩后主读数与主操作留在首屏；640×1024 竖屏主操作条粘性位于底部导航之上并预留高度，规则必须排在旧 `≥620px bottom:0` 覆盖层之后（级联序有测试锁定）；760px/横屏双栏详情不再留白；空统计态为紧凑占位。
+  - IME：软键盘弹出不得遮挡粘性操作区——Web viewport 含 `interactive-widget=resizes-content`，Android MainActivity 含 `android:windowSoftInputMode=adjustResize`，文本输入 16px。
+  - 主题与 a11y：`system` 主题在 OS 外观切换后实时跟随、无需重载（现代与 legacy 监听路径均注册并清理）；44px 触控目标；对比度按 token 级 WCAG 下限（正文 ≥7:1；次要、辅助、成功与危险 ≥4.5:1；实心按钮标签 ≥4.5:1；暂停红 ≥3:1）。
 - 小窗覆盖 expanded/collapsed、running/paused、实时主题/字体切换、透明边界、DPR、多显示器 work area 和四边吸附；Windows 原生拖拽必须由 `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` 区分按住与释放，断言收起态仅有状态、当前时间、60 格当前分钟秒轨和展开入口，展开态在 `256×70` 外框内完整显示任务名、三项累计与全部控制，时间与按钮分区且按钮不换行；暂停粒子必须跟随消逝边界，并覆盖 320ms 收束与过渡中拖动取消；置顶动作（`mini.bringToFront`）前后必须断言收起态几何与 Win32 前台窗口身份（handle/processId/title）保持不变，且不抢焦点。
+- 小窗像素精修（v0.12.86）由 `mini-ui-smoke.cjs` 断言：收起态展开入口 24px 命中区落在 30px 列内且 `min-width` 守住、展开态状态点 7px、秒轨 10px、指标 8.5/9.5px、控制 9px/17px 高；尺寸三重事实仍必须是 184×44 / 256×70 两态，不得引入第三尺寸。
 - 小窗尺寸以 BrowserWindow 内容 viewport、填满 viewport 的 shell 和截图像素为三重事实；Chromium 的 `window.outerWidth/outerHeight` 在 Windows runner 可能包含不可见系统边框，只能用于诊断和重复命令前后不变性，不能作为固定内容尺寸的发布断言。
 - 关闭 smoke 后删除临时 user-data 必须允许 Windows 日志尾写入的有界重试；清理错误不得覆盖首个产品/断言错误。
 - 统计 smoke 连续快速展开不同会话、在计时 tick 中滚动/切换页面，确认旧请求不会覆盖新详情，退出页不拦截鼠标。
