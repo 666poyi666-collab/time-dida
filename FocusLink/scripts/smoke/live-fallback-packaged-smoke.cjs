@@ -334,7 +334,15 @@ async function main() {
   appProcess = spawn(
     executable,
     [`--remote-debugging-port=0`, `--user-data-dir=${userDataDir}`, '--hidden'],
-    { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
+    {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      env: {
+        ...process.env,
+        FOXLINK_BUSINESS_API_TOKEN: '',
+        FOXLINK_BUSINESS_API_TOKEN_FILE: path.join(userDataDir, 'disabled-business-api-token'),
+      },
+    },
   );
   appProcess.stdout?.on('data', (chunk) => {
     childStdout = `${childStdout}${String(chunk)}`.slice(-8_000);

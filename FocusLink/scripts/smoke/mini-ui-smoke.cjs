@@ -52,7 +52,15 @@ const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'focuslink-mini-smoke-
 const app = spawn(
   executable,
   [`--remote-debugging-port=${port}`, `--user-data-dir=${userDataDir}`, '--hidden'],
-  { stdio: 'ignore', windowsHide: true },
+  {
+    stdio: 'ignore',
+    windowsHide: true,
+    env: {
+      ...process.env,
+      FOXLINK_BUSINESS_API_TOKEN: '',
+      FOXLINK_BUSINESS_API_TOKEN_FILE: path.join(userDataDir, 'disabled-business-api-token'),
+    },
+  },
 );
 
 function delay(ms) {
