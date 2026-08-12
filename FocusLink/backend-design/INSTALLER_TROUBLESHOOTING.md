@@ -92,6 +92,16 @@ FocusLink 使用分步安装器。首屏标题是「FocusLink 安装」，需要
 
 只看“当前没有 git-lfs 进程”不够：filter-process 可能在两次采样之间完成一次大文件转换。必须同时保存稳定时间窗口和 tmp 字节数。历史大文件仍存在也不能直接判断当前仍在增长；按时间戳分别记录历史残留和当前进程事实。
 
+## FL-INSTALL-007：packaged smoke 等待 renderer 时报告 `fetch failed`
+
+先区分三类事实，不要把同一句 `fetch failed` 直接写成产品启动失败：
+
+1. 用 smoke 的独立 `--user-data-dir` 检查 `logs/focuslink-YYYY-MM-DD.log`，确认候选 commit、数据库初始化和 `createMainWindow` 是否发生；日志在 profile 的 `logs/` 子目录，不在 profile 根目录。
+2. 只列出 executable path 指向本轮 `release-v*/win-unpacked/FocusLink.exe`、且命令行包含该 profile 或 `--remote-debugging-port` 的候选进程；不得结束 `%LOCALAPPDATA%\Programs\FocusLink\FocusLink.exe` 的已安装实例。
+3. 用明确空闲的 loopback 端口启动同一候选并读取 `http://127.0.0.1:<port>/json/list`。若可返回 `title=FocusLink` 的 page target，则产品 renderer 正常，优先检查 smoke 的 CDP 端口分配与清理；若日志有 `EADDRINUSE 127.0.0.1:18770`，则另行检查 Foxlink business API 是否在隔离 profile 中被禁用。
+
+`mini-ui-smoke.cjs` 必须用 `net.Server.listen(0, '127.0.0.1')` 让 OS 分配端口，再关闭预留 socket并启动候选；不得回退为固定范围随机数。packaged smoke 的隔离环境还必须把 `FOXLINK_BUSINESS_API_TOKEN` 设为空，并把 token file 指向 profile 内不存在的文件，避免读取全局凭据或与已安装实例争用业务端口。修复后要复跑完整 smoke，而不是只验证 `/json/list`。
+
 ## 维护规则
 
 - 新增安装错误时，先分配稳定错误编号，再补充触发条件、可逆处理和验证命令。
