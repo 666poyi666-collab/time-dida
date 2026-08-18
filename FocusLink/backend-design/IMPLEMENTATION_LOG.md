@@ -2,6 +2,7 @@
 
 ## 2026-08-12 · v0.12.87 候选身份升级与 UI 合同硬化
 
+- **2026-08-18 GitHub 可下载交付证据**：按用户要求，远端 `main` 与 annotated tag `v0.12.87` 均回读到 release-record 提交 `9c9ab606bebaa930c2075bb59dbc118f5690a99f`；GitHub Release 为非草稿预发布，页面为 `https://github.com/666poyi666-collab/time-dida/releases/tag/v0.12.87`。安装版（170442233 B，SHA-256 `84181999DABFD53C0F20EA72CC40F66E60D02C42315E28A650D09AD4F37AAF4D`）、便携版（170218406 B，SHA-256 `B765B8C2D5A8E985858162C0897D9319091A14CFED75E670852DC3AC35EDBE0A`）、Android `FocusLink-0.12.87-1287-debug.apk`（26980020 B，SHA-256 `A91F65C96F96CA110AF6ADD5B1AEF135BFA124633DF662E3071BEDE0A0385A0E`）和 `SHA256SUMS.txt` 均为 `uploaded`，三个下载端点 HEAD 返回 HTTP 200；预发布不改变华为真机门禁 **BLOCKED** 状态。
 - **候选不可复用**：v0.12.86 的干净提交 `85c1155` 已完成 installer/portable、packaged smoke、Windows 与小米实装；华为 DBY-W09 未在线。此后 5-worker 审计推动桌面视觉 token/radius 合同与手机滚动到底部的 sticky CTA 几何门禁发生源码变化，因此旧 0.12.86 产物不得继续冒充当前候选。所有版本源统一提升为 `0.12.87/1287`，目标目录为 `release-v01287`；0.12.86 安装与哈希只保留为历史事实。
 - **补修内容**：桌面主窗组件的非零 `border-radius` 统一通过 `--radius-*`；圆形和仪器槽位新增专用 token；literal 白/黑高光、遮罩与 dial shadow 改由主题高光 token 表达。`tests/styleContract.test.ts` 新增可失败合同，阻止散落圆角和 literal 高光回归。`mobile-viewport-screenshot.ts` 对 360/412 专注页新增滚动到底部后的 sticky CTA、底部导航和互不遮挡断言。
 - **2026-08-12 人工视觉审计**：已查看桌面 idle/running/history/settings、mini running-expanded/light-paused-collapsed、移动 360/640/760/915×412 的代表性亮暗截图；未观察到裁切、重叠、黑边、绿边或嵌套卡片墙回归。该审计不替代多显示器混合 DPI 的真实拖放，也不替代华为平板实体 IME、capsule 与安装回读。
