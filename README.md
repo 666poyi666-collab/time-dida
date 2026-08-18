@@ -2,7 +2,7 @@
 
 FocusLink 是一个本地优先的 Windows 桌面专注工具：主进程精确记录专注、暂停与自然跨度，把片段关联到滴答清单任务，并通过彼此独立的队列同步滴答清单与番茄 To-do。
 
-> 当前候选版本：v0.12.87（源码、全量门禁、四文件目录、Windows 与小米实装已完成；华为平板不可达，三设备同版门禁和 GitHub `main` 推送待补。OPPO 手表保持退役/冻结，不再开发或纳入门禁）
+> 当前版本：v0.12.87 GitHub 预发布候选（已提供下载；源码、全量门禁、四文件目录、Windows 与小米实装已完成；华为平板不可达，正式三设备同版门禁仍未闭合。OPPO 手表保持退役/冻结，不再开发或纳入门禁）
 >
 > 版本主题：桌面密度/断点与小窗打磨 · 移动连续工作面取代嵌套卡片 · 640 粘性操作 · 760 双栏细化 · IME/系统主题/a11y 修复
 
@@ -200,7 +200,7 @@ RELEASE_NOTES.md
 
 | 版本    | 本地安装版                                                     | 版本说明                                    |
 | ------- | -------------------------------------------------------------- | ------------------------------------------- |
-| 0.12.87 | 本地候选：四文件目录、Windows/小米实装完成；华为待恢复，未推送 main、未创建 tag/Release | [v0.12.87](release-v01287/RELEASE_NOTES.md) |
+| 0.12.87 | GitHub 预发布候选：四文件目录、Windows/小米实装完成；华为待恢复，正式三设备门禁未闭合 | [GitHub 下载](https://github.com/666poyi666-collab/time-dida/releases/tag/v0.12.87) / [本地说明](release-v01287/RELEASE_NOTES.md) |
 | 0.12.86 | 历史候选：四文件目录、Windows/小米实装已完成；后续源码变化后不再复用 | [v0.12.86](release-v01286/RELEASE_NOTES.md) |
 | 0.12.85 | 已被 0.12.86 取代：三设备已安装回读；OPPO 已退役；已推送 main（40d6dec），未创建 tag/Release | [v0.12.85](release-v01285/RELEASE_NOTES.md) |
 | 0.12.84 | 已被 0.12.85 取代：Windows/小米曾回读；华为/OPPO 与四端门禁未完成；不完整发布目录已移除 | v0.12.84 |
@@ -231,7 +231,7 @@ v0.12.11 因校验表格式被阻断；v0.12.12 的源码、回归和便携版�
 
 ### 当前发布
 
-- [v0.12.87 版本说明](release-v01287/RELEASE_NOTES.md)（本地候选；Windows/小米已实装，华为待恢复；未推送 main、未创建 tag 或 GitHub Release）
+- [v0.12.87 GitHub 预发布说明](https://github.com/666poyi666-collab/time-dida/releases/tag/v0.12.87) / [本地说明](release-v01287/RELEASE_NOTES.md)（Windows/小米已实装，华为待恢复；不等同于正式三设备交付）
 - [v0.12.86 版本说明](release-v01286/RELEASE_NOTES.md)（历史候选；Windows/小米曾实装，后续源码变化后不再复用；未推送 main、未创建 tag 或 GitHub Release）
 - [v0.12.85 版本说明](release-v01285/RELEASE_NOTES.md)（历史；已推送 GitHub main 提交 `40d6dec`；未创建 tag 或 GitHub Release）
 - v0.12.74 账号过渡封口与 native lease 版本说明（历史记录，发布目录已移除）
