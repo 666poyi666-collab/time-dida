@@ -1,0 +1,106 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "foxlink-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-10",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "account_id": "6465e9d49bcdb88adde245a7f7a74acc",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "focuslink.pyzzgk.dpdns.org",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "FOCUSLINK_ACCOUNT_KEY": "primary",
+    "FOCUSLINK_DEVICE_ID": "device-TeEfsCt74Pfa82lg",
+    "FOCUSLINK_ALLOWED_ORIGINS": "https://localhost,capacitor://localhost,http://localhost",
+    "FOCUSLINK_TIME_ZONE": "Asia/Shanghai",
+    "FOCUSLINK_UPSTREAM_VISIBILITY": "edge_contained_pending_service_binding_verification",
+    "FOCUSLINK_PAIRING_ENABLED": "true",
+    "FOCUSLINK_PAIR_SERVICE_CLIENT_ID": "poyi-oauth-as",
+    "FOCUSLINK_BOOTSTRAP_ENABLED": "true",
+    "FOCUSLINK_OWNER_LABEL": "Poyi",
+    "FOCUSLINK_OWNER_SUBJECT": "poyi-owner",
+    "OAUTH_ISSUER": "https://poyi-oauth-as.focuslink-poyi-6465e9.workers.dev",
+    "OAUTH_AUDIENCE": "https://foxlink-mcp.focuslink-poyi-6465e9.workers.dev/mcp",
+    "OAUTH_JWKS_URL": "https://poyi-oauth-as.focuslink-poyi-6465e9.workers.dev/jwks.json",
+    "OAUTH_TOKEN_STATUS_URL": "https://poyi-oauth-as.focuslink-poyi-6465e9.workers.dev/introspect",
+    "OAUTH_RS_CLIENT_ID": "foxlink-cloud-mcp"
+  },
+  // FOCUSLINK_DEVICE_TOKEN is a secret produced by pairing device public ID
+  // "foxlink-cloud-mcp" with the exclusive sync:read scope; never commit it.
+  // FOCUSLINK_PAIR_AUTHORITY_TOKEN is a distinct fla_* service-binding
+  // credential shared only with the private FocusLink Worker. That Worker
+  // translates it to the internal owner identity solely for pair-offer creation.
+  // FOCUSLINK_PAIR_SERVICE_CREDENTIAL is an audience/action-bound secret used only
+  // by the unified AS over a Cloudflare service binding; it is never OAuth or browser-visible.
+  // FOCUSLINK_MCP_SERVICE_TOKEN is a separate service-binding credential shared
+  // only with the FocusLink authority's minimal server-readable summary endpoint.
+  // OAUTH_RS_CLIENT_ID is a non-secret audience-bound resource-server client id.
+  // OAUTH_RS_CLIENT_SECRET is its client_secret_basic secret.
+  // FOCUSLINK_IDENTITY_AUTHORITY_TOKEN is a distinct fia_* secret shared with the
+  // private FocusLink Worker, used by owner-approved device registration to mint
+  // fl2_* device credentials. It must be set on BOTH this Worker and focuslink-sync.
+  // FOCUSLINK_BOOTSTRAP_PEPPER is a high-entropy HMAC pepper for bootstrap flow
+  // poll tokens and is never a repository value.
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "FoxlinkCloudMCP"
+      ]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": [
+        "FocuslinkFeedSync"
+      ]
+    },
+    {
+      "tag": "v3",
+      "deleted_classes": [
+        "FoxlinkCloudMCP"
+      ]
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "FocuslinkFeedSync",
+        "name": "FOCUSLINK_FEED_SYNC"
+      }
+    ]
+  },
+  "services": [
+    {
+      "binding": "FOCUSLINK_UPSTREAM",
+      "service": "focuslink-sync"
+    },
+    {
+      "binding": "OAUTH_HTTP",
+      "service": "poyi-oauth-as"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "PAIR_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 10, "period": 60 }
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "foxlink-mcp",
+      "database_id": "0ff234e2-13a2-4cbf-9ba0-d62df2fc820a"
+    }
+  ]
+}

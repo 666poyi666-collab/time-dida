@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "focuslink",
+  "name": "FocusLink",
+  "profile": "product",
+  "lifecycle": "active",
+  "requires": { "frontend": true, "backend": true, "cloud": true, "mcp": true },
+  "components": {
+    "application": "FocusLink",
+    "cloudMcp": "FocusLink/cloud/mcp"
+  }
+}

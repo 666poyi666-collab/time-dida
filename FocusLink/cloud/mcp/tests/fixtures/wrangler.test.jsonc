@@ -1,0 +1,29 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "foxlink-mcp-test",
+  "main": "../../src/index.ts",
+  "compatibility_date": "2025-03-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["FocuslinkFeedSync"] }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "class_name": "FocuslinkFeedSync", "name": "FOCUSLINK_FEED_SYNC" }
+    ]
+  },
+  "ratelimits": [
+    {
+      "name": "PAIR_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 1000, "period": 60 }
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "foxlink-mcp-test",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}

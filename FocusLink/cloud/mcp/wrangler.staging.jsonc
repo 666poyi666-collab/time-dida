@@ -1,0 +1,50 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "foxlink-mcp-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "account_id": "6465e9d49bcdb88adde245a7f7a74acc",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "vars": {
+    "FOCUSLINK_ACCOUNT_KEY": "staging-primary",
+    "FOCUSLINK_DEVICE_ID": "device-4-xaBrQBau8irWoB",
+    "FOCUSLINK_ALLOWED_ORIGINS": "https://localhost,capacitor://localhost,http://localhost",
+    "FOCUSLINK_TIME_ZONE": "Asia/Shanghai",
+    "FOCUSLINK_UPSTREAM_VISIBILITY": "private_service_binding_verified_staging",
+    "FOCUSLINK_PAIRING_ENABLED": "true",
+    "FOCUSLINK_PAIR_SERVICE_CLIENT_ID": "poyi-oauth-as-staging",
+    "OAUTH_ISSUER": "https://poyi-oauth-as-staging.focuslink-poyi-6465e9.workers.dev",
+    "OAUTH_AUDIENCE": "https://foxlink-mcp-staging.focuslink-poyi-6465e9.workers.dev/mcp",
+    "OAUTH_JWKS_URL": "https://poyi-oauth-as-staging.focuslink-poyi-6465e9.workers.dev/jwks.json",
+    "OAUTH_TOKEN_STATUS_URL": "https://poyi-oauth-as-staging.focuslink-poyi-6465e9.workers.dev/introspect",
+    "OAUTH_RS_CLIENT_ID": "foxlink-cloud-mcp-staging"
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["FoxlinkCloudMCP"] },
+    { "tag": "v2", "new_sqlite_classes": ["FocuslinkFeedSync"] },
+    { "tag": "v3", "deleted_classes": ["FoxlinkCloudMCP"] }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "class_name": "FocuslinkFeedSync", "name": "FOCUSLINK_FEED_SYNC" }
+    ]
+  },
+  "services": [
+    { "binding": "FOCUSLINK_UPSTREAM", "service": "focuslink-sync-staging" },
+    { "binding": "OAUTH_HTTP", "service": "poyi-oauth-as-staging" }
+  ],
+  "ratelimits": [
+    { "name": "PAIR_RATE_LIMITER", "namespace_id": "2001", "simple": { "limit": 10, "period": 60 } }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "foxlink-mcp-staging",
+      "database_id": "ad88c6b7-47cb-46a4-8c10-745fc50d298a",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

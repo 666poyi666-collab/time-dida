@@ -1,0 +1,33 @@
+{
+  "name": "foxlink-cloud-mcp",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Canonical FocusLink Cloudflare sync adapter and read-only MCP projection",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:typecheck": "tsc -p tsconfig.tests.json --noEmit",
+    "test": "node scripts/verify-test-env-isolation.mjs && vitest run",
+    "test:watch": "vitest",
+    "probe:remote": "node scripts/probe-remote.mjs",
+    "probe:staging": "node scripts/probe-remote.mjs --staging",
+    "verify:pc-off": "node scripts/verify-pc-off.mjs",
+    "provision:projection": "node scripts/provision-projection-token.mjs",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "agents": "^0.20.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@cloudflare/workers-types": "^5.20260726.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "@hono/node-server": "^2.0.5"
+  }
+}
