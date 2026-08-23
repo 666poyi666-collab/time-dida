@@ -6,7 +6,7 @@
 - **三端写回**：PC 和移动端可创建清单/任务；移动端完成/恢复任务通过账号任务快照写回。PC 刷新前拉取云端任务，按 ID 和 `updatedAt` 合并后再发布。
 - **账号迁移**：旧 loopback 非账号凭据在升级时清除，设置切换到官方 HTTPS，等待用户通过正式账号入口登录。真实探针为 `deployed-login-required`，canonical/failover 健康检查均为 200。
 - **UI**：手机与平板按短边阈值自动分层；手机使用底部浮动导航和计时优先首屏，平板使用顶部导航与宽屏内容结构；Android 默认启动图替换为 FocusLink 品牌图。
-- **门禁**：完整 Vitest `117 files / 857 tests` 通过；PC build、Cloudflare typecheck、Android assembleDebug 通过。Windows 注册表、安装目录 EXE 与运行日志均回读 `0.12.91` 并已重启；手机和平板当前不在线，APK 未安装。
+- **门禁**：完整 Vitest `117 files / 857 tests` 通过；PC build、Cloudflare typecheck、Android assembleDebug 通过。干净源码提交 `f1361e9` 重建后，Windows 注册表、安装目录 EXE 与运行日志均回读 `0.12.91 / f1361e9` 并已重启；手机和平板当前不在线，APK 未安装。
 
 ## 2026-08-22 · 番茄 To-do 手机不可见根因与状态分离
 
