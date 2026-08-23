@@ -6473,6 +6473,38 @@ body,
   }
 }
 
+/* Huawei DBY-W09 reports 640x1024 CSS px in portrait. Keep this final in the
+ * cascade so older tablet compatibility rules cannot force the wide shell. */
+@media (min-width: 620px) and (max-width: 759px) and (orientation: portrait) {
+  html[data-device-tier='tablet'] body .mobile-main {
+    display: block;
+    padding: 0 0 calc(86px + env(safe-area-inset-bottom));
+  }
+
+  html[data-device-tier='tablet'] body .app-navigation {
+    position: fixed;
+    top: auto;
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: max(14px, env(safe-area-inset-left));
+    width: auto;
+    max-width: none;
+    min-height: 64px;
+    border-radius: 22px;
+  }
+
+  html[data-device-tier='tablet'] body .mobile-topbar {
+    padding-right: max(18px, env(safe-area-inset-right));
+  }
+
+  html[data-device-tier='tablet'] body .focus-console-body,
+  html[data-device-tier='tablet'] body .task-browser-workspace,
+  html[data-device-tier='tablet'] body .dashboard-hero,
+  html[data-device-tier='tablet'] body .settings-status-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Final responsive polish must follow the legacy compatibility layer above. */
 @media (max-width: 619px) {
   .mobile-topbar {
