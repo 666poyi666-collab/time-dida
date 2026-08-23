@@ -26,6 +26,9 @@ vi.mock('../electron/settingsStore.js', () => ({
 vi.mock('../electron/tasks/localProvider.js', () => ({
   LocalTaskProvider: {
     list: vi.fn(() => serviceState.localTasks),
+    listProjects: vi.fn(() => []),
+    importExternal: vi.fn(),
+    mergeCloudSnapshot: vi.fn(),
     setCompleted: vi.fn((id: string, completed: boolean) => ({
       ...serviceState.localTasks.find((task) => task.id === id),
       id,
@@ -60,6 +63,7 @@ vi.mock('../electron/integrations/ticktick/oauthAdapter.js', () => ({
 
 vi.mock('../electron/sync/deviceSyncService.js', () => ({
   publishDeviceTaskSnapshot: serviceState.publishTaskSnapshot,
+  readDeviceTaskSnapshot: vi.fn(async () => null),
 }));
 
 import { refreshTaskWorkspace, setTaskCompleted } from '../electron/tasks/workspaceService';

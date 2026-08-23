@@ -341,6 +341,60 @@
   gap: 5px;
 }
 
+.task-quick-add {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: var(--radius-lg);
+  background: rgb(var(--app-elevated) / 0.5);
+}
+
+.task-quick-add input {
+  width: 150px;
+  min-width: 0;
+  padding: 0 9px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: rgb(var(--app-text));
+  font-size: 11px;
+}
+
+.task-quick-add button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: rgb(var(--app-accent));
+  font-size: 18px;
+}
+
+.task-project-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 4px;
+  margin: 6px 0 8px;
+}
+
+.task-project-create input {
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: var(--radius-md);
+  background: rgb(var(--app-elevated) / 0.45);
+  font-size: 11px;
+}
+
+.task-project-create button {
+  border: 1px solid rgb(var(--app-border));
+  border-radius: var(--radius-md);
+  background: rgb(var(--app-elevated) / 0.55);
+  color: rgb(var(--app-accent));
+  font-size: 17px;
+}
+
 .task-icon-action {
   display: inline-flex;
   align-items: center;
@@ -592,7 +646,7 @@
 }
 
 .task-workbench-chevron,
-.task-workbench-chevron-spacer {
+.task-chevron-spacer {
   display: inline-flex;
   align-items: center;
   justify-content: center;

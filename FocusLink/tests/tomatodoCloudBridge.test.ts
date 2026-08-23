@@ -106,11 +106,12 @@ describe('tomatodo cloud bridge CDP transaction', () => {
   });
 
   function recordFor(segmentId: string, subject: TomatodoSubject = '学习') {
+    const endedAt = Date.now() - 1_000;
     return buildTomatodoRecord({
       segmentId,
       subject,
-      startedAt: 1_000,
-      endedAt: 61_000,
+      startedAt: endedAt - 60_000,
+      endedAt,
       activeElapsedMs: 60_000,
     });
   }
@@ -306,6 +307,90 @@ describe('tomatodo cloud bridge CDP transaction', () => {
     expect(calls.uploadCalls).toHaveLength(1);
     expect(records[0]?.isSynced).toBe(0);
     expect(calls.updateCalls.some((record) => record.isSynced === 1)).toBe(false);
+  });
+
+  it('does not confirm records outside TomaToDo seven-day cloud window', async () => {
+    const records: NativeRecord[] = [];
+    const calls = installNativeApi(records);
+    const stale = recordFor('stale-record');
+    stale.startDate = Date.now() - 8 * 24 * 60 * 60 * 1_000;
+    stale.createDate = stale.startDate + 60_000;
+
+    const result = await writeTomatodoRecordThroughBridge(stale);
+
+    expect(result).toMatchObject({
+      ok: true,
+      localWritten: true,
+      uploadConfirmed: false,
+      cloudError: 'tomatodo_record_outside_seven_day_window',
+    });
+    expect(calls.uploadCalls).toHaveLength(0);
+    expect(records[0]?.isSynced).toBe(0);
+  });
+
+  it('separates cloud upload confirmation from phone delivery when no phone is connected', async () => {
+    const records: NativeRecord[] = [];
+    const calls = installNativeApi(records);
+    const syncRecord = vi.fn(async (_record: unknown, _reason: unknown) => ({ success: true }));
+    electronApi.syncGetStatus = vi.fn(async () => ({ isRunning: true, connectedCount: 0 }));
+    electronApi.syncRecord = syncRecord;
+
+    const result = await writeTomatodoRecordThroughBridge(recordFor('phone-pending'), {
+      syncToPhone: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      uploadConfirmed: true,
+      phoneSyncConfirmed: false,
+      phoneSyncError: 'tomatodo_phone_not_connected',
+    });
+    expect(syncRecord).not.toHaveBeenCalled();
+    expect(records[0]?.isSynced).toBe(1);
+    expect(calls.uploadCalls).toHaveLength(1);
+  });
+
+  it('hands a cloud-confirmed record to the direct phone channel when connected', async () => {
+    const records: NativeRecord[] = [];
+    installNativeApi(records);
+    const syncRecord = vi.fn(async (_record: unknown, _reason: unknown) => ({ success: true }));
+    electronApi.syncGetStatus = vi.fn(async () => ({ isRunning: true, connectedCount: 1 }));
+    electronApi.syncRecord = syncRecord;
+
+    const result = await writeTomatodoRecordThroughBridge(recordFor('phone-delivered'), {
+      syncToPhone: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      uploadConfirmed: true,
+      phoneSyncConfirmed: true,
+    });
+    expect(syncRecord).toHaveBeenCalledTimes(1);
+    expect(syncRecord.mock.calls[0]?.[0]).toMatchObject({
+      s1: '[FocusLink:tomatodo:segment:phone-delivered]',
+      isSynced: 0,
+    });
+  });
+
+  it('does not let an existing cloud marker skip a requested phone delivery', async () => {
+    const records = [{ ...recordFor('phone-retry'), id: 220, isSynced: 1 } as NativeRecord];
+    installNativeApi(records);
+    const syncRecord = vi.fn(async (_record: unknown, _reason: unknown) => ({ success: true }));
+    electronApi.syncGetStatus = vi.fn(async () => ({ isRunning: true, connectedCount: 1 }));
+    electronApi.syncRecord = syncRecord;
+
+    const result = await writeTomatodoRecordThroughBridge(recordFor('phone-retry'), {
+      syncToPhone: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      skipped: true,
+      uploadConfirmed: true,
+      phoneSyncConfirmed: true,
+    });
+    expect(syncRecord).toHaveBeenCalledTimes(1);
   });
 
   it('reports a missing subject marker as not found instead of a successful update', async () => {

@@ -167,6 +167,17 @@ v0.12.80 在小米 `D68P65855TPBHYWS` 与华为 `f8630574` 上反复失败。两
 
 `tests/deviceSyncServerPortSafety.test.ts` 覆盖标准端口判定、显式端口 bind 前拒绝、seam 不可绕开、动态端口重绑、耗尽关闭与并发合并；回归已在干净源码 `e75e466` 复跑通过（全量 Vitest 114 文件 / 801 项）；回环协议测试与 Cloudflare 本地协议测试在干净源码上复跑通过，不得把端口 flake 当作 authority 故障。
 
+## FL-SYNC-009：番茄 To-do 电脑显示已上传，手机没有记录
+
+先把三种状态分开：`cloudSyncGetStatus.isBound=true` 只表示云端账号已绑定；`cloudSyncUploadRecord.success` 只表示电脑上传接口接受了批次；只有手机 `CloudSyncManager` 的“文件下载成功 / 下载到专注记录数量”才是手机真实接收证据。四位码属于电脑直连手机通道，不能用来解释已绑定的云端下载失败。
+
+真实安装版已验证两个独立失败条件：
+
+- 小米锁屏进入 Device Idle 后，番茄 To-do 进程可能对 `pcd.fanqietodo.cn` 报 `UnknownHostException`，即使 `adb shell ping` 同一域名成功。先检查该应用的后台联网和省电限制；恢复后重启应用，并以新的手机日志复验，不能沿用历史错误。
+- 番茄 To-do 专注云投递只接收最近 7 天记录。受控上传 17 条时手机只下载窗口内 12 条；将 4 条移入窗口后，手机明确下载 4 条。桥接层对超窗记录返回 `tomatodo_record_outside_seven_day_window` 并保留待同步；产品不得静默修改日期。历史补录只有在用户明确接受新时间段后才能重排。
+
+专注云文件按一次性批次消费，后一次上传可能覆盖手机尚未取走的前一批。多条记录必须同批上传；真实设备验证时严格按“停止手机应用 → 上传一个完整批次 → 启动手机应用 → 读取下载数量”执行，避免后台提前消费后再误读为 0 条。
+
 ## 日志位置与收集方式
 
 Windows 日志在 `%APPDATA%\focuslink\logs\focuslink-YYYY-MM-DD.log`。只提供包含错误编号/时间、endpoint（可打码）和 HTTP 状态的片段；不要提供 `focuslink-device-sync-credential.json`、访问令牌或整个 SQLite 文件。

@@ -42,6 +42,10 @@ export interface TomatodoBridgeWriteResult {
   uploadConfirmed: boolean;
   /** 当前番茄 Todo electronAPI 不提供专注记录云端回读。 */
   cloudRecordReadbackSupported: false;
+  /** 电脑版已把同一条记录交给在线手机同步通道。 */
+  phoneSyncConfirmed: boolean;
+  /** 手机同步通道的可诊断失败原因。 */
+  phoneSyncError?: string;
   skipped: boolean;
   recordId?: number;
   error?: string;
@@ -55,12 +59,19 @@ export interface TomatodoBridgeBatchWriteResult {
   error?: string;
 }
 
+export interface TomatodoBridgeWriteOptions {
+  /** 同时调用 TomaToDo 的直接手机同步通道。 */
+  syncToPhone?: boolean;
+}
+
 interface EvaluatedResult {
   ok: boolean;
   recordFound?: boolean;
   localWritten?: boolean;
   localChanged?: boolean;
   uploadConfirmed?: boolean;
+  phoneSyncConfirmed?: boolean;
+  phoneSyncError?: string;
   skipped?: boolean;
   recordId?: number;
   error?: string;
@@ -131,7 +142,7 @@ function getJson(url: string): Promise<unknown> {
   });
 }
 
-const TOMATODO_IDENTITY_METHODS = [
+const TOMATODO_CLOUD_IDENTITY_METHODS = [
   'getAllRecords',
   'addRecord',
   'updateRecord',
@@ -142,9 +153,14 @@ const TOMATODO_IDENTITY_METHODS = [
   'cloudSyncFetchTodo',
 ] as const;
 
-async function isVerifiedTomatodoTarget(target: CdpTarget): Promise<boolean> {
+const TOMATODO_PHONE_IDENTITY_METHODS = ['syncGetStatus', 'syncRecord'] as const;
+
+async function isVerifiedTomatodoTarget(
+  target: CdpTarget,
+  requiredMethods: readonly string[] = TOMATODO_CLOUD_IDENTITY_METHODS,
+): Promise<boolean> {
   const metadataTitle = JSON.stringify(String(target.title ?? ''));
-  const methods = JSON.stringify(TOMATODO_IDENTITY_METHODS);
+  const methods = JSON.stringify(requiredMethods);
   const expression = `
     (function () {
       var api = window.electronAPI;
@@ -172,7 +188,9 @@ async function isVerifiedTomatodoTarget(target: CdpTarget): Promise<boolean> {
   }
 }
 
-async function findPageTarget(): Promise<CdpTargetSearchResult> {
+async function findPageTarget(
+  requiredMethods: readonly string[] = TOMATODO_CLOUD_IDENTITY_METHODS,
+): Promise<CdpTargetSearchResult> {
   let pageDiscovered = false;
   for (const port of candidatePorts()) {
     try {
@@ -182,7 +200,9 @@ async function findPageTarget(): Promise<CdpTargetSearchResult> {
         : [];
       if (pages.length > 0) pageDiscovered = true;
       for (const target of pages) {
-        if (await isVerifiedTomatodoTarget(target)) return { target, pageDiscovered: true };
+        if (await isVerifiedTomatodoTarget(target, requiredMethods)) {
+          return { target, pageDiscovered: true };
+        }
       }
     } catch {
       // 继续尝试其他已知端口。
@@ -274,12 +294,15 @@ function evaluate(target: CdpTarget, expression: string): Promise<unknown> {
   });
 }
 
-async function evaluateJson(expression: string): Promise<{
+async function evaluateJson(
+  expression: string,
+  requiredMethods: readonly string[] = TOMATODO_CLOUD_IDENTITY_METHODS,
+): Promise<{
   available: boolean;
   value?: EvaluatedResult;
   error?: string;
 }> {
-  const search = await findPageTarget();
+  const search = await findPageTarget(requiredMethods);
   if (!search.target) {
     return {
       available: false,
@@ -306,20 +329,22 @@ async function evaluateJson(expression: string): Promise<{
  */
 export async function writeTomatodoRecordsThroughBridge(
   inputRecords: Array<Omit<TomatodoPCRecord, 'id'>>,
+  options: TomatodoBridgeWriteOptions = {},
 ): Promise<TomatodoBridgeBatchWriteResult> {
   if (inputRecords.length === 0) return { available: true, ok: true, results: [] };
+  const syncToPhone = options.syncToPhone === true;
   const payload = JSON.stringify(inputRecords.map((record) => ({ ...record, id: null })));
   const expression = `
     (async function () {
       try {
         var api = window.electronAPI;
-        if (!api || !api.addRecord || !api.getAllRecords || !api.updateRecord) {
+        if (!api || !api.addRecord || !api.getAllRecords || !api.updateRecord ||
+            (${syncToPhone} && (!api.syncGetStatus || !api.syncRecord))) {
           return JSON.stringify({ ok: false, error: 'tomatodo_record_api_unavailable', results: [] });
         }
         var inputs = ${payload};
         var records = await api.getAllRecords();
-        var results = [];
-        var pending = [];
+        var prepared = [];
         for (var input of inputs) {
           var existing = records.find(function (item) {
             return String(item.s1 || '').indexOf(String(input.s1 || '')) >= 0;
@@ -341,9 +366,13 @@ export async function writeTomatodoRecordsThroughBridge(
             }
           }
           if (!inserted) {
-            results.push({
-              ok: false, recordFound: false, localWritten: false, localChanged: localChanged,
-              uploadConfirmed: false, skipped: skipped, error: 'tomatodo_insert_failed'
+            prepared.push({
+              record: null,
+              result: {
+                ok: false, recordFound: false, localWritten: false, localChanged: localChanged,
+                uploadConfirmed: false, phoneSyncConfirmed: ${!syncToPhone},
+                skipped: skipped, error: 'tomatodo_insert_failed'
+              }
             });
             continue;
           }
@@ -352,15 +381,27 @@ export async function writeTomatodoRecordsThroughBridge(
             await api.updateRecord(inserted);
             localChanged = true;
           }
-          var uploadConfirmed = Number(inserted.isSynced) === 1;
-          var result = {
-            ok: true, recordFound: true, localWritten: true, localChanged: localChanged,
-            uploadConfirmed: uploadConfirmed, skipped: skipped, recordId: inserted.id, cloudError: null
-          };
-          results.push(result);
-          if (!uploadConfirmed) pending.push({ record: inserted, result: result });
+          prepared.push({
+            record: inserted,
+            result: {
+              ok: true, recordFound: true, localWritten: true, localChanged: localChanged,
+              uploadConfirmed: Number(inserted.isSynced) === 1,
+              phoneSyncConfirmed: ${!syncToPhone},
+              skipped: skipped, recordId: inserted.id, cloudError: null, phoneSyncError: null
+            }
+          });
         }
 
+        var cloudCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        for (var cloudCandidate of prepared) {
+          if (cloudCandidate.record && !cloudCandidate.result.uploadConfirmed &&
+              Number(cloudCandidate.record.createDate || 0) < cloudCutoff) {
+            cloudCandidate.result.cloudError = 'tomatodo_record_outside_seven_day_window';
+          }
+        }
+        var pending = prepared.filter(function (item) {
+          return item.record && !item.result.uploadConfirmed && !item.result.cloudError;
+        });
         if (pending.length > 0) {
           if (!api.cloudSyncGetStatus || !api.cloudSyncUploadRecord) {
             for (var item of pending) item.result.cloudError = 'tomatodo_cloud_api_unavailable';
@@ -398,9 +439,37 @@ export async function writeTomatodoRecordsThroughBridge(
             }
           }
         }
+        if (${syncToPhone}) {
+          var phoneStatus = await api.syncGetStatus();
+          var phoneConnected = phoneStatus && Number(phoneStatus.connectedCount || 0) > 0;
+          if (!phoneConnected) {
+            for (var phonePending of prepared) {
+              if (phonePending.record) {
+                phonePending.result.phoneSyncError = 'tomatodo_phone_not_connected';
+              }
+            }
+          } else {
+            for (var phoneItem of prepared) {
+              if (!phoneItem.record) continue;
+              try {
+                var phoneRecord = Object.assign({}, phoneItem.record, { isSynced: 0 });
+                var phoneAck = await api.syncRecord(phoneRecord, 'FocusLink手机同步');
+                phoneItem.result.phoneSyncConfirmed = Boolean(phoneAck && phoneAck.success);
+                if (!phoneItem.result.phoneSyncConfirmed) {
+                  phoneItem.result.phoneSyncError =
+                    (phoneAck && (phoneAck.error || phoneAck.message || phoneAck.code)) ||
+                    'tomatodo_phone_sync_not_confirmed';
+                }
+              } catch (error) {
+                phoneItem.result.phoneSyncError =
+                  error && error.message ? error.message : String(error);
+              }
+            }
+          }
+        }
         return JSON.stringify({
-          ok: results.every(function (result) { return result.ok; }),
-          results: results
+          ok: prepared.every(function (item) { return item.result.ok; }),
+          results: prepared.map(function (item) { return item.result; })
         });
       } catch (error) {
         return JSON.stringify({
@@ -409,7 +478,10 @@ export async function writeTomatodoRecordsThroughBridge(
       }
     })()
   `;
-  const evaluated = await evaluateJson(expression);
+  const requiredMethods = syncToPhone
+    ? [...TOMATODO_CLOUD_IDENTITY_METHODS, ...TOMATODO_PHONE_IDENTITY_METHODS]
+    : TOMATODO_CLOUD_IDENTITY_METHODS;
+  const evaluated = await evaluateJson(expression, requiredMethods);
   if (!evaluated.available) {
     return { available: false, ok: false, results: [], error: evaluated.error };
   }
@@ -421,6 +493,8 @@ export async function writeTomatodoRecordsThroughBridge(
     localWritten: Boolean(result.localWritten),
     localChanged: Boolean(result.localChanged),
     uploadConfirmed: Boolean(result.uploadConfirmed),
+    phoneSyncConfirmed: Boolean(result.phoneSyncConfirmed),
+    phoneSyncError: result.phoneSyncError ?? undefined,
     cloudRecordReadbackSupported: false as const,
     skipped: Boolean(result.skipped),
     recordId: result.recordId,
@@ -438,135 +512,41 @@ export async function writeTomatodoRecordsThroughBridge(
 /** 通过番茄 Todo 自己的数据库与上传 API 写入，避免运行中直接改 JSON 被覆盖。 */
 export async function writeTomatodoRecordThroughBridge(
   record: Omit<TomatodoPCRecord, 'id'>,
+  options: TomatodoBridgeWriteOptions = {},
 ): Promise<TomatodoBridgeWriteResult> {
-  const payload = JSON.stringify({ ...record, id: null });
-  const expression = `
-    (async function () {
-      try {
-        var api = window.electronAPI;
-        if (!api || !api.addRecord || !api.getAllRecords || !api.updateRecord) {
-          return JSON.stringify({ ok: false, error: 'tomatodo_record_api_unavailable' });
-        }
-        var input = ${payload};
-        var records = await api.getAllRecords();
-        var existing = records.find(function (item) {
-          return String(item.s1 || '').indexOf(String(input.s1 || '')) >= 0;
-        }) || null;
-        var inserted = existing;
-        var skipped = !!existing;
-        var localChanged = false;
-        if (!inserted) {
-          var added = await api.addRecord(input);
-          localChanged = true;
-          records = await api.getAllRecords();
-          if (added && added.id != null) {
-            inserted = records.find(function (item) { return item.id === added.id; }) || null;
-          }
-          if (!inserted) {
-            inserted = records.find(function (item) {
-              return item.s1 === input.s1 && item.startDate === input.startDate;
-            }) || null;
-          }
-        }
-        if (!inserted) {
-          return JSON.stringify({
-            ok: false, recordFound: false, localWritten: false, localChanged: localChanged,
-            error: 'tomatodo_insert_failed'
-          });
-        }
-        // marker 相同且分类未变化时保持原同步状态，不能把已确认的 1 打回 0。
-        if (inserted.name !== input.name) {
-          inserted = Object.assign({}, inserted, { name: input.name, isSynced: 0 });
-          await api.updateRecord(inserted);
-          localChanged = true;
-        }
-
-        var uploadConfirmed = Number(inserted.isSynced) === 1;
-        var cloudError = null;
-        if (!uploadConfirmed && (!api.cloudSyncGetStatus || !api.cloudSyncUploadRecord)) {
-          cloudError = 'tomatodo_cloud_api_unavailable';
-        } else if (!uploadConfirmed) {
-          try {
-            var status = await api.cloudSyncGetStatus();
-            if (status && (status.isBound || status.bound)) {
-              inserted = Object.assign({}, inserted, {
-                isSynced: 0,
-                boundDeviceId: inserted.boundDeviceId || status.deviceToken || null
-              });
-              await api.updateRecord(inserted);
-              var uploaded = await api.cloudSyncUploadRecord({ records: [inserted], updateTime: Date.now() });
-              if (uploaded && uploaded.success) {
-                inserted = Object.assign({}, inserted, { isSynced: 1 });
-                await api.updateRecord(inserted);
-                // 只有上传确认且本地状态成功持久化后才报告 uploadConfirmed。
-                uploadConfirmed = true;
-              } else {
-                cloudError = (uploaded && uploaded.error) || 'cloud_upload_failed';
-              }
-            } else {
-              cloudError = 'tomatodo_cloud_not_bound';
-            }
-          } catch (error) {
-            cloudError = error && error.message ? error.message : String(error);
-          }
-        }
-        return JSON.stringify({
-          ok: true,
-          recordFound: true,
-          localWritten: true,
-          localChanged: localChanged,
-          uploadConfirmed: uploadConfirmed,
-          skipped: skipped,
-          recordId: inserted.id,
-          cloudError: cloudError
-        });
-      } catch (error) {
-        return JSON.stringify({ ok: false, error: error && error.message ? error.message : String(error) });
-      }
-    })()
-  `;
-  const evaluated = await evaluateJson(expression);
-  if (!evaluated.available) {
+  const result = await writeTomatodoRecordsThroughBridge([record], options);
+  if (!result.available || !result.results[0]) {
     return {
-      available: false,
+      available: result.available,
       ok: false,
       recordFound: false,
       localWritten: false,
       localChanged: false,
       uploadConfirmed: false,
+      phoneSyncConfirmed: false,
       cloudRecordReadbackSupported: false,
       skipped: false,
-      error: evaluated.error,
+      error: result.error,
     };
   }
-  const value = evaluated.value;
-  return {
-    available: true,
-    ok: Boolean(value?.ok),
-    recordFound: Boolean(value?.recordFound),
-    localWritten: Boolean(value?.localWritten),
-    localChanged: Boolean(value?.localChanged),
-    uploadConfirmed: Boolean(value?.uploadConfirmed),
-    cloudRecordReadbackSupported: false,
-    skipped: Boolean(value?.skipped),
-    recordId: value?.recordId,
-    error: value?.error ?? evaluated.error,
-    cloudError: value?.cloudError,
-  };
+  return result.results[0];
 }
 
 /** 在番茄 Todo 正运行时用其原生 API 更新分类并请求重新上传。 */
 export async function updateTomatodoSubjectThroughBridge(
   segmentId: string,
   subject: TomatodoSubject,
+  options: TomatodoBridgeWriteOptions = {},
 ): Promise<TomatodoBridgeWriteResult> {
+  const syncToPhone = options.syncToPhone === true;
   const marker = JSON.stringify(`[FocusLink:tomatodo:segment:${segmentId}]`);
   const subjectJson = JSON.stringify(subject);
   const expression = `
     (async function () {
       try {
         var api = window.electronAPI;
-        if (!api || !api.getAllRecords || !api.updateRecord) {
+        if (!api || !api.getAllRecords || !api.updateRecord ||
+            (${syncToPhone} && (!api.syncGetStatus || !api.syncRecord))) {
           return JSON.stringify({ ok: false, error: 'tomatodo_record_api_unavailable' });
         }
         var records = await api.getAllRecords();
@@ -578,10 +558,10 @@ export async function updateTomatodoSubjectThroughBridge(
           uploadConfirmed: false, skipped: true
         });
         var subjectChanged = record.name !== ${subjectJson};
-        if (!subjectChanged && Number(record.isSynced) === 1) {
+        if (!subjectChanged && Number(record.isSynced) === 1 && !${syncToPhone}) {
           return JSON.stringify({
             ok: true, recordFound: true, localWritten: true, localChanged: false,
-            uploadConfirmed: true, skipped: true, recordId: record.id
+            uploadConfirmed: true, phoneSyncConfirmed: true, skipped: true, recordId: record.id
           });
         }
         if (subjectChanged) {
@@ -593,6 +573,8 @@ export async function updateTomatodoSubjectThroughBridge(
         try {
           if (!api.cloudSyncGetStatus || !api.cloudSyncUploadRecord) {
             cloudError = 'tomatodo_cloud_api_unavailable';
+          } else if (Number(record.createDate || 0) < Date.now() - 7 * 24 * 60 * 60 * 1000) {
+            cloudError = 'tomatodo_record_outside_seven_day_window';
           } else {
             var status = await api.cloudSyncGetStatus();
             if (status && (status.isBound || status.bound)) {
@@ -613,9 +595,33 @@ export async function updateTomatodoSubjectThroughBridge(
         } catch (error) {
           cloudError = error && error.message ? error.message : String(error);
         }
+        var phoneSyncConfirmed = ${!syncToPhone};
+        var phoneSyncError = null;
+        if (${syncToPhone}) {
+          try {
+            var phoneStatus = await api.syncGetStatus();
+            if (phoneStatus && Number(phoneStatus.connectedCount || 0) > 0) {
+              var phoneAck = await api.syncRecord(
+                Object.assign({}, record, { isSynced: 0 }),
+                'FocusLink手机同步'
+              );
+              phoneSyncConfirmed = Boolean(phoneAck && phoneAck.success);
+              if (!phoneSyncConfirmed) {
+                phoneSyncError =
+                  (phoneAck && (phoneAck.error || phoneAck.message || phoneAck.code)) ||
+                  'tomatodo_phone_sync_not_confirmed';
+              }
+            } else {
+              phoneSyncError = 'tomatodo_phone_not_connected';
+            }
+          } catch (error) {
+            phoneSyncError = error && error.message ? error.message : String(error);
+          }
+        }
         return JSON.stringify({
           ok: true, recordFound: true, localWritten: true, localChanged: subjectChanged,
-          uploadConfirmed: uploadConfirmed, skipped: !subjectChanged,
+          uploadConfirmed: uploadConfirmed, phoneSyncConfirmed: phoneSyncConfirmed,
+          phoneSyncError: phoneSyncError, skipped: !subjectChanged,
           recordId: record.id, cloudError: cloudError
         });
       } catch (error) {
@@ -623,7 +629,10 @@ export async function updateTomatodoSubjectThroughBridge(
       }
     })()
   `;
-  const evaluated = await evaluateJson(expression);
+  const requiredMethods = syncToPhone
+    ? [...TOMATODO_CLOUD_IDENTITY_METHODS, ...TOMATODO_PHONE_IDENTITY_METHODS]
+    : TOMATODO_CLOUD_IDENTITY_METHODS;
+  const evaluated = await evaluateJson(expression, requiredMethods);
   const value = evaluated.value;
   return {
     available: evaluated.available,
@@ -632,6 +641,8 @@ export async function updateTomatodoSubjectThroughBridge(
     localWritten: Boolean(value?.localWritten),
     localChanged: Boolean(value?.localChanged),
     uploadConfirmed: Boolean(value?.uploadConfirmed),
+    phoneSyncConfirmed: syncToPhone ? Boolean(value?.phoneSyncConfirmed) : true,
+    phoneSyncError: value?.phoneSyncError,
     cloudRecordReadbackSupported: false,
     skipped: Boolean(value?.skipped),
     recordId: value?.recordId,

@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS tasks_cache (
   source TEXT NOT NULL,
   external_id TEXT NOT NULL,
   project_id TEXT,
+  parent_id TEXT,
   title TEXT NOT NULL,
   status TEXT,
   priority INTEGER,
@@ -60,6 +61,15 @@ CREATE TABLE IF NOT EXISTS tasks_cache (
   content TEXT,
   raw_json TEXT,
   last_synced_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_projects (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  color TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -252,6 +262,7 @@ CREATE INDEX IF NOT EXISTS idx_segments_session ON focus_segments(session_id);
 CREATE INDEX IF NOT EXISTS idx_pauses_session ON pause_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_pauses_segment ON pause_events(segment_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_source ON tasks_cache(source);
+CREATE INDEX IF NOT EXISTS idx_task_projects_order ON task_projects(sort_order, created_at);
 CREATE INDEX IF NOT EXISTS idx_sync_status ON sync_queue(status);
 CREATE INDEX IF NOT EXISTS idx_sessions_started ON focus_sessions(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sync_outbox_ready ON sync_outbox(state, next_retry_at, created_at);

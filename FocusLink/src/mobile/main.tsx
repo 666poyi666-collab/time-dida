@@ -4,7 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { MobileApp } from './MobileApp';
 import { WatchApp } from './WatchApp';
 import { applyMobileAppearance, loadMobileAppearance } from './appearance';
-import { isWatchFocusViewport } from './viewportPolicy';
+import { isTabletFocusViewport, isWatchFocusViewport } from './viewportPolicy';
 import './mobile.css';
 import './mobile-confirm.css';
 
@@ -15,8 +15,15 @@ const isWatchViewport = isWatchFocusViewport(window.innerWidth, window.innerHeig
   native: Capacitor.isNativePlatform(),
   pixelRatio: window.devicePixelRatio,
 });
+const isTabletViewport =
+  !isWatchViewport && isTabletFocusViewport(window.innerWidth, window.innerHeight);
 
 document.documentElement.dataset.runtime = isWatchViewport ? 'watch-focus' : 'mobile-focus';
+document.documentElement.dataset.deviceTier = isWatchViewport
+  ? 'watch'
+  : isTabletViewport
+    ? 'tablet'
+    : 'phone';
 if (isWatchViewport) document.documentElement.classList.add('watch-runtime');
 // AMOLED 防烧屏：手表一律深色运行（watch.css 再把画布压到纯黑），
 // 存储的浅色偏好只对手机/平板生效。

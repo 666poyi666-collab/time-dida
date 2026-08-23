@@ -172,7 +172,7 @@ describe('tomatodo sync service bridge safety and state', () => {
       segmentId: 'segment-1',
       writtenLocally: true,
       cloudSynced: false,
-      state: 'local-pending',
+      state: 'phone-pending',
       subject: '数学',
     });
   });
@@ -295,6 +295,35 @@ describe('tomatodo sync service bridge safety and state', () => {
     expect(JSON.parse(harness.settings.get('tomatodo.pendingSegmentIdsV060') ?? '[]')).toEqual([]);
   });
 
+  it('keeps a durable pending marker when cloud upload succeeds but phone delivery is unavailable', async () => {
+    harness.writeBridge.mockResolvedValue({
+      available: true,
+      ok: true,
+      recordFound: true,
+      localWritten: true,
+      localChanged: true,
+      uploadConfirmed: true,
+      phoneSyncConfirmed: false,
+      phoneSyncError: 'tomatodo_phone_not_connected',
+      cloudRecordReadbackSupported: false,
+      skipped: false,
+      recordId: 207,
+    });
+
+    const result = await syncSegmentToTomatodo('segment-1');
+
+    expect(result).toMatchObject({
+      ok: true,
+      cloudSynced: true,
+      phoneSynced: false,
+      syncState: 'phone-pending',
+      error: 'tomatodo_phone_not_connected',
+    });
+    expect(JSON.parse(harness.settings.get('tomatodo.pendingSegmentIdsV060') ?? '[]')).toEqual([
+      'segment-1',
+    ]);
+  });
+
   it('replays a durable segment that never reached the TomaToDo JSON', async () => {
     harness.settings.set('tomatodo.pendingSegmentIdsV060', JSON.stringify(['segment-1']));
     harness.writeBatchBridge.mockResolvedValue({
@@ -321,6 +350,36 @@ describe('tomatodo sync service bridge safety and state', () => {
     expect(harness.writeBatchBridge).toHaveBeenCalledTimes(1);
     expect(JSON.parse(harness.settings.get('tomatodo.pendingSegmentIdsV060') ?? '[]')).toEqual([]);
     expect(harness.ensureBridge).not.toHaveBeenCalled();
+  });
+
+  it('does not clear durable pending when cloud upload succeeds without phone delivery', async () => {
+    harness.settings.set('tomatodo.pendingSegmentIdsV060', JSON.stringify(['segment-1']));
+    harness.writeBatchBridge.mockResolvedValue({
+      available: true,
+      ok: true,
+      results: [
+        {
+          available: true,
+          ok: true,
+          recordFound: true,
+          localWritten: true,
+          localChanged: false,
+          uploadConfirmed: true,
+          phoneSyncConfirmed: false,
+          phoneSyncError: 'tomatodo_phone_not_connected',
+          cloudRecordReadbackSupported: false,
+          skipped: true,
+          recordId: 211,
+        },
+      ],
+    });
+
+    const result = await uploadPendingTomatodoRecords();
+
+    expect(result).toMatchObject({ ok: false, total: 1, uploaded: 0, failed: 1 });
+    expect(JSON.parse(harness.settings.get('tomatodo.pendingSegmentIdsV060') ?? '[]')).toEqual([
+      'segment-1',
+    ]);
   });
 
   it('ensures and launches the bridge only for an explicit manual pending upload', async () => {

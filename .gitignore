@@ -5,6 +5,7 @@
 /FocusLink/dist-mobile/
 /FocusLink/dist-cloud/
 /FocusLink/.tmp/
+/.tmp/
 /FocusLink/.wrangler/
 /FocusLink/.visual-dist*/
 /FocusLink/.visual-review-*/

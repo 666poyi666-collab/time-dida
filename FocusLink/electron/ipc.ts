@@ -255,6 +255,16 @@ export function registerIpc(
   });
 
   // ============ Tasks ============
+  ipcMain.handle('tasks:create', async (_e, title: string, projectId?: string) => {
+    const task = LocalTaskProvider.create(title, projectId);
+    await refreshTaskWorkspace({ force: true });
+    return task;
+  });
+  ipcMain.handle('tasks:create-project', async (_e, name: string) => {
+    const project = LocalTaskProvider.createProject(name);
+    await refreshTaskWorkspace({ force: true });
+    return project;
+  });
   ipcMain.handle('tasks:complete', async (_e, task: Task) => {
     return setTaskCompleted(task, true);
   });

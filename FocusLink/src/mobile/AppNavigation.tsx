@@ -4,7 +4,7 @@ export type MobileView = 'focus' | 'tasks' | 'history' | 'settings';
 
 const ITEMS = [
   { id: 'focus', label: '专注', code: '01', icon: Timer },
-  { id: 'tasks', label: '任务', code: '02', icon: ListTodo },
+  { id: 'tasks', label: '我的任务', code: '02', icon: ListTodo },
   { id: 'history', label: '统计', code: '03', icon: BarChart3 },
   { id: 'settings', label: '设置', code: '04', icon: Settings },
 ] as const;

@@ -5,6 +5,7 @@ import { MINI_WINDOW_EXPANDED_SIZE } from './miniWindowLayout';
 
 export type TimerState = 'idle' | 'running' | 'paused' | 'stopping' | 'finished';
 export type TimerEvent = 'START' | 'PAUSE' | 'RESUME' | 'STOP' | 'RESET' | 'LINK_TASK' | 'SYNC';
+/** local is the canonical FocusLink task store; ticktick is import/writeback compatibility only. */
 export type TaskSource = 'local' | 'ticktick';
 export type TomatodoSubject = '语文' | '数学' | '英语' | '物理' | '化学' | '生物' | '学习';
 
@@ -64,12 +65,13 @@ export interface PauseEvent {
   updatedAt: number;
 }
 
-/** 任务缓存（本地 + 滴答清单） */
+/** 任务缓存（FocusLink 自有任务 + 迁移兼容数据） */
 export interface TaskCache {
   id: string;
   source: TaskSource;
   externalId: string;
   projectId: string | null;
+  parentId?: string | null;
   title: string;
   status: string | null;
   priority: number | null;
@@ -78,6 +80,16 @@ export interface TaskCache {
   content: string | null;
   rawJson: string | null;
   lastSyncedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** FocusLink 自有任务清单；外部任务导入后也归入此模型。 */
+export interface LocalTaskProject {
+  id: string;
+  name: string;
+  color: string | null;
+  sortOrder: number;
   createdAt: number;
   updatedAt: number;
 }

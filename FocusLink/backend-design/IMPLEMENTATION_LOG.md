@@ -1,5 +1,32 @@
 # FocusLink 实施日志
 
+## 2026-08-23 · v0.12.91 FocusLink 任务与账号同步闭环
+
+- **任务主库**：FocusLink 本地任务和清单成为主数据源；滴答清单首次导入后转换为 `local` 任务，并保留父子关系和外部来源标记。
+- **三端写回**：PC 和移动端可创建清单/任务；移动端完成/恢复任务通过账号任务快照写回。PC 刷新前拉取云端任务，按 ID 和 `updatedAt` 合并后再发布。
+- **账号迁移**：旧 loopback 非账号凭据在升级时清除，设置切换到官方 HTTPS，等待用户通过正式账号入口登录。真实探针为 `deployed-login-required`，canonical/failover 健康检查均为 200。
+- **UI**：手机与平板按短边阈值自动分层；手机使用底部浮动导航和计时优先首屏，平板使用顶部导航与宽屏内容结构；Android 默认启动图替换为 FocusLink 品牌图。
+- **门禁**：完整 Vitest `117 files / 857 tests` 通过；PC build、Cloudflare typecheck、Android assembleDebug 通过。Windows 注册表、安装目录 EXE 与运行日志均回读 `0.12.91` 并已重启；手机和平板当前不在线，APK 未安装。
+
+## 2026-08-22 · 番茄 To-do 手机不可见根因与状态分离
+
+- **已验证根因（2026-08-22 23:11–23:17）**：电脑端 `cloudSyncGetStatus.isBound=true` 且上传接口成功，但小米手机番茄 To-do 进程连续记录 `UnknownHostException`，`CloudSyncManager` 明确报告无法下载 `pcd.fanqietodo.cn` 的专注记录。将应用 UID 加入后台联网与 Device Idle 白名单后，同一手机真实回执变为“文件下载成功”。这与四位配对码无关；云端账号绑定和电脑直连手机是两套状态。
+- **第三方边界**：受控上传 17 条后，手机只下载 12 条，恰好对应最近 7 天；再单独投递窗口内 4 条，手机明确下载 4 条。番茄 To-do 的专注云文件是一次性批次投递，后一次批次可覆盖尚未消费的前一批次，且超过 7 天的记录会被静默过滤。不能把 `cloudSyncUploadRecord.success` 或本地 `isSynced=1` 表述为手机已显示。
+- **修复**：TomaToDo bridge 增加可选 `syncToPhone` 路径，分别返回 `uploadConfirmed` / `phoneSyncConfirmed`；手机未直连时进入 `phone-pending`。桥接层同时拒绝把超过 7 天窗口的记录标成上传确认，返回 `tomatodo_record_outside_seven_day_window` 并保留 durable queue。产品不得静默篡改记录日期，历史补录需要用户明确选择可接受的新时间段。
+- **门禁**：新增 7 天窗口回归后，TomaToDo 专项 Vitest `53/53` 通过，相关文件 Prettier 检查通过。根目录 typecheck 在平台分支仍受既有嵌套 Cloud/MCP tsconfig 包含范围影响，不能记作全量通过；Cloudflare MCP 自身 typecheck 已通过。真实手机云端下载回执已形成，直接手机通道仍为 `connectedCount=0`。
+
+## 2026-08-23 · FocusLink 自有任务库第一阶段
+
+- **判断**：滴答清单不再作为 FocusLink 的任务主库。它保留为迁移入口；首次读取后，任务、清单和父子关系归入 FocusLink 本地任务模型，再发布到登录账号的任务快照。
+- **实现**：新增 `task_projects` 和 `tasks_cache.parent_id`，本地任务创建 IPC，桌面端快速创建入口，以及移动端列表/看板双视图。移动端任务文案改为 FocusLink 主库语义。
+- **验证**：迁移去重、父子关系、任务工作台兼容、移动端任务树和云快照共 `32/32` 通过；完整 Vitest 的 `818` 个已执行断言通过，7 个 Electron 相关套件因当前 `node_modules/electron` 二进制缺失未能收集。
+
+## 2026-08-23 · v0.12.88 本地验收构建
+
+- **构建**：版本提升为 `0.12.88/1288`。补齐 OpenJDK、Android SDK 35/36、Build Tools 35 和 Electron Windows 二进制；桌面 `npm run build` 通过，Android `:app:assembleDebug` 通过。
+- **资产**：APK 为 `FocusLink-0.12.88-1288-debug.apk`，SHA256 `9548F9207BF027F66084058B1248BDE21B06B0EE8434CF6732E23E77452639AD`；Windows 便携版 `FocusLink-0.12.88-x64-portable.exe`，SHA256 `6A7C05D1AA5B071709FA71F89C4EEDC93E134202F8F038C910E2E6C207B2E641`。
+- **真实安装矩阵**：Windows NSIS 已静默覆盖安装，注册表 `DisplayVersion=0.12.88`、安装目录 EXE `FileVersion=0.12.88 / ProductVersion=0.12.88.0`、运行日志 `FocusLink version: 0.12.88`，应用已重启；小米与华为当前均未在线，ADB 安装未执行，不能标记为三端完成。
+
 ## 2026-08-12 · v0.12.87 候选身份升级与 UI 合同硬化
 
 - **2026-08-18 GitHub 可下载交付证据**：按用户要求，远端 `main` 与 annotated tag `v0.12.87` 均回读到 release-record 提交 `9c9ab606bebaa930c2075bb59dbc118f5690a99f`；GitHub Release 为非草稿预发布，页面为 `https://github.com/666poyi666-collab/time-dida/releases/tag/v0.12.87`。安装版（170442233 B，SHA-256 `84181999DABFD53C0F20EA72CC40F66E60D02C42315E28A650D09AD4F37AAF4D`）、便携版（170218406 B，SHA-256 `B765B8C2D5A8E985858162C0897D9319091A14CFED75E670852DC3AC35EDBE0A`）、Android `FocusLink-0.12.87-1287-debug.apk`（26980020 B，SHA-256 `A91F65C96F96CA110AF6ADD5B1AEF135BFA124633DF662E3071BEDE0A0385A0E`）和 `SHA256SUMS.txt` 均为 `uploaded`，三个下载端点 HEAD 返回 HTTP 200；预发布不改变华为真机门禁 **BLOCKED** 状态。

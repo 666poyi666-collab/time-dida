@@ -1,10 +1,13 @@
 import {
   ChevronDown,
   ChevronRight,
+  Check,
   Folder,
   Inbox,
+  LayoutGrid,
   ListFilter,
   Play,
+  Plus,
   Search,
   Target,
 } from 'lucide-react';
@@ -32,6 +35,9 @@ interface TaskBrowserProps {
   canStart: boolean;
   onSelect: (task: SyncedTask) => void;
   onStart: (task: SyncedTask) => void;
+  onCreate?: (title: string, projectId: string | null) => Promise<void>;
+  onCreateProject?: (name: string) => Promise<void>;
+  onToggleComplete?: (task: SyncedTask) => Promise<void>;
 }
 
 export function TaskBrowser({
@@ -43,9 +49,16 @@ export function TaskBrowser({
   canStart,
   onSelect,
   onStart,
+  onCreate,
+  onCreateProject,
+  onToggleComplete,
 }: TaskBrowserProps) {
   const [query, setQuery] = useState('');
   const [projectFilter, setProjectFilter] = useState<TaskProjectFilter>(ALL_PROJECTS);
+  const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
+  const [draft, setDraft] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [projectDraft, setProjectDraft] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(() => new Set());
   const groupRegionPrefix = useId();
@@ -94,8 +107,8 @@ export function TaskBrowser({
     <section className="task-browser view-surface" aria-labelledby="task-browser-title">
       <header className="view-heading">
         <div>
-          <p className="eyebrow">CLOUD TASK SNAPSHOT</p>
-          <h2 id="task-browser-title">云端任务清单</h2>
+          <p className="eyebrow">FOCUSLINK WORKSPACE</p>
+          <h2 id="task-browser-title">我的任务</h2>
         </div>
         <div className="view-heading-meta">
           <strong>{totalOpen}</strong>
@@ -104,6 +117,32 @@ export function TaskBrowser({
       </header>
 
       <div className="task-toolbar">
+        <form
+          className="task-mobile-create"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const title = draft.trim();
+            if (!title || creating || !onCreate) return;
+            setCreating(true);
+            void onCreate(
+              title,
+              projectFilter === ALL_PROJECTS || projectFilter === NO_PROJECT ? null : projectFilter,
+            )
+              .then(() => setDraft(''))
+              .finally(() => setCreating(false));
+          }}
+        >
+          <Plus aria-hidden="true" />
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="添加 FocusLink 任务"
+            aria-label="添加 FocusLink 任务"
+          />
+          <button type="submit" disabled={!draft.trim() || creating || !onCreate}>
+            {creating ? '保存中' : '添加'}
+          </button>
+        </form>
         <label className="task-search">
           <Search aria-hidden="true" />
           <span className="sr-only">搜索任务</span>
@@ -128,12 +167,54 @@ export function TaskBrowser({
             ))}
           </select>
         </label>
+        <div className="task-view-switch" role="group" aria-label="任务视图">
+          <button
+            type="button"
+            className={viewMode === 'list' ? 'is-active' : ''}
+            onClick={() => setViewMode('list')}
+            aria-label="列表视图"
+            title="列表视图"
+          >
+            <ListFilter aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className={viewMode === 'board' ? 'is-active' : ''}
+            onClick={() => setViewMode('board')}
+            aria-label="看板视图"
+            title="看板视图"
+          >
+            <LayoutGrid aria-hidden="true" />
+          </button>
+        </div>
+        <form
+          className="project-mobile-create"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const name = projectDraft.trim();
+            if (!name || !onCreateProject || creating) return;
+            setCreating(true);
+            void onCreateProject(name)
+              .then(() => setProjectDraft(''))
+              .finally(() => setCreating(false));
+          }}
+        >
+          <input
+            value={projectDraft}
+            onChange={(event) => setProjectDraft(event.target.value)}
+            placeholder="新建清单"
+            aria-label="新建清单"
+          />
+          <button type="submit" disabled={!projectDraft.trim() || !onCreateProject || creating}>
+            新建清单
+          </button>
+        </form>
       </div>
 
       <div className="task-snapshot-meta">
-        <span>云端快照 rev {revision}</span>
+        <span>FocusLink 云端 rev {revision}</span>
         <span>
-          {publishedAt ? `云端更新于 ${formatSnapshotTime(publishedAt)}` : '等待电脑同步任务清单'}
+          {publishedAt ? `已确认于 ${formatSnapshotTime(publishedAt)}` : '等待账号同步任务'}
         </span>
       </div>
 
@@ -143,10 +224,18 @@ export function TaskBrowser({
           <strong>{tasks.length === 0 ? '还没有云端任务快照' : '没有符合条件的待办'}</strong>
           <p>
             {tasks.length === 0
-              ? '电脑端读取滴答清单并成功同步后，最后一份快照会显示在这里。'
+              ? '在电脑端创建或导入任务后，登录同一 FocusLink 账号即可在这里看到。'
               : '调整搜索词或清单筛选。'}
           </p>
         </div>
+      ) : viewMode === 'board' ? (
+        <TaskBoard
+          tasks={tasks}
+          projects={projects}
+          canStart={canStart}
+          onStart={onStart}
+          onToggleComplete={onToggleComplete}
+        />
       ) : (
         <div className="task-browser-workspace">
           <div className="task-project-list" aria-label="云端待办任务">
@@ -191,6 +280,7 @@ export function TaskBrowser({
                           onToggle={toggleTask}
                           onSelect={onSelect}
                           onStart={onStart}
+                          onToggleComplete={onToggleComplete}
                         />
                       ))}
                     </div>
@@ -233,6 +323,78 @@ export function TaskBrowser({
   );
 }
 
+function TaskBoard({
+  tasks,
+  projects,
+  canStart,
+  onStart,
+  onToggleComplete,
+}: {
+  tasks: readonly SyncedTask[];
+  projects: readonly SyncedTaskProject[];
+  canStart: boolean;
+  onStart: (task: SyncedTask) => void;
+  onToggleComplete?: (task: SyncedTask) => Promise<void>;
+}) {
+  const openTasks = tasks.filter((task) => !task.isCompleted);
+  const columns = [
+    { key: 'inbox', label: '收件箱', tasks: openTasks.filter((task) => !task.projectId) },
+    ...projects.map((project) => ({
+      key: project.id,
+      label: project.name,
+      tasks: openTasks.filter((task) => task.projectId === project.id),
+    })),
+  ].filter((column) => column.tasks.length > 0);
+  return (
+    <div className="task-board" aria-label="任务看板">
+      {columns.map((column) => (
+        <section className="task-board-column" key={column.key}>
+          <header>
+            <strong>{column.label}</strong>
+            <span>{column.tasks.length}</span>
+          </header>
+          <div className="task-board-cards">
+            {column.tasks.map((task) => (
+              <article className="task-board-card" key={`${task.source}:${task.id}`}>
+                <div className="task-board-card-top">
+                  <button
+                    className="task-board-check"
+                    type="button"
+                    onClick={() => void onToggleComplete?.(task)}
+                    aria-label={`完成 ${task.title}`}
+                  >
+                    <Check />
+                  </button>
+                  <strong>{task.title}</strong>
+                </div>
+                <div className="task-board-card-meta">
+                  {task.dueDate
+                    ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(
+                        task.dueDate,
+                      )
+                    : '未设截止'}
+                  {task.tags.slice(0, 2).map((tag) => (
+                    <span key={tag}>#{tag}</span>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="task-board-focus"
+                  onClick={() => onStart(task)}
+                  disabled={!canStart}
+                >
+                  <Play aria-hidden="true" />
+                  开始专注
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 function TaskBranch({
   task,
   depth,
@@ -246,6 +408,7 @@ function TaskBranch({
   onToggle,
   onSelect,
   onStart,
+  onToggleComplete,
 }: {
   task: SyncedTaskTreeNode;
   depth: number;
@@ -259,6 +422,7 @@ function TaskBranch({
   onToggle: (key: string) => void;
   onSelect: (task: SyncedTask) => void;
   onStart: (task: SyncedTask) => void;
+  onToggleComplete?: (task: SyncedTask) => Promise<void>;
 }) {
   const key = `${task.source}:${task.id}`;
   const selected = task.id === selectedTaskId;
@@ -280,6 +444,14 @@ function TaskBranch({
         className={`task-row ${selected ? 'is-selected' : ''} ${hasChildren ? 'has-children' : ''}`}
         style={{ '--task-depth': visibleDepth } as CSSProperties}
       >
+        <button
+          className="task-mobile-complete"
+          type="button"
+          onClick={() => void onToggleComplete?.(task)}
+          aria-label={`完成 ${task.title}`}
+        >
+          <Check aria-hidden="true" />
+        </button>
         {hasChildren ? (
           <button
             className="task-branch-toggle"
@@ -341,6 +513,7 @@ function TaskBranch({
               onToggle={onToggle}
               onSelect={onSelect}
               onStart={onStart}
+              onToggleComplete={onToggleComplete}
             />
           ))}
         </div>

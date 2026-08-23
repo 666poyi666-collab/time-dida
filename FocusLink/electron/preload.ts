@@ -52,6 +52,9 @@ const api = {
       ipcRenderer.invoke('timer:merge-segments', { segmentIds }),
   },
   tasks: {
+    create: (title: string, projectId?: string) =>
+      ipcRenderer.invoke('tasks:create', title, projectId),
+    createProject: (name: string) => ipcRenderer.invoke('tasks:create-project', name),
     complete: (task: Task) => ipcRenderer.invoke('tasks:complete', task),
     setCompleted: (task: Task, completed: boolean) =>
       ipcRenderer.invoke('tasks:set-completed', task, completed),

@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相；当前实现 v0.12.87（实施中）
+> 状态：v0.12.x 后端单一真相；当前实现 v0.12.91（实施中）
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -182,6 +182,7 @@ Provider 的稳定能力应包括：
 1. 将带 `[FocusLink:tomatodo:segment:<id>]` marker 的 PCRecord 原子写入本地库，`isSynced=0`。
 2. 已有可验证原生桥时，或用户手动同步触发按需桥接后，按会话批量调用 `cloudSyncUploadRecord`。
 3. 只有上传接口明确返回 `success` 且本地状态成功持久化后才设置 `isSynced=1`。这叫“上传已确认”，不是独立云端回读。
+4. 手机投递是独立阶段：电脑版只有在 `syncGetStatus().connectedCount > 0` 时才调用 `syncRecord`，并以该调用的结果记录 `phoneSyncConfirmed`。云上传成功不能清除手机投递 durable queue。
 
 不变量：
 
@@ -190,6 +191,9 @@ Provider 的稳定能力应包括：
 - 用户手动同步且番茄 To-do 未运行时，可以用 `spawn` / `execFile` 参数数组按需启动已知客户端，参数固定包含 `--remote-debugging-port=0`；不得拼接 shell 命令。只有发现实际端口且目标同时通过“番茄 ToDo 标题 + 特征 electronAPI 方法集”身份校验后才能上传；不得选择任意 `page` target。显式 `FOCUSLINK_TOMATODO_CDP_PORT` 失败时不得回退到通用 9222。
 - 番茄 To-do 已以普通模式运行但没有可验证桥时，绝不自动结束或重启其进程；返回可操作诊断，要求用户完全退出客户端后再从 FocusLink 连接。
 - 已核对番茄 ToDo 1.6.2：`cloudSyncFetchTodo` 只读取待办数据，CloudSyncService 只提供 `fetchTodoData` / `uploadRecordData`，没有专注 PCRecord 的独立云端回读或远端删除 API。因此 bridge 返回 `uploadConfirmed` 与 `cloudRecordReadbackSupported=false`；删除结果固定声明 `local-record-only` 与 `remoteDeleteSupported=false`。
+- `isSynced=1` 是番茄 To-do 自有字段，不能同时被解释成 FocusLink 的“手机已显示”。云上传确认与手机 `syncRecord` 投递确认必须由独立状态表达；手机未连接时状态为 `phone-pending`，不能因云上传成功清除 durable queue。
+- 已存在且云上传确认的 marker，在请求手机投递时仍必须调用 `syncRecord`；marker 幂等只禁止重复创建 PCRecord，不禁止向尚未确认的手机通道重试。
+- 真实手机验证确认专注云投递只保留最近 7 天且按一次性批次消费。超窗记录返回 `tomatodo_record_outside_seven_day_window`，不得因上传 API 返回 success 改成已确认，也不得在未获用户授权时重写记录日期。
 - 未识别学科统一归入“学习”；迁移只处理 FocusLink marker 记录，不碰用户其他数据。
 - 写盘使用同目录临时文件、fsync、原子替换和备份；Windows `EACCES/EBUSY/EPERM` 做有界退避，持续失败保留旧库。
 - 学科更改可请求重新上传；已有 marker 的单个/批量学科修改若因桥不可用或上传失败未写入外部记录，必须把 segment id 写入 durable queue。队列清空前，即使旧番茄记录仍为 `isSynced=1`，状态也必须显示“待上传”，不能把旧学科的成功与新本地选择拼成“上传已确认”。

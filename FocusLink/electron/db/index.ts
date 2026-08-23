@@ -15,6 +15,7 @@ import type {
   TaskSource,
   SyncStatus,
   TomatodoSubject,
+  LocalTaskProject,
 } from '@shared/types';
 import type { DeviceSyncSessionBundle } from '@shared/sync/deviceProtocol';
 
@@ -64,6 +65,11 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE focus_segments ADD COLUMN tomatodo_subject TEXT');
     logger.info('database', 'migration: added focus_segments.tomatodo_subject');
   }
+  if (!hasCol('tasks_cache', 'parent_id')) {
+    database.exec('ALTER TABLE tasks_cache ADD COLUMN parent_id TEXT');
+    logger.info('database', 'migration: added tasks_cache.parent_id');
+  }
+  database.exec('CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks_cache(parent_id)');
   const migratedSubjects = database
     .prepare("UPDATE focus_segments SET tomatodo_subject = '学习' WHERE tomatodo_subject = '杂'")
     .run();
@@ -119,6 +125,27 @@ export function closeDatabase(): void {
     db = null;
     logger.info('database', 'closed');
   }
+}
+
+export function upsertLocalTaskProject(project: LocalTaskProject): void {
+  getDb()
+    .prepare(
+      `INSERT INTO task_projects (id, name, color, sort_order, created_at, updated_at)
+       VALUES (@id, @name, @color, @sortOrder, @createdAt, @updatedAt)
+       ON CONFLICT(id) DO UPDATE SET name=@name, color=@color,
+       sort_order=@sortOrder, updated_at=@updatedAt`,
+    )
+    .run(project);
+}
+
+export function listLocalTaskProjects(): LocalTaskProject[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT id, name, color, sort_order AS sortOrder, created_at AS createdAt,
+       updated_at AS updatedAt FROM task_projects ORDER BY sort_order, created_at`,
+    )
+    .all() as LocalTaskProject[];
+  return rows;
 }
 
 // ============ Session ============
@@ -503,13 +530,13 @@ export function listPausesInSessionRange(start: number, end: number): PauseEvent
 // ============ Tasks cache ============
 
 const UPSERT_TASK_CACHE_SQL = `INSERT INTO tasks_cache
-      (id, source, external_id, project_id, title, status, priority, due_date,
+      (id, source, external_id, project_id, parent_id, title, status, priority, due_date,
        tags, content, raw_json, last_synced_at, created_at, updated_at)
-     VALUES (@id, @source, @externalId, @projectId, @title, @status, @priority, @dueDate,
+     VALUES (@id, @source, @externalId, @projectId, @parentId, @title, @status, @priority, @dueDate,
        @tags, @content, @rawJson, @lastSyncedAt, @createdAt, @updatedAt)
      ON CONFLICT(id) DO UPDATE SET
        source = excluded.source, external_id = excluded.external_id,
-       project_id = excluded.project_id, title = excluded.title, status = excluded.status,
+       project_id = excluded.project_id, parent_id = excluded.parent_id, title = excluded.title, status = excluded.status,
        priority = excluded.priority, due_date = excluded.due_date, tags = excluded.tags,
        content = excluded.content, raw_json = excluded.raw_json,
        last_synced_at = excluded.last_synced_at, updated_at = excluded.updated_at`;
@@ -764,6 +791,7 @@ interface TaskCacheRow {
   source: string;
   external_id: string;
   project_id: string | null;
+  parent_id: string | null;
   title: string;
   status: string | null;
   priority: number | null;
@@ -781,6 +809,7 @@ function rowToTaskCache(r: TaskCacheRow): TaskCache {
     source: r.source as TaskSource,
     externalId: r.external_id,
     projectId: r.project_id,
+    parentId: r.parent_id,
     title: r.title,
     status: r.status,
     priority: r.priority,

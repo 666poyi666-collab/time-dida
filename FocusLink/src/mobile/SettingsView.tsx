@@ -160,8 +160,8 @@ export function SettingsView({
       <div className="capability-boundary">
         <strong>桌面端专属操作</strong>
         <p>
-          滴答清单写入、番茄 To-do
-          投递、全局热键与迷你窗口继续由电脑端负责；移动端控制同一场专注并读取同步账本。
+          FocusLink 任务与专注记录由账号云端负责同步；滴答清单与番茄 To-do
+          仅作为桌面端兼容投递渠道。
         </p>
       </div>
     </section>

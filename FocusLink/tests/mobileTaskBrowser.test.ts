@@ -284,7 +284,7 @@ describe('mobile task browser model', () => {
       'utf8',
     );
 
-    expect(consoleSource).toContain('从云端任务清单选择');
+    expect(consoleSource).toContain('从 FocusLink 任务中选择');
     expect(consoleSource).toContain('className="focus-task-disclosure"');
     expect(consoleSource).toContain('轻触展开项目与父子任务');
     expect(consoleSource).not.toContain('<select\n                    id="focus-task"');

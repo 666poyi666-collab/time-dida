@@ -3,7 +3,7 @@ import type { IpcResult, TaskWorkspaceRefreshData } from '@shared/ipc/api';
 import { ticktickAdapter } from '../integrations/ticktick/oauthAdapter.js';
 import { detectCli, ticktickCliProvider } from './cliProvider.js';
 import { LocalTaskProvider } from './localProvider.js';
-import { publishDeviceTaskSnapshot } from '../sync/deviceSyncService.js';
+import { publishDeviceTaskSnapshot, readDeviceTaskSnapshot } from '../sync/deviceSyncService.js';
 
 export async function setTaskCompleted(task: Task, completed: boolean): Promise<Task> {
   if (task.source === 'local') return LocalTaskProvider.setCompleted(task.id, completed);
@@ -39,8 +39,32 @@ export async function refreshTaskWorkspace(
 ): Promise<IpcResult<TaskWorkspaceRefreshData>> {
   const selectedProjectId = options.projectId?.trim() || undefined;
   const normalizedOptions = { ...options, projectId: selectedProjectId };
-  let providerLabel = '滴答清单';
+  let providerLabel = 'FocusLink 任务库';
   try {
+    const cloud = await readDeviceTaskSnapshot();
+    if (cloud?.snapshot) {
+      LocalTaskProvider.mergeCloudSnapshot(cloud.snapshot.projects, cloud.snapshot.tasks);
+    }
+    const localTasks = LocalTaskProvider.list();
+    if (localTasks.length > 0) {
+      const projects = LocalTaskProvider.listProjects();
+      const tasks = localTasks.filter(
+        (task) => !selectedProjectId || task.projectId === selectedProjectId,
+      );
+      const refreshedAt = Date.now();
+      const result = {
+        ok: true,
+        data: {
+          provider: 'focuslink-local',
+          projects,
+          tasks,
+          refreshedAt,
+        },
+      } satisfies IpcResult<TaskWorkspaceRefreshData>;
+      void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+      return result;
+    }
+
     const detected = await detectCli();
     if (detected.found) {
       providerLabel = '滴答 CLI';
@@ -49,17 +73,33 @@ export async function refreshTaskWorkspace(
         selectedProjectId,
         normalizedOptions,
       );
+      if (typeof LocalTaskProvider.importExternal !== 'function') {
+        const refreshedAt = Date.now();
+        void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+        return {
+          ok: true,
+          data: { provider: 'dida-cli', projects, tasks, refreshedAt },
+        };
+      }
+      LocalTaskProvider.importExternal(projects, tasks);
+      const localProjects = LocalTaskProvider.listProjects();
+      const importedLocalTasks = LocalTaskProvider.list();
+      if (localProjects.length === 0 && importedLocalTasks.length === 0) {
+        const refreshedAt = Date.now();
+        void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+        return { ok: true, data: { provider: 'dida-cli', projects, tasks, refreshedAt } };
+      }
       const refreshedAt = Date.now();
       const result = {
         ok: true,
         data: {
-          provider: 'dida-cli',
-          projects,
-          tasks,
+          provider: 'focuslink-local',
+          projects: localProjects,
+          tasks: importedLocalTasks,
           refreshedAt,
         },
       } satisfies IpcResult<TaskWorkspaceRefreshData>;
-      void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+      void publishDeviceTaskSnapshot(localProjects, importedLocalTasks, refreshedAt);
       return result;
     }
 
@@ -76,17 +116,33 @@ export async function refreshTaskWorkspace(
       projects,
       normalizedOptions,
     );
+    if (typeof LocalTaskProvider.importExternal !== 'function') {
+      const refreshedAt = Date.now();
+      void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+      return {
+        ok: true,
+        data: { provider: 'ticktick-oauth', projects, tasks, refreshedAt },
+      };
+    }
+    LocalTaskProvider.importExternal(projects, tasks);
+    const localProjects = LocalTaskProvider.listProjects();
+    const importedLocalTasks = LocalTaskProvider.list();
+    if (localProjects.length === 0 && importedLocalTasks.length === 0) {
+      const refreshedAt = Date.now();
+      void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+      return { ok: true, data: { provider: 'ticktick-oauth', projects, tasks, refreshedAt } };
+    }
     const refreshedAt = Date.now();
     const result = {
       ok: true,
       data: {
-        provider: 'ticktick-oauth',
-        projects,
-        tasks,
+        provider: 'focuslink-local',
+        projects: localProjects,
+        tasks: importedLocalTasks,
         refreshedAt,
       },
     } satisfies IpcResult<TaskWorkspaceRefreshData>;
-    void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+    void publishDeviceTaskSnapshot(localProjects, importedLocalTasks, refreshedAt);
     return result;
   } catch (error) {
     return {

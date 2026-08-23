@@ -675,6 +675,12 @@ async function readTrustedTaskSnapshot(
   }
 }
 
+/** Read the current account task register for first-party task reconciliation. */
+export async function readDeviceTaskSnapshot(): Promise<TaskSnapshotResponse | null> {
+  const connection = resolveTaskSnapshotConnection();
+  return connection ? readTrustedTaskSnapshot(connection) : null;
+}
+
 async function runDeviceSyncInternal(): Promise<DeviceSyncRunResult> {
   const settings = getSettings().deviceSync;
   if (!settings.enabled) throw new Error('请先启用 FocusLink 跨设备同步');

@@ -210,6 +210,9 @@ npm run smoke:dida:ui -- ../release-v01214/win-unpacked/FocusLink.exe
 - 用户手动同步且客户端未运行：标准安装路径可用时，使用参数数组以 `--remote-debugging-port=0` 按需启动，实际 target 通过身份校验后才连接。
 - 客户端已以普通模式运行但无桥：不得杀进程或自动重启，结果必须要求用户完全退出后再连接。
 - 客户端运行且已登录：`cloudSyncUploadRecord` 返回 success 后标记上传已确认；当前客户端没有专注记录独立云端回读，禁止把本地 marker / `isSynced=1` 写成“云端回读通过”。
+- 手机投递必须单独验证：`syncGetStatus().connectedCount=0` 时，云上传成功仍保留 `phone-pending` durable queue；只有在线手机通道调用 `syncRecord` 并返回确认后，才可清除该队列。`isSynced=1` 不能代替手机投递确认。
+- 已存在且云端确认的 marker 仍须支持手机重试；marker 幂等只约束 PCRecord 创建，不能让手机投递因“已存在”而跳过。
+- 覆盖 7 天云投递窗口：超窗 PCRecord 必须保持未确认并返回 `tomatodo_record_outside_seven_day_window`；真机云端验收按“停止手机应用 → 单批上传 → 启动手机应用 → 读取下载数量”执行，避免一次性批次被后台提前消费。
 - 未识别标题落入“学习”；已知学科映射正确。
 - 重复写入 marker 不产生重复记录。
 - `smoke:tomatodo:bridge` 必须无业务写入地验证标准路径按需启动、番茄 ToDo 标题与特征 electronAPI 方法校验，以及已运行普通实例绝不被结束；错误页面必须被拒绝。

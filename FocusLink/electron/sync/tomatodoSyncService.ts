@@ -52,7 +52,10 @@ export interface TomatodoSyncSegmentResult {
   localWritten: boolean;
   /** 番茄 Todo 云接口已确认上传。 */
   cloudSynced: boolean;
-  syncState: 'skipped' | 'local-pending' | 'cloud-pending' | 'cloud-synced' | 'failed';
+  /** 电脑版已把记录交给在线手机同步通道。 */
+  phoneSynced: boolean;
+  syncState:
+    'skipped' | 'local-pending' | 'cloud-pending' | 'phone-pending' | 'cloud-synced' | 'failed';
   subject: TomatodoSubject;
   minutes: number;
   recordId?: number;
@@ -218,6 +221,7 @@ async function syncSegmentToTomatodoUnlocked(
     minutes: 0,
     localWritten: false,
     cloudSynced: false,
+    phoneSynced: false,
     syncState: 'failed',
   };
 
@@ -261,7 +265,7 @@ async function syncSegmentToTomatodoUnlocked(
 
   // 番茄 Todo 正在运行时只能走它自己的 addRecord/cloudSync API；直接改 JSON 会被回写覆盖。
   if (await isTomatodoRunningAsync()) {
-    const bridge = await writeTomatodoRecordThroughBridge(record);
+    const bridge = await writeTomatodoRecordThroughBridge(record, { syncToPhone: true });
     if (!bridge.available) {
       return {
         ...empty,
@@ -271,7 +275,10 @@ async function syncSegmentToTomatodoUnlocked(
           '番茄 Todo 正在运行，但本地同步桥不可用；请关闭番茄 Todo 后重试，或以云同步桥模式启动。',
       };
     }
-    if (bridge.uploadConfirmed) completeDurableTomatodoSegments([segmentId]);
+    const phoneSyncConfirmed = bridge.phoneSyncConfirmed ?? true;
+    if (bridge.uploadConfirmed && phoneSyncConfirmed) {
+      completeDurableTomatodoSegments([segmentId]);
+    }
     return {
       ...empty,
       ok: bridge.ok,
@@ -280,11 +287,18 @@ async function syncSegmentToTomatodoUnlocked(
       localWritten: bridge.localWritten,
       // 对外的 cloudSynced 表示番茄 Todo 上传接口已确认，不表示独立云端回读。
       cloudSynced: bridge.uploadConfirmed,
-      syncState: bridge.ok ? (bridge.uploadConfirmed ? 'cloud-synced' : 'cloud-pending') : 'failed',
+      phoneSynced: phoneSyncConfirmed,
+      syncState: bridge.ok
+        ? bridge.uploadConfirmed
+          ? phoneSyncConfirmed
+            ? 'cloud-synced'
+            : 'phone-pending'
+          : 'cloud-pending'
+        : 'failed',
       subject,
       minutes: roundMinutes(segment.activeElapsedMs),
       recordId: bridge.recordId,
-      error: bridge.error ?? bridge.cloudError,
+      error: bridge.error ?? bridge.cloudError ?? bridge.phoneSyncError,
     };
   }
 
@@ -300,6 +314,7 @@ async function syncSegmentToTomatodoUnlocked(
       skipped: update.ok,
       localWritten: true,
       cloudSynced: state.cloudSynced,
+      phoneSynced: false,
       syncState: state.cloudSynced ? 'cloud-synced' : 'local-pending',
       subject,
       minutes: roundMinutes(segment.activeElapsedMs),
@@ -323,6 +338,7 @@ async function syncSegmentToTomatodoUnlocked(
     synced: result.ok && !result.skipped,
     localWritten: result.ok,
     cloudSynced: false,
+    phoneSynced: false,
     syncState: result.ok ? 'local-pending' : 'failed',
     subject,
     minutes: roundMinutes(segment.activeElapsedMs),
@@ -370,6 +386,7 @@ async function syncSessionToTomatodoUnlocked(
           activeElapsedMs: segment.activeElapsedMs,
         }),
       ),
+      { syncToPhone: true },
     );
     results = eligible.map((segment, index) => {
       const subject = resolveSubjectForSegment(segment, config);
@@ -382,6 +399,7 @@ async function syncSessionToTomatodoUnlocked(
           synced: false,
           localWritten: false,
           cloudSynced: false,
+          phoneSynced: false,
           syncState: 'failed',
           subject,
           minutes: roundMinutes(segment.activeElapsedMs),
@@ -397,15 +415,24 @@ async function syncSessionToTomatodoUnlocked(
         synced: item.localWritten && !item.skipped,
         localWritten: item.localWritten,
         cloudSynced: item.uploadConfirmed,
-        syncState: item.ok ? (item.uploadConfirmed ? 'cloud-synced' : 'cloud-pending') : 'failed',
+        phoneSynced: item.phoneSyncConfirmed ?? true,
+        syncState: item.ok
+          ? item.uploadConfirmed
+            ? (item.phoneSyncConfirmed ?? true)
+              ? 'cloud-synced'
+              : 'phone-pending'
+            : 'cloud-pending'
+          : 'failed',
         subject,
         minutes: roundMinutes(segment.activeElapsedMs),
         recordId: item.recordId,
-        error: item.error ?? item.cloudError,
+        error: item.error ?? item.cloudError ?? item.phoneSyncError,
       };
     });
     completeDurableTomatodoSegments(
-      results.filter((result) => result.cloudSynced).map((result) => result.segmentId),
+      results
+        .filter((result) => result.cloudSynced && result.phoneSynced)
+        .map((result) => result.segmentId),
     );
   } else {
     // 客户端关闭时只能安全写本地；逐条原子写入并保持 isSynced=0。
@@ -509,6 +536,7 @@ async function setTomatodoSubjectForSegmentUnlocked(
       const bridge = await updateTomatodoSubjectThroughBridge(
         segmentId,
         resolveSubjectForSegment(updated, config),
+        { syncToPhone: true },
       );
       external = {
         ok: bridge.available && bridge.ok,
@@ -517,7 +545,8 @@ async function setTomatodoSubjectForSegmentUnlocked(
         error: bridge.error ?? bridge.cloudError,
       };
       shouldRetryMarkerBackedUpdate =
-        (!bridge.available || !bridge.ok) && (bridge.recordFound || markerExistedBeforeUpdate);
+        (!bridge.available || !bridge.ok || bridge.phoneSyncConfirmed === false) &&
+        (bridge.recordFound || markerExistedBeforeUpdate);
     } else {
       external = updateExistingTomatodoRecords([updated], config);
       shouldRetryMarkerBackedUpdate = !external.ok && markerExistedBeforeUpdate;
@@ -595,12 +624,13 @@ async function setTomatodoSubjectsForSegmentsUnlocked(
         const bridge = await updateTomatodoSubjectThroughBridge(
           segment.id,
           resolveSubjectForSegment(segment, config),
+          { syncToPhone: true },
         );
         if (bridge.recordFound) foundCount += 1;
         if (bridge.localChanged) externalUpdatedCount += 1;
         if (!bridge.available || !bridge.ok) error ??= bridge.error ?? bridge.cloudError;
         if (
-          (!bridge.available || !bridge.ok) &&
+          (!bridge.available || !bridge.ok || bridge.phoneSyncConfirmed === false) &&
           (bridge.recordFound || markerBackedIds.has(segment.id))
         ) {
           retryIds.push(segment.id);
@@ -686,7 +716,7 @@ export function getTomatodoSyncStatus(sessionId: string): {
     synced: boolean;
     writtenLocally: boolean;
     cloudSynced: boolean;
-    state: 'not-written' | 'local-pending' | 'cloud-synced';
+    state: 'not-written' | 'local-pending' | 'phone-pending' | 'cloud-synced';
     subject: TomatodoSubject;
     source: TomatodoSubjectSource;
   }>;
@@ -712,11 +742,13 @@ export function getTomatodoSyncStatus(sessionId: string): {
         synced: cloudSynced,
         writtenLocally: recordState.exists,
         cloudSynced,
-        state: cloudSynced
-          ? ('cloud-synced' as const)
-          : recordState.exists
-            ? ('local-pending' as const)
-            : ('not-written' as const),
+        state: durablePendingIds.has(s.id)
+          ? ('phone-pending' as const)
+          : cloudSynced
+            ? ('cloud-synced' as const)
+            : recordState.exists
+              ? ('local-pending' as const)
+              : ('not-written' as const),
         subject: resolution.subject,
         source: resolution.source,
       };
@@ -860,7 +892,12 @@ async function uploadPendingTomatodoRecordsUnlocked(
     };
   }
 
-  const bridge = await writeTomatodoRecordsThroughBridge(inputs.map((input) => input.record));
+  const bridge = await writeTomatodoRecordsThroughBridge(
+    inputs.map((input) => input.record),
+    {
+      syncToPhone: true,
+    },
+  );
   if (!bridge.available) {
     return {
       ok: false,
@@ -871,13 +908,22 @@ async function uploadPendingTomatodoRecordsUnlocked(
     };
   }
 
-  const bridgeConfirmedSegmentIds = inputs
-    .filter((_, index) => bridge.results[index]?.uploadConfirmed)
-    .map((input) => input.segmentId);
-  const uploadedSegmentIds = await reconcileTomatodoCloudConfirmation(
+  // Keep the bounded grace read for every input: TomaToDo can persist isSynced=1
+  // immediately after a transient bridge response, even when the first response
+  // itself did not carry the upload confirmation.
+  const bridgeCloudConfirmedSegmentIds = inputs.map((input) => input.segmentId);
+  const bridgePhoneConfirmedSegmentIds = new Set(
+    inputs
+      .filter((_, index) => bridge.results[index]?.phoneSyncConfirmed ?? true)
+      .map((input) => input.segmentId),
+  );
+  const cloudConfirmedSegmentIds = await reconcileTomatodoCloudConfirmation(
     dbPath,
-    inputs.map((input) => input.segmentId),
-    bridgeConfirmedSegmentIds,
+    bridgeCloudConfirmedSegmentIds,
+    bridgeCloudConfirmedSegmentIds,
+  );
+  const uploadedSegmentIds = cloudConfirmedSegmentIds.filter((segmentId) =>
+    bridgePhoneConfirmedSegmentIds.has(segmentId),
   );
   completeDurableTomatodoSegments(uploadedSegmentIds);
   const uploaded = uploadedSegmentIds.length;

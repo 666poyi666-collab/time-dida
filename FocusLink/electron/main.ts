@@ -63,6 +63,7 @@ import {
 } from './sync/tomatodoSyncService.js';
 import { runAutomaticDeviceSync } from './sync/deviceSyncService.js';
 import { startFoxlinkBusinessApi, type FoxlinkBusinessApi } from './mcp/businessApi.js';
+import { migrateLegacyLoopbackAccountConnection } from './sync/deviceSyncAccountService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1078,6 +1079,7 @@ app.whenReady().then(() => {
   console.log(`releaseDir: ${APP_RELEASE_DIR}`);
 
   initDatabase();
+  migrateLegacyLoopbackAccountConnection();
 
   let settings = getSettings();
   const didaSourceMigrationKey = 'migration.taskSourceDidaV060';

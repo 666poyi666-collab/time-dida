@@ -154,7 +154,7 @@ export function FocusConsole({
           ) : (
             <div className="focus-start-fields">
               <div className="focus-title-field">
-                <span>从云端任务清单选择</span>
+                <span>从 FocusLink 任务中选择</span>
                 <div className="focus-task-picker">
                   <button
                     className="focus-task-disclosure"
@@ -163,8 +163,8 @@ export function FocusConsole({
                     disabled={pendingCommand !== null}
                     aria-label={
                       selectedTask
-                        ? `当前已选择 ${selectedTask.title}，展开云端任务树重新选择`
-                        : '展开云端任务树选择任务'
+                        ? `当前已选择 ${selectedTask.title}，展开任务树重新选择`
+                        : '展开任务树选择任务'
                     }
                   >
                     <ListTree aria-hidden="true" />
@@ -188,7 +188,7 @@ export function FocusConsole({
                 <small>
                   {tasks.length > 0
                     ? `已缓存云端 ${tasks.length} 个任务`
-                    : '电脑同步滴答任务后，最后一份云端快照会显示在这里'}
+                    : '登录同一 FocusLink 账号后，任务会自动出现在这里'}
                 </small>
               </div>
               <label className="focus-title-field" htmlFor="focus-title">
@@ -406,8 +406,8 @@ export function FocusConsole({
           </dl>
 
           <div className="desktop-delivery-note">
-            <strong>第三方投递由桌面端自动完成</strong>
-            <p>结束记录会先安全上传云端；桌面端在线时自动写回滴答清单与番茄 To-Do。</p>
+            <strong>FocusLink 负责多端同步</strong>
+            <p>结束记录先上传 FocusLink 云端；滴答清单与番茄 To-Do 仅作为兼容投递渠道。</p>
           </div>
 
           {commandNotice && (

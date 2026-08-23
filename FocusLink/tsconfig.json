@@ -27,6 +27,7 @@
   },
   "include": ["src", "mobile", "shared", "electron", "cloud", "tests", "*.config.ts"],
   "exclude": [
+    "cloud/mcp",
     "tests/cloudflareWorkerRouting.test.ts",
     "tests/accountDurableObjectCorrection.test.ts",
     "tests/accountDurableObjectDeviceBinding.test.ts",

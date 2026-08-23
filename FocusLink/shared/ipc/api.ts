@@ -21,7 +21,7 @@ export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 export interface TaskWorkspaceRefreshData {
   /** local 仅保留旧渲染器类型兼容；工作台服务实际只返回滴答连接。 */
-  provider: 'local' | 'dida-cli' | 'ticktick-oauth';
+  provider: 'local' | 'focuslink-local' | 'dida-cli' | 'ticktick-oauth';
   projects: Project[];
   tasks: Task[];
   refreshedAt: number;
@@ -408,6 +408,8 @@ export interface FocusLinkAPI {
     mergeSegments(segmentIds: string[]): Promise<void>;
   };
   tasks: {
+    create(title: string, projectId?: string): Promise<Task>;
+    createProject(name: string): Promise<Project>;
     complete(task: Task): Promise<Task>;
     setCompleted(task: Task, completed: boolean): Promise<Task>;
     refresh(options?: TaskWorkspaceRefreshOptions): Promise<IpcResult<TaskWorkspaceRefreshData>>;

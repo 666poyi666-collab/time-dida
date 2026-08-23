@@ -96,6 +96,7 @@ import {
   classifyMobileLiveRequestError,
   fetchLiveFocusSnapshot,
   fetchTaskSnapshot,
+  publishTaskSnapshot,
   sendLiveFocusCommand,
   waitForLiveFocusSnapshot,
 } from './syncClient';
@@ -574,6 +575,110 @@ export function MobileApp() {
       }
     },
     [taskRequests],
+  );
+
+  const createCloudTask = useCallback(
+    async (title: string, projectId: string | null) => {
+      const current = taskSnapshotRef.current;
+      if (!current?.snapshot || !preferences.endpoint || !preferences.token) {
+        throw new Error('请先登录 FocusLink 账号并完成任务同步');
+      }
+      const now = Date.now();
+      const response = await publishTaskSnapshot({
+        endpoint: preferences.endpoint,
+        token: preferences.token,
+        deviceId,
+        snapshot: {
+          publishedAt: now,
+          projects: current.snapshot.projects,
+          tasks: [
+            ...current.snapshot.tasks,
+            {
+              id: crypto.randomUUID(),
+              source: 'local',
+              projectId,
+              title,
+              status: 'incomplete',
+              priority: null,
+              dueDate: null,
+              tags: [],
+              parentId: null,
+              isCompleted: false,
+              updatedAt: now,
+            },
+          ],
+        },
+      });
+      taskSnapshotRef.current = response;
+      setTaskSnapshot(response);
+      const accountId = mobileAccountId(preferences);
+      if (accountId) {
+        await enqueueMutation(cacheMutationQueue, () =>
+          writeCachedTaskSnapshot(response, accountId),
+        );
+      }
+      setCommandNotice('任务已保存到 FocusLink 云端');
+    },
+    [deviceId, preferences],
+  );
+
+  const createCloudProject = useCallback(
+    async (name: string) => {
+      const current = taskSnapshotRef.current;
+      if (!current?.snapshot || !preferences.endpoint || !preferences.token) {
+        throw new Error('请先登录 FocusLink 账号并完成任务同步');
+      }
+      const response = await publishTaskSnapshot({
+        endpoint: preferences.endpoint,
+        token: preferences.token,
+        deviceId,
+        snapshot: {
+          ...current.snapshot,
+          publishedAt: Date.now(),
+          projects: [
+            ...current.snapshot.projects,
+            { id: crypto.randomUUID(), source: 'local', name, color: null },
+          ],
+        },
+      });
+      taskSnapshotRef.current = response;
+      setTaskSnapshot(response);
+      setCommandNotice('清单已保存到 FocusLink 云端');
+    },
+    [deviceId, preferences],
+  );
+
+  const toggleCloudTaskComplete = useCallback(
+    async (task: SyncedTask) => {
+      const current = taskSnapshotRef.current;
+      if (!current?.snapshot || !preferences.endpoint || !preferences.token) {
+        throw new Error('请先登录 FocusLink 账号并完成任务同步');
+      }
+      const now = Date.now();
+      const response = await publishTaskSnapshot({
+        endpoint: preferences.endpoint,
+        token: preferences.token,
+        deviceId,
+        snapshot: {
+          ...current.snapshot,
+          publishedAt: now,
+          tasks: current.snapshot.tasks.map((item) =>
+            item.id === task.id
+              ? {
+                  ...item,
+                  isCompleted: !item.isCompleted,
+                  status: item.isCompleted ? 'incomplete' : 'completed',
+                  updatedAt: now,
+                }
+              : item,
+          ),
+        },
+      });
+      taskSnapshotRef.current = response;
+      setTaskSnapshot(response);
+      setCommandNotice(task.isCompleted ? '任务已恢复' : '任务已完成');
+    },
+    [deviceId, preferences],
   );
 
   const pullLedger = useCallback(
@@ -1511,9 +1616,7 @@ export function MobileApp() {
               disabled={pullState === 'pulling' || liveConnection === 'connecting' || !online}
             >
               <RefreshIcon spinning={pullState === 'pulling' || liveConnection === 'connecting'} />
-              {liveConnection === 'connecting' || pullState === 'pulling'
-                ? '连接中'
-                : '刷新状态与账本'}
+              {liveConnection === 'connecting' || pullState === 'pulling' ? '连接中' : '刷新'}
             </button>
           </section>
 
@@ -1569,6 +1672,9 @@ export function MobileApp() {
                   setActiveView('focus');
                   void handleCommand('start', task, task.title);
                 }}
+                onCreate={createCloudTask}
+                onCreateProject={createCloudProject}
+                onToggleComplete={toggleCloudTaskComplete}
               />
             )}
             {activeView === 'history' && (

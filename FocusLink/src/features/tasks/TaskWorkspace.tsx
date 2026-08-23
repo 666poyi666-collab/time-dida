@@ -50,6 +50,8 @@ export function TaskWorkspace() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState('');
   const [query, setQuery] = useState('');
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newProjectName, setNewProjectName] = useState('');
   const [filter, setFilter] = useState<TaskFilter>('open');
   const [sortMode, setSortMode] = useState<TaskSortMode>('smart');
   const [completedDays, setCompletedDays] = useState<(typeof COMPLETED_RANGES)[number]>(90);
@@ -286,6 +288,33 @@ export function TaskWorkspace() {
     setSyncing(false);
   };
 
+  const createLocalTask = async () => {
+    const title = newTaskTitle.trim();
+    if (!title) return;
+    try {
+      await window.focuslink.tasks.create(title, selectedProject || undefined);
+      setNewTaskTitle('');
+      await refresh(false, true, undefined, true);
+      addToast('任务已加入 FocusLink', 'success');
+    } catch (error) {
+      addToast(`创建任务失败：${toErrorMessage(error)}`, 'error');
+    }
+  };
+
+  const createLocalProject = async () => {
+    const name = newProjectName.trim();
+    if (!name) return;
+    try {
+      const project = await window.focuslink.tasks.createProject(name);
+      setNewProjectName('');
+      await refresh(false, true, undefined, true);
+      setSelectedProject(project.id);
+      addToast('清单已创建', 'success');
+    } catch (error) {
+      addToast(`创建清单失败：${toErrorMessage(error)}`, 'error');
+    }
+  };
+
   const changeFilter = (next: TaskFilter) => {
     setFilter(next);
     setSortMode(next === 'completed' ? 'completed' : 'smart');
@@ -319,6 +348,23 @@ export function TaskWorkspace() {
           )}
         </div>
         <div className="console-actions task-workbench-actions">
+          <form
+            className="task-quick-add"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void createLocalTask();
+            }}
+          >
+            <input
+              value={newTaskTitle}
+              onChange={(event) => setNewTaskTitle(event.target.value)}
+              placeholder="添加 FocusLink 任务"
+              aria-label="添加 FocusLink 任务"
+            />
+            <button type="submit" aria-label="创建任务" title="创建任务">
+              +
+            </button>
+          </form>
           <button
             type="button"
             className="task-icon-action"
@@ -377,6 +423,23 @@ export function TaskWorkspace() {
 
           <div className="task-navigation-divider" />
           <div className="task-navigation-label">清单</div>
+          <form
+            className="task-project-create"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void createLocalProject();
+            }}
+          >
+            <input
+              value={newProjectName}
+              onChange={(event) => setNewProjectName(event.target.value)}
+              placeholder="新建清单"
+              aria-label="新建清单"
+            />
+            <button type="submit" disabled={!newProjectName.trim()} aria-label="创建清单">
+              +
+            </button>
+          </form>
           <div className="task-project-list">
             <ProjectButton
               active={!selectedProject}
@@ -403,11 +466,15 @@ export function TaskWorkspace() {
             <span className={loadError ? 'error' : lastRefresh ? 'ready' : 'pending'} />
             <div>
               <strong>
-                {loadError ? '连接需要检查' : lastRefresh ? '滴答连接正常' : '正在连接滴答'}
+                {loadError
+                  ? '连接需要检查'
+                  : lastRefresh
+                    ? 'FocusLink 云端已确认'
+                    : '正在连接 FocusLink'}
               </strong>
               <small>
                 {loadError
-                  ? '任务读取失败，可在设置里重新探测'
+                  ? '任务读取失败，可在设置里检查账号与同步'
                   : lastRefresh
                     ? `${formatRefreshTime(lastRefresh)} 更新`
                     : '正在读取任务清单'}
@@ -674,7 +741,7 @@ function WorkbenchTaskRow({
           <Icon.ChevronRight size="xs" />
         </button>
       ) : (
-        <span className="task-workbench-chevron-spacer" />
+        <span className="task-chevron-spacer" />
       )}
       <button
         type="button"

@@ -20,7 +20,7 @@ import {
 import type { DeviceSyncAccountLoginResult } from '@shared/ipc/api';
 import { getMeta, setMeta } from '../db/index.js';
 import { logger } from '../logger.js';
-import { updateSettings } from '../settingsStore.js';
+import { getSettings, updateSettings } from '../settingsStore.js';
 import {
   getDeviceSyncStatus,
   invalidateDeviceSyncConnection,
@@ -54,6 +54,30 @@ export function getDeviceSyncAccountIdentity(): {
     // FocusLink currently has one owner account. Keep the public-id detail out of normal UI.
     accountLabel: match ? 'Poyi' : null,
   };
+}
+
+export function migrateLegacyLoopbackAccountConnection(): boolean {
+  const settings = getSettings().deviceSync;
+  const identity = getDeviceSyncAccountIdentity();
+  let host = '';
+  try {
+    host = new URL(settings.endpoint).hostname;
+  } catch {
+    host = '';
+  }
+  if (identity.signedIn || !['localhost', '127.0.0.1', '::1'].includes(host)) return false;
+  invalidateDeviceSyncConnection();
+  setDeviceSyncToken(null);
+  updateSettings({
+    deviceSync: {
+      enabled: false,
+      endpoint: OFFICIAL_FOCUSLINK_ENDPOINT,
+      autoSync: true,
+      liveControlEnabled: false,
+    },
+  });
+  logger.info('deviceSyncAccount', 'retired legacy loopback credential; account login required');
+  return true;
 }
 
 export function loginDeviceSyncAccount(): Promise<DeviceSyncAccountLoginResult> {
