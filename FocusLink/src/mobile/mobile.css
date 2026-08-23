@@ -365,6 +365,47 @@ code {
   }
 }
 
+@media (min-width: 620px) and (max-width: 759px) and (orientation: portrait) {
+  html[data-device-tier='tablet'] .mobile-main {
+    display: block;
+    padding: 0 0 calc(86px + env(safe-area-inset-bottom));
+  }
+
+  html[data-device-tier='tablet'] .sync-strip {
+    margin: 14px 18px 0;
+  }
+
+  html[data-device-tier='tablet'] .mobile-workspace {
+    display: block;
+  }
+
+  html[data-device-tier='tablet'] .app-navigation {
+    position: fixed;
+    top: auto;
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: max(14px, env(safe-area-inset-left));
+    width: auto;
+    min-height: 64px;
+    border-radius: 22px;
+  }
+
+  html[data-device-tier='tablet'] .mobile-topbar {
+    padding-right: max(18px, env(safe-area-inset-right));
+  }
+
+  html[data-device-tier='tablet'] .focus-console-body,
+  html[data-device-tier='tablet'] .task-browser-workspace,
+  html[data-device-tier='tablet'] .dashboard-hero,
+  html[data-device-tier='tablet'] .settings-status-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  html[data-device-tier='tablet'] .live-context {
+    border-top: 1px solid var(--border);
+  }
+}
+
 .task-mobile-create {
   display: grid;
   min-height: 46px;
