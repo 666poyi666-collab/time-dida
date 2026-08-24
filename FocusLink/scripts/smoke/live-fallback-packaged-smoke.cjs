@@ -13,7 +13,6 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const net = require('node:net');
 const { execFileSync, spawn } = require('node:child_process');
 const WebSocket = require('ws');
 
@@ -85,41 +84,6 @@ function makeIsolatedSettings(endpoint) {
       liveControlEnabled: true,
     },
   };
-}
-
-async function reserveClosedLoopbackPort() {
-  const server = net.createServer();
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen({ host: '127.0.0.1', port: 0 }, resolve);
-  });
-  const address = server.address();
-  if (!address || typeof address === 'string') {
-    server.close();
-    throw new Error('could not reserve a loopback port');
-  }
-  const port = address.port;
-  await new Promise((resolve) => server.close(resolve));
-  return port;
-}
-
-async function assertLoopbackClosed(endpoint) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 800);
-  try {
-    const response = await fetch(`${endpoint}/sync/v2/live`, {
-      signal: controller.signal,
-      redirect: 'error',
-    });
-    throw new Error(`loopback endpoint unexpectedly returned HTTP ${response.status}`);
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith('loopback endpoint unexpectedly')) {
-      throw error;
-    }
-    // ECONNREFUSED and a bounded abort both prove there is no usable service for this smoke.
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 function writeIsolatedUserData(endpoint) {
@@ -326,9 +290,7 @@ function removeTempDirectory(target, label) {
 
 async function main() {
   assertExecutable();
-  const port = await reserveClosedLoopbackPort();
-  const endpoint = `http://127.0.0.1:${port}`;
-  await assertLoopbackClosed(endpoint);
+  const endpoint = 'https://foxlink-mcp.focuslink-poyi-6465e9.workers.dev';
   writeIsolatedUserData(endpoint);
 
   appProcess = spawn(
@@ -423,6 +385,8 @@ async function main() {
 main()
   .catch((error) => {
     process.stderr.write(`[live-fallback] ${error.stack || error.message}\n`);
+    const smokeLog = readSmokeLog();
+    if (smokeLog.trim()) process.stderr.write(`[packaged log]\n${smokeLog.slice(-8_000)}\n`);
     if (childStdout.trim()) process.stderr.write(`[packaged stdout]\n${childStdout.trim()}\n`);
     if (childStderr.trim()) process.stderr.write(`[packaged stderr]\n${childStderr.trim()}\n`);
     process.exitCode = 1;

@@ -21,7 +21,7 @@ app
       throw new Error('safeStorage is unavailable for the packaged live fallback smoke');
     }
     const encryptedToken = safeStorage
-      .encryptString('focuslink-packaged-live-fallback-synthetic-token')
+      .encryptString(`fl2_wrong-test_wrongdev_${'x'.repeat(40)}`)
       .toString('base64');
     fs.writeFileSync(
       path.join(target, 'focuslink-device-sync-credential.json'),
