@@ -10,6 +10,7 @@
 - **Windows 实装**：本地 dirty 候选安装器静默覆盖 exit 0；卸载项 `DisplayVersion=0.12.94`，安装目录 EXE 回读 `FileVersion=0.12.94 / ProductVersion=0.12.94.0`，应用已重启。该事实用于本轮验收，不冒充干净提交正式资产。
 - **Android 签名边界**：正式 `app.focuslink.mobile` 在小米为 `0.12.87/1287`、华为为 `0.12.85/1285`，两台均因历史签名不同拒绝 `adb install -r`；未卸载正式包，数据保持原样。华为并存 `app.focuslink.mobile.staging.test`、小米并存 `app.focuslink.mobile.staging.ui1294` 均实际安装、启动并回读 `0.12.94/1294`。
 - **真机视觉**：华为 DBY-W09 唤醒后截图确认新专注页、FocusLink 自有任务文案、单栏内容与底部导航真实渲染。小米 xaga 处于受凭据保护锁屏，像素截图为纯黑；WebView CDP 回读标题、完整 FocusLink 2.0 DOM、四项导航、`didaVisible=false`，故渲染结构已确认，锁屏后的可见像素验收仍为 **BLOCKED**。
+- **Bug-09（深色主操作最终级联对比不足）**：packaged UI smoke 读取最终计算 token 后发现深色 `--app-accent` 仍配白色 `--app-accent-fg`，对比度仅 `1.92:1`。根因是 FocusLink 2.0 后置 `:root` 白色前景覆盖了基础层 `.dark` 的深色前景，而最终 `html.dark` 没有重新声明该 token。修复为在最终覆盖层显式设置深色前景，并新增直接解析最终层的 WCAG `>=4.5:1` 合同。
 - **发布卫生**：`.git/lfs/tmp` 三次被 Git 观察器分别写入 `4,674,849,792 B`、`3,413,861,376 B` 与 `12,546,168,996 B` 临时缓存；第三次由最旧 release 目录暂时进入删除态触发，恢复目录后消除该状态。每次均确认无活动 Git/LFS 进程后移至 `C:\Temp` 隔离，仓库临时目录恢复为 0；`.git/lfs/objects` 未动。Windows 打包首次因 winCodeSign 缓存创建 macOS 符号链接权限失败，使用本机已存在的完整 Windows 工具缓存后成功，未修改系统权限。
 
 ## 2026-08-23 · v0.12.93 华为平板真机连接与竖屏修复

@@ -46,6 +46,29 @@ function walkSource(dir: string, out: string[] = []): string[] {
 }
 
 describe('style contract', () => {
+  it('FocusLink 2.0 dark solid actions keep AA contrast after the final cascade', () => {
+    const css = stripComments(fs.readFileSync(path.join(stylesDir, 'focuslink-2.css'), 'utf8'));
+    const block = /html\.dark\s*\{([\s\S]*?)\n\}/.exec(css);
+    expect(block, 'focuslink-2.css 缺少 html.dark 覆盖').not.toBeNull();
+    const token = (name: string): [number, number, number] => {
+      const value = new RegExp(`--${name}\\s*:\\s*(\\d+)\\s+(\\d+)\\s+(\\d+);`).exec(block![1]);
+      expect(value, `html.dark 缺少 --${name}`).not.toBeNull();
+      return [Number(value![1]), Number(value![2]), Number(value![3])];
+    };
+    const luminance = (rgb: [number, number, number]) => {
+      const linear = rgb.map((channel) => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+    };
+    const foreground = luminance(token('app-accent-fg'));
+    const background = luminance(token('app-accent'));
+    const ratio =
+      (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+    expect(ratio).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('every referenced custom property is defined somewhere', () => {
     const styles = readStyles();
     const css = styles.map((file) => file.text).join('\n');
