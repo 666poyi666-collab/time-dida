@@ -12,6 +12,8 @@
 - 缓存：已确认上一轮隔离到 `C:\Temp` 的 6 个 LFS 临时目录共 66,705,066,543 字节；用户明确要求删除，但当前执行策略在命令启动前拒绝删除操作，目录未被假报为已清除。
 - Android JVM 门禁首次在中文工作区/JDK 21 下出现已编译测试类统一 `ClassNotFoundException`；用命令期 ASCII `subst` 盘符复跑后测试正常装载，只剩 `FocusLinkConfigTest` 的历史 `0.12.87` 版本断言。已随最终候选更新为 `0.12.96`，临时盘符随命令解除。
 - 0.12.95 已在华为 staging 覆盖安装并截图；真机出现自动 Chromium 未复现的黑色粗边。CDP 计算样式确认旧 WebView 将 `color-mix()` 边框颜色退化为正文 `currentColor`。移动控制层改用兼容实色 token，候选按死命令提升为 `0.12.96/1296`，0.12.95 不再补齐三端矩阵。
+- 最终干净构建 `0ae54b4` 的 installer/portable、packaged UI/mini/live fallback 与 Android official/staging APK 完成；Windows、小米 `192.168.1.5:5555`、华为 `192.168.1.7:5555` 均实装并回读 `0.12.96`，双 Android 真机截图确认黑边消失。
+- Git 观察器在打包观察和正式 LFS 暂存阶段共又生成 42,799,342,463 字节临时文件；每次确认无活动 Git/LFS 后隔离到 `C:\Temp`，仓库 LFS tmp 恢复为空。8 个隔离目录现合计 109,504,409,006 字节；用户已要求删除，但删除进程仍被执行策略拒绝，未假报成功。
 
 - 需求：用户明确要求 FocusLink 成为自有任务产品，第三方任务服务只有主动选择时才显示，并要求桌面、手机、平板整体 UI/审美重做。
 - 决策：任务来源默认切换为 `local`；任务刷新在本地模式下只读 FocusLink 任务库，不因机器存在 `dida`/TickTick CLI 自动导入。第三方 CLI/OAuth 保留为设置内显式导入适配器。

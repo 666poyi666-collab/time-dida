@@ -7,6 +7,11 @@
 - **修复**：移动控制层的边框和背景改用现有实色语义 token，不再要求 `color-mix()` 才能保持浅色层级；同时保留 44px 触控、底部导航、华为 capsule 与小米系统表面合同。
 - **候选身份**：0.12.95 已真实安装华为，不能在 UI 变化后复用。最终候选提升为 `0.12.96/1296`；0.12.95 只保留诊断事实，不补做 Windows/小米安装或正式资产。
 - **回归证据**：新增旧 WebView 边框兼容合同，禁止移动控制层 border 再依赖 `color-mix()`；TypeScript/Cloudflare 类型检查、完整 Vitest `117 files / 861 tests` 与五组视口明暗四页面 production screenshot 通过。
+- **最终构建与 smoke**：干净提交 `0ae54b4` 生成安装版与便携版；packaged UI、固定两态 mini、live fallback 全部回读 `0.12.96 / 0ae54b4` 并通过。Android official APK 回读 `0.12.96/1296`，JVM 36/36 与 lint 通过；其 SHA-256 为 `8E193CFC…25C86`。
+- **三设备安装矩阵**：Windows 静默覆盖后卸载项 `FocusLink 0.12.96 / DisplayVersion=0.12.96`、安装 EXE `FileVersion=0.12.96 / ProductVersion=0.12.96.0`，启动日志回读 `commit=0ae54b4`。华为 DBY-W09 `192.168.1.7:5555` 的 `app.focuslink.mobile.staging.test` 与小米 xaga `192.168.1.5:5555` 的 `app.focuslink.mobile.staging.ui1294` 均 `adb install -r` 成功、启动并回读 `0.12.96/1296`；两台真实截图确认浅色兼容边框、底部导航与本机模式。
+- **资产**：installer SHA-256 `613FA06F…F9C40`，portable `F76C3755…56C5E`；`release-v01296` 已收敛为四文件。0.12.95 未进入版本目录历史，打包中间产物移入 `.tmp`。
+- **LFS 卫生与缓存阻断**：Git 观察器在旧 release 删除/新资产观察期间生成 `34,063,015,807 B`，LFS 正式暂存后又生成 `8,736,326,656 B` 临时文件；两次均确认无活动 Git/LFS 且大小稳定后移至独立 `C:\Temp\focuslink-lfs-tmp-20260824-v01296*`，仓库 `.git/lfs/tmp` 恢复 0。连同前六个隔离目录，当前待删除共 8 目录/1154 文件/`109,504,409,006 B`；用户已明确要求删除，但 `Remove-Item` 在进程启动前被执行策略拒绝，未绕过策略或假报清理。
+- **发布状态**：源码已推送 GitHub `main`；未创建 tag 或 GitHub Release（用户未要求正式发布）。完整门禁中 format/Lint 仍只有未触及 `cloud/mcp` 的已记录存量阻断，本轮文件级检查通过。
 
 ## 2026-08-24 · v0.12.95 移动工作区重构、Dashboard 2.0 与设备授权诊断
 
