@@ -10,6 +10,7 @@
 - **二次审美复核**：任务页把长期摊开的“新建清单”表单收为显式 disclosure，快速任务入口改为自然的“添加任务”；统计甜甜圈移除遗留分隔线。移动设置把六张字体预览卡收为单一选择行、五种强调色压成一行，并从普通页面移除会泄露 `Sync v2 ... HTTP 404` 的底层冲突管理面；账号、主题、强调色、字体与关于信息成为主路径。
 - **自动化证据**：生产移动构建的 360×800、412×915、640×1024、760×1024、915×412 明暗四页面均无横向溢出、离屏元素或 <44px 主交互；横屏计时与主操作完整处于首屏。桌面明暗/最小窗四页面截图门禁通过；TypeScript/Cloudflare 类型检查、完整 Vitest `117 files / 860 tests` 与生产 desktop build 通过。全仓 format 仍被未触及 `cloud/mcp` 26 个存量文件阻断，Lint 仍为同目录 `tests/setup.ts` 的 namespace 存量错误及 2 个 warning；本轮改动文件级 Prettier/ESLint 无错误。dist、packaged smoke 与三设备同版实装待本轮后续追加。
 - **缓存边界**：上一轮 6 个已从仓库隔离到 `C:\Temp` 的 LFS 临时目录合计 `66,705,066,543 B`；用户已明确要求删除，但本会话执行策略在命令启动前拒绝该删除。目录尚未删除，不得写成已清理；应用 SQLite、账号凭据、任务和会话数据从未进入删除目标。
+- **Bug-01（Android JVM 测试路径与版本夹具）**：Android assemble 成功后，直接在中文工作区运行 JDK 21/Gradle test 时 7 个已生成 `.class` 全部报 `ClassNotFoundException`；响应文件 classpath 含中文路径，改用临时 ASCII `subst` 盘符后 35/36 真实执行，仅 `FocusLinkConfigTest` 仍把 `VERSION_NAME` 固定为历史 `0.12.87`。修复该断言为 `0.12.95`，后续 Android 门禁固定在 ASCII 盘符复跑；临时盘符在命令结束时解除，不改变仓库或系统持久配置。
 
 ## 2026-08-24 · v0.12.94 FocusLink 2.0 自有任务与三端视觉重做
 
