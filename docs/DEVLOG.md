@@ -11,6 +11,7 @@
 - 打包 smoke 捕获深色主操作文字对比只有 `1.92:1` 的最终级联问题；补齐 FocusLink 2.0 深色前景 token，并增加最终覆盖层 WCAG 合同。
 - 打包 smoke 量得游标/制图仪表预览宽 176px、实际舞台约 167.8px；预览收敛为 160px，并把语义色断言更新为 FocusLink 2.0 token。
 - 三项 packaged smoke 收口：主界面深色对比与九仪表舞台通过；mini 两态/吸附/长内容通过；live fallback 改用 canonical endpoint 和明确测试 `fl2` 凭据，认证未确认后本地开始/结束通过。
+- 从干净源码提交 `786c106` 生成最终 0.12.94 Windows 资产和 Android APK；Windows 与双 Android staging 完成同版实装。最终 SHA256、签名边界和设备差异已写入实施日志与 `release-v01294/RELEASE_NOTES.md`。
 - 发布卫生：Git 观察器三次造成 `.git/lfs/tmp` 数 GB 增长，其中最旧 release 暂时进入删除态时单次增长 12.55 GB；恢复目录并确认无 Git/LFS 进程后可恢复隔离，仓库临时目录恢复为空，正式 LFS 对象未动。
 
 ## 2026-08-22

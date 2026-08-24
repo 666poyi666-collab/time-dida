@@ -13,6 +13,8 @@
 - **Bug-09（深色主操作最终级联对比不足）**：packaged UI smoke 读取最终计算 token 后发现深色 `--app-accent` 仍配白色 `--app-accent-fg`，对比度仅 `1.92:1`。根因是 FocusLink 2.0 后置 `:root` 白色前景覆盖了基础层 `.dark` 的深色前景，而最终 `html.dark` 没有重新声明该 token。修复为在最终覆盖层显式设置深色前景，并新增直接解析最终层的 WCAG `>=4.5:1` 合同。
 - **Bug-10（设置仪表预览超出固定舞台）**：packaged UI smoke 量得“游标标尺”和“制图描线”预览宽 `176px`，FocusLink 2.0 设置内容列的实际舞台仅约 `167.8px`，右缘超出约 8px。两种预览宽度收敛到 `160px`；smoke 同时更新为 2.0 的绿色/橙色语义 token，不再把旧版精确 RGB 当作不变产品合同。
 - **packaged smoke 收口**：主界面 smoke 通过最终明暗操作对比、九套仪表完整舞台、idle/running/paused、沉浸、历史和设置链；mini smoke 通过固定两态、四边吸附、Win32 move-loop、长 `H:MM:SS`、长中文与 reduced-motion。live-fallback 夹具从已退役的任意 endpoint/synthetic token 更新为 canonical endpoint + 格式合法但认证失败的 `wrong-test` 设备凭据，证明账号实时握手未确认后本地 start/stop 仍成功，不放宽生产 endpoint/token 策略。
+- **最终干净候选**：源码提交 `786c106` 生成 Windows 安装版与便携版，packaged UI/mini/live-fallback 三项 smoke 均回读相同构建身份并通过。安装版 SHA-256 `2D1DC7BE18976B0DDD38D1A5AD48B68FD6CFAD6B1C213381B657BDD2457A23EE`，便携版 `2DED12EEBC41C7D4933B86293681EDE333A7B32CBD5FD1C7FB20BB4ED05C1E10`；正式 Android debug APK 为 `4F8A9F6E808D7310F9BCE267620BA46B83D5E5D8DA9DC54CE64DC36FD3CA25E1`。
+- **最终安装矩阵**：Windows 静默覆盖安装 exit 0，卸载项、EXE 文件版本均为 `0.12.94`，运行日志回读 `commit=786c106`。小米 xaga 最终地址 `192.168.1.4:5555`、华为 DBY-W09 `192.168.1.7:5555`，两台并存 staging 均覆盖安装、启动并回读 `0.12.94/1294`；正式包因历史签名保留旧版与数据。
 - **发布卫生**：`.git/lfs/tmp` 三次被 Git 观察器分别写入 `4,674,849,792 B`、`3,413,861,376 B` 与 `12,546,168,996 B` 临时缓存；第三次由最旧 release 目录暂时进入删除态触发，恢复目录后消除该状态。每次均确认无活动 Git/LFS 进程后移至 `C:\Temp` 隔离，仓库临时目录恢复为 0；`.git/lfs/objects` 未动。Windows 打包首次因 winCodeSign 缓存创建 macOS 符号链接权限失败，使用本机已存在的完整 Windows 工具缓存后成功，未修改系统权限。
 
 ## 2026-08-23 · v0.12.93 华为平板真机连接与竖屏修复
