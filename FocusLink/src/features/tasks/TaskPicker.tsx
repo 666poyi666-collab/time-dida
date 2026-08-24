@@ -1,4 +1,4 @@
-// 滴答任务选择器 —— v0.12 弹层系统统一实现。
+// FocusLink 任务选择器 —— 桌面任务工作区与计时器共享同一任务树。
 // 契约（见 frontend-design/FRONTEND_SPEC.md 4/9 节与 styles/features/overlays.css 头部）：
 // - 材质：.overlay-surface（不透明 elevated + shadow-modal + 边缘高光），遮罩 .overlay-backdrop；
 // - 动画：framer-motion spring（stiffness 380 / damping 30）从 --popover-origin 触发位置附近
@@ -154,7 +154,7 @@ export function TaskPicker({
   const [selectedProject, setSelectedProject] = useState('');
   const [loading, setLoading] = useState(ticktickTasks.length === 0);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [providerLabel, setProviderLabel] = useState('滴答清单');
+  const [providerLabel, setProviderLabel] = useState('FocusLink 任务');
   const [closing, setClosing] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const { collapsed, toggleCollapse } = useTaskTreeCollapse(ticktickTasks, query);
@@ -188,12 +188,14 @@ export function TaskPicker({
       if (!result.ok) throw new Error(result.error);
       setTicktickProjects(result.data.projects);
       setTicktickTasks(result.data.tasks);
-      setProviderLabel(result.data.provider === 'dida-cli' ? '滴答清单 · CLI' : '滴答清单');
+      setProviderLabel(
+        result.data.provider === 'focuslink-local' ? 'FocusLink 任务' : '已导入任务',
+      );
     } catch (error) {
       const message = toErrorMessage(error);
       if (hasTasksRef.current) {
         // 已有缓存列表时刷新失败不打断浏览，走 transient 提示
-        addToast(`加载滴答任务失败：${message}`, 'error');
+        addToast(`加载任务失败：${message}`, 'error');
       } else {
         setLoadError(message);
       }
@@ -471,7 +473,7 @@ export function TaskPicker({
             <input
               ref={searchRef}
               className="task-search-input !text-[13px]"
-              placeholder="搜索滴答任务"
+              placeholder="搜索 FocusLink 任务"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={handleSearchKeyDown}
@@ -522,7 +524,7 @@ export function TaskPicker({
           id="task-picker-listbox"
           className="overlay-scroll flex-1 overflow-y-auto p-2.5"
           role="listbox"
-          aria-label="滴答任务列表"
+          aria-label="FocusLink 任务列表"
         >
           {loading && filteredTree.length === 0 ? (
             <div aria-hidden="true">
@@ -543,7 +545,7 @@ export function TaskPicker({
                 <div className="state-block-icon">
                   <Icon.AlertCircle size="md" />
                 </div>
-                <p className="state-block-title">加载滴答任务失败</p>
+                <p className="state-block-title">加载任务失败</p>
                 <p className="state-block-desc">{loadError}</p>
                 <div className="state-block-actions">
                   <button type="button" className="btn-outline" onClick={loadTasks}>
@@ -561,7 +563,9 @@ export function TaskPicker({
                     <Icon.Inbox size="md" />
                   </div>
                   <p className="state-block-title">暂无可用任务</p>
-                  <p className="state-block-desc">在滴答清单中创建任务后，点击右上角刷新。</p>
+                  <p className="state-block-desc">
+                    先在 FocusLink 任务页创建任务，再回到这里选择。
+                  </p>
                   <div className="state-block-actions">
                     <button type="button" className="btn-outline" onClick={loadTasks}>
                       <Icon.Refresh size="xs" />

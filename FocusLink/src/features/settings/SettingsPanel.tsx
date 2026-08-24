@@ -1078,13 +1078,12 @@ export function SettingsPanel() {
         </>
       ),
     },
-    // 「怎么连滴答」和「往滴答同步什么」是同一件事的两面，用户是一起想的；
-    // 旧结构把它们拆到「连接」和「同步」两个 tab，改动一个得来回跳。
+    // FocusLink is the task product. Provider adapters stay opt-in and out of the main workspace.
     {
       id: 'dida-connection',
       tab: 'integrations',
-      title: '滴答清单 · 连接方式',
-      desc: '任务固定来自滴答清单；这里只选择连接方式，默认使用本机 CLI。',
+      title: '任务来源与导入',
+      desc: '默认使用 FocusLink 自有任务库；需要时再从第三方导入。',
       keywords:
         '滴答 滴答清单 ticktick dida cli 命令行 探测 检测 自检 可执行文件 路径 模板 超时 ' +
         '任务来源 provider executable',
@@ -1092,183 +1091,199 @@ export function SettingsPanel() {
         <>
           <div className="settings-provider-list">
             <SyncModeChoice
-              active={settings.taskSource !== 'ticktick-oauth'}
-              onClick={() => update({ taskSource: 'ticktick-cli' })}
-              icon={<Icon.Link size="md" />}
-              title="滴答 CLI"
-              badge="推荐"
-              desc="复用本机登录，支持任务与专注云同步"
-            />
-            <SyncModeChoice
-              active={settings.taskSource === 'ticktick-oauth'}
-              onClick={() => update({ taskSource: 'ticktick-oauth' })}
-              icon={<Icon.Cloud size="md" />}
-              title="OAuth"
-              desc="仅在 CLI 不可用时使用开发者应用"
+              active={settings.taskSource === 'local'}
+              onClick={() => update({ taskSource: 'local', syncMode: 'local-only' })}
+              icon={<Icon.ListChecks size="md" />}
+              title="FocusLink 任务库"
+              badge="默认"
+              desc="任务、清单和层级都保存在 FocusLink 中"
             />
           </div>
 
-          {/* 探测返回前 cliDetected 是 null，二元判断会把「还不知道」直接说成「未连接」，
-              每次打开设置页都要先闪一下红字。这里保留「检测中」这个中间态。 */}
-          <div className="settings-provider-status">
-            <div className="settings-provider-status-head">
-              <div className="settings-provider-status-title">
-                <span className={`settings-provider-status-icon ${cliDetectTone}`}>
-                  {cliDetected === null ? (
-                    <Icon.Loader size="sm" spin />
-                  ) : cliDetected.found ? (
-                    <Icon.CheckCircleFilled size="sm" />
-                  ) : (
-                    <Icon.AlertCircle size="sm" />
-                  )}
-                </span>
-                <div className="min-w-0">
-                  <p className="flex items-center gap-2 text-[12.5px] font-semibold text-fg">
-                    滴答 CLI 连接
-                    <span className={`settings-status-badge ${cliDetectTone}`}>
-                      {cliDetected === null ? '检测中' : cliDetected.found ? '已连接' : '未连接'}
-                    </span>
-                  </p>
-                  <p className="mt-0.5 text-[11.5px] text-fg-subtle">
-                    {cliDetected === null
-                      ? '正在探测本机可用的 dida 命令'
-                      : cliDetected.found
-                        ? '已就绪，可读取任务与同步专注'
-                        : '尚未探测到可用命令'}
-                  </p>
-                </div>
-              </div>
-              <button
-                className="btn-outline text-[11px]"
-                onClick={detectCli}
-                disabled={cliDetecting}
-              >
-                {cliDetecting ? <Icon.Loader size="xs" spin /> : <Icon.Search size="xs" />}
-                重新探测
-              </button>
+          <details
+            className="settings-disclosure settings-external-task-disclosure"
+            open={settings.taskSource !== 'local'}
+          >
+            <summary className="motion-press">外部任务导入</summary>
+            <div className="settings-provider-list mt-3">
+              <SyncModeChoice
+                active={settings.taskSource === 'ticktick-cli'}
+                onClick={() => update({ taskSource: 'ticktick-cli' })}
+                icon={<Icon.Link size="md" />}
+                title="滴答 CLI"
+                desc="按需读取本机 CLI，导入后仍归 FocusLink 管理"
+              />
+              <SyncModeChoice
+                active={settings.taskSource === 'ticktick-oauth'}
+                onClick={() => update({ taskSource: 'ticktick-oauth' })}
+                icon={<Icon.Cloud size="md" />}
+                title="TickTick OAuth"
+                desc="仅在 CLI 不可用时使用开发者应用"
+              />
             </div>
-            <details className="settings-provider-advanced">
-              <summary className="motion-press">
-                <span>
-                  高级 CLI 配置
-                  <span className="ml-2 font-normal text-fg-subtle">仅在自动探测失败时调整</span>
-                </span>
-                <Icon.ChevronDown size="xs" tone="subtle" className="settings-provider-chevron" />
-              </summary>
-              <div className="space-y-2 border-t border-border/50 p-3">
-                {providerInfo && (
-                  <div className="settings-diag-block text-diag">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span>CLI 类型</span>
-                      <strong className="font-medium text-success">
-                        {providerInfo.providerType === 'dida'
-                          ? 'dida'
-                          : providerInfo.providerType === 'ticktick'
-                            ? 'ticktick'
-                            : '未知'}
-                      </strong>
-                      <span>·</span>
-                      <code>{providerInfo.executable || '(未配置)'}</code>
-                    </div>
-                    {providerInfo.executablePath && (
-                      <div className="mt-1 truncate">{providerInfo.executablePath}</div>
+          </details>
+
+          {settings.taskSource === 'ticktick-cli' && (
+            <div className="settings-provider-status">
+              <div className="settings-provider-status-head">
+                <div className="settings-provider-status-title">
+                  <span className={`settings-provider-status-icon ${cliDetectTone}`}>
+                    {cliDetected === null ? (
+                      <Icon.Loader size="sm" spin />
+                    ) : cliDetected.found ? (
+                      <Icon.CheckCircleFilled size="sm" />
+                    ) : (
+                      <Icon.AlertCircle size="sm" />
                     )}
-                    {providerInfo.hasStaleTicktickTemplates && (
-                      <div className="mt-1.5 rounded bg-danger/10 px-2 py-1 text-danger">
-                        当前模板与 dida 不一致，请应用默认模板。
-                      </div>
-                    )}
-                  </div>
-                )}
-                <div className="flex flex-wrap items-center gap-2">
-                  <ConfirmButton
-                    label="应用 dida 默认模板"
-                    confirmLabel="确认覆盖模板？"
-                    onConfirm={applyDidaTemplates}
-                  />
-                  <span className="text-[11px] text-fg-subtle">
-                    点击后会覆盖当前命令模板为 dida 标准模板并立即测试
                   </span>
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-2 text-[12.5px] font-semibold text-fg">
+                      滴答 CLI 连接
+                      <span className={`settings-status-badge ${cliDetectTone}`}>
+                        {cliDetected === null ? '检测中' : cliDetected.found ? '已连接' : '未连接'}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 text-[11.5px] text-fg-subtle">
+                      {cliDetected === null
+                        ? '正在探测本机可用的 dida 命令'
+                        : cliDetected.found
+                          ? '已就绪，可读取任务与同步专注'
+                          : '尚未探测到可用命令'}
+                    </p>
+                  </div>
                 </div>
-                <Row label="可执行文件路径">
-                  <input
-                    className="input min-w-[200px] font-mono text-xs"
-                    value={settings.ticktickCli.executable}
-                    onChange={(e) =>
-                      updateDebounced({
-                        ticktickCli: { ...settings.ticktickCli, executable: e.target.value },
-                      })
-                    }
-                    onBlur={() => void persistDebouncedSettings()}
-                    placeholder="留空则用自动探测结果"
-                  />
-                </Row>
-                <div className="mt-2 space-y-1.5">
-                  <Row label="列出任务命令">
-                    <input
-                      className="input min-w-[200px] font-mono text-xs"
-                      value={settings.ticktickCli.listTasksCommand}
-                      onChange={(e) =>
-                        updateDebounced({
-                          ticktickCli: {
-                            ...settings.ticktickCli,
-                            listTasksCommand: e.target.value,
-                          },
-                        })
-                      }
-                      onBlur={() => void persistDebouncedSettings()}
-                    />
-                  </Row>
-                  <Row label="搜索任务命令">
-                    <input
-                      className="input min-w-[200px] font-mono text-xs"
-                      value={settings.ticktickCli.searchTasksCommand}
-                      onChange={(e) =>
-                        updateDebounced({
-                          ticktickCli: {
-                            ...settings.ticktickCli,
-                            searchTasksCommand: e.target.value,
-                          },
-                        })
-                      }
-                      onBlur={() => void persistDebouncedSettings()}
-                    />
-                  </Row>
-                  <Row label="追加备注命令">
-                    <input
-                      className="input min-w-[200px] font-mono text-xs"
-                      value={settings.ticktickCli.appendNoteCommand}
-                      onChange={(e) =>
-                        updateDebounced({
-                          ticktickCli: {
-                            ...settings.ticktickCli,
-                            appendNoteCommand: e.target.value,
-                          },
-                        })
-                      }
-                      onBlur={() => void persistDebouncedSettings()}
-                    />
-                  </Row>
-                  <Row label="超时（毫秒）">
-                    <input
-                      type="number"
-                      min={1000}
-                      className="input w-24 text-xs"
-                      value={settings.ticktickCli.timeoutMs}
-                      onChange={(e) =>
-                        update({
-                          ticktickCli: {
-                            ...settings.ticktickCli,
-                            timeoutMs: Math.max(1000, Number(e.target.value) || 10000),
-                          },
-                        })
-                      }
-                    />
-                  </Row>
-                </div>
+                <button
+                  className="btn-outline text-[11px]"
+                  onClick={detectCli}
+                  disabled={cliDetecting}
+                >
+                  {cliDetecting ? <Icon.Loader size="xs" spin /> : <Icon.Search size="xs" />}
+                  重新探测
+                </button>
               </div>
-            </details>
-          </div>
+              <details className="settings-provider-advanced">
+                <summary className="motion-press">
+                  <span>
+                    高级 CLI 配置
+                    <span className="ml-2 font-normal text-fg-subtle">仅在自动探测失败时调整</span>
+                  </span>
+                  <Icon.ChevronDown size="xs" tone="subtle" className="settings-provider-chevron" />
+                </summary>
+                <div className="space-y-2 border-t border-border/50 p-3">
+                  {providerInfo && (
+                    <div className="settings-diag-block text-diag">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span>CLI 类型</span>
+                        <strong className="font-medium text-success">
+                          {providerInfo.providerType === 'dida'
+                            ? 'dida'
+                            : providerInfo.providerType === 'ticktick'
+                              ? 'ticktick'
+                              : '未知'}
+                        </strong>
+                        <span>·</span>
+                        <code>{providerInfo.executable || '(未配置)'}</code>
+                      </div>
+                      {providerInfo.executablePath && (
+                        <div className="mt-1 truncate">{providerInfo.executablePath}</div>
+                      )}
+                      {providerInfo.hasStaleTicktickTemplates && (
+                        <div className="mt-1.5 rounded bg-danger/10 px-2 py-1 text-danger">
+                          当前模板与 dida 不一致，请应用默认模板。
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ConfirmButton
+                      label="应用 dida 默认模板"
+                      confirmLabel="确认覆盖模板？"
+                      onConfirm={applyDidaTemplates}
+                    />
+                    <span className="text-[11px] text-fg-subtle">
+                      点击后会覆盖当前命令模板为 dida 标准模板并立即测试
+                    </span>
+                  </div>
+                  <Row label="可执行文件路径">
+                    <input
+                      className="input min-w-[200px] font-mono text-xs"
+                      value={settings.ticktickCli.executable}
+                      onChange={(e) =>
+                        updateDebounced({
+                          ticktickCli: { ...settings.ticktickCli, executable: e.target.value },
+                        })
+                      }
+                      onBlur={() => void persistDebouncedSettings()}
+                      placeholder="留空则用自动探测结果"
+                    />
+                  </Row>
+                  <div className="mt-2 space-y-1.5">
+                    <Row label="列出任务命令">
+                      <input
+                        className="input min-w-[200px] font-mono text-xs"
+                        value={settings.ticktickCli.listTasksCommand}
+                        onChange={(e) =>
+                          updateDebounced({
+                            ticktickCli: {
+                              ...settings.ticktickCli,
+                              listTasksCommand: e.target.value,
+                            },
+                          })
+                        }
+                        onBlur={() => void persistDebouncedSettings()}
+                      />
+                    </Row>
+                    <Row label="搜索任务命令">
+                      <input
+                        className="input min-w-[200px] font-mono text-xs"
+                        value={settings.ticktickCli.searchTasksCommand}
+                        onChange={(e) =>
+                          updateDebounced({
+                            ticktickCli: {
+                              ...settings.ticktickCli,
+                              searchTasksCommand: e.target.value,
+                            },
+                          })
+                        }
+                        onBlur={() => void persistDebouncedSettings()}
+                      />
+                    </Row>
+                    <Row label="追加备注命令">
+                      <input
+                        className="input min-w-[200px] font-mono text-xs"
+                        value={settings.ticktickCli.appendNoteCommand}
+                        onChange={(e) =>
+                          updateDebounced({
+                            ticktickCli: {
+                              ...settings.ticktickCli,
+                              appendNoteCommand: e.target.value,
+                            },
+                          })
+                        }
+                        onBlur={() => void persistDebouncedSettings()}
+                      />
+                    </Row>
+                    <Row label="超时（毫秒）">
+                      <input
+                        type="number"
+                        min={1000}
+                        className="input w-24 text-xs"
+                        value={settings.ticktickCli.timeoutMs}
+                        onChange={(e) =>
+                          update({
+                            ticktickCli: {
+                              ...settings.ticktickCli,
+                              timeoutMs: Math.max(1000, Number(e.target.value) || 10000),
+                            },
+                          })
+                        }
+                      />
+                    </Row>
+                  </div>
+                </div>
+              </details>
+            </div>
+          )}
         </>
       ),
     },
@@ -1392,8 +1407,8 @@ export function SettingsPanel() {
     {
       id: 'dida-sync',
       tab: 'integrations',
-      title: '滴答清单 · 同步去向',
-      desc: '选择专注结束后的主同步去向；未同步与失败记录保留在本机。',
+      title: '第三方同步去向',
+      desc: '仅在你主动启用第三方任务适配器后使用；未同步与失败记录保留在本机。',
       keywords:
         '同步 去向 队列 未同步 同步失败 重试 云端专注 专注统计 任务评论 备注 仅本机 本地 ' +
         'sync mode comment focus-record local-only',
@@ -1632,7 +1647,7 @@ export function SettingsPanel() {
       id: 'about',
       tab: 'system',
       title: '关于 FocusLink',
-      desc: '全局快捷键驱动的专注计时器 + 滴答清单任务关联工具',
+      desc: 'FocusLink 自有任务、专注计时与多端账本工作台',
       keywords: '关于 版本 version about 更新',
       render: () => (
         <Row label="当前版本">
@@ -1642,12 +1657,17 @@ export function SettingsPanel() {
     },
   ];
 
+  const availableSections = sections.filter((section) => {
+    if (section.id === 'dida-sync') return settings.taskSource !== 'local';
+    if (section.id === 'dida-oauth') return settings.taskSource === 'ticktick-oauth';
+    return true;
+  });
   const query = search.trim().toLowerCase();
   const searching = query.length > 0;
   // 搜索横跨全部分组：设置项藏在哪个分组是我们的分类结果，不该要求用户先猜对。
   const visibleSections = searching
-    ? sections.filter((section) => sectionMatches(section, query))
-    : sections.filter((section) => section.tab === activeTab);
+    ? availableSections.filter((section) => sectionMatches(section, query))
+    : availableSections.filter((section) => section.tab === activeTab);
 
   return (
     <div className="settings-page">

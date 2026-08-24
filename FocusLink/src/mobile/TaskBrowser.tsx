@@ -107,7 +107,7 @@ export function TaskBrowser({
     <section className="task-browser view-surface" aria-labelledby="task-browser-title">
       <header className="view-heading">
         <div>
-          <p className="eyebrow">FOCUSLINK WORKSPACE</p>
+          <p className="eyebrow">FOCUSLINK · 自有任务</p>
           <h2 id="task-browser-title">我的任务</h2>
         </div>
         <div className="view-heading-meta">
@@ -212,19 +212,17 @@ export function TaskBrowser({
       </div>
 
       <div className="task-snapshot-meta">
-        <span>FocusLink 云端 rev {revision}</span>
-        <span>
-          {publishedAt ? `已确认于 ${formatSnapshotTime(publishedAt)}` : '等待账号同步任务'}
-        </span>
+        <span>本地任务 · rev {revision}</span>
+        <span>{publishedAt ? `最近同步 ${formatSnapshotTime(publishedAt)}` : '仅保存在本机'}</span>
       </div>
 
       {taskForest.length === 0 ? (
         <div className="task-empty">
           <Target aria-hidden="true" />
-          <strong>{tasks.length === 0 ? '还没有云端任务快照' : '没有符合条件的待办'}</strong>
+          <strong>{tasks.length === 0 ? '还没有 FocusLink 任务' : '没有符合条件的待办'}</strong>
           <p>
             {tasks.length === 0
-              ? '在电脑端创建或导入任务后，登录同一 FocusLink 账号即可在这里看到。'
+              ? '先在这里创建任务；登录后会自动同步到其他 FocusLink 设备。'
               : '调整搜索词或清单筛选。'}
           </p>
         </div>

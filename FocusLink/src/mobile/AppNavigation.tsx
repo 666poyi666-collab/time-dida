@@ -27,7 +27,6 @@ export function AppNavigation({ activeView, onChange }: AppNavigationProps) {
             aria-current={activeView === item.id ? 'page' : undefined}
             onClick={() => onChange(item.id)}
           >
-            <small aria-hidden="true">{item.code}</small>
             <Icon aria-hidden="true" />
             <span>{item.label}</span>
           </button>

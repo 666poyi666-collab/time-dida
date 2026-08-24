@@ -102,7 +102,7 @@ app
       const style = getComputedStyle(el);
       return { fontSize: style.fontSize, fontWeight: style.fontWeight, family: style.fontFamily };
     })()`);
-    if (heading.fontSize !== '13px') {
+    if (heading.fontSize !== '15px') {
       throw new Error(`Section heading font shorthand did not apply: ${JSON.stringify(heading)}`);
     }
     console.log('[ui] section heading:', JSON.stringify(heading));
@@ -112,6 +112,18 @@ app
       const groups = [...document.querySelectorAll('.settings-nav-list .settings-tab')];
       groups[3]?.click();
     })()`);
+    await sleep(320);
+    const providerReveal = await mainWindow.webContents.executeJavaScript(`(() => {
+      const external = document.querySelector('.settings-external-task-disclosure');
+      if (!(external instanceof HTMLDetailsElement)) return false;
+      external.open = true;
+      const provider = [...external.querySelectorAll('button')].find((button) =>
+        button.textContent?.includes('滴答 CLI')
+      );
+      provider?.click();
+      return Boolean(provider);
+    })()`);
+    if (!providerReveal) throw new Error('Explicit external task import control is unavailable');
     await sleep(320);
     await mainWindow.webContents.executeJavaScript(`
       document.querySelector('.settings-provider-advanced')?.setAttribute('open', '')
@@ -125,6 +137,10 @@ app
       throw new Error(`Tailwind font-mono did not resolve: ${String(monoFamily)}`);
     }
     console.log('[ui] font-mono resolves to:', monoFamily);
+    await mainWindow.webContents.executeJavaScript(`
+      window.focuslink.settings.set({ taskSource: 'local', syncMode: 'local-only' })
+    `);
+    await sleep(320);
 
     // ── 子任务折叠：对真实滴答数据验证 ──────────────────────
     // 滴答的子任务有两种形态：任务内嵌的 checklist items，以及带 parentId、

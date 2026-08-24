@@ -1,5 +1,17 @@
 # FocusLink 实施日志
 
+## 2026-08-24 · v0.12.94 FocusLink 2.0 自有任务与三端视觉重做
+
+- **需求证据**：用户明确表示 FocusLink 不应默认显示或依赖滴答清单，主要任务由用户在 FocusLink 内创建；三端 UI 与审美需要整体更新。
+- **根因**：前一版虽已把本地任务设为数据主库，但 `DEFAULT_SETTINGS.taskSource` 仍为 `ticktick-cli`，任务刷新会在空本地库时探测并导入第三方；桌面任务、移动任务快照和错误态仍保留大量第三方语义。
+- **修复**：默认 `taskSource=local`；本地模式下 `refreshTaskWorkspace` 只返回 FocusLink 本地任务，第三方 CLI/OAuth 只有在设置主动选择后才参与。任务页同步按钮在本地模式下不执行第三方任务队列。
+- **UI**：桌面新增 FocusLink 2.0 视觉覆盖层，重做任务导航/执行列表/详情、专注仪表层、统计和设置的颜色、间距、边界和层级；移动端新增同源任务/专注/导航视觉层，手机和平板共享文案与状态语义。
+- **自动化验证**：类型检查、桌面/移动生产构建、完整 Vitest `117 files / 859 tests` 通过；专项任务/设置/响应式合同 `9 files / 82 tests` 通过。移动 production screenshot 覆盖 360×800、412×915、640×1024、760×1024、915×412 的明暗四页面，均无横向溢出、离屏元素或低于 44px 的交互目标；桌面明暗与最小窗四页面截图门禁通过。本轮文件级 Prettier/ESLint 通过；全仓 `format:check` 仍被未触及的 `cloud/mcp` 26 个文件格式存量阻断，全仓 Lint 仍被 `cloud/mcp/tests/setup.ts` 的 namespace 存量规则阻断。
+- **Windows 实装**：本地 dirty 候选安装器静默覆盖 exit 0；卸载项 `DisplayVersion=0.12.94`，安装目录 EXE 回读 `FileVersion=0.12.94 / ProductVersion=0.12.94.0`，应用已重启。该事实用于本轮验收，不冒充干净提交正式资产。
+- **Android 签名边界**：正式 `app.focuslink.mobile` 在小米为 `0.12.87/1287`、华为为 `0.12.85/1285`，两台均因历史签名不同拒绝 `adb install -r`；未卸载正式包，数据保持原样。华为并存 `app.focuslink.mobile.staging.test`、小米并存 `app.focuslink.mobile.staging.ui1294` 均实际安装、启动并回读 `0.12.94/1294`。
+- **真机视觉**：华为 DBY-W09 唤醒后截图确认新专注页、FocusLink 自有任务文案、单栏内容与底部导航真实渲染。小米 xaga 处于受凭据保护锁屏，像素截图为纯黑；WebView CDP 回读标题、完整 FocusLink 2.0 DOM、四项导航、`didaVisible=false`，故渲染结构已确认，锁屏后的可见像素验收仍为 **BLOCKED**。
+- **发布卫生**：`.git/lfs/tmp` 三次被 Git 观察器分别写入 `4,674,849,792 B`、`3,413,861,376 B` 与 `12,546,168,996 B` 临时缓存；第三次由最旧 release 目录暂时进入删除态触发，恢复目录后消除该状态。每次均确认无活动 Git/LFS 进程后移至 `C:\Temp` 隔离，仓库临时目录恢复为 0；`.git/lfs/objects` 未动。Windows 打包首次因 winCodeSign 缓存创建 macOS 符号链接权限失败，使用本机已存在的完整 Windows 工具缓存后成功，未修改系统权限。
+
 ## 2026-08-23 · v0.12.93 华为平板真机连接与竖屏修复
 
 - **连接**：华为 DBY-W09 已通过 `192.168.1.7:5555` 恢复 ADB，设备型号回读 `DBY_W09`。

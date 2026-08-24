@@ -17,6 +17,11 @@ import {
 } from '../shared/theme';
 
 describe('settings partial update policy', () => {
+  it('starts in the FocusLink-owned task library without third-party delivery', () => {
+    expect(DEFAULT_SETTINGS.taskSource).toBe('local');
+    expect(DEFAULT_SETTINGS.syncMode).toBe('local-only');
+  });
+
   it('preserves the full settings object when the task drawer only changes taskSource', () => {
     const next = mergeSettings(DEFAULT_SETTINGS, { taskSource: 'ticktick-cli' });
 

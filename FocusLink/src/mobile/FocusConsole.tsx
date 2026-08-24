@@ -170,7 +170,9 @@ export function FocusConsole({
                     <ListTree aria-hidden="true" />
                     <span>
                       <strong>{selectedTask?.title ?? '自由专注（不关联任务）'}</strong>
-                      <small>{selectedTask ? '已从云端快照选择' : '轻触展开项目与父子任务'}</small>
+                      <small>
+                        {selectedTask ? '已从 FocusLink 任务选择' : '轻触展开清单与父子任务'}
+                      </small>
                     </span>
                     <ChevronRight aria-hidden="true" />
                   </button>
@@ -187,7 +189,7 @@ export function FocusConsole({
                 )}
                 <small>
                   {tasks.length > 0
-                    ? `已缓存云端 ${tasks.length} 个任务`
+                    ? `已加载 ${tasks.length} 个 FocusLink 任务`
                     : '登录同一 FocusLink 账号后，任务会自动出现在这里'}
                 </small>
               </div>
@@ -407,7 +409,7 @@ export function FocusConsole({
 
           <div className="desktop-delivery-note">
             <strong>FocusLink 负责多端同步</strong>
-            <p>结束记录先上传 FocusLink 云端；滴答清单与番茄 To-Do 仅作为兼容投递渠道。</p>
+            <p>任务、专注状态与结束账本都归入同一个 FocusLink 账号。</p>
           </div>
 
           {commandNotice && (

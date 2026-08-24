@@ -36,6 +36,7 @@ const MIGRATION_RESYNC_FOCUS_RECORD_V0410_KEY = 'migration.resyncFocusRecordV041
 const MIGRATION_TOMATODO_CLOUD_V053_KEY = 'migration.tomatodoCloudV053';
 const MIGRATION_RECONCILE_DIDA_FOCUS_V060_KEY = 'migration.reconcileDidaFocusV060';
 const MIGRATION_DEVICE_SYNC_PORT_V01221_KEY = 'migration.deviceSyncPortV01221';
+const MIGRATION_FOCUSLINK_TASKS_V01294_KEY = 'migration.focuslinkTasksV01294';
 const MIGRATION_FLAG_DONE = '1';
 let tomatodoCloudMigrationAttemptedThisRun = false;
 
@@ -80,11 +81,25 @@ export function getSettings(): AppSettings {
   applyTomatodoCloudV053Migration(settings);
   applyReconcileDidaFocusV060Migration();
   applyDeviceSyncPortV01221Migration(settings);
+  applyFocusLinkTasksV01294Migration(settings);
   normalizeSegmentBehavior(settings);
   normalizeAppearanceSettings(settings);
   normalizeTomatodoFallback(settings);
   normalizeMiniWindowSize(settings);
   return settings;
+}
+
+/** v0.12.94 makes FocusLink the explicit task product. Existing tasks stay intact;
+ *  only the browsing/sync defaults move away from an implicitly detected provider. */
+function applyFocusLinkTasksV01294Migration(settings: AppSettings): void {
+  const flag = getSetting(MIGRATION_FOCUSLINK_TASKS_V01294_KEY);
+  if (flag === MIGRATION_FLAG_DONE) return;
+  settings.taskSource = 'local';
+  settings.syncMode = 'local-only';
+  store.store = settings;
+  setSetting(SETTINGS_KEY, JSON.stringify(settings));
+  setSetting(MIGRATION_FOCUSLINK_TASKS_V01294_KEY, MIGRATION_FLAG_DONE);
+  logger.info('settings', 'v01294 migration: FocusLink task library is now the default');
 }
 
 /** 未识别记录只有一个稳定兜底“学习”；六大学科只来自自动命中或手动选择。 */

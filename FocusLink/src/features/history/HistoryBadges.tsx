@@ -133,42 +133,38 @@ export function SessionDetailHeader({
               text="本地已保存"
               title="Session、专注片段、暂停片段已写入本地 SQLite"
             />
-            <TinyStatusChip
-              tone={
-                syncMode === 'local-only'
-                  ? 'muted'
-                  : syncing
-                    ? 'warn'
-                    : syncState.tone === 'ok'
-                      ? 'ok'
-                      : ticktick.length > 0
-                        ? 'warn'
-                        : 'muted'
-              }
-              icon={<Icon.Refresh size="xs" />}
-              text={
-                syncing
-                  ? '滴答同步中'
-                  : syncMode === 'local-only'
-                    ? '滴答同步已关闭'
-                    : syncState.tone === 'ok'
-                      ? `滴答已同步 · ${formatDuration(ticktickMs)}`
-                      : ticktick.length > 0
-                        ? `滴答未同步 · ${ticktick.length} 段`
-                        : '无滴答片段'
-              }
-              title={
-                syncing
-                  ? '正在处理同步队列'
-                  : syncMode === 'local-only'
-                    ? '当前同步模式为仅本地'
-                    : syncState.tone === 'ok'
-                      ? '最近一次同步已完成'
-                      : ticktick.length > 0
-                        ? '已有滴答关联片段，但还没有成功同步记录'
-                        : '当前没有关联到滴答任务的专注片段'
-              }
-            />
+            {(ticktick.length > 0 || syncing) && (
+              <TinyStatusChip
+                tone={
+                  syncMode === 'local-only'
+                    ? 'muted'
+                    : syncing
+                      ? 'warn'
+                      : syncState.tone === 'ok'
+                        ? 'ok'
+                        : 'warn'
+                }
+                icon={<Icon.Refresh size="xs" />}
+                text={
+                  syncing
+                    ? '外部同步中'
+                    : syncMode === 'local-only'
+                      ? '外部同步已关闭'
+                      : syncState.tone === 'ok'
+                        ? `外部已同步 · ${formatDuration(ticktickMs)}`
+                        : `外部未同步 · ${ticktick.length} 段`
+                }
+                title={
+                  syncing
+                    ? '正在处理外部同步队列'
+                    : syncMode === 'local-only'
+                      ? '当前同步模式为仅本地'
+                      : syncState.tone === 'ok'
+                        ? '最近一次外部同步已完成'
+                        : '已有外部来源片段，但还没有成功同步记录'
+                }
+              />
+            )}
             <TinyStatusChip
               tone={unlinked > 0 ? 'warn' : 'muted'}
               icon={<Icon.AlertCircle size="xs" />}

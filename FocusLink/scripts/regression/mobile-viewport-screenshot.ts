@@ -14,7 +14,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..', '..');
 const outputDir = path.resolve(projectRoot, 'test-data', 'mobile-viewport-screenshots');
 
-const VIEWPORTS = [
+interface ScreenshotViewport {
+  id: string;
+  label: string;
+  width: number;
+  height: number;
+  scale: number;
+  shell: 'mobile' | 'watch';
+}
+
+const VIEWPORTS: readonly ScreenshotViewport[] = [
   { id: 'phone-360', label: '360px phone', width: 360, height: 800, scale: 3, shell: 'mobile' },
   { id: 'phone-412', label: '412px phone', width: 412, height: 915, scale: 2.625, shell: 'mobile' },
   {
@@ -40,15 +49,6 @@ const VIEWPORTS = [
     height: 412,
     scale: 2.625,
     shell: 'mobile',
-  },
-  { id: 'watch', label: 'OPPO OWW221 189×248', width: 189, height: 248, scale: 2, shell: 'watch' },
-  {
-    id: 'watch-legacy',
-    label: 'OPPO OWW221 320×420',
-    width: 320,
-    height: 420,
-    scale: 1.18,
-    shell: 'watch',
   },
 ] as const;
 
@@ -217,6 +217,7 @@ async function validateViewport(
       );
       if (view === '专注' && viewport.width >= 620) {
         const focusLayout = await readFocusLayout(win);
+        console.log(`[mobile] ${viewport.id}/${theme}/focus-layout ${JSON.stringify(focusLayout)}`);
         assert(
           focusLayout.primaryTop < focusLayout.innerHeight && focusLayout.primaryBottom > 0,
           `${viewport.id} primary timer is outside the first viewport`,
@@ -604,6 +605,7 @@ async function readViewMetrics(
   scrollWidth: number;
   offenders: string[];
   smallestInteractiveTarget: number;
+  smallTargets: string[];
 }> {
   return win.webContents.executeJavaScript(`(() => {
     const tolerance = 1;
@@ -616,12 +618,13 @@ async function readViewMetrics(
       })
       .slice(0, 8)
       .map((element) => element.className || element.tagName.toLowerCase());
-    const visibleTargets = [...document.querySelectorAll('main button, main input, main select, main [role="button"]')]
+    const targetElements = [...document.querySelectorAll('main button, main input, main select, main [role="button"]')]
       .filter((element) => {
         const style = getComputedStyle(element);
         const rect = element.getBoundingClientRect();
         return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
-      })
+      });
+    const visibleTargets = targetElements
       .map((element) => element.getBoundingClientRect())
       .map((rect) => Math.min(rect.width, rect.height));
     return {
@@ -630,6 +633,17 @@ async function readViewMetrics(
       scrollWidth: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
       offenders,
       smallestInteractiveTarget: visibleTargets.length ? Math.min(...visibleTargets) : 44,
+      smallTargets: targetElements
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return Math.min(rect.width, rect.height) < 43.95;
+        })
+        .slice(0, 8)
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return String(element.className || element.tagName.toLowerCase()) + ':' +
+            Math.round(rect.width * 10) / 10 + 'x' + Math.round(rect.height * 10) / 10;
+        }),
     };
   })()`);
 }

@@ -22,7 +22,7 @@ const COMPLETED_RANGES = [30, 90, 365] as const;
 const COMPLETION_GRACE_MS = 620;
 const SORT_OPTIONS: Record<TaskFilter, Array<{ id: TaskSortMode; label: string }>> = {
   open: [
-    { id: 'smart', label: '滴答顺序' },
+    { id: 'smart', label: 'FocusLink 顺序' },
     { id: 'due', label: '截止日期' },
     { id: 'title', label: '任务名称' },
   ],
@@ -44,8 +44,15 @@ interface CompletedTaskEntry {
 }
 
 export function TaskWorkspace() {
-  const { snapshot, syncQueue, setSyncQueue, setTicktickTasks, setTicktickProjects, addToast } =
-    useStore();
+  const {
+    snapshot,
+    settings,
+    syncQueue,
+    setSyncQueue,
+    setTicktickTasks,
+    setTicktickProjects,
+    addToast,
+  } = useStore();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState('');
@@ -155,9 +162,10 @@ export function TaskWorkspace() {
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
   );
-  const pendingSyncCount = syncQueue.filter(
-    (item) => item.status === 'pending' || item.status === 'failed',
-  ).length;
+  const pendingSyncCount =
+    settings?.taskSource === 'local'
+      ? 0
+      : syncQueue.filter((item) => item.status === 'pending' || item.status === 'failed').length;
   // 已完成/未完成分组切换淡入：reduced-motion 时仅保留 140ms 透明度过渡。
   const reduceMotion = useReducedMotion();
 
@@ -267,7 +275,9 @@ export function TaskWorkspace() {
     if (syncing) return;
     setSyncing(true);
     const [dida, tomatodo] = await Promise.allSettled([
-      window.focuslink.sync.runPending(),
+      settings?.taskSource === 'local'
+        ? Promise.resolve({ succeeded: 0, failed: 0, skipped: true })
+        : window.focuslink.sync.runPending(),
       window.focuslink.tomatodo.uploadPending(),
     ]);
     try {
@@ -276,8 +286,8 @@ export function TaskWorkspace() {
       // The primary result below remains the source of truth for feedback.
     }
     const failures: string[] = [];
-    if (dida.status === 'rejected') failures.push(`滴答：${toErrorMessage(dida.reason)}`);
-    else if (dida.value.failed > 0) failures.push(`滴答：${dida.value.failed} 条失败`);
+    if (dida.status === 'rejected') failures.push(`任务同步：${toErrorMessage(dida.reason)}`);
+    else if (dida.value.failed > 0) failures.push(`任务同步：${dida.value.failed} 条失败`);
     if (tomatodo.status === 'rejected')
       failures.push(`番茄 Todo：${toErrorMessage(tomatodo.reason)}`);
     else if (!tomatodo.value.ok) failures.push(`番茄 Todo：${tomatodo.value.error ?? '上传失败'}`);
@@ -328,8 +338,8 @@ export function TaskWorkspace() {
       {/* 工位横幅：视图身份 → 全局任务读数 → 同步与刷新 */}
       <header className="task-console view-console">
         <div className="console-identity">
-          <span className="console-kicker">任务 · 执行台</span>
-          <span className="task-console-word">{filter === 'open' ? '待完成' : '完成档案'}</span>
+          <span className="console-kicker">FocusLink · 任务</span>
+          <span className="task-console-word">{filter === 'open' ? '今日执行' : '完成记录'}</span>
           <span className="task-console-count">
             {filter === 'completed'
               ? `最近 ${completedDays} 天 · ${displayedCount} 项`
@@ -365,23 +375,25 @@ export function TaskWorkspace() {
               +
             </button>
           </form>
-          <button
-            type="button"
-            className="task-icon-action"
-            onClick={syncAll}
-            disabled={syncing}
-            aria-label="同步到滴答清单与番茄 Todo"
-            title="同步到滴答清单与番茄 Todo"
-          >
-            {syncing ? <Spinner size="sm" /> : <Icon.Cloud size="sm" />}
-          </button>
+          {(settings?.taskSource !== 'local' || settings?.tomatodo.enabled) && (
+            <button
+              type="button"
+              className="task-icon-action"
+              onClick={syncAll}
+              disabled={syncing}
+              aria-label="同步已启用的外部服务"
+              title="同步已启用的外部服务"
+            >
+              {syncing ? <Spinner size="sm" /> : <Icon.Cloud size="sm" />}
+            </button>
+          )}
           <button
             type="button"
             className="task-icon-action"
             onClick={() => refresh(filter === 'completed', true, completedDays, true)}
             disabled={refreshing}
-            aria-label="刷新滴答清单"
-            title="刷新滴答清单"
+            aria-label="刷新 FocusLink 任务"
+            title="刷新 FocusLink 任务"
           >
             <Icon.Refresh size="sm" spin={refreshing} />
           </button>
@@ -396,7 +408,7 @@ export function TaskWorkspace() {
             </span>
             <div>
               <strong>任务索引</strong>
-              <span>从清单进入专注</span>
+              <span>先安排，再进入专注</span>
             </div>
           </div>
 
@@ -466,18 +478,14 @@ export function TaskWorkspace() {
             <span className={loadError ? 'error' : lastRefresh ? 'ready' : 'pending'} />
             <div>
               <strong>
-                {loadError
-                  ? '连接需要检查'
-                  : lastRefresh
-                    ? 'FocusLink 云端已确认'
-                    : '正在连接 FocusLink'}
+                {loadError ? '需要检查同步' : lastRefresh ? '本地任务已就绪' : '正在读取任务'}
               </strong>
               <small>
                 {loadError
-                  ? '任务读取失败，可在设置里检查账号与同步'
+                  ? '任务读取失败，可在设置里检查同步'
                   : lastRefresh
                     ? `${formatRefreshTime(lastRefresh)} 更新`
-                    : '正在读取任务清单'}
+                    : '正在读取 FocusLink 任务'}
               </small>
             </div>
           </div>
@@ -553,7 +561,7 @@ export function TaskWorkspace() {
                 <TaskEmpty
                   danger
                   icon={<Icon.CloudOff size="lg" />}
-                  title="无法读取滴答清单"
+                  title="暂时读不到任务"
                   detail={loadError}
                   action="重新连接"
                   onAction={() => refresh(filter === 'completed', false, completedDays, true)}
@@ -920,7 +928,7 @@ function TaskInspector({
     <div className="task-inspector-sheet" key={task.id}>
       <header className="task-inspector-head">
         <span className="task-inspector-kicker">
-          {task.source === 'ticktick' ? '滴答清单任务' : '本地任务'}
+          {task.source === 'local' ? 'FocusLink 任务' : '导入任务'}
           {task.isCompleted ? ' · 已完成' : ''}
         </span>
         <h2 className="task-inspector-title">{task.title}</h2>
@@ -1101,7 +1109,7 @@ function CompleteControlGlyph() {
 function TaskSkeletonList() {
   const widths = [72, 58, 80, 64, 76, 52];
   return (
-    <div className="task-skeleton-list" aria-label="正在读取滴答清单">
+    <div className="task-skeleton-list" aria-label="正在读取 FocusLink 任务">
       {widths.map((width, index) => (
         <div className="task-skeleton-row" key={index}>
           <span className="task-skeleton-dot skeleton" />

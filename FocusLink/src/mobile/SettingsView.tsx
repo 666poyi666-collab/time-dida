@@ -159,10 +159,7 @@ export function SettingsView({
 
       <div className="capability-boundary">
         <strong>桌面端专属操作</strong>
-        <p>
-          FocusLink 任务与专注记录由账号云端负责同步；滴答清单与番茄 To-do
-          仅作为桌面端兼容投递渠道。
-        </p>
+        <p>FocusLink 任务与专注记录由账号云端负责同步；外部导入与投递只在桌面端设置中管理。</p>
       </div>
     </section>
   );

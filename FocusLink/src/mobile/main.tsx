@@ -6,6 +6,7 @@ import { WatchApp } from './WatchApp';
 import { applyMobileAppearance, loadMobileAppearance } from './appearance';
 import { isTabletFocusViewport, isWatchFocusViewport } from './viewportPolicy';
 import './mobile.css';
+import './focuslink-2-mobile.css';
 import './mobile-confirm.css';
 
 // 手表（OPPO OWW221，378×496 物理像素）跑的是同一个 APK；按视口分流到专用壳层。

@@ -4,6 +4,7 @@ import { ticktickAdapter } from '../integrations/ticktick/oauthAdapter.js';
 import { detectCli, ticktickCliProvider } from './cliProvider.js';
 import { LocalTaskProvider } from './localProvider.js';
 import { publishDeviceTaskSnapshot, readDeviceTaskSnapshot } from '../sync/deviceSyncService.js';
+import { getSettings } from '../settingsStore.js';
 
 export async function setTaskCompleted(task: Task, completed: boolean): Promise<Task> {
   if (task.source === 'local') return LocalTaskProvider.setCompleted(task.id, completed);
@@ -46,7 +47,10 @@ export async function refreshTaskWorkspace(
       LocalTaskProvider.mergeCloudSnapshot(cloud.snapshot.projects, cloud.snapshot.tasks);
     }
     const localTasks = LocalTaskProvider.list();
-    if (localTasks.length > 0) {
+    const taskSource = getSettings().taskSource;
+    // The FocusLink workspace is local-first. Do not surprise a new installation by
+    // importing a provider merely because its CLI happens to be installed.
+    if (taskSource === 'local') {
       const projects = LocalTaskProvider.listProjects();
       const tasks = localTasks.filter(
         (task) => !selectedProjectId || task.projectId === selectedProjectId,
@@ -106,7 +110,7 @@ export async function refreshTaskWorkspace(
     if (!ticktickAdapter.isAuthenticated) {
       return {
         ok: false,
-        error: '未找到 dida CLI，且 TickTick OAuth 尚未登录。请先配置一种滴答连接方式。',
+        error: '未配置可选任务导入连接。FocusLink 本地任务仍可正常使用。',
       };
     }
     providerLabel = 'TickTick OAuth';

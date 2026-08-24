@@ -25,6 +25,15 @@ describe('desktop FocusLink account settings', () => {
     expect(source).toContain('退出登录');
   });
 
+  it('keeps external task adapters behind an explicit collapsed import entry', () => {
+    expect(source).toContain('settings-external-task-disclosure');
+    expect(source).toContain('外部任务导入');
+    expect(source).toContain("section.id === 'dida-sync'");
+    expect(source).toContain("settings.taskSource !== 'local'");
+    expect(source).toContain("section.id === 'dida-oauth'");
+    expect(source).toContain("settings.taskSource === 'ticktick-oauth'");
+  });
+
   it('renders device-sync health from the machine-code presentation with its durable conflict count', () => {
     expect(source).toContain(
       "import { presentDeviceSyncError } from './deviceSyncStatusPresentation';",

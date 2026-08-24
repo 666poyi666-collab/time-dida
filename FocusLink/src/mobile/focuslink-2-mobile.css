@@ -1,0 +1,614 @@
+/* FocusLink 2.0 mobile surface: the same task-first hierarchy as desktop,
+   tuned for thumb reach and dense scanning. */
+:root {
+  --canvas: #f3f5f4;
+  --surface: #ffffff;
+  --surface-2: #e9eeee;
+  --text: #20282b;
+  --muted: #627075;
+  --subtle: #89979a;
+  --border: #d8e0e1;
+  --border-strong: #b8c6c8;
+  --focus: #167e97;
+  --focus-soft: #e4f2f4;
+  --pause: #d26737;
+  --pause-soft: #faece4;
+  --warning: #a1702b;
+  --danger: #aa3f35;
+}
+body {
+  background: var(--canvas);
+  color: var(--text);
+}
+.mobile-shell {
+  width: min(100%, 1180px);
+  border: 0;
+  background: var(--canvas);
+}
+.mobile-shell::before {
+  display: none;
+}
+.mobile-topbar {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  min-height: 72px;
+  padding: 14px clamp(18px, 4vw, 42px);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(16px);
+}
+.brand-lockup {
+  gap: 12px;
+}
+.mobile-brand-mark {
+  width: 28px;
+  height: 28px;
+}
+.mobile-topbar .eyebrow {
+  margin-bottom: 2px;
+  color: var(--focus);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+}
+.brand-lockup h1 {
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 680;
+  letter-spacing: 0;
+}
+.mobile-topbar .icon-button {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--muted);
+}
+html[data-device-tier='tablet'] body .mobile-topbar {
+  padding-right: clamp(18px, 4vw, 42px);
+  padding-left: clamp(18px, 4vw, 42px);
+}
+.app-frame {
+  gap: 0;
+}
+.mobile-main {
+  min-width: 0;
+  padding: 0 clamp(12px, 3vw, 34px) calc(104px + env(safe-area-inset-bottom));
+}
+.sync-strip {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 18px;
+  margin: 16px 0 12px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+}
+.sync-status {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.sync-copy strong {
+  color: var(--text);
+  font-size: 11px;
+}
+.sync-copy span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.sync-button {
+  min-width: 76px;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+}
+.mobile-workspace {
+  min-width: 0;
+}
+.view-surface,
+.focus-console {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px rgb(32 40 43 / 0.06);
+}
+.view-heading,
+.focus-console-header {
+  min-height: 74px;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.view-heading h2,
+.focus-console-header h2 {
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 680;
+  letter-spacing: 0;
+}
+.view-heading .eyebrow,
+.focus-console-header .eyebrow {
+  color: var(--focus);
+  font-size: 9px;
+  letter-spacing: 0.13em;
+}
+.view-heading-meta {
+  gap: 4px;
+}
+.view-heading-meta strong {
+  color: var(--text);
+  font-family: var(--number);
+  font-size: 20px;
+}
+.view-heading-meta span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+/* Focus */
+.focus-console {
+  border-radius: 16px;
+}
+.focus-console-body {
+  padding: 18px;
+  background: var(--surface);
+}
+.focus-instrument {
+  padding: 0;
+  border: 0;
+  background: var(--surface);
+}
+.active-title-block {
+  padding: 2px 0 10px;
+}
+.active-title-block strong {
+  color: var(--text);
+  font-size: 17px;
+}
+.focus-title-field input,
+.focus-task-disclosure {
+  min-height: 48px;
+  border-color: var(--border-strong);
+  border-radius: 9px;
+  background: var(--canvas);
+}
+.primary-readout {
+  margin: 16px 0;
+  padding: 22px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--canvas);
+}
+.primary-readout strong {
+  color: var(--text);
+  font-size: clamp(42px, 13vw, 68px);
+  font-weight: 420;
+  letter-spacing: 0;
+}
+.runtime-metrics {
+  border-top-color: var(--border);
+  border-bottom-color: var(--border);
+}
+.summary-metric strong,
+.runtime-facts dd {
+  color: var(--text);
+}
+.focus-actions {
+  gap: 8px;
+  padding-top: 16px;
+}
+.focus-action {
+  min-height: 48px;
+  border-radius: 9px;
+}
+.focus-action.primary {
+  background: var(--focus);
+  color: #fff;
+}
+.focus-action.connection-action {
+  border-color: color-mix(in srgb, var(--focus) 62%, var(--border-strong));
+  background: var(--surface);
+  color: var(--focus);
+}
+.focus-action.finish-action {
+  background: var(--pause);
+  color: #fff;
+}
+.live-context {
+  margin-top: 16px;
+  padding: 14px 0 0;
+  border-top-color: var(--border);
+}
+
+/* Tasks */
+.task-browser {
+  border-radius: 16px;
+}
+.task-browser .view-heading {
+  padding-bottom: 16px;
+}
+.task-toolbar {
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--surface);
+}
+.task-mobile-create {
+  min-height: 46px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: var(--canvas);
+}
+.task-mobile-create input,
+.project-mobile-create input {
+  min-height: 44px;
+  font-size: 13px;
+}
+.task-mobile-create button,
+.project-mobile-create button {
+  min-height: 44px;
+  border-radius: 7px;
+  background: var(--focus);
+  color: #fff;
+}
+.task-search,
+.project-filter {
+  min-height: 44px;
+  border-color: var(--border);
+  border-radius: 9px;
+  background: var(--canvas);
+}
+.task-search input,
+.project-filter select {
+  font-size: 14px;
+}
+.project-mobile-create input {
+  min-height: 44px;
+  border-color: var(--border);
+  border-radius: 9px;
+  background: var(--canvas);
+}
+.task-view-switch {
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--canvas);
+}
+.task-view-switch button {
+  width: 44px;
+  min-height: 44px;
+  border-radius: 6px;
+}
+.task-view-switch button.is-active {
+  background: var(--surface);
+  color: var(--focus);
+  box-shadow: 0 2px 6px rgb(32 40 43 / 0.08);
+}
+.task-snapshot-meta {
+  min-height: 38px;
+  padding-inline: 16px;
+  color: var(--subtle);
+}
+.task-project-toggle {
+  min-height: 54px;
+  padding-inline: 16px;
+  border-bottom-color: var(--border);
+  background: var(--surface);
+}
+.task-project-group.is-open .task-project-toggle {
+  background: var(--focus-soft);
+  color: var(--focus);
+}
+.task-list {
+  gap: 6px;
+  padding: 8px 10px 12px;
+  background: var(--canvas);
+}
+.task-tree-branch[data-depth='0'] {
+  border-color: var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.task-children {
+  border-color: var(--border);
+  border-left-color: var(--border-strong);
+  border-radius: 7px;
+  background: var(--canvas);
+}
+.task-row,
+.task-children .task-row {
+  grid-template-columns: 44px 44px minmax(0, 1fr) 64px;
+}
+.task-mobile-complete,
+.task-branch-toggle {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin-left: 0;
+}
+.task-row-main {
+  min-height: 64px;
+}
+.task-row-copy strong {
+  color: var(--text);
+  font-size: 13px;
+}
+.task-row-copy small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.task-start-button {
+  color: var(--focus);
+}
+.task-selection-detail {
+  padding: 18px 16px;
+  border-top-color: var(--border);
+  background: var(--surface);
+}
+.task-selection-detail strong {
+  color: var(--text);
+  font-size: 17px;
+}
+.task-selection-detail button {
+  min-height: 44px;
+  border-radius: 8px;
+  background: var(--focus);
+  color: #fff;
+}
+.task-board {
+  gap: 10px;
+  padding: 14px 10px 18px;
+  background: var(--canvas);
+}
+.task-board-column {
+  border-color: var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.task-board-card {
+  border-color: var(--border);
+  border-radius: 9px;
+  box-shadow: none;
+}
+.task-board-focus {
+  min-height: 44px;
+  border-radius: 7px;
+}
+.task-board-check {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+}
+
+/* Stats and settings */
+.dashboard-view,
+.settings-view {
+  border-radius: 16px;
+}
+.dashboard-heading {
+  padding: 20px 22px;
+}
+.dashboard-hero,
+.dashboard-band,
+.settings-card,
+.capability-boundary {
+  border-color: var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: none;
+}
+.dashboard-primary > strong,
+.dashboard-metric strong {
+  color: var(--text);
+}
+.dashboard-range button {
+  min-height: 44px;
+  border-radius: 7px;
+}
+.dashboard-range button.is-active {
+  background: var(--focus-soft);
+  color: var(--focus);
+}
+.settings-view {
+  padding-bottom: 18px;
+}
+.settings-card {
+  margin-inline: 16px;
+}
+.settings-status-line {
+  min-height: 58px;
+  padding-inline: 16px;
+  border-bottom-color: var(--border);
+}
+.settings-status-line strong {
+  color: var(--text);
+}
+.settings-section-heading h3 {
+  color: var(--text);
+}
+.appearance-select-row select,
+.appearance-color-choice,
+.appearance-font-choice {
+  border-color: var(--border);
+  border-radius: 8px;
+  background: var(--canvas);
+}
+.capability-boundary {
+  margin: 18px 16px;
+}
+
+/* Phone navigation */
+.app-navigation {
+  position: fixed;
+  z-index: 18;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  left: max(10px, env(safe-area-inset-left));
+  gap: 2px;
+  margin: 0;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+  box-shadow: 0 5px 16px rgb(32 40 43 / 0.05);
+}
+.app-navigation button {
+  min-height: 46px;
+  border-radius: 8px;
+  color: var(--muted);
+}
+.app-navigation button.is-active {
+  background: var(--focus-soft);
+  color: var(--focus);
+}
+.app-navigation button::after {
+  display: none;
+}
+.app-navigation button svg {
+  width: 18px;
+  height: 18px;
+}
+.app-navigation button span {
+  font-size: 11px;
+}
+
+@media (min-width: 620px) {
+  .mobile-main {
+    padding-inline: 22px;
+  }
+  .task-toolbar {
+    grid-template-columns: minmax(0, 1fr) minmax(190px, 0.5fr);
+  }
+  .task-mobile-create {
+    grid-column: 1 / -1;
+  }
+}
+@media (min-width: 760px) {
+  .mobile-main {
+    padding-inline: 28px;
+  }
+  .app-navigation {
+    position: sticky;
+    top: 72px;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    height: calc(100dvh - 72px);
+    margin: 0;
+    border: 0;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: none;
+    background: var(--surface);
+  }
+  .app-frame {
+    grid-template-columns: 78px minmax(0, 1fr);
+  }
+  .mobile-main {
+    padding-top: 0;
+    padding-bottom: 36px;
+  }
+  .task-browser-workspace {
+    grid-template-columns: minmax(0, 1fr) 270px;
+  }
+  .task-selection-detail {
+    display: flex;
+    min-height: 260px;
+    flex-direction: column;
+    gap: 10px;
+    border-top: 0;
+    border-left: 1px solid var(--border);
+  }
+}
+@media (max-width: 619px) {
+  .mobile-main {
+    padding-inline: 10px;
+  }
+  .mobile-topbar {
+    padding-inline: 14px;
+  }
+  .sync-strip {
+    gap: 8px;
+  }
+  .sync-status-ledger {
+    display: none;
+  }
+  .sync-button {
+    padding-inline: 10px;
+  }
+  .view-surface,
+  .focus-console {
+    border-radius: 13px;
+  }
+}
+
+@media (max-width: 619px) and (orientation: portrait) {
+  .focus-instrument {
+    padding-bottom: calc(132px + env(safe-area-inset-bottom));
+  }
+  .focus-actions {
+    position: fixed;
+    z-index: 32;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    left: max(12px, env(safe-area-inset-left));
+    margin: 0;
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: var(--surface);
+    box-shadow: 0 8px 24px rgb(32 40 43 / 0.12);
+  }
+}
+
+@media (min-width: 620px) and (max-width: 759px) and (orientation: portrait) {
+  .focus-actions {
+    position: sticky;
+    order: 3;
+    right: auto;
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    left: auto;
+    margin: 18px 0 0;
+    box-shadow: none;
+  }
+  .mobile-temporal-ribbon {
+    order: 4;
+  }
+  .runtime-metrics {
+    order: 5;
+  }
+  .focus-system-tools {
+    order: 6;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  .primary-readout {
+    margin: 0;
+  }
+}
+
+:root.dark {
+  --canvas: #20282a;
+  --surface: #293234;
+  --surface-2: #344043;
+  --text: #edf3f2;
+  --muted: #b2c0c0;
+  --subtle: #8ea0a0;
+  --border: #435154;
+  --border-strong: #5d6d70;
+  --focus: #68c4d4;
+  --focus-soft: #244f56;
+  --pause: #ef9b6c;
+  --pause-soft: #5a3a2c;
+}

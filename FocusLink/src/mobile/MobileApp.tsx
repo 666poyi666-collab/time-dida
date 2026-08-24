@@ -1569,16 +1569,24 @@ export function MobileApp() {
 
   const configured = Boolean(preferences.endpoint && preferences.token);
   return (
-    <div className="mobile-shell">
+    <div className={`mobile-shell view-${activeView}`}>
       <header className="mobile-topbar">
         <div className="brand-lockup">
           <BrandMark />
           {/* 版本号与 commit 是排查问题时才需要的信息，不该常驻在产品标题旁边。
               已移到设置页的「关于」里，那里才是找它的地方。 */}
           <div>
-            <p className="eyebrow">FOCUSLINK · TIME INSTRUMENT</p>
+            <p className="eyebrow">FOCUSLINK · 个人工作台</p>
             <div className="brand-title-line">
-              <h1>专注控制台</h1>
+              <h1>
+                {activeView === 'focus'
+                  ? '专注'
+                  : activeView === 'tasks'
+                    ? '我的任务'
+                    : activeView === 'history'
+                      ? '统计'
+                      : '设置'}
+              </h1>
             </div>
           </div>
         </div>

@@ -102,19 +102,8 @@ beforeEach(() => {
 });
 
 describe('task workspace service', () => {
-  it('treats the legacy local setting as automatic and returns the CLI workspace', async () => {
+  it('keeps a local workspace empty instead of importing an installed provider', async () => {
     serviceState.taskSource = 'local';
-    serviceState.oauthAuthenticated = true;
-    serviceState.cliProjects = [
-      {
-        id: 'project-1',
-        source: 'ticktick',
-        externalId: 'project-1',
-        name: '学习',
-        color: null,
-      },
-    ];
-    serviceState.cliTasks = [makeTask('cloud-1', 'ticktick')];
     const result = await refreshTaskWorkspace({
       projectId: 'project-1',
       includeCompleted: true,
@@ -122,21 +111,11 @@ describe('task workspace service', () => {
       force: true,
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       ok: true,
-      data: {
-        provider: 'dida-cli',
-        projects: serviceState.cliProjects,
-        tasks: serviceState.cliTasks,
-        refreshedAt: expect.any(Number),
-      },
+      data: { provider: 'focuslink-local', projects: [], tasks: [] },
     });
-    expect(ticktickCliProvider.listWorkspaceTasks).toHaveBeenCalledWith('project-1', {
-      projectId: 'project-1',
-      includeCompleted: true,
-      completedDays: 14,
-      force: true,
-    });
+    expect(ticktickCliProvider.listWorkspaceTasks).not.toHaveBeenCalled();
     expect(serviceState.publishTaskSnapshot).toHaveBeenCalledWith(
       serviceState.cliProjects,
       serviceState.cliTasks,
@@ -149,12 +128,12 @@ describe('task workspace service', () => {
     serviceState.cliFound = false;
     await expect(refreshTaskWorkspace()).resolves.toEqual({
       ok: false,
-      error: '未找到 dida CLI，且 TickTick OAuth 尚未登录。请先配置一种滴答连接方式。',
+      error: '未配置可选任务导入连接。FocusLink 本地任务仍可正常使用。',
     });
   });
 
   it('falls back to OAuth only when the CLI is unavailable', async () => {
-    serviceState.taskSource = 'local';
+    serviceState.taskSource = 'ticktick-oauth';
     serviceState.cliFound = false;
     serviceState.oauthAuthenticated = true;
     serviceState.oauthTasks = [makeTask('oauth-1', 'ticktick')];

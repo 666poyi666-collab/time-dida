@@ -402,14 +402,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
   timerStyle: 'standard',
   fontProfile: 'wenkai',
   segmentBehavior: 'new-segment',
-  syncMode: 'focus-record',
+  syncMode: 'local-only',
   experimentalFocusEnabled: false,
   minimizeToTray: true,
   autoStart: false,
   startMinimizedToTray: false,
   closeToTray: true,
   showMiniOnStart: false,
-  taskSource: 'ticktick-cli',
+  // FocusLink owns the task workspace. Third-party providers are opt-in import/sync adapters.
+  taskSource: 'local',
   ticktickCli: {
     executable: '',
     listTasksCommand: 'dida task filter --json',
