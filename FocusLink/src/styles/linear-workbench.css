@@ -3742,8 +3742,8 @@ button.stats-ledger-block:focus-visible {
   font-size: 10px;
 }
 .instrument-choice .ic-preview .dial-vernier {
-  width: 176px;
-  min-width: 176px;
+  width: 160px;
+  min-width: 160px;
   gap: 5px;
   transform: none;
 }
@@ -3757,7 +3757,8 @@ button.stats-ledger-block:focus-visible {
   display: none;
 }
 .instrument-choice .ic-preview .dial-draft {
-  min-width: 176px;
+  width: 160px;
+  min-width: 160px;
   gap: 4px;
   padding: 5px 8px;
   font-size: 32px;
