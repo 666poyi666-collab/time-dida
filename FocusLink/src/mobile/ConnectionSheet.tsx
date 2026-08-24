@@ -91,8 +91,8 @@ export function ConnectionSheet({
         <div className="sheet-handle" aria-hidden="true" />
         <header>
           <div>
-            <p className="eyebrow">FOCUSLINK ACCOUNT</p>
-            <h2 id="connection-title">账号与云同步</h2>
+            <p className="eyebrow">DEVICE SYNC</p>
+            <h2 id="connection-title">多端同步</h2>
           </div>
           <button
             className="sheet-close"
@@ -105,13 +105,25 @@ export function ConnectionSheet({
         </header>
 
         <div className="account-sheet-summary">
-          <strong>{authenticated ? '已登录' : '登录后自动同步'}</strong>
+          <strong>{authenticated ? '这台设备已加入同步' : '本机模式可以直接使用'}</strong>
           <p>
             {authenticated
               ? `${accountLabel ?? 'FocusLink 账号'} · 这台设备已加入云同步。`
-              : '登录后可跨设备同步；不登录也可关闭此页，直接使用本机专注。'}
+              : '任务、专注和统计都会保存在本机；设备授权只用于电脑、手机和平板之间同步。'}
           </p>
         </div>
+
+        {!authenticated && (
+          <div className="account-login-guide">
+            <strong>当前授权方式</strong>
+            <ol>
+              <li>打开 Poyi 设备授权页</li>
+              <li>输入 43 位一次性管理员授权码</li>
+              <li>在网页批准当前设备，FocusLink 会自动继续</li>
+            </ol>
+            <p>目前没有普通账号密码或自助注册码；没有管理员授权码时，重复点击无法完成登录。</p>
+          </div>
+        )}
 
         {notice && (
           <p className="account-sheet-notice" role="status">
@@ -127,7 +139,7 @@ export function ConnectionSheet({
             onClick={onLogin}
             disabled={busy}
           >
-            {busy ? '正在登录…' : '登录 FocusLink 账号'}
+            {busy ? '等待网页授权…' : '打开设备授权页'}
           </button>
         ) : (
           <div className="sheet-secondary-actions account-sheet-actions">
@@ -138,6 +150,11 @@ export function ConnectionSheet({
               退出登录
             </button>
           </div>
+        )}
+        {!authenticated && (
+          <button className="account-sheet-local" type="button" onClick={onClose}>
+            暂不授权，继续使用本机模式
+          </button>
         )}
       </motion.section>
     </motion.div>

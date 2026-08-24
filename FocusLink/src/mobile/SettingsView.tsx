@@ -2,7 +2,6 @@ import { Cloud, Database, SlidersHorizontal, UserRound } from 'lucide-react';
 import { APP_COMMIT, APP_VERSION } from '@shared/version';
 import type { LiveConnectionState } from './runtimeModel';
 import { NativeSystemControls } from './NativeSystemControls';
-import { SyncV2Management } from './SyncV2Management';
 import {
   FOCUS_COLORS,
   FONT_PROFILES,
@@ -16,8 +15,6 @@ interface SettingsViewProps {
   connection: LiveConnectionState;
   accountLabel: string | null;
   authenticated: boolean;
-  endpoint: string;
-  token: string;
   taskCount: number;
   taskRevision: number;
   ledgerCount: number;
@@ -30,8 +27,6 @@ export function SettingsView({
   connection,
   accountLabel,
   authenticated,
-  endpoint,
-  token,
   taskCount,
   taskRevision,
   ledgerCount,
@@ -120,27 +115,27 @@ export function SettingsView({
           </div>
         </div>
 
-        <div className="appearance-choice-group">
+        <label className="appearance-select-row">
           <span>界面字体</span>
-          <div className="appearance-font-choices" role="group" aria-label="移动端界面字体">
+          <select
+            value={appearance.fontProfile}
+            onChange={(event) =>
+              onAppearanceChange({
+                ...appearance,
+                fontProfile: event.target.value as MobileAppearance['fontProfile'],
+              })
+            }
+          >
             {FONT_PROFILES.map((profile) => (
-              <button
-                key={profile}
-                type="button"
-                className={`appearance-font-choice font-profile-${profile} ${appearance.fontProfile === profile ? 'is-selected' : ''}`}
-                aria-pressed={appearance.fontProfile === profile}
-                onClick={() => onAppearanceChange({ ...appearance, fontProfile: profile })}
-              >
-                <strong>{MOBILE_FONT_LABELS[profile]}</strong>
-                <small>专注 · FocusLink</small>
-              </button>
+              <option key={profile} value={profile}>
+                {MOBILE_FONT_LABELS[profile]}
+              </option>
             ))}
-          </div>
-        </div>
+          </select>
+        </label>
       </section>
 
       <NativeSystemControls />
-      <SyncV2Management endpoint={endpoint} token={token} />
 
       {/* 版本与构建号从产品标题栏移到这里：排查时找得到，日常不占主界面。 */}
       <section className="settings-card">

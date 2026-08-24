@@ -180,8 +180,9 @@ async function validateViewport(
 
     assert(shell.runtime === 'mobile-focus', `${viewport.id} unexpectedly entered watch renderer`);
     assert(shell.theme === theme, `${viewport.id} expected ${theme}, got ${shell.theme}`);
-    const expectedNavigation =
-      viewport.width >= 760 || viewport.width > viewport.height ? 'sidebar' : 'bottom-tabs';
+    // Phone and ordinary tablet widths share a reachable bottom navigation.
+    // Only desktop-class tablet canvases (>=1040 CSS px) promote it to a rail.
+    const expectedNavigation = viewport.width >= 1040 ? 'sidebar' : 'bottom-tabs';
     assert(
       shell.navigation === expectedNavigation,
       `${viewport.id} expected ${expectedNavigation}, got ${shell.navigation}`,
@@ -370,12 +371,27 @@ async function validateFreshInstall(indexPath: string): Promise<void> {
 
     await win.webContents.executeJavaScript(`(() => {
       const button = [...document.querySelectorAll('button')].find((candidate) =>
-        candidate.textContent?.includes('登录并同步')
+        candidate.textContent?.includes('多端同步')
       );
       if (!button) throw new Error('login entry missing');
       button.click();
     })()`);
     await sleep(200);
+    const accountGuide = await win.webContents.executeJavaScript(`(() => {
+      const sheet = document.querySelector('.connection-sheet');
+      return {
+        visible: Boolean(sheet),
+        text: sheet?.textContent ?? '',
+      };
+    })()`);
+    assert(accountGuide.visible === true, 'fresh install did not open device authorization sheet');
+    assert(
+      accountGuide.text.includes('43 位一次性管理员授权码'),
+      'device authorization sheet does not explain the current owner-code requirement',
+    );
+    win.showInactive();
+    await sleep(80);
+    await capture('phone-360-light-设备授权', win);
     const closable = await win.webContents.executeJavaScript(`(() => {
       const close = document.querySelector('[aria-label="关闭账号设置，返回本机模式"]');
       if (!close) return false;

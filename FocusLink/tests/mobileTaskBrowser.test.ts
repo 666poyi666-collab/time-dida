@@ -278,15 +278,15 @@ describe('mobile task browser model', () => {
                   setActiveView('focus');`);
   });
 
-  it('uses one cloud task-tree disclosure instead of the old select plus browse row', () => {
+  it('uses one FocusLink task disclosure instead of the old select plus browse row', () => {
     const consoleSource = fs.readFileSync(
       new URL('../src/mobile/FocusConsole.tsx', import.meta.url),
       'utf8',
     );
 
-    expect(consoleSource).toContain('从 FocusLink 任务中选择');
+    expect(consoleSource).toContain('本轮任务');
     expect(consoleSource).toContain('className="focus-task-disclosure"');
-    expect(consoleSource).toContain('轻触展开清单与父子任务');
+    expect(consoleSource).toContain('轻触选择，也可以保持自由专注');
     expect(consoleSource).not.toContain('<select\n                    id="focus-task"');
     expect(consoleSource).not.toContain('从电脑任务清单选择');
   });
@@ -305,7 +305,7 @@ describe('mobile task browser model', () => {
       }),
     );
 
-    expect(markup.match(/aria-expanded="false"/g)).toHaveLength(2);
+    expect(markup.match(/class="task-project-toggle"[^>]*aria-expanded="false"/g)).toHaveLength(2);
     expect(markup).toContain('学习');
     expect(markup).toContain('无清单');
     expect(markup).not.toContain('整理化学错题');

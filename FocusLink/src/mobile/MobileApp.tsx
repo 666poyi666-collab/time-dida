@@ -162,7 +162,7 @@ export function MobileApp() {
   const [configOpen, setConfigOpen] = useState(false);
   const [online, setOnline] = useState(() => navigator.onLine);
   const [pullState, setPullState] = useState<PullState>('idle');
-  const [ledgerNotice, setLedgerNotice] = useState('正在读取本机会话账本…');
+  const [, setLedgerNotice] = useState('正在读取本机会话账本…');
   const [liveSnapshot, setLiveSnapshot] = useState<LiveFocusSnapshotLike | null>(null);
   const [liveConnection, setLiveConnection] = useState<LiveConnectionState>(
     initialPreferences.endpoint && initialPreferences.token ? 'connecting' : 'unconfigured',
@@ -1568,6 +1568,14 @@ export function MobileApp() {
   };
 
   const configured = Boolean(preferences.endpoint && preferences.token);
+  const activeViewTitle =
+    activeView === 'focus'
+      ? '专注'
+      : activeView === 'tasks'
+        ? '任务'
+        : activeView === 'history'
+          ? '统计'
+          : '设置';
   return (
     <div className={`mobile-shell view-${activeView}`}>
       <header className="mobile-topbar">
@@ -1575,59 +1583,49 @@ export function MobileApp() {
           <BrandMark />
           {/* 版本号与 commit 是排查问题时才需要的信息，不该常驻在产品标题旁边。
               已移到设置页的「关于」里，那里才是找它的地方。 */}
-          <div>
-            <p className="eyebrow">FOCUSLINK · 个人工作台</p>
+          <div className="mobile-title-copy">
+            <p className="eyebrow">FOCUSLINK</p>
             <div className="brand-title-line">
-              <h1>
-                {activeView === 'focus'
-                  ? '专注'
-                  : activeView === 'tasks'
-                    ? '我的任务'
-                    : activeView === 'history'
-                      ? '统计'
-                      : '设置'}
-              </h1>
+              <h1>{activeViewTitle}</h1>
             </div>
           </div>
         </div>
-        <button className="icon-button" type="button" onClick={() => setActiveView('settings')}>
-          <SettingsIcon />
-          <span>设置</span>
-        </button>
+        <div className="mobile-topbar-actions">
+          <button
+            className={`mobile-sync-pill state-${configured ? liveConnection : 'local'}`}
+            type="button"
+            onClick={configured ? handleRetry : () => setConfigOpen(true)}
+            disabled={configured && (pullState === 'pulling' || liveConnection === 'connecting')}
+            title={
+              configured
+                ? (liveConnectionNotice ?? connectionTitle(liveConnection))
+                : '本机模式；点击打开多端同步'
+            }
+            aria-label={
+              configured
+                ? `多端同步：${connectionTitle(liveConnection)}，点击刷新`
+                : '当前为本机模式，点击打开多端同步'
+            }
+          >
+            <span className={`network-dot ${online ? 'online' : 'offline'}`} aria-hidden="true" />
+            <span>{configured ? connectionTitle(liveConnection) : '本机'}</span>
+          </button>
+          {activeView !== 'settings' && (
+            <button
+              className="icon-button"
+              type="button"
+              onClick={() => setActiveView('settings')}
+              aria-label="打开设置"
+            >
+              <SettingsIcon />
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="app-frame">
         <AppNavigation activeView={activeView} onChange={setActiveView} />
         <main className="mobile-main">
-          <section className="sync-strip" aria-live="polite" aria-label="实时连接与账本同步状态">
-            <div className={`sync-status sync-status-live state-${liveConnection}`}>
-              <span className={`network-dot ${online ? 'online' : 'offline'}`} aria-hidden="true" />
-              <div className="sync-copy">
-                <strong>实时控制</strong>
-                <span>{liveConnectionNotice ?? connectionTitle(liveConnection)}</span>
-              </div>
-            </div>
-            <div className={`sync-status sync-status-ledger state-${pullState}`}>
-              <span className="network-dot" aria-hidden="true" />
-              <div className="sync-copy">
-                <strong>已结束账本</strong>
-                <span>
-                  {ledgerNotice}
-                  {pendingUploadCount > 0 ? ` · ${pendingUploadCount} 场待同步或处理` : ''}
-                </span>
-              </div>
-            </div>
-            <button
-              className="sync-button"
-              type="button"
-              onClick={handleRetry}
-              disabled={pullState === 'pulling' || liveConnection === 'connecting' || !online}
-            >
-              <RefreshIcon spinning={pullState === 'pulling' || liveConnection === 'connecting'} />
-              {liveConnection === 'connecting' || pullState === 'pulling' ? '连接中' : '刷新'}
-            </button>
-          </section>
-
           <div className="mobile-workspace" key={activeView}>
             {activeView === 'focus' && (
               <FocusConsole
@@ -1699,8 +1697,6 @@ export function MobileApp() {
                 connection={liveConnection}
                 accountLabel={accountProfile?.accountLabel ?? null}
                 authenticated={configured}
-                token={preferences.token}
-                endpoint={preferences.endpoint}
                 taskCount={taskSnapshot?.snapshot?.tasks.length ?? 0}
                 taskRevision={taskSnapshot?.revision ?? 0}
                 ledgerCount={cache.bundles.length}
@@ -1895,15 +1891,6 @@ function SettingsIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="12" r="3" />
       <path d="M19 13.5v-3l-2-.6a6 6 0 0 0-.7-1.7l1-1.9-2.1-2.1-1.9 1a6 6 0 0 0-1.7-.7L11 2H8l-.6 2.5a6 6 0 0 0-1.7.7l-1.9-1-2.1 2.1 1 1.9A6 6 0 0 0 2 9.9l-2 .6v3l2 .6a6 6 0 0 0 .7 1.7l-1 1.9 2.1 2.1 1.9-1a6 6 0 0 0 1.7.7L8 22h3l.6-2.5a6 6 0 0 0 1.7-.7l1.9 1 2.1-2.1-1-1.9a6 6 0 0 0 .7-1.7z" />
-    </svg>
-  );
-}
-
-function RefreshIcon({ spinning }: { spinning: boolean }) {
-  return (
-    <svg className={spinning ? 'spinning' : ''} viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M20 11a8 8 0 1 0-2.3 5.7" />
-      <path d="M20 5v6h-6" />
     </svg>
   );
 }

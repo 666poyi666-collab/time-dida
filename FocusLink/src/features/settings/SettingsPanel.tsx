@@ -1295,7 +1295,10 @@ export function SettingsPanel() {
       keywords: '手机 平板 安卓 android 移动端 跨设备 账号 登录 实时 云端 device sync account',
       render: () => (
         <>
-          <Row label="FocusLink 账号" desc="电脑、手机和平板登录同一个账号后自动同步">
+          <Row
+            label="FocusLink 设备授权"
+            desc="本机功能不依赖登录；授权后才把任务、专注和统计同步到其他设备"
+          >
             {deviceSyncStatus?.signedIn ? (
               <div className="flex items-center gap-2">
                 <span className="settings-status-badge tone-success">
@@ -1318,10 +1321,20 @@ export function SettingsPanel() {
                 disabled={deviceSyncSaving}
               >
                 {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Link size="xs" />}
-                登录 FocusLink 账号
+                打开设备授权页
               </button>
             )}
           </Row>
+          {!deviceSyncStatus?.signedIn && (
+            <div className="settings-account-explainer">
+              <strong>为什么网页登录不上？</strong>
+              <p>
+                当前网页不是账号密码登录，只接受后台签发的 43
+                位一次性管理员授权码；还没有普通账号注册或找回密码入口。
+              </p>
+              <span>没有管理员授权码时可继续使用本机模式，不影响创建任务与计时。</span>
+            </div>
+          )}
           <div
             className={`settings-status-strip ${
               deviceSyncError

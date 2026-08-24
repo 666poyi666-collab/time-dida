@@ -59,6 +59,7 @@ export function TaskBrowser({
   const [draft, setDraft] = useState('');
   const [creating, setCreating] = useState(false);
   const [projectDraft, setProjectDraft] = useState('');
+  const [projectComposerOpen, setProjectComposerOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(() => new Set());
   const groupRegionPrefix = useId();
@@ -136,8 +137,8 @@ export function TaskBrowser({
           <input
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder="添加 FocusLink 任务"
-            aria-label="添加 FocusLink 任务"
+            placeholder="添加任务"
+            aria-label="添加任务"
           />
           <button type="submit" disabled={!draft.trim() || creating || !onCreate}>
             {creating ? '保存中' : '添加'}
@@ -187,28 +188,44 @@ export function TaskBrowser({
             <LayoutGrid aria-hidden="true" />
           </button>
         </div>
-        <form
-          className="project-mobile-create"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const name = projectDraft.trim();
-            if (!name || !onCreateProject || creating) return;
-            setCreating(true);
-            void onCreateProject(name)
-              .then(() => setProjectDraft(''))
-              .finally(() => setCreating(false));
-          }}
+        <button
+          className="project-create-disclosure"
+          type="button"
+          aria-expanded={projectComposerOpen}
+          onClick={() => setProjectComposerOpen((open) => !open)}
         >
-          <input
-            value={projectDraft}
-            onChange={(event) => setProjectDraft(event.target.value)}
-            placeholder="新建清单"
-            aria-label="新建清单"
-          />
-          <button type="submit" disabled={!projectDraft.trim() || !onCreateProject || creating}>
-            新建清单
-          </button>
-        </form>
+          <Folder aria-hidden="true" />
+          <span>{projectComposerOpen ? '收起清单创建' : '新建清单'}</span>
+          {projectComposerOpen ? <ChevronDown aria-hidden="true" /> : <Plus aria-hidden="true" />}
+        </button>
+        {projectComposerOpen && (
+          <form
+            className="project-mobile-create"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const name = projectDraft.trim();
+              if (!name || !onCreateProject || creating) return;
+              setCreating(true);
+              void onCreateProject(name)
+                .then(() => {
+                  setProjectDraft('');
+                  setProjectComposerOpen(false);
+                })
+                .finally(() => setCreating(false));
+            }}
+          >
+            <input
+              value={projectDraft}
+              onChange={(event) => setProjectDraft(event.target.value)}
+              placeholder="清单名称"
+              aria-label="清单名称"
+              autoFocus
+            />
+            <button type="submit" disabled={!projectDraft.trim() || !onCreateProject || creating}>
+              创建
+            </button>
+          </form>
+        )}
       </div>
 
       <div className="task-snapshot-meta">

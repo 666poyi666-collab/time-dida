@@ -151,10 +151,38 @@ export function FocusConsole({
               <span>专注标题</span>
               <strong>{current.title?.trim() || '未命名专注'}</strong>
             </div>
-          ) : (
+          ) : null}
+
+          <div
+            className="primary-readout"
+            key={current.state}
+            aria-label={`${liveStateLabel(current.state)}计时`}
+          >
+            <span>
+              {current.state === 'paused'
+                ? '本次暂停'
+                : current.state === 'running'
+                  ? '有效专注'
+                  : '准备开始'}
+            </span>
+            <strong>{formatClockDuration(durations.primaryElapsedMs)}</strong>
+            <small>
+              {localOfflineMode
+                ? '本机计时 · 结束后安全保存'
+                : showingCachedSnapshot
+                  ? '上次确认状态 · 当前可另开本机专注'
+                  : current.state === 'paused'
+                    ? `已专注 ${formatClockDuration(durations.activeElapsedMs)}`
+                    : current.state === 'running'
+                      ? '多端状态已确认'
+                      : '选一个任务，或者直接开始'}
+            </small>
+          </div>
+
+          {!active && (
             <div className="focus-start-fields">
               <div className="focus-title-field">
-                <span>从 FocusLink 任务中选择</span>
+                <span>本轮任务</span>
                 <div className="focus-task-picker">
                   <button
                     className="focus-task-disclosure"
@@ -171,7 +199,7 @@ export function FocusConsole({
                     <span>
                       <strong>{selectedTask?.title ?? '自由专注（不关联任务）'}</strong>
                       <small>
-                        {selectedTask ? '已从 FocusLink 任务选择' : '轻触展开清单与父子任务'}
+                        {selectedTask ? '已关联 FocusLink 任务' : '轻触选择，也可以保持自由专注'}
                       </small>
                     </span>
                     <ChevronRight aria-hidden="true" />
@@ -189,12 +217,12 @@ export function FocusConsole({
                 )}
                 <small>
                   {tasks.length > 0
-                    ? `已加载 ${tasks.length} 个 FocusLink 任务`
-                    : '登录同一 FocusLink 账号后，任务会自动出现在这里'}
+                    ? `${tasks.length} 个本机任务可选`
+                    : '先去「任务」创建待办；登录只用于多端同步'}
                 </small>
               </div>
               <label className="focus-title-field" htmlFor="focus-title">
-                <span>这次要专注什么？</span>
+                <span>专注标题</span>
                 <input
                   id="focus-title"
                   value={titleDraft}
@@ -210,32 +238,6 @@ export function FocusConsole({
               </label>
             </div>
           )}
-
-          <div
-            className="primary-readout"
-            key={current.state}
-            aria-label={`${liveStateLabel(current.state)}计时`}
-          >
-            <span>
-              {current.state === 'paused'
-                ? '本次暂停'
-                : current.state === 'running'
-                  ? '有效专注'
-                  : '准备开始'}
-            </span>
-            <strong>{formatClockDuration(durations.primaryElapsedMs)}</strong>
-            <small>
-              {localOfflineMode
-                ? 'LOCAL · 结束后安全保存，联网自动补传'
-                : showingCachedSnapshot
-                  ? 'LAST CONFIRMED · 云端状态待确认，可另开独立本机专注'
-                  : current.state === 'paused'
-                    ? `有效专注 ${formatClockDuration(durations.activeElapsedMs)} 已冻结`
-                    : current.state === 'running'
-                      ? 'LIVE · 状态按服务端确认时刻逐秒外推'
-                      : 'IDLE · 登录后由任一设备控制'}
-            </small>
-          </div>
 
           <MobileTemporalRibbon
             state={current.state}
@@ -316,7 +318,7 @@ export function FocusConsole({
                 type="button"
                 onClick={onOpenConnection}
               >
-                登录并同步
+                多端同步
               </button>
             )}
             {(current.state === 'idle' || cachedRemoteOnly) && (

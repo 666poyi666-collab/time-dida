@@ -19,9 +19,11 @@ describe('desktop FocusLink account settings', () => {
     expect(source).not.toContain('deviceSyncToken');
   });
 
-  it('offers account login, sync status and logout instead', () => {
-    expect(source).toContain('登录 FocusLink 账号');
-    expect(source).toContain('登录后自动同步专注状态、任务和历史记录');
+  it('offers explicit device authorization, local mode, sync status and logout instead', () => {
+    expect(source).toContain('FocusLink 设备授权');
+    expect(source).toContain('打开设备授权页');
+    expect(source).toMatch(/43\s+位一次性管理员授权码/);
+    expect(source).toContain('本机功能不依赖登录');
     expect(source).toContain('退出登录');
   });
 

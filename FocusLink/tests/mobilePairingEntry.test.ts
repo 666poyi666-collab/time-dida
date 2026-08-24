@@ -67,8 +67,10 @@ describe('mobile owner account entry', () => {
     expect(mobile).toContain('const [configOpen, setConfigOpen] = useState(false);');
     expect(mobile).toContain('onClose={() => setConfigOpen(false)}');
     expect(markup).toContain('aria-label="关闭账号设置，返回本机模式"');
-    expect(markup).toContain('不登录也可关闭此页，直接使用本机专注');
-    expect(markup).toContain('登录 FocusLink 账号');
+    expect(markup).toContain('本机模式可以直接使用');
+    expect(markup).toContain('打开设备授权页');
+    expect(markup).toContain('43 位一次性管理员授权码');
+    expect(markup).toContain('暂不授权，继续使用本机模式');
     expect(markup).not.toContain('这台设备已加入云同步');
     expect(sheet).toContain('onMouseDown={onClose}');
     expect(sheet).toContain("if (event.key !== 'Escape') return;");

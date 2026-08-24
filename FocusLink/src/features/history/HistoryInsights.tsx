@@ -12,7 +12,6 @@ import {
   buildDashboardTaskAllocation,
   largestRemainderPercentages,
 } from '@shared/dashboardPresentation';
-import { Icon } from '../../ui/Icon';
 import { formatClock, formatMinutes } from '../../lib/time';
 import {
   isSameLocalDay,
@@ -166,24 +165,52 @@ export function HistoryInsights({
 
   if (isEmpty) {
     return (
-      <section className="history-insights" aria-label="专注统计 Dashboard">
-        <div className="history-insights-empty state-block" role="status">
-          <div className="state-block-icon">
-            <Icon.Calendar size="lg" />
+      <section
+        className="history-insights stats-dashboard is-empty"
+        aria-label="专注统计 Dashboard"
+      >
+        <div className="stats-empty-hero" role="status">
+          <div className="stats-empty-copy">
+            <span>{singleDay && isToday ? 'TODAY' : 'SELECTED RANGE'}</span>
+            <strong>0 分钟</strong>
+            <h2>
+              {selectedLedger?.status === 'estimated-only'
+                ? '这里只有旧版估算记录'
+                : singleDay && isToday
+                  ? '今日尚未启动'
+                  : '这个范围还没有专注记录'}
+            </h2>
+            <p>
+              {selectedLedger?.status === 'estimated-only'
+                ? '旧记录缺少精确起止边界，只保留估算时长，不生成空档区间。'
+                : '今天还留着完整的时间。完成第一轮后，这里会形成专注、暂停、空档与任务投入的同一份时间账本。'}
+            </p>
           </div>
-          <p className="state-block-title">
-            {singleDay && isToday
-              ? selectedLedger?.status === 'estimated-only'
-                ? '今日只有旧版估算记录'
-                : '今日尚未启动'
-              : '这段时间还没有专注记录'}
-          </p>
-          <p className="state-block-desc">
-            {selectedLedger?.status === 'estimated-only'
-              ? '旧记录缺少精确起止边界，只保留估算时长，不生成空档区间。'
-              : '开始一次专注，或查看更长的时间范围。'}
-          </p>
-          <div className="state-block-actions">
+          <div className="stats-empty-orbit" aria-hidden="true">
+            <span>待开始</span>
+          </div>
+        </div>
+        <div className="stats-empty-metrics" aria-label="等待生成的核心指标">
+          <div>
+            <span>有效专注</span>
+            <strong>0:00</strong>
+          </div>
+          <div>
+            <span>暂停损耗</span>
+            <strong>0:00</strong>
+          </div>
+          <div>
+            <span>观察空档</span>
+            <strong>0:00</strong>
+          </div>
+          <div>
+            <span>完成轮次</span>
+            <strong>0</strong>
+          </div>
+        </div>
+        <div className="stats-empty-footer">
+          <span>查看已有时间</span>
+          <div>
             {(['7d', '15d', '30d'] as const).map((preset) => (
               <button
                 type="button"
