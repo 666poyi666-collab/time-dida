@@ -1,5 +1,13 @@
 # FocusLink 实施日志
 
+## 2026-08-24 · v0.12.96 华为旧 WebView 边框兼容修复
+
+- **真机反证**：0.12.95 在华为 `app.focuslink.mobile.staging.test` 覆盖安装并回读 `0.12.95/1295` 后，真实截图显示主读数、主操作条和底部导航出现黑色粗边；同版 Chromium production viewport 没有该现象。
+- **已验证根因**：通过该真机 WebView CDP 读取最终计算样式，三个容器边框都变成 `0.8px solid rgb(23, 32, 29)`，而普通任务准备区仍为浅灰 `rgb(224, 229, 225)`。旧 WebView 对 `color-mix()` 边框色的降级把颜色落为 `currentColor`，不是华为系统高对比度或强制颜色（两项 media query 均为 false）。
+- **修复**：移动控制层的边框和背景改用现有实色语义 token，不再要求 `color-mix()` 才能保持浅色层级；同时保留 44px 触控、底部导航、华为 capsule 与小米系统表面合同。
+- **候选身份**：0.12.95 已真实安装华为，不能在 UI 变化后复用。最终候选提升为 `0.12.96/1296`；0.12.95 只保留诊断事实，不补做 Windows/小米安装或正式资产。
+- **回归证据**：新增旧 WebView 边框兼容合同，禁止移动控制层 border 再依赖 `color-mix()`；TypeScript/Cloudflare 类型检查、完整 Vitest `117 files / 861 tests` 与五组视口明暗四页面 production screenshot 通过。
+
 ## 2026-08-24 · v0.12.95 移动工作区重构、Dashboard 2.0 与设备授权诊断
 
 - **用户证据**：用户明确反馈手机/平板 UI 比 PC 端差、审美混乱、界面逻辑失序；PC 基础可用但仍需升级，尤其是 Dashboard；同时反复登录无结果并要求清除缓存。

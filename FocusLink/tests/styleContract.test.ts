@@ -207,6 +207,20 @@ describe('style contract', () => {
     );
   });
 
+  it('移动控制层边框必须在不支持 color-mix 的旧 WebView 中保持语义色', () => {
+    const css = stripComments(
+      fs.readFileSync(path.join(projectRoot, 'src', 'mobile', 'focuslink-2-mobile.css'), 'utf8'),
+    );
+    expect(css, '旧 WebView 会把 color-mix 边框退化为 currentColor 黑边').not.toMatch(
+      /border(?:-color)?\s*:[^;]*color-mix\(/,
+    );
+    for (const selector of ['.primary-readout', '.focus-actions', '.app-navigation']) {
+      const block = new RegExp(`${selector.replace('.', '\\.')}\\s*\\{([\\s\\S]*?)\\}`).exec(css);
+      expect(block, `缺少 ${selector} 兼容边框规则`).not.toBeNull();
+      expect(block![1]).toMatch(/border(?:-color)?\s*:[^;]*var\(--border/);
+    }
+  });
+
   it('辅助文字字号守住确定性下限：text-meta ≥ 11px、text-diag ≥ 10px', () => {
     const css = readStyles()
       .map((file) => file.text)

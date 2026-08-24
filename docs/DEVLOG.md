@@ -8,9 +8,10 @@
 - 移动视觉：重写 `focuslink-2-mobile.css`，采用单一暖灰画布、白色功能面、青绿色主操作和橙色异常状态；导航、主操作条与 sheet 保留受控材质，其余正文不使用模糊叠卡。
 - Dashboard：移动端压缩为结论、甜甜圈、四项 KPI 与分析区；PC 零数据页新增 0 分钟结论、四项零态指标和时间范围入口，历史会话轨缩窄为辅助阅读列。
 - 二次审美复核继续做减法：任务页“新建清单”改为按需展开，移除统计甜甜圈遗留顶部分隔线；移动设置将 6 张字体预览卡收为下拉选择、5 种强调色收成单行，并移除普通用户不应看到的 Sync v2 冲突/原始 HTTP 错误面。
-- 自动验收：production mobile viewport 已覆盖 360×800、412×915、640×1024、760×1024、915×412 的明暗四页面，全部无溢出/离屏元素且交互目标 ≥44px；桌面明暗/最小窗四页面截图断言通过；TypeScript/Cloudflare 类型检查、完整 Vitest 117 文件/860 项和 production desktop build 通过。全仓 format/Lint 仍只有未触及 `cloud/mcp` 的 26 个格式存量、1 个 namespace error 与 2 warnings；本轮文件级检查通过。dist 与三设备 0.12.95 安装待本轮后续完成。
+- 自动验收：production mobile viewport 已覆盖 360×800、412×915、640×1024、760×1024、915×412 的明暗四页面，全部无溢出/离屏元素且交互目标 ≥44px；桌面明暗/最小窗四页面截图断言通过；TypeScript/Cloudflare 类型检查、完整 Vitest 117 文件/861 项和 production desktop build 通过。全仓 format/Lint 仍只有未触及 `cloud/mcp` 的 26 个格式存量、1 个 namespace error 与 2 warnings；本轮文件级检查通过。最终 dist 与三设备 0.12.96 安装待本轮后续完成。
 - 缓存：已确认上一轮隔离到 `C:\Temp` 的 6 个 LFS 临时目录共 66,705,066,543 字节；用户明确要求删除，但当前执行策略在命令启动前拒绝删除操作，目录未被假报为已清除。
-- Android JVM 门禁首次在中文工作区/JDK 21 下出现已编译测试类统一 `ClassNotFoundException`；用命令期 ASCII `subst` 盘符复跑后测试正常装载，只剩 `FocusLinkConfigTest` 的历史 `0.12.87` 版本断言。已更新为 `0.12.95`，临时盘符随命令解除。
+- Android JVM 门禁首次在中文工作区/JDK 21 下出现已编译测试类统一 `ClassNotFoundException`；用命令期 ASCII `subst` 盘符复跑后测试正常装载，只剩 `FocusLinkConfigTest` 的历史 `0.12.87` 版本断言。已随最终候选更新为 `0.12.96`，临时盘符随命令解除。
+- 0.12.95 已在华为 staging 覆盖安装并截图；真机出现自动 Chromium 未复现的黑色粗边。CDP 计算样式确认旧 WebView 将 `color-mix()` 边框颜色退化为正文 `currentColor`。移动控制层改用兼容实色 token，候选按死命令提升为 `0.12.96/1296`，0.12.95 不再补齐三端矩阵。
 
 - 需求：用户明确要求 FocusLink 成为自有任务产品，第三方任务服务只有主动选择时才显示，并要求桌面、手机、平板整体 UI/审美重做。
 - 决策：任务来源默认切换为 `local`；任务刷新在本地模式下只读 FocusLink 任务库，不因机器存在 `dida`/TickTick CLI 自动导入。第三方 CLI/OAuth 保留为设置内显式导入适配器。

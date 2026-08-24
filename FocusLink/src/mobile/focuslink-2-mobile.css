@@ -53,8 +53,8 @@ body {
   min-height: calc(56px + env(safe-area-inset-top, 0px));
   padding: calc(8px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 8px
     max(16px, env(safe-area-inset-left, 0px));
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-  background: color-mix(in srgb, var(--canvas) 92%, transparent);
+  border-bottom: 1px solid var(--border);
+  background: var(--canvas);
   backdrop-filter: blur(20px) saturate(1.15);
 }
 
@@ -99,7 +99,7 @@ body {
   min-height: 38px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  background: var(--surface);
   color: var(--muted);
 }
 
@@ -119,7 +119,7 @@ body {
 }
 
 .mobile-sync-pill.state-live {
-  border-color: color-mix(in srgb, var(--focus) 24%, var(--border));
+  border-color: var(--border);
   background: var(--focus-soft);
   color: var(--focus-strong);
 }
@@ -221,15 +221,9 @@ body {
   min-height: 190px;
   margin: 0;
   padding: 24px 18px;
-  border: 1px solid color-mix(in srgb, var(--focus) 14%, var(--border));
+  border: 1px solid var(--border);
   border-radius: 24px;
-  background:
-    linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--surface) 98%, var(--focus-soft)),
-      var(--surface)
-    ),
-    var(--surface);
+  background: var(--surface);
   box-shadow: var(--mobile-shadow);
 }
 
@@ -353,9 +347,9 @@ body {
   gap: 8px;
   margin: 14px 0 0;
   padding: 7px;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+  border: 1px solid var(--border-strong);
   border-radius: 17px;
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  background: var(--surface);
   box-shadow: 0 12px 34px rgb(26 40 34 / 0.13);
   backdrop-filter: blur(18px);
 }
@@ -379,7 +373,7 @@ body {
 }
 
 .focus-action.connection-action {
-  border-color: color-mix(in srgb, var(--focus) 32%, var(--border));
+  border-color: var(--focus);
   background: var(--focus-soft);
   color: var(--focus-strong);
 }
@@ -432,7 +426,7 @@ body {
   grid-column: 1 / -1;
   min-height: 54px;
   padding: 5px 6px 5px 14px;
-  border: 1px solid color-mix(in srgb, var(--focus) 20%, var(--border));
+  border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--surface);
   box-shadow: 0 9px 28px rgb(26 40 34 / 0.05);
@@ -611,7 +605,7 @@ body {
 .task-selection-detail {
   padding: 18px;
   border-top: 1px solid var(--border);
-  background: color-mix(in srgb, var(--canvas) 62%, var(--surface));
+  background: var(--canvas);
 }
 
 .task-selection-detail button,
@@ -670,7 +664,7 @@ body {
   min-height: 182px;
   margin: 0;
   padding: 24px 20px;
-  border: 1px solid color-mix(in srgb, var(--focus) 14%, var(--border));
+  border: 1px solid var(--border);
   border-radius: 22px;
   background: var(--surface);
   box-shadow: var(--mobile-shadow);
@@ -792,7 +786,7 @@ body {
   width: 100%;
   min-height: 50px;
   justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--focus) 26%, var(--border));
+  border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--focus-soft);
   color: var(--focus-strong);
@@ -931,9 +925,9 @@ body {
   gap: 3px;
   margin: 0;
   padding: 6px;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 68%, transparent);
+  border: 1px solid var(--border-strong);
   border-radius: 18px;
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  background: var(--surface);
   box-shadow: 0 14px 42px rgb(26 40 34 / 0.14);
   backdrop-filter: blur(20px) saturate(1.1);
 }
