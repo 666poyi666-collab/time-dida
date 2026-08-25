@@ -7,6 +7,7 @@
 - 2026-08-25 npm registry 新增审计规则后从早先 0 漏洞变为 27 项（2 critical/20 high/5 moderate）。没有使用 `--force`：先做兼容性查询，再将 Electron 31→受支持的 43.4.1、Vite 5→7.3.6、Vitest 2→4.1.11、builder/rebuild/Wrangler/Cloudflare types 对齐，最终 `npm audit` 回到 0。
 - Electron 43 首次 selftest 准确暴露旧 `better-sqlite3` ABI 125 与新 ABI 148 不匹配；本机无 Visual Studio C++ 工具链，未擅自安装系统组件。改用官方 13.0.3 N-API 发行包后，Node 内存库与 Electron 计时、任务、同步 DB、running/paused crash recovery 全部通过。
 - Electron 43 首次显示无框截图窗口后把 800px 内容区回读为 802px；移动验收夹具改为 show 后再次 `setContentSize`，明确锁定 CSS viewport 而非 DWM 外框换算。随后桌面 13 张截图与 360/412/640/760/915×412 明暗四页面全部通过，外层无溢出、任务/地图/配对结构与 44px 触控门禁未回归。
+- electron-builder 26 首次 dist 仍看到 SQLite 包内 `binding.gyp` 并误走 node-gyp，失败于本机无 Python/MSVC；该失败未生成 EXE。既然 13.0.3 已以 N-API prebuild 在 Node/Electron 真实数据库回归中通过，构建配置显式关闭 `npmRebuild`，保留 `asarUnpack` 携带预构建文件，并移除会误导维护者的直接 `@electron/rebuild` 与旧 rebuild script。
 
 - 2026-08-25 在 0.12.99 Windows 安装后发现控制台 EPIPE 无界递归：断开父 PowerShell 后，`console.error` 抛错被全局 `uncaughtException` 再写 logger，生成同一条错误直至日志达 155,984,434,050 B。确认已停止增长、关闭 FocusLink 且文件可独占打开后，将这一精确生成日志清空为 0 B；未删除 SQLite、任务或凭据。
 - Logger 增加控制台 fail-closed、stream 错误脱离、500 行内存上限和单文件 20 MiB 切换。回归用抛 `EPIPE` 的 synthetic sink 确认不向外传播异常。0.12.99 已安装后源码变更，候选按不复用规则提升为 0.12.100/1300。

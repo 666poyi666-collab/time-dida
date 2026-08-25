@@ -9,6 +9,9 @@ files:
   - package.json
   - '!**/*.{map,ts}'
 asar: true
+# better-sqlite3 13 ships N-API prebuilds. Rebuilding its compatibility binding with node-gyp
+# would incorrectly require a local MSVC toolchain and would throw away the cross-runtime benefit.
+npmRebuild: false
 asarUnpack:
   - "**/node_modules/better-sqlite3/**"
   - "**/node_modules/bindings/**"

@@ -51,7 +51,6 @@
     "smoke:tomatodo:bridge": "npm run build:selftest && node dist-selftest/tomatodo-cloud-real-smoke.cjs --probe-only",
     "typecheck": "tsc --noEmit && npm run typecheck:cloudflare",
     "postinstall": "electron-builder install-app-deps && node scripts/build/patch-electron-builder-nsis.cjs",
-    "rebuild": "electron-rebuild -f -w better-sqlite3",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"cloud/**/*.ts\" \"cloudflare/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{ts,js,mjs,cjs}\" \"mobile/**/*.{html,js,json,webmanifest,ts,tsx}\" \"*.config.ts\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"cloud/**/*.ts\" \"cloudflare/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{ts,js,mjs,cjs}\" \"mobile/**/*.{html,js,json,webmanifest,ts,tsx}\" \"*.config.ts\"",
     "lint": "eslint \"src/**/*.{ts,tsx}\" \"mobile/**/*.{ts,tsx}\" \"electron/**/*.ts\" \"shared/**/*.ts\" \"cloud/**/*.ts\" \"cloudflare/**/*.ts\" \"tests/**/*.ts\" \"*.config.ts\"",
@@ -75,7 +74,6 @@
   "devDependencies": {
     "@capacitor/cli": "7.6.8",
     "@cloudflare/workers-types": "5.20260825.1",
-    "@electron/rebuild": "^4.2.0",
     "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^20.14.10",
