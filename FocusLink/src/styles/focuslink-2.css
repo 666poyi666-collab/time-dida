@@ -1098,6 +1098,25 @@ html.dark {
   list-style: none;
 }
 
+.settings-pairing-simple {
+  display: grid;
+  gap: 4px;
+  margin: 0 16px 14px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgb(var(--app-border));
+}
+
+.settings-pairing-simple strong {
+  color: rgb(var(--app-text));
+  font-size: 11px;
+}
+
+.settings-pairing-simple span {
+  color: rgb(var(--app-muted));
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .settings-pairing-steps li {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);

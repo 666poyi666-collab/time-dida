@@ -74,11 +74,11 @@ describe('mobile owner account entry', () => {
     expect(mobile).toContain('const [configOpen, setConfigOpen] = useState(false);');
     expect(mobile).toContain('onClose={() => setConfigOpen(false)}');
     expect(markup).toContain('aria-label="关闭账号设置，返回本机模式"');
-    expect(markup).toContain('本机模式可以直接使用');
-    expect(markup).toContain('输入另一台设备显示的配对码');
-    expect(markup).toContain('加入多端同步');
-    expect(markup).toContain('首台设备或账号恢复');
-    expect(markup).toContain('暂不授权，继续使用本机模式');
+    expect(markup).toContain('输入配对码即可同步');
+    expect(markup).toContain('输入另一台设备的本机配对码');
+    expect(markup).toContain('输入配对码');
+    expect(markup).toContain('首次设备授权');
+    expect(markup).toContain('暂不配对，继续本机使用');
     expect(markup).not.toContain('这台设备已加入云同步');
     expect(sheet).toContain('onMouseDown={onClose}');
     expect(sheet).toContain("if (event.key !== 'Escape') return;");

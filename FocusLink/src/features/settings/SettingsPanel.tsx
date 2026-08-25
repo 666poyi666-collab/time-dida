@@ -1411,20 +1411,10 @@ export function SettingsPanel() {
       render: () => (
         <>
           {!deviceSyncStatus?.signedIn && (
-            <ol className="settings-pairing-steps" aria-label="配对步骤">
-              <li>
-                <b>1</b>
-                <span>另一台设备先完成授权</span>
-              </li>
-              <li>
-                <b>2</b>
-                <span>打开它的本机配对码</span>
-              </li>
-              <li>
-                <b>3</b>
-                <span>在这台电脑输入，自动同步</span>
-              </li>
-            </ol>
+            <div className="settings-pairing-simple">
+              <strong>输入另一台设备的本机配对码</strong>
+              <span>对方设备打开“我的配对码”，你输入后会自动加入同步。</span>
+            </div>
           )}
           <Row
             label="FocusLink 设备授权"

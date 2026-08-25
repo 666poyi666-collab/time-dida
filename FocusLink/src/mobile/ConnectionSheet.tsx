@@ -141,7 +141,7 @@ export function ConnectionSheet({
         </header>
 
         <div className="account-sheet-summary">
-          <strong>{authenticated ? '这台设备已加入同步' : '本机模式可以直接使用'}</strong>
+          <strong>{authenticated ? '这台设备已加入同步' : '输入配对码即可同步'}</strong>
           <p>
             {authenticated
               ? `${accountLabel ?? 'FocusLink 账号'} · 这台设备已加入云同步。`
@@ -157,20 +157,10 @@ export function ConnectionSheet({
 
         {!authenticated ? (
           <>
-            <ol className="account-pairing-steps" aria-label="配对步骤">
-              <li>
-                <b>1</b>
-                <span>在已授权设备打开“多端同步”</span>
-              </li>
-              <li>
-                <b>2</b>
-                <span>点“添加设备”生成 8 位码</span>
-              </li>
-              <li>
-                <b>3</b>
-                <span>在这台设备输入，自动同步三类数据</span>
-              </li>
-            </ol>
+            <div className="account-pairing-simple">
+              <strong>输入另一台设备的本机配对码</strong>
+              <p>对方设备打开“我的配对码”，你输入后会自动加入同步。</p>
+            </div>
             <form
               className="account-pairing-entry"
               onSubmit={(event) => {
@@ -178,7 +168,7 @@ export function ConnectionSheet({
                 onPair();
               }}
             >
-              <label htmlFor="focuslink-pairing-code">输入另一台设备显示的配对码</label>
+              <label htmlFor="focuslink-pairing-code">输入另一台设备的本机配对码</label>
               <input
                 ref={pairingInputRef}
                 id="focuslink-pairing-code"
@@ -208,14 +198,14 @@ export function ConnectionSheet({
                 type="submit"
                 disabled={busy || pairingCode.length !== 8}
               >
-                {busy ? '正在加入同步…' : '加入多端同步'}
+                {busy ? '正在配对…' : '输入配对码'}
               </button>
             </form>
             <details className="account-owner-fallback">
-              <summary>首台设备或账号恢复</summary>
-              <p>没有任何已登录设备时，使用 Poyi 管理员恢复入口完成首台设备授权。</p>
+              <summary>首次设备授权</summary>
+              <p>如果没有任何已授权设备，先完成一次账号授权。之后所有设备都用本机配对码加入。</p>
               <button type="button" onClick={onLogin} disabled={busy}>
-                打开管理员恢复页
+                打开首次授权
               </button>
             </details>
           </>
@@ -285,7 +275,7 @@ export function ConnectionSheet({
         )}
         {!authenticated && (
           <button className="account-sheet-local" type="button" onClick={onClose}>
-            暂不授权，继续使用本机模式
+            暂不配对，继续本机使用
           </button>
         )}
       </motion.section>
