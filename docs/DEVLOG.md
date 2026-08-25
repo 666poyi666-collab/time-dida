@@ -7,6 +7,7 @@
 - 云端已有 owner-only `/v2/devices` 路径此前没有接入客户端；本轮让 bootstrap 首台设备获得 `devices:manage`，桌面/移动端列出设备并撤销远端凭据，普通配对设备维持四项同步/live scope，当前设备只能退出登录。
 - Windows 安装版 0.12.102 的 startup verifier 首次沿用了旧暂停色 `210 67 57`，而 FocusLink 2.0 桌面最终 token 是 `211 102 55`；UI/mini/live smoke 已实际通过，现将 verifier 合同同步到最终桌面 token。
 - 版本生成器曾把本轮可重建的 `release-v012102*` 临时目录计入 dirty 状态；仅在本地 `.git/info/exclude` 忽略这些目录后，记录干净的 0.12.102 build metadata，排除规则不进入仓库。
+- 最终 0.12.102/1302 候选以干净提交 `ebf8eb4` 生成。Windows 静默覆盖回读 `DisplayVersion=0.12.102`、EXE `FileVersion=0.12.102`，startup/UI/mini/live smoke 全部通过；华为 `app.focuslink.mobile.staging.test` 回读 `0.12.102/1302` 并通过旧 WebView CDP 读取配对输入自动聚焦。小米 `192.168.1.5:5555` 维持 ADB offline，按用户口径只做安装但本轮未宣称成功。
 
 ## 2026-08-24
 
