@@ -1,4 +1,5 @@
 import type { SyncedTask, SyncedTaskProject } from '@shared/sync/taskSnapshotProtocol';
+import { FOCUSLINK_INBOX_PROJECT_ID, isFocusLinkInboxProject } from '@shared/taskProjectPolicy';
 
 export const ALL_PROJECTS = 'all' as const;
 export const NO_PROJECT = 'none' as const;
@@ -67,7 +68,12 @@ export function filterSyncedTasks(
   const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
   return tasks.filter((task) => {
     if (task.isCompleted) return false;
-    if (projectFilter === NO_PROJECT && task.projectId !== null) return false;
+    if (
+      projectFilter === NO_PROJECT &&
+      task.projectId !== null &&
+      !isFocusLinkInboxProject(task.projectId)
+    )
+      return false;
     if (
       projectFilter !== ALL_PROJECTS &&
       projectFilter !== NO_PROJECT &&
@@ -86,7 +92,7 @@ export function projectNameForTask(
   task: SyncedTask,
   projects: readonly SyncedTaskProject[],
 ): string {
-  if (!task.projectId) return '无清单';
+  if (!task.projectId || isFocusLinkInboxProject(task.projectId)) return '收件箱';
   return projects.find((project) => project.id === task.projectId)?.name ?? '未知清单';
 }
 
@@ -103,7 +109,7 @@ export function groupSyncedTaskForest(
   projects: readonly SyncedTaskProject[],
 ): SyncedTaskGroup[] {
   const groups = new Map<string, SyncedTaskGroup>();
-  for (const project of projects) {
+  for (const project of projects.filter((candidate) => !isFocusLinkInboxProject(candidate.id))) {
     groups.set(project.id, {
       key: `${project.source}:${project.id}`,
       projectId: project.id,
@@ -112,15 +118,16 @@ export function groupSyncedTaskForest(
       tasks: [],
     });
   }
+  const inboxProject = projects.find((project) => isFocusLinkInboxProject(project.id));
   const noProject: SyncedTaskGroup = {
     key: NO_PROJECT,
-    projectId: null,
-    name: '无清单',
-    color: null,
+    projectId: FOCUSLINK_INBOX_PROJECT_ID,
+    name: '收件箱',
+    color: inboxProject?.color ?? '#16899f',
     tasks: [],
   };
   for (const task of forest) {
-    if (!task.projectId) {
+    if (!task.projectId || isFocusLinkInboxProject(task.projectId)) {
       noProject.tasks.push(task);
       continue;
     }
@@ -165,7 +172,9 @@ export function filterSyncedTaskForest(
       }
       const projectMatches =
         projectFilter === ALL_PROJECTS ||
-        (projectFilter === NO_PROJECT ? node.projectId === null : node.projectId === projectFilter);
+        (projectFilter === NO_PROJECT
+          ? node.projectId === null || isFocusLinkInboxProject(node.projectId)
+          : node.projectId === projectFilter);
       const queryMatches =
         !normalizedQuery ||
         [node.title, ...node.tags].some((value) =>

@@ -374,37 +374,64 @@ function DayLedgerTimeline({ ledger }: { ledger: DayLedgerAnalytics | undefined 
   const timelineLabel = ledger
     ? `${ledger.date} 全天时间轴，07:00 至 22:00 为默认有效日；${ledger.intervals.map(intervalLabel).join('；') || observation}`
     : '尚无共享日账本数据';
+  const hourTicks = Array.from({ length: 25 }, (_, hour) => hour);
+  const nowPosition = ledger?.isToday
+    ? Math.min(100, Math.max(0, ((ledger.observationEndedAt - ledger.dayStartedAt) / span) * 100))
+    : null;
   return (
     <section className="dashboard-band mobile-ledger-band" aria-labelledby="mobile-ledger-title">
       <AnalyticsHeading id="mobile-ledger-title" title="24 小时时间轴" detail={observation} />
       {ledger ? (
-        <div className="mobile-day-ledger" role="img" aria-label={timelineLabel}>
-          <div className="mobile-day-ledger-track">
-            <i
-              className="effective-window"
-              style={{
-                left: `${((ledger.effectiveStartedAt - ledger.dayStartedAt) / span) * 100}%`,
-                width: `${((ledger.effectiveEndedAt - ledger.effectiveStartedAt) / span) * 100}%`,
-              }}
-            />
-            {ledger.intervals.map((interval, index) => (
-              <i
-                key={`${interval.kind}-${interval.startedAt}-${index}`}
-                className={`ledger-interval ${interval.kind}`}
-                title={intervalLabel(interval)}
-                style={{
-                  left: `${((interval.startedAt - ledger.dayStartedAt) / span) * 100}%`,
-                  width: `${Math.max(0.22, (interval.durationMs / span) * 100)}%`,
-                }}
-              />
-            ))}
-          </div>
-          <div className="mobile-day-ledger-axis" aria-hidden="true">
-            <span style={{ left: '0%' }}>00</span>
-            <span style={{ left: `${(7 / 24) * 100}%` }}>07</span>
-            <span style={{ left: '50%' }}>12</span>
-            <span style={{ left: `${(22 / 24) * 100}%` }}>22</span>
-            <span style={{ left: '100%' }}>24</span>
+        <div className="mobile-day-ledger" aria-label={timelineLabel}>
+          <div className="mobile-day-map-scroll" tabIndex={0} aria-label="横向查看 24 小时">
+            <div className="mobile-day-map">
+              <div className="mobile-day-map-axis" aria-hidden="true">
+                {hourTicks.map((hour) => (
+                  <span
+                    key={hour}
+                    className={hour % 6 === 0 ? 'major' : hour % 2 === 0 ? 'labelled' : ''}
+                    style={{ left: `${(hour / 24) * 100}%` }}
+                  >
+                    {hour % 2 === 0 ? String(hour).padStart(2, '0') : ''}
+                  </span>
+                ))}
+              </div>
+              <div className="mobile-day-map-grid" aria-hidden="true">
+                {hourTicks.slice(0, 24).map((hour) => (
+                  <i key={hour} className={hour < 7 || hour >= 22 ? 'night' : 'day'} />
+                ))}
+              </div>
+              {(['focus', 'pause', 'gap'] as const).map((kind) => (
+                <div className={`mobile-day-lane ${kind}`} key={kind}>
+                  <strong>{kind === 'focus' ? '专注' : kind === 'pause' ? '暂停' : '空档'}</strong>
+                  <div>
+                    {ledger.intervals
+                      .filter((interval) => interval.kind === kind)
+                      .map((interval, index) => {
+                        const width = (interval.durationMs / span) * 100;
+                        return (
+                          <span
+                            key={`${interval.kind}-${interval.startedAt}-${index}`}
+                            className={`ledger-interval ${interval.kind}`}
+                            title={intervalLabel(interval)}
+                            style={{
+                              left: `${((interval.startedAt - ledger.dayStartedAt) / span) * 100}%`,
+                              width: `${Math.max(0.22, width)}%`,
+                            }}
+                          >
+                            {width >= 5 && <small>{formatClock(interval.startedAt)}</small>}
+                          </span>
+                        );
+                      })}
+                  </div>
+                </div>
+              ))}
+              {nowPosition !== null && (
+                <div className="mobile-day-now-layer" aria-hidden="true">
+                  <i className="mobile-day-now" style={{ left: `${nowPosition}%` }} />
+                </div>
+              )}
+            </div>
           </div>
           <div className="chart-legend mobile-ledger-legend" aria-hidden="true">
             <span className="legend-focus">专注</span>
@@ -417,7 +444,7 @@ function DayLedgerTimeline({ ledger }: { ledger: DayLedgerAnalytics | undefined 
         <p className="analytics-empty">尚无共享日账本数据。</p>
       )}
       <p className="dashboard-ledger-caption">
-        空档直接读取共享日账本；00–07 与 22–24 只作背景，不计入空档。
+        每格 1 小时；专注、暂停、空档使用同一比例。滑动可读完整 00:00–24:00，夜间底色不计入空档。
       </p>
     </section>
   );

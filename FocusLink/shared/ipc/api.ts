@@ -414,7 +414,12 @@ export interface FocusLinkAPI {
   };
   tasks: {
     create(title: string, projectId?: string): Promise<Task>;
-    createProject(name: string): Promise<Project>;
+    createProject(name: string, color?: string | null): Promise<Project>;
+    updateProject(
+      projectId: string,
+      input: { name?: string; color?: string | null },
+    ): Promise<Project>;
+    moveTask(taskId: string, projectId?: string | null): Promise<Task>;
     complete(task: Task): Promise<Task>;
     setCompleted(task: Task, completed: boolean): Promise<Task>;
     refresh(options?: TaskWorkspaceRefreshOptions): Promise<IpcResult<TaskWorkspaceRefreshData>>;

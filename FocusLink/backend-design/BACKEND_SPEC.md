@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相；当前实现 v0.12.98（实施中）
+> 状态：v0.12.x 后端单一真相；当前实现 v0.12.99（实施中）
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -73,15 +73,16 @@ shared/ipc/api.ts + shared/types.ts
 - renderer 只消费 `TimerSnapshot`；显示累计复用 `shared/focus/` selector。
 - 45 分专注 + 5 分暂停 + 45 分专注必须得到 90/5/95 分钟三种时间。
 
-## 3. 任务模型与滴答连接
+## 3. FocusLink 任务模型与可选外部连接
 
-任务工作台的产品语义固定为滴答清单，CLI 与 OAuth 是连接方式，不是可暴露给用户的“任务来源”。
+任务工作台的产品语义固定为 FocusLink 自有任务库。滴答 CLI / TickTick OAuth 是用户显式选择的导入/外部副作用连接，不自动成为主数据源。
 
 | 字段/概念                | 取值                                        | 含义                                                                                   |
 | ------------------------ | ------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `Task.source`            | `local` / `ticktick`                        | 关联记录的逻辑身份；`local` 只为旧数据和内部兼容保留，CLI 与 OAuth 都归一为 `ticktick` |
-| `AppSettings.taskSource` | `local` / `ticktick-cli` / `ticktick-oauth` | 旧设置与连接偏好的兼容字段；不决定任务页显示什么产品来源                               |
-| 工作台连接策略           | CLI 优先 / OAuth 后备                       | 每次刷新先探测 dida CLI；不可用时才使用已登录 OAuth；两者都不可用则返回可诊断错误      |
+| `Task.source`            | `local` / `ticktick`                        | `local` 是 FocusLink 真实任务身份；外部读取只在导入前保留 `ticktick`                         |
+| `Task.projectId`         | 一个真实清单 ID                         | 任务只归属一个普通清单；`local-inbox` 是系统收件箱，全部/完成只是聚合视图             |
+| `task_projects.color`    | 受控颜色值                                | 每个清单独立保存；颜色不是身份，两清单可显式选同色，默认分配会避开收件箱色       |
+| `AppSettings.taskSource` | `local` / `ticktick-cli` / `ticktick-oauth` | 默认 `local`；后两者只在用户选择导入时使用                                                   |
 
 Provider 的稳定能力应包括：
 
@@ -94,6 +95,8 @@ Provider 的稳定能力应包括：
 
 - `window.focuslink.tasks.refresh(options?)` 返回 `IpcResult<TaskWorkspaceRefreshData>`，包含内部实际连接方式、清单、任务和 `refreshedAt`；失败保留精确连接错误。`provider` 仅用于诊断，renderer 不将它渲染成来源切换。
 - `window.focuslink.tasks.setCompleted(task, completed)` 返回更新后的 Task。主进程在外部写入成功后更新缓存并广播；若 UI 采用乐观更新，失败必须恢复旧任务。
+- `window.focuslink.tasks.updateProject(projectId, {name?, color?})` 只更新一个普通清单；收件箱名称固定。
+- `window.focuslink.tasks.moveTask(taskId, projectId)` 移动任务子树；根若原有父任务在另一清单，必须解除根 `parentId`，不留跨清单父引用。
 
 `Task` 的完成语义必须包含 `isCompleted` 和可空 `completedAt`；Provider 返回完成时间时必须规范化为 epoch milliseconds 并写入缓存，恢复未完成后 `completedAt=null`。`createdAt` / `updatedAt` 在 Provider 可用时同样保留，避免排序只能猜测。
 
@@ -343,14 +346,15 @@ Cloudflare 外部协议 gate 是受限测试操作，不是部署入口：extern
 - Android 的沉浸系统栏与画中画由 `MainActivity` 通过公开 API 提供，Capacitor 插件只暴露能力、当前状态和显式用户动作。结束活动会话后 renderer 必须恢复系统栏；画中画不支持时返回结构化 `supported: false`。这些显示能力不得引入第二套计时器、kiosk/设备所有者权限或厂商私有 API 依赖。
 - Android 桌面后备计时使用 `TYPE_APPLICATION_OVERLAY` 和显式 `SYSTEM_ALERT_WINDOW` 特殊授权，默认关闭且不得因通知可用而自动显示。点按显示关闭按钮并在 3 秒无操作后收起；关闭持久禁用 overlay，但不结束会话或通知，重新启用只能来自应用设置。拖动目标坐标通过 `postOnAnimation` 每帧最多更新一次，拖动期间缓存安全区/尺寸，背景 drawable 按状态复用；位置继续归一化持久化并在配置变化后重新夹取。
 
-云端任务清单使用独立的权威快照平面，协议真值位于 `shared/sync/taskSnapshotProtocol.ts`；其内容来源是电脑最后一次成功读取并发布的滴答任务清单：
+云端任务清单使用独立的权威快照平面，协议真值位于 `shared/sync/taskSnapshotProtocol.ts`；其内容来源是 FocusLink 自有任务库或用户显式导入后归一化的本地副本：
 
-- 电脑端每次成功读取滴答工作台后自动发布项目与活动任务快照；发布失败只记诊断，不得让已经成功的本地任务刷新变成失败。
+- 电脑端每次成功读取或修改 FocusLink 任务工作台后自动发布清单与任务快照；发布失败只记诊断，本地任务仍可用。
+- 项目 V1 未单独携带 `updatedAt`；合并时以快照 `publishedAt` 与 SQLite `task_projects.updated_at` 比较，旧快照不得回退刚在本机修改的名称/颜色。
 - 快照只包含选择专注所需的任务 ID、来源、标题、项目、优先级、到期日、标签、父子关系和完成状态；不包含任务正文、原始 JSON、CLI/OAuth 凭据或第三方写入能力。Checklist 子项在传输时展平并保留 `parentId`。
 - 云端按账号保留最后一份完整快照，内容相同的同设备重放不增加 revision。Web/PWA/Android 使用 `GET /sync/v2/tasks` 读取并写入 IndexedDB；PC 关闭或任务服务暂时不可达时继续使用最后一次缓存。
 - 任务快照 GET/POST 必须 `Cache-Control: no-store`；`publishedAt` 只是客户端排序提示，Account DO 与 loopback 必须只接受 `publishedAt <= serverTime + 5 分钟`，超限统一返回 HTTP `422` / `task_snapshot_timestamp_too_far_ahead`。已保存且超出该窗口的旧快照是 legacy far-future 状态，下一份合法快照可替换它；正常 register 保持相同 source/payload 幂等、较旧 timestamp 为 `409 stale_task_snapshot`、同 timestamp 异文为 `409 task_snapshot_conflict`。移动端前台每 15 秒自动拉取并在恢复可见、登录或连接 epoch 变化时立即拉取。revision 只能前进：低 revision 响应不得覆盖缓存；同 revision 若 source/payload 不同视为 authority 不一致并保留当前快照。桌面端仅在当前 connection scope/generation 内收到上述 422 时，至多一次 GET 可信 `serverTime`、重戳原 payload 后重试一次；成功回读同一 source device/payload 或 stale 才可清除 durable pending，conflict、第二次 422、GET/解析/重试失败或连接变化均必须保留 pending，不能递归重试。
 - 移动端开始实时会话时可以携带快照中的任务上下文，也可以不关联任务自由开始。任务上下文最终进入 completed bundle，PC 拉回后仍由桌面端执行 dida/TomaToDo 副作用。
-- 任务快照解决的是“PC 已读取内容的跨设备可选副本”，不是移动端直连滴答，也不把本地测试后端提升为生产云。PC 尚未成功发布过快照时，其他端只能自由标题开始。
+- 移动端不直连滴答，只读写同一 FocusLink 账号任务快照；任务创建、完成、清单改色/重命名与任务移动均是完整快照 mutation，成功回读后才更新 IndexedDB 缓存。
 
 ## 9. 小窗与边缘状态
 

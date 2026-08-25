@@ -2,6 +2,7 @@
 import crypto from 'node:crypto';
 import {
   upsertTaskCache,
+  upsertTaskCaches,
   listTaskCache,
   searchTaskCache,
   listLocalTaskProjects,
@@ -10,8 +11,14 @@ import {
 import { logger } from '../logger.js';
 import type { Project, Task, TaskCache, TaskSource } from '@shared/types';
 import type { SyncedTask, SyncedTaskProject } from '@shared/sync/taskSnapshotProtocol';
+import {
+  defaultTaskProjectColor,
+  FOCUSLINK_INBOX_PROJECT_ID,
+  isFocusLinkInboxProject,
+  normalizeTaskProjectColor,
+} from '@shared/taskProjectPolicy';
 
-const LOCAL_PROJECT_ID = 'local-inbox';
+const LOCAL_PROJECT_ID = FOCUSLINK_INBOX_PROJECT_ID;
 
 function ensureInbox(): void {
   if (typeof listLocalTaskProjects !== 'function' || typeof upsertLocalTaskProject !== 'function') {
@@ -22,7 +29,7 @@ function ensureInbox(): void {
   upsertLocalTaskProject({
     id: LOCAL_PROJECT_ID,
     name: '收件箱',
-    color: null,
+    color: normalizeTaskProjectColor(null),
     sortOrder: 0,
     createdAt: now,
     updatedAt: now,
@@ -50,32 +57,61 @@ function cacheToTask(c: TaskCache): Task {
 }
 
 export const LocalTaskProvider = {
-  createProject(name: string): Project {
+  createProject(name: string, color?: string | null): Project {
     const title = name.trim();
     if (!title) throw new Error('清单名称不能为空');
     ensureInbox();
     const now = Date.now();
     const id = crypto.randomUUID();
+    const projectColor = color
+      ? normalizeTaskProjectColor(color)
+      : defaultTaskProjectColor(
+          listLocalTaskProjects().filter((project) => !isFocusLinkInboxProject(project.id)).length +
+            1,
+        );
     upsertLocalTaskProject({
       id,
       name: title,
-      color: null,
+      color: projectColor,
       sortOrder: listLocalTaskProjects().length,
       createdAt: now,
       updatedAt: now,
     });
-    return { id, source: 'local', externalId: id, name: title, color: null };
+    return { id, source: 'local', externalId: id, name: title, color: projectColor };
+  },
+  updateProject(projectId: string, input: { name?: string; color?: string | null }): Project {
+    ensureInbox();
+    const project = listLocalTaskProjects().find((candidate) => candidate.id === projectId);
+    if (!project) throw new Error('FocusLink 清单不存在');
+    const name = input.name === undefined ? project.name : input.name.trim();
+    if (!name) throw new Error('清单名称不能为空');
+    if (isFocusLinkInboxProject(projectId) && name !== project.name) {
+      throw new Error('收件箱是系统清单，不能重命名');
+    }
+    const color =
+      input.color === undefined ? project.color : normalizeTaskProjectColor(input.color);
+    const updatedAt = Date.now();
+    upsertLocalTaskProject({ ...project, name, color, updatedAt });
+    logger.info('tasks:local', `updated local project: ${projectId}`);
+    return { id: project.id, source: 'local', externalId: project.id, name, color };
   },
   create(title: string, _projectId?: string): Task {
+    const normalizedTitle = title.trim();
+    if (!normalizedTitle) throw new Error('任务标题不能为空');
+    ensureInbox();
+    const projectId = _projectId ?? LOCAL_PROJECT_ID;
+    if (!listLocalTaskProjects().some((project) => project.id === projectId)) {
+      throw new Error('FocusLink 清单不存在');
+    }
     const now = Date.now();
     const id = crypto.randomUUID();
     const cache: TaskCache = {
       id,
       source: 'local' as TaskSource,
       externalId: id,
-      projectId: _projectId ?? LOCAL_PROJECT_ID,
+      projectId,
       parentId: null,
-      title,
+      title: normalizedTitle,
       status: 'incomplete',
       priority: null,
       dueDate: null,
@@ -87,7 +123,7 @@ export const LocalTaskProvider = {
       updatedAt: now,
     };
     upsertTaskCache(cache);
-    logger.info('tasks:local', `created local task: ${title}`);
+    logger.info('tasks:local', `created local task: ${normalizedTitle}`);
     return cacheToTask(cache);
   },
 
@@ -160,17 +196,28 @@ export const LocalTaskProvider = {
     return imported;
   },
 
-  mergeCloudSnapshot(projects: readonly SyncedTaskProject[], tasks: readonly SyncedTask[]): number {
+  mergeCloudSnapshot(
+    projects: readonly SyncedTaskProject[],
+    tasks: readonly SyncedTask[],
+    cloudPublishedAt = 0,
+  ): number {
     ensureInbox();
     const now = Date.now();
+    const currentProjects = new Map(
+      listLocalTaskProjects().map((project) => [project.id, project] as const),
+    );
     projects.forEach((project, index) => {
+      const existing = currentProjects.get(project.id);
+      if (existing && existing.updatedAt >= cloudPublishedAt) return;
       upsertLocalTaskProject({
         id: project.id,
         name: project.name,
-        color: project.color,
+        color: isFocusLinkInboxProject(project.id)
+          ? normalizeTaskProjectColor(project.color)
+          : project.color,
         sortOrder: index + 1,
-        createdAt: now,
-        updatedAt: now,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: cloudPublishedAt || now,
       });
     });
     const current = new Map(listTaskCache('local').map((task) => [task.id, task]));
@@ -210,6 +257,43 @@ export const LocalTaskProvider = {
     const all = listTaskCache('local');
     const c = all.find((t) => t.id === id || t.externalId === id);
     return c ? cacheToTask(c) : null;
+  },
+
+  moveTask(id: string, targetProjectId?: string | null): Task {
+    ensureInbox();
+    const projectId = targetProjectId ?? LOCAL_PROJECT_ID;
+    if (!listLocalTaskProjects().some((project) => project.id === projectId)) {
+      throw new Error('目标清单不存在');
+    }
+    const all = listTaskCache('local');
+    const root = all.find((task) => task.id === id || task.externalId === id);
+    if (!root) throw new Error(`本地任务不存在: ${id}`);
+    const movingIds = new Set([root.id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const task of all) {
+        if (task.parentId && movingIds.has(task.parentId) && !movingIds.has(task.id)) {
+          movingIds.add(task.id);
+          changed = true;
+        }
+      }
+    }
+    const now = Date.now();
+    const rows = all
+      .filter((task) => movingIds.has(task.id))
+      .map((task) => ({
+        ...task,
+        projectId,
+        parentId: task.id === root.id && task.parentId ? null : task.parentId,
+        updatedAt: now,
+      }));
+    upsertTaskCaches(rows);
+    logger.info('tasks:local', `moved local task subtree: ${root.id}`, {
+      projectId,
+      count: rows.length,
+    });
+    return cacheToTask(rows.find((task) => task.id === root.id)!);
   },
 
   complete(id: string): Task {

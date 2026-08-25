@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
+import type {
+  CSSProperties,
+  DragEvent as ReactDragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactNode,
+} from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { Project, Task, TimerState } from '@shared/types';
 import { useStore } from '../../app/store';
@@ -7,6 +12,11 @@ import { Icon, Spinner } from '../../ui/Icon';
 import { TaskTree, type TaskTreeRowContext } from './TaskTree';
 import { countTaskTree, filterTaskTree, type TaskSortMode } from './taskTreeModel';
 import { useTaskTreeCollapse } from './useTaskTreeCollapse';
+import {
+  FOCUSLINK_INBOX_PROJECT_ID,
+  isFocusLinkInboxProject,
+  TASK_PROJECT_COLOR_PALETTE,
+} from '@shared/taskProjectPolicy';
 import '../../styles/tasks-motion.css';
 
 type TaskFilter = 'open' | 'completed';
@@ -59,6 +69,7 @@ export function TaskWorkspace() {
   const [query, setQuery] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [filter, setFilter] = useState<TaskFilter>('open');
   const [sortMode, setSortMode] = useState<TaskSortMode>('smart');
   const [completedDays, setCompletedDays] = useState<(typeof COMPLETED_RANGES)[number]>(90);
@@ -325,6 +336,44 @@ export function TaskWorkspace() {
     }
   };
 
+  const updateLocalProject = async (
+    projectId: string,
+    input: { name?: string; color?: string | null },
+  ) => {
+    try {
+      const updated = await window.focuslink.tasks.updateProject(projectId, input);
+      setProjects((current) => {
+        const next = current.map((project) => (project.id === updated.id ? updated : project));
+        setTicktickProjects(next);
+        return next;
+      });
+      addToast('清单设置已保存', 'success');
+    } catch (error) {
+      addToast(`保存清单失败：${toErrorMessage(error)}`, 'error');
+      throw error;
+    }
+  };
+
+  const moveLocalTask = async (task: Task, projectId: string) => {
+    if (mutatingTaskIds.has(task.id) || task.projectId === projectId) return;
+    setMutatingTaskIds((current) => new Set(current).add(task.id));
+    try {
+      const updated = await window.focuslink.tasks.moveTask(task.id, projectId);
+      applyUpdatedTask(updated);
+      await refresh(filter === 'completed', true, completedDays, true);
+      const destination = projectById.get(projectId)?.name ?? '收件箱';
+      addToast(`已移到「${destination}」`, 'success');
+    } catch (error) {
+      addToast(`移动任务失败：${toErrorMessage(error)}`, 'error');
+    } finally {
+      setMutatingTaskIds((current) => {
+        const next = new Set(current);
+        next.delete(task.id);
+        return next;
+      });
+    }
+  };
+
   const changeFilter = (next: TaskFilter) => {
     setFilter(next);
     setSortMode(next === 'completed' ? 'completed' : 'smart');
@@ -368,7 +417,7 @@ export function TaskWorkspace() {
             <input
               value={newTaskTitle}
               onChange={(event) => setNewTaskTitle(event.target.value)}
-              placeholder="添加 FocusLink 任务"
+              placeholder={`添加到${selectedProject ? `「${projectById.get(selectedProject)?.name ?? '当前清单'}」` : '收件箱'}`}
               aria-label="添加 FocusLink 任务"
             />
             <button type="submit" aria-label="创建任务" title="创建任务">
@@ -467,9 +516,27 @@ export function TaskWorkspace() {
                 color={project.color}
                 count={countProjectTasks(tasks, project.id, filter)}
                 onClick={() => setSelectedProject(project.externalId || project.id)}
+                onEdit={
+                  isFocusLinkInboxProject(project.id)
+                    ? undefined
+                    : () =>
+                        setEditingProjectId((current) =>
+                          current === project.id ? null : project.id,
+                        )
+                }
+                onDropTask={(taskId) => {
+                  const task = findTaskById(tasks, taskId);
+                  if (task) void moveLocalTask(task, project.id);
+                }}
               />
             ))}
           </div>
+          {editingProjectId && projectById.get(editingProjectId) && (
+            <ProjectEditor
+              project={projectById.get(editingProjectId)!}
+              onSave={(input) => updateLocalProject(editingProjectId, input)}
+            />
+          )}
 
           {/* 「连接正常」是一句断言，只有真的成功读到过任务才能说。首次加载完成前
               既没有 loadError 也没有 lastRefresh，旧写法会在这段时间亮着绿点说
@@ -595,6 +662,13 @@ export function TaskWorkspace() {
                         onSelect={() => setSelectedTaskId(context.task.id)}
                         onToggleCompleted={() => toggleCompleted(context.task)}
                         onFocus={() => focusTask(context.task)}
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = 'move';
+                          event.dataTransfer.setData(
+                            'application/x-focuslink-task',
+                            context.task.id,
+                          );
+                        }}
                       />
                     )}
                   />
@@ -636,6 +710,7 @@ export function TaskWorkspace() {
               task={selectedTask}
               parentTitle={selectedParentTitle}
               project={selectedTask.projectId ? projectById.get(selectedTask.projectId) : undefined}
+              projects={projects}
               isCurrent={
                 snapshot?.currentTaskId === selectedTask.id ||
                 (!!selectedTask.externalId && snapshot?.currentTaskId === selectedTask.externalId)
@@ -644,6 +719,7 @@ export function TaskWorkspace() {
               mutating={mutatingTaskIds.has(selectedTask.id)}
               onFocus={() => focusTask(selectedTask)}
               onToggleCompleted={() => toggleCompleted(selectedTask)}
+              onMove={(projectId) => moveLocalTask(selectedTask, projectId)}
             />
           ) : (
             <div className="task-inspector-empty state-block">
@@ -699,6 +775,7 @@ function WorkbenchTaskRow({
   onSelect,
   onToggleCompleted,
   onFocus,
+  onDragStart,
 }: TaskTreeRowContext & {
   project?: Project;
   mutating: boolean;
@@ -709,6 +786,7 @@ function WorkbenchTaskRow({
   onSelect: () => void;
   onToggleCompleted: () => void;
   onFocus: () => void;
+  onDragStart: (event: ReactDragEvent<HTMLDivElement>) => void;
 }) {
   const current = currentTaskId === task.id || currentTaskId === task.externalId;
   // 仅无子任务的行收束；已完成父任务留在树中承载子任务。
@@ -732,6 +810,8 @@ function WorkbenchTaskRow({
       tabIndex={0}
       aria-label={task.title}
       aria-selected={selected || undefined}
+      draggable={task.source === 'local'}
+      onDragStart={onDragStart}
       onKeyDown={onRowKeyDown}
       onClick={onSelect}
       onFocus={(event) => {
@@ -787,7 +867,11 @@ function WorkbenchTaskRow({
         </div>
         <div className="task-row-meta">
           {project && (
-            <span>
+            <span
+              className="task-row-project-badge"
+              style={{ '--project-color': project.color ?? '#16899f' } as CSSProperties}
+            >
+              <i aria-hidden="true" />
               <Icon.ListTree size="xs" />
               {project.name}
             </span>
@@ -871,7 +955,11 @@ function CompletedTaskList({
                 <div className="task-row-meta">
                   {parentTitle && <span>{parentTitle}</span>}
                   {project && (
-                    <span>
+                    <span
+                      className="task-row-project-badge"
+                      style={{ '--project-color': project.color ?? '#16899f' } as CSSProperties}
+                    >
+                      <i aria-hidden="true" />
                       <Icon.ListTree size="xs" />
                       {project.name}
                     </span>
@@ -905,20 +993,24 @@ function TaskInspector({
   task,
   parentTitle,
   project,
+  projects,
   isCurrent,
   timerState,
   mutating,
   onFocus,
   onToggleCompleted,
+  onMove,
 }: {
   task: Task;
   parentTitle: string | null;
   project?: Project;
+  projects: Project[];
   isCurrent: boolean;
   timerState: TimerState;
   mutating: boolean;
   onFocus: () => void;
   onToggleCompleted: () => void;
+  onMove: (projectId: string) => void;
 }) {
   const timerActive = timerState === 'running' || timerState === 'paused';
   const childPreview = task.children?.slice(0, 5) ?? [];
@@ -940,12 +1032,27 @@ function TaskInspector({
       </header>
 
       <dl className="task-inspector-meta">
-        {project && (
-          <div>
-            <dt>清单</dt>
-            <dd>{project.name}</dd>
-          </div>
-        )}
+        <div className="task-project-assignment">
+          <dt>所属清单</dt>
+          <dd>
+            <span
+              className="task-project-color"
+              style={{ background: project?.color ?? undefined }}
+            />
+            <select
+              value={task.projectId ?? FOCUSLINK_INBOX_PROJECT_ID}
+              onChange={(event) => onMove(event.target.value)}
+              disabled={mutating || task.source !== 'local'}
+              aria-label="移动任务到清单"
+            >
+              {projects.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                </option>
+              ))}
+            </select>
+          </dd>
+        </div>
         {parentTitle && (
           <div>
             <dt>父任务</dt>
@@ -1051,19 +1158,104 @@ function ProjectButton({
   color,
   count,
   onClick,
+  onEdit,
+  onDropTask,
 }: {
   active: boolean;
   label: string;
   color?: string | null;
   count: number;
   onClick: () => void;
+  onEdit?: () => void;
+  onDropTask?: (taskId: string) => void;
 }) {
   return (
-    <button type="button" className={active ? 'active' : ''} onClick={onClick}>
-      <i style={{ background: color ?? undefined }} />
-      <span>{label}</span>
-      <small>{count}</small>
-    </button>
+    <div
+      className={`task-project-entry ${active ? 'active' : ''}`}
+      onDragOver={(event) => {
+        if (!onDropTask) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+      }}
+      onDrop={(event) => {
+        if (!onDropTask) return;
+        event.preventDefault();
+        const taskId = event.dataTransfer.getData('application/x-focuslink-task');
+        if (taskId) onDropTask(taskId);
+      }}
+    >
+      <button type="button" className="task-project-main" onClick={onClick}>
+        {label === '收件箱' ? (
+          <Icon.Inbox size="xs" />
+        ) : (
+          <i style={{ background: color ?? undefined }} />
+        )}
+        <span>{label}</span>
+        <small>{count}</small>
+      </button>
+      {onEdit && (
+        <button
+          type="button"
+          className="task-project-edit"
+          onClick={onEdit}
+          aria-label={`编辑清单 ${label}`}
+          title="名称与颜色"
+        >
+          <Icon.Pencil size="xs" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ProjectEditor({
+  project,
+  onSave,
+}: {
+  project: Project;
+  onSave: (input: { name?: string; color?: string | null }) => Promise<void>;
+}) {
+  const [name, setName] = useState(project.name);
+  const [color, setColor] = useState(project.color ?? TASK_PROJECT_COLOR_PALETTE[0]);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    setName(project.name);
+    setColor(project.color ?? TASK_PROJECT_COLOR_PALETTE[0]);
+  }, [project.color, project.id, project.name]);
+  return (
+    <form
+      className="task-project-editor"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!name.trim() || saving) return;
+        setSaving(true);
+        void onSave({ name: name.trim(), color }).finally(() => setSaving(false));
+      }}
+    >
+      <label>
+        <span>清单名称</span>
+        <input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} />
+      </label>
+      <fieldset>
+        <legend>清单颜色</legend>
+        <div className="task-project-palette">
+          {TASK_PROJECT_COLOR_PALETTE.map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              className={candidate === color ? 'selected' : ''}
+              style={{ '--project-color': candidate } as CSSProperties}
+              onClick={() => setColor(candidate)}
+              aria-label={`选择颜色 ${candidate}`}
+              aria-pressed={candidate === color}
+            />
+          ))}
+        </div>
+      </fieldset>
+      <button type="submit" className="task-project-save" disabled={!name.trim() || saving}>
+        {saving ? '保存中' : '保存清单'}
+      </button>
+    </form>
   );
 }
 

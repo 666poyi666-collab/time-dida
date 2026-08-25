@@ -86,7 +86,8 @@ describe('mobile dashboard model', () => {
     expect(markup).toContain('专注、暂停与空档时间守恒');
     expect(markup).toContain('专注 14%，暂停 3%，空档 83%');
     expect(markup).toContain('09:30 至 12:00，空档 02:30:00');
-    expect(markup).not.toContain('tabindex="0"');
+    expect(markup).toContain('class="mobile-day-map-scroll" tabindex="0"');
+    expect(markup).toContain('横向查看 24 小时');
     expect(markup).toContain('函数复习');
   });
 });

@@ -44,7 +44,11 @@ export async function refreshTaskWorkspace(
   try {
     const cloud = await readDeviceTaskSnapshot();
     if (cloud?.snapshot) {
-      LocalTaskProvider.mergeCloudSnapshot(cloud.snapshot.projects, cloud.snapshot.tasks);
+      LocalTaskProvider.mergeCloudSnapshot(
+        cloud.snapshot.projects,
+        cloud.snapshot.tasks,
+        cloud.snapshot.publishedAt,
+      );
     }
     const localTasks = LocalTaskProvider.list();
     const taskSource = getSettings().taskSource;

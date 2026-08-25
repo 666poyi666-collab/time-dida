@@ -60,7 +60,7 @@ describe('mobile task browser model', () => {
 
   it('resolves project labels and keeps a fallback for stale snapshots', () => {
     expect(projectNameForTask(tasks[0], projects)).toBe('学习');
-    expect(projectNameForTask(tasks[2], projects)).toBe('无清单');
+    expect(projectNameForTask(tasks[2], projects)).toBe('收件箱');
     expect(projectNameForTask(makeTask({ projectId: 'removed' }), projects)).toBe('未知清单');
   });
 
@@ -68,8 +68,24 @@ describe('mobile task browser model', () => {
     const groups = groupSyncedTasks(filterSyncedTasks(tasks, '', ALL_PROJECTS), projects);
     expect(groups.map((group) => [group.name, group.tasks.map((task) => task.id)])).toEqual([
       ['学习', ['chemistry', 'english']],
-      ['无清单', ['inbox']],
+      ['收件箱', ['inbox']],
     ]);
+  });
+
+  it('merges legacy null and canonical local-inbox tasks into one inbox group', () => {
+    const inboxProject: SyncedTaskProject = {
+      id: 'local-inbox',
+      source: 'local',
+      name: '收件箱',
+      color: '#16899f',
+    };
+    const groups = groupSyncedTasks(
+      [tasks[2], makeTask({ id: 'canonical-inbox', projectId: 'local-inbox' })],
+      [...projects, inboxProject],
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ name: '收件箱', projectId: 'local-inbox' });
+    expect(groups[0].tasks.map((task) => task.id)).toEqual(['inbox', 'canonical-inbox']);
   });
 
   it('rebuilds flattened parent ids into a stable task forest', () => {
@@ -307,7 +323,7 @@ describe('mobile task browser model', () => {
 
     expect(markup.match(/class="task-project-toggle"[^>]*aria-expanded="false"/g)).toHaveLength(2);
     expect(markup).toContain('学习');
-    expect(markup).toContain('无清单');
+    expect(markup).toContain('收件箱');
     expect(markup).not.toContain('整理化学错题');
     expect(markup).not.toContain('预约体检');
   });

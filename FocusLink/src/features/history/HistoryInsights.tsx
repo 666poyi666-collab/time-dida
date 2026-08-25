@@ -208,6 +208,9 @@ export function HistoryInsights({
             <strong>0</strong>
           </div>
         </div>
+        {singleDay && selectedLedger && (
+          <DayActivityTimeline ledger={selectedLedger} onOpenSession={onOpenSession} />
+        )}
         <div className="stats-empty-footer">
           <span>查看已有时间</span>
           <div>
@@ -415,6 +418,10 @@ function DayActivityTimeline({
     ledger?.observationStartedAt !== null && ledger?.observationStartedAt !== undefined
       ? `${formatClock(ledger.observationStartedAt)}–${formatClock(ledger.observationEndedAt)}`
       : '尚未形成观察区间';
+  const hourTicks = Array.from({ length: 25 }, (_, hour) => hour);
+  const nowPosition = ledger?.isToday
+    ? Math.min(100, Math.max(0, ((ledger.observationEndedAt - ledger.dayStartedAt) / span) * 100))
+    : null;
 
   return (
     <article className="stats-panel stats-rhythm-panel">
@@ -436,31 +443,58 @@ function DayActivityTimeline({
           role="group"
           aria-label={`${ledger.date} 全天时间轴；07:00 至 22:00 为默认有效日`}
         >
-          <div className="stats-ledger-track">
-            <i
-              className="effective-window"
-              style={{
-                left: `${((ledger.effectiveStartedAt - ledger.dayStartedAt) / span) * 100}%`,
-                width: `${(Math.max(0, ledger.effectiveEndedAt - ledger.effectiveStartedAt) / span) * 100}%`,
-              }}
-              aria-hidden="true"
-            />
-            {ledger.intervals.map((interval, index) => (
-              <LedgerBlock
-                key={`${interval.kind}-${interval.startedAt}-${index}`}
-                interval={interval}
+          <div className="stats-day-map-scroll" aria-label="完整 24 小时时间地图">
+            <div className="stats-day-map">
+              <div className="stats-day-map-axis" aria-hidden="true">
+                {hourTicks.map((hour) => (
+                  <span
+                    key={hour}
+                    className={hour % 6 === 0 ? 'major' : hour % 2 === 0 ? 'labelled' : ''}
+                    style={{ left: `${(hour / 24) * 100}%` }}
+                  >
+                    {hour % 2 === 0 ? String(hour).padStart(2, '0') : ''}
+                  </span>
+                ))}
+              </div>
+              <div className="stats-day-map-grid" aria-hidden="true">
+                {hourTicks.slice(0, 24).map((hour) => (
+                  <i key={hour} className={hour < 7 || hour >= 22 ? 'night' : 'day'} />
+                ))}
+              </div>
+              <TimelineLane
+                label="专注"
+                tone="focus"
+                intervals={ledger.intervals.filter((interval) => interval.kind === 'focus')}
                 dayStart={ledger.dayStartedAt}
                 span={span}
                 onOpenSession={onOpenSession}
               />
-            ))}
-          </div>
-          <div className="stats-ledger-axis" aria-hidden="true">
-            <span style={{ left: '0%' }}>00</span>
-            <span style={{ left: `${(7 / 24) * 100}%` }}>07</span>
-            <span style={{ left: '50%' }}>12</span>
-            <span style={{ left: `${(22 / 24) * 100}%` }}>22</span>
-            <span style={{ left: '100%' }}>24</span>
+              <TimelineLane
+                label="暂停"
+                tone="pause"
+                intervals={ledger.intervals.filter((interval) => interval.kind === 'pause')}
+                dayStart={ledger.dayStartedAt}
+                span={span}
+                onOpenSession={onOpenSession}
+              />
+              <TimelineLane
+                label="空档"
+                tone="gap"
+                intervals={ledger.intervals.filter((interval) => interval.kind === 'gap')}
+                dayStart={ledger.dayStartedAt}
+                span={span}
+                onOpenSession={onOpenSession}
+              />
+              {nowPosition !== null && (
+                <div className="stats-day-now-layer" aria-hidden="true">
+                  <i
+                    className="stats-day-now"
+                    style={{ left: `${nowPosition}%` }}
+                    title={`当前 ${formatClock(ledger.observationEndedAt)}`}
+                  />
+                </div>
+              )}
+            </div>
           </div>
           <div className="stats-ledger-legend" aria-label="时间分类图例">
             <span className="focus">专注</span>
@@ -475,9 +509,42 @@ function DayActivityTimeline({
         </div>
       )}
       <p className="stats-caption">
-        空档只由观察区间内专注与暂停并集的补集推导；00–07 与 22–24 仅作背景，不计入空档。
+        每一格代表 1 小时，三条轨道共用同一 00:00–24:00 比例；深色时段是非统计夜间，不伪造为空档。
       </p>
     </article>
+  );
+}
+
+function TimelineLane({
+  label,
+  tone,
+  intervals,
+  dayStart,
+  span,
+  onOpenSession,
+}: {
+  label: string;
+  tone: DayLedgerInterval['kind'];
+  intervals: DayLedgerInterval[];
+  dayStart: number;
+  span: number;
+  onOpenSession?: (sessionId: string) => void;
+}) {
+  return (
+    <div className={`stats-day-lane ${tone}`}>
+      <strong>{label}</strong>
+      <div className="stats-day-lane-track">
+        {intervals.map((interval, index) => (
+          <LedgerBlock
+            key={`${interval.kind}-${interval.startedAt}-${index}`}
+            interval={interval}
+            dayStart={dayStart}
+            span={span}
+            onOpenSession={onOpenSession}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -505,16 +572,20 @@ function LedgerBlock({
         title={label}
         aria-label={`${label}；打开会话详情`}
         onClick={() => onOpenSession(sessionId)}
-      />
+      >
+        {width >= 3.5 && <span>{formatClock(interval.startedAt)}</span>}
+      </button>
     );
   }
   return (
-    <i
+    <span
       className={`stats-ledger-block ${interval.kind}`}
       style={{ left: `${left}%`, width: `${Math.max(0.2, width)}%` }}
       title={label}
-      aria-hidden="true"
-    />
+      aria-label={label}
+    >
+      {width >= 3.5 && <span>{formatClock(interval.startedAt)}</span>}
+    </span>
   );
 }
 

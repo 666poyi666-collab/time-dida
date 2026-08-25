@@ -141,6 +141,31 @@ app
       window.focuslink.settings.set({ taskSource: 'local', syncMode: 'local-only' })
     `);
     await sleep(320);
+    const seededTasks = await mainWindow.webContents.executeJavaScript(`(async () => {
+      const study = await window.focuslink.tasks.createProject('学习计划', '#2f6fed');
+      const life = await window.focuslink.tasks.createProject('生活安排', '#c56a2d');
+      const updatedStudy = await window.focuslink.tasks.updateProject(study.id, { color: '#7957c7' });
+      await window.focuslink.tasks.create('整理高数错题', study.id);
+      await window.focuslink.tasks.create('复习线性代数', study.id);
+      await window.focuslink.tasks.create('给家里打电话', life.id);
+      const captured = await window.focuslink.tasks.create('临时想到的事');
+      const moved = await window.focuslink.tasks.moveTask(captured.id, life.id);
+      await window.focuslink.tasks.create('等待归档的想法');
+      return {
+        study: study.id,
+        life: life.id,
+        color: updatedStudy.color,
+        movedProjectId: moved.projectId,
+      };
+    })()`);
+    if (
+      !seededTasks?.study ||
+      !seededTasks?.life ||
+      seededTasks.color !== '#7957c7' ||
+      seededTasks.movedProjectId !== seededTasks.life
+    ) {
+      throw new Error('Could not seed independent FocusLink task projects');
+    }
 
     // ── 子任务折叠：对真实滴答数据验证 ──────────────────────
     // 滴答的子任务有两种形态：任务内嵌的 checklist items，以及带 parentId、
@@ -188,7 +213,36 @@ app
         mainWindow.webContents.send('navigate', page.id);
         await waitForSelector(mainWindow, page.anchor);
         await settle(mainWindow, page.id);
+        if (page.id === 'tasks') {
+          await mainWindow.webContents.executeJavaScript(`(() => {
+            const row = document.querySelector('.task-workbench-row');
+            if (row instanceof HTMLElement) row.click();
+          })()`);
+          await sleep(120);
+        }
+        if (page.id === 'history') {
+          const map = await mainWindow.webContents.executeJavaScript(`(() => ({
+            ticks: document.querySelectorAll('.stats-day-map-axis > span').length,
+            lanes: document.querySelectorAll('.stats-day-lane').length,
+            clientWidth: document.querySelector('.stats-day-map-scroll')?.clientWidth ?? 0,
+            scrollWidth: document.querySelector('.stats-day-map-scroll')?.scrollWidth ?? 0,
+          }))()`);
+          if (map.ticks !== 25 || map.lanes !== 3 || map.scrollWidth > map.clientWidth + 1) {
+            throw new Error(`Desktop 24-hour map contract failed: ${JSON.stringify(map)}`);
+          }
+        }
         await capture(`${theme}-${page.id}`, mainWindow);
+        if (theme === 'light' && page.id === 'tasks') {
+          const editorOpened = await mainWindow.webContents.executeJavaScript(`(() => {
+            const button = document.querySelector('.task-project-edit');
+            if (!(button instanceof HTMLButtonElement)) return false;
+            button.click();
+            return true;
+          })()`);
+          if (!editorOpened) throw new Error('Desktop project color editor is unavailable');
+          await sleep(120);
+          await capture('light-task-project-editor', mainWindow);
+        }
       }
     }
 

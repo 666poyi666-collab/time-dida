@@ -65,7 +65,6 @@ describe('desktop history insights presentation', () => {
         onSelectRange: () => undefined,
       }),
     );
-
     expect(markup).toContain('当日有效专注');
     expect(markup).toContain('这一天的时间，花在了哪里');
     expect(markup).toContain('0 分钟');
@@ -159,9 +158,17 @@ describe('desktop history insights presentation', () => {
         onSelectRange: () => undefined,
       }),
     );
+    const axisStart = markup.indexOf('class="stats-day-map-axis"');
+    const axisEnd = markup.indexOf('</div>', axisStart);
+    const axisMarkup = markup.slice(axisStart, axisEnd);
 
     expect(markup).toContain('精确观察时间构成：专注 50 分钟，暂停 10 分钟，空档 12 小时');
     expect(markup).toContain('07:00 至 22:00 为默认有效日');
+    expect(markup).toContain('class="stats-day-map-scroll" aria-label="完整 24 小时时间地图"');
+    expect(markup).toContain('class="stats-day-lane focus"');
+    expect(markup).toContain('class="stats-day-lane pause"');
+    expect(markup).toContain('class="stats-day-lane gap"');
+    expect(axisMarkup.match(/<span/g)).toHaveLength(25);
     expect(markup).toContain('stats-ledger-block gap');
     expect(markup).toContain('10:00');
     expect(markup).toContain('22:00');

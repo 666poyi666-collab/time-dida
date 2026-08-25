@@ -16,8 +16,14 @@ import type { LiveFocusCommand, LiveFocusSnapshotResponse } from '@shared/sync/l
 import {
   reconcileTaskSnapshot,
   type SyncedTask,
+  type SyncedTaskProject,
   type TaskSnapshotResponse,
 } from '@shared/sync/taskSnapshotProtocol';
+import {
+  defaultTaskProjectColor,
+  FOCUSLINK_INBOX_PROJECT_ID,
+  isFocusLinkInboxProject,
+} from '@shared/taskProjectPolicy';
 import {
   clearCachedLiveFocusSnapshot,
   clearCachedTaskSnapshot,
@@ -143,6 +149,7 @@ import {
   startVisibleTaskSnapshotRefresh,
 } from './taskSnapshotRefresh';
 import { isTabletFocusViewport } from './viewportPolicy';
+import { moveTaskSnapshotSubtree, updateTaskSnapshotProject } from './taskSnapshotMutations';
 
 type PullState = 'idle' | 'pulling' | 'confirmed' | 'partial' | 'error';
 
@@ -725,6 +732,9 @@ export function MobileApp() {
       if (!current?.snapshot || !preferences.endpoint || !preferences.token) {
         throw new Error('请先登录 FocusLink 账号并完成任务同步');
       }
+      const projectCount = current.snapshot.projects.filter(
+        (project) => !isFocusLinkInboxProject(project.id),
+      ).length;
       const response = await publishTaskSnapshot({
         endpoint: preferences.endpoint,
         token: preferences.token,
@@ -734,13 +744,80 @@ export function MobileApp() {
           publishedAt: Date.now(),
           projects: [
             ...current.snapshot.projects,
-            { id: crypto.randomUUID(), source: 'local', name, color: null },
+            {
+              id: crypto.randomUUID(),
+              source: 'local',
+              name,
+              color: defaultTaskProjectColor(projectCount + 1),
+            },
           ],
         },
       });
       taskSnapshotRef.current = response;
       setTaskSnapshot(response);
+      const accountId = mobileAccountId(preferences);
+      if (accountId) {
+        await enqueueMutation(cacheMutationQueue, () =>
+          writeCachedTaskSnapshot(response, accountId),
+        );
+      }
       setCommandNotice('清单已保存到 FocusLink 云端');
+    },
+    [deviceId, preferences],
+  );
+
+  const updateCloudProject = useCallback(
+    async (project: SyncedTaskProject, input: { name?: string; color?: string | null }) => {
+      const current = taskSnapshotRef.current;
+      if (!current?.snapshot || !preferences.endpoint || !preferences.token) {
+        throw new Error('请先登录 FocusLink 账号并完成任务同步');
+      }
+      const now = Date.now();
+      const response = await publishTaskSnapshot({
+        endpoint: preferences.endpoint,
+        token: preferences.token,
+        deviceId,
+        snapshot: updateTaskSnapshotProject(current.snapshot, project, input, now),
+      });
+      taskSnapshotRef.current = response;
+      setTaskSnapshot(response);
+      const accountId = mobileAccountId(preferences);
+      if (accountId) {
+        await enqueueMutation(cacheMutationQueue, () =>
+          writeCachedTaskSnapshot(response, accountId),
+        );
+      }
+      setCommandNotice('清单名称与颜色已同步');
+    },
+    [deviceId, preferences],
+  );
+
+  const moveCloudTask = useCallback(
+    async (task: SyncedTask, targetProjectId: string) => {
+      const current = taskSnapshotRef.current;
+      if (!current?.snapshot || !preferences.endpoint || !preferences.token) {
+        throw new Error('请先登录 FocusLink 账号并完成任务同步');
+      }
+      const projectId = targetProjectId || FOCUSLINK_INBOX_PROJECT_ID;
+      const now = Date.now();
+      const response = await publishTaskSnapshot({
+        endpoint: preferences.endpoint,
+        token: preferences.token,
+        deviceId,
+        snapshot: moveTaskSnapshotSubtree(current.snapshot, task.id, projectId, now),
+      });
+      taskSnapshotRef.current = response;
+      setTaskSnapshot(response);
+      const accountId = mobileAccountId(preferences);
+      if (accountId) {
+        await enqueueMutation(cacheMutationQueue, () =>
+          writeCachedTaskSnapshot(response, accountId),
+        );
+      }
+      const destination = response.snapshot?.projects.find(
+        (project) => project.id === projectId,
+      )?.name;
+      setCommandNotice(`任务已移到「${destination ?? '收件箱'}」`);
     },
     [deviceId, preferences],
   );
@@ -773,6 +850,12 @@ export function MobileApp() {
       });
       taskSnapshotRef.current = response;
       setTaskSnapshot(response);
+      const accountId = mobileAccountId(preferences);
+      if (accountId) {
+        await enqueueMutation(cacheMutationQueue, () =>
+          writeCachedTaskSnapshot(response, accountId),
+        );
+      }
       setCommandNotice(task.isCompleted ? '任务已恢复' : '任务已完成');
     },
     [deviceId, preferences],
@@ -1779,6 +1862,8 @@ export function MobileApp() {
                 }}
                 onCreate={createCloudTask}
                 onCreateProject={createCloudProject}
+                onUpdateProject={updateCloudProject}
+                onMoveTask={moveCloudTask}
                 onToggleComplete={toggleCloudTaskComplete}
               />
             )}

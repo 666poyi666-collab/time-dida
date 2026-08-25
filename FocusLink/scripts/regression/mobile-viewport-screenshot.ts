@@ -216,6 +216,19 @@ async function validateViewport(
         metrics.smallestInteractiveTarget >= 43.95,
         `${viewport.id}/${view} target below 44px`,
       );
+      if (view === '统计') {
+        const dayMap = await readDayMapMetrics(win);
+        assert(dayMap.tickCount === 25, `${viewport.id} day map does not expose 25 hour marks`);
+        assert(dayMap.laneCount === 3, `${viewport.id} day map does not expose three lanes`);
+        assert(dayMap.mapWidth >= 720, `${viewport.id} day map is visually compressed`);
+        assert(
+          dayMap.left >= -1 && dayMap.right <= dayMap.innerWidth + 1,
+          `${viewport.id} day map scroll viewport is offscreen`,
+        );
+        if (viewport.width < 760) {
+          assert(dayMap.scrollWidth > dayMap.clientWidth, `${viewport.id} day map should scroll`);
+        }
+      }
       if (view === '专注' && viewport.width >= 620) {
         const focusLayout = await readFocusLayout(win);
         console.log(`[mobile] ${viewport.id}/${theme}/focus-layout ${JSON.stringify(focusLayout)}`);
@@ -459,16 +472,18 @@ async function seedTaskSnapshot(win: BrowserWindow): Promise<void> {
             snapshot: {
               publishedAt: now - 60_000,
               projects: [
-                { id: 'project-study', source: 'ticktick', name: '学习清单', color: '#0a8f68' },
-                { id: 'project-review', source: 'ticktick', name: '本周复习', color: '#5b6fd8' }
+                { id: 'local-inbox', source: 'local', name: '收件箱', color: '#16899f' },
+                { id: 'project-study', source: 'local', name: '学习清单', color: '#4b8b5a' },
+                { id: 'project-review', source: 'local', name: '本周复习', color: '#2f6fed' }
               ],
               tasks: [
-                { id: 'task-biology', source: 'ticktick', projectId: 'project-study', title: '生物 22–26 节复习', status: '0', priority: 3, dueDate: null, tags: ['生物', '复习'], parentId: null, isCompleted: false, updatedAt: now },
-                { id: 'task-biology-22', source: 'ticktick', projectId: 'project-study', title: '第 22 节：遗传信息整理', status: '0', priority: 1, dueDate: null, tags: ['生物'], parentId: 'task-biology', isCompleted: false, updatedAt: now },
-                { id: 'task-biology-23', source: 'ticktick', projectId: 'project-study', title: '第 23 节：错题回顾', status: '0', priority: 1, dueDate: null, tags: ['错题'], parentId: 'task-biology', isCompleted: false, updatedAt: now },
-                { id: 'task-chemistry', source: 'ticktick', projectId: 'project-study', title: '整理化学实验题', status: '0', priority: 2, dueDate: null, tags: ['化学'], parentId: null, isCompleted: false, updatedAt: now },
-                { id: 'task-weekly', source: 'ticktick', projectId: 'project-review', title: '周末知识点复盘', status: '0', priority: 0, dueDate: null, tags: ['复盘'], parentId: null, isCompleted: false, updatedAt: now },
-                { id: 'task-weekly-notes', source: 'ticktick', projectId: 'project-review', title: '补全课堂笔记', status: '0', priority: 0, dueDate: null, tags: ['笔记'], parentId: 'task-weekly', isCompleted: false, updatedAt: now }
+                { id: 'task-capture', source: 'local', projectId: 'local-inbox', title: '整理明天的课程', status: '0', priority: 0, dueDate: null, tags: [], parentId: null, isCompleted: false, updatedAt: now },
+                { id: 'task-biology', source: 'local', projectId: 'project-study', title: '生物 22–26 节复习', status: '0', priority: 3, dueDate: null, tags: ['生物', '复习'], parentId: null, isCompleted: false, updatedAt: now },
+                { id: 'task-biology-22', source: 'local', projectId: 'project-study', title: '第 22 节：遗传信息整理', status: '0', priority: 1, dueDate: null, tags: ['生物'], parentId: 'task-biology', isCompleted: false, updatedAt: now },
+                { id: 'task-biology-23', source: 'local', projectId: 'project-study', title: '第 23 节：错题回顾', status: '0', priority: 1, dueDate: null, tags: ['错题'], parentId: 'task-biology', isCompleted: false, updatedAt: now },
+                { id: 'task-chemistry', source: 'local', projectId: 'project-study', title: '整理化学实验题', status: '0', priority: 2, dueDate: null, tags: ['化学'], parentId: null, isCompleted: false, updatedAt: now },
+                { id: 'task-weekly', source: 'local', projectId: 'project-review', title: '周末知识点复盘', status: '0', priority: 0, dueDate: null, tags: ['复盘'], parentId: null, isCompleted: false, updatedAt: now },
+                { id: 'task-weekly-notes', source: 'local', projectId: 'project-review', title: '补全课堂笔记', status: '0', priority: 0, dueDate: null, tags: ['笔记'], parentId: 'task-weekly', isCompleted: false, updatedAt: now }
               ]
             }
           }
@@ -484,7 +499,7 @@ async function seedTaskSnapshot(win: BrowserWindow): Promise<void> {
 
 async function captureExpandedTaskTree(viewportId: string, win: BrowserWindow): Promise<void> {
   const opened = await win.webContents.executeJavaScript(`(() => {
-    const toggle = document.querySelector('.task-project-toggle');
+    const toggle = document.querySelectorAll('.task-project-toggle')[1];
     if (!(toggle instanceof HTMLButtonElement)) return false;
     toggle.click();
     return true;
@@ -495,11 +510,36 @@ async function captureExpandedTaskTree(viewportId: string, win: BrowserWindow): 
       `document.querySelector('.task-project-group.is-open .task-list') !== null`,
     );
     if (visible === true) {
+      const selected = await win.webContents.executeJavaScript(`(() => {
+        const task = document.querySelector('.task-project-group.is-open .task-row-main');
+        if (!(task instanceof HTMLButtonElement)) return false;
+        task.click();
+        return true;
+      })()`);
+      assert(selected === true, `${viewportId} could not select a task for the detail pane`);
       await sleep(80);
       const metrics = await readViewMetrics(win, '任务');
       assert(metrics.scrollWidth <= metrics.innerWidth + 1, `${viewportId}/任务展开 overflow`);
       assert(metrics.offenders.length === 0, `${viewportId}/任务展开 offscreen`);
       await capture(`${viewportId}-light-任务展开`, win);
+      if (viewportId === 'tablet-760-portrait') {
+        const managerOpened = await win.webContents.executeJavaScript(`(() => {
+          const trigger = document.querySelector('.project-create-disclosure');
+          if (!(trigger instanceof HTMLButtonElement)) return false;
+          trigger.click();
+          return true;
+        })()`);
+        assert(managerOpened === true, `${viewportId} missing project manager disclosure`);
+        await sleep(100);
+        const managerMetrics = await readViewMetrics(win, '任务');
+        console.log(`[mobile] ${viewportId}/清单管理 ${JSON.stringify(managerMetrics)}`);
+        assert(managerMetrics.offenders.length === 0, `${viewportId}/清单管理 offscreen`);
+        assert(
+          managerMetrics.smallestInteractiveTarget >= 43.95,
+          `${viewportId}/清单管理 target below 44px`,
+        );
+        await capture(`${viewportId}-light-清单管理`, win);
+      }
       return;
     }
     await sleep(50);
@@ -630,6 +670,8 @@ async function readViewMetrics(
       .filter((element) => {
         const style = getComputedStyle(element);
         if (style.position === 'fixed' || style.display === 'none' || style.visibility === 'hidden') return false;
+        const horizontalMap = element.closest('.mobile-day-map-scroll');
+        if (horizontalMap && horizontalMap !== element) return false;
         const rect = element.getBoundingClientRect();
         return rect.width > 0 && (rect.left < -tolerance || rect.right > window.innerWidth + tolerance);
       })
@@ -661,6 +703,33 @@ async function readViewMetrics(
           return String(element.className || element.tagName.toLowerCase()) + ':' +
             Math.round(rect.width * 10) / 10 + 'x' + Math.round(rect.height * 10) / 10;
         }),
+    };
+  })()`);
+}
+
+async function readDayMapMetrics(win: BrowserWindow): Promise<{
+  innerWidth: number;
+  left: number;
+  right: number;
+  clientWidth: number;
+  scrollWidth: number;
+  mapWidth: number;
+  tickCount: number;
+  laneCount: number;
+}> {
+  return win.webContents.executeJavaScript(`(() => {
+    const scroll = document.querySelector('.mobile-day-map-scroll');
+    const map = document.querySelector('.mobile-day-map');
+    const rect = scroll?.getBoundingClientRect();
+    return {
+      innerWidth: window.innerWidth,
+      left: rect?.left ?? -1,
+      right: rect?.right ?? window.innerWidth + 1,
+      clientWidth: scroll?.clientWidth ?? 0,
+      scrollWidth: scroll?.scrollWidth ?? 0,
+      mapWidth: map?.getBoundingClientRect().width ?? 0,
+      tickCount: document.querySelectorAll('.mobile-day-map-axis > span').length,
+      laneCount: document.querySelectorAll('.mobile-day-lane').length,
     };
   })()`);
 }

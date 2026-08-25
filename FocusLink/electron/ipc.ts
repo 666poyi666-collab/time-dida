@@ -262,10 +262,23 @@ export function registerIpc(
     await refreshTaskWorkspace({ force: true });
     return task;
   });
-  ipcMain.handle('tasks:create-project', async (_e, name: string) => {
-    const project = LocalTaskProvider.createProject(name);
+  ipcMain.handle('tasks:create-project', async (_e, name: string, color?: string | null) => {
+    const project = LocalTaskProvider.createProject(name, color);
     await refreshTaskWorkspace({ force: true });
     return project;
+  });
+  ipcMain.handle(
+    'tasks:update-project',
+    async (_e, projectId: string, input: { name?: string; color?: string | null }) => {
+      const project = LocalTaskProvider.updateProject(projectId, input);
+      await refreshTaskWorkspace({ force: true });
+      return project;
+    },
+  );
+  ipcMain.handle('tasks:move', async (_e, taskId: string, projectId?: string | null) => {
+    const task = LocalTaskProvider.moveTask(taskId, projectId);
+    await refreshTaskWorkspace({ force: true });
+    return task;
   });
   ipcMain.handle('tasks:complete', async (_e, task: Task) => {
     return setTaskCompleted(task, true);

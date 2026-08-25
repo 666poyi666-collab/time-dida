@@ -7,12 +7,19 @@ import {
   LayoutGrid,
   ListFilter,
   Play,
+  Palette,
   Plus,
   Search,
   Target,
 } from 'lucide-react';
-import { useId, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useMemo, useState, type CSSProperties } from 'react';
 import type { SyncedTask, SyncedTaskProject } from '@shared/sync/taskSnapshotProtocol';
+import {
+  defaultTaskProjectColor,
+  FOCUSLINK_INBOX_PROJECT_ID,
+  isFocusLinkInboxProject,
+  TASK_PROJECT_COLOR_PALETTE,
+} from '@shared/taskProjectPolicy';
 import {
   ALL_PROJECTS,
   buildSyncedTaskForest,
@@ -37,6 +44,11 @@ interface TaskBrowserProps {
   onStart: (task: SyncedTask) => void;
   onCreate?: (title: string, projectId: string | null) => Promise<void>;
   onCreateProject?: (name: string) => Promise<void>;
+  onUpdateProject?: (
+    project: SyncedTaskProject,
+    input: { name?: string; color?: string | null },
+  ) => Promise<void>;
+  onMoveTask?: (task: SyncedTask, projectId: string) => Promise<void>;
   onToggleComplete?: (task: SyncedTask) => Promise<void>;
 }
 
@@ -51,6 +63,8 @@ export function TaskBrowser({
   onStart,
   onCreate,
   onCreateProject,
+  onUpdateProject,
+  onMoveTask,
   onToggleComplete,
 }: TaskBrowserProps) {
   const [query, setQuery] = useState('');
@@ -60,6 +74,8 @@ export function TaskBrowser({
   const [creating, setCreating] = useState(false);
   const [projectDraft, setProjectDraft] = useState('');
   const [projectComposerOpen, setProjectComposerOpen] = useState(false);
+  const [movingTask, setMovingTask] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(() => new Set());
   const groupRegionPrefix = useId();
@@ -85,6 +101,10 @@ export function TaskBrowser({
       ?.slice(0, -1)
       .map((task) => task.title)
       .filter(Boolean) ?? [];
+  const selectTask = (task: SyncedTask) => {
+    setDetailOpen(true);
+    onSelect(task);
+  };
 
   const toggleGroup = (key: string) => {
     setExpandedGroups((current) => {
@@ -127,7 +147,9 @@ export function TaskBrowser({
             setCreating(true);
             void onCreate(
               title,
-              projectFilter === ALL_PROJECTS || projectFilter === NO_PROJECT ? null : projectFilter,
+              projectFilter === ALL_PROJECTS || projectFilter === NO_PROJECT
+                ? FOCUSLINK_INBOX_PROJECT_ID
+                : projectFilter,
             )
               .then(() => setDraft(''))
               .finally(() => setCreating(false));
@@ -160,12 +182,14 @@ export function TaskBrowser({
           <span className="sr-only">按清单筛选</span>
           <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}>
             <option value={ALL_PROJECTS}>全部清单</option>
-            <option value={NO_PROJECT}>无清单</option>
-            {projects.map((project) => (
-              <option key={`${project.source}:${project.id}`} value={project.id}>
-                {project.name}
-              </option>
-            ))}
+            <option value={NO_PROJECT}>收件箱</option>
+            {projects
+              .filter((project) => !isFocusLinkInboxProject(project.id))
+              .map((project) => (
+                <option key={`${project.source}:${project.id}`} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
           </select>
         </label>
         <div className="task-view-switch" role="group" aria-label="任务视图">
@@ -199,32 +223,43 @@ export function TaskBrowser({
           {projectComposerOpen ? <ChevronDown aria-hidden="true" /> : <Plus aria-hidden="true" />}
         </button>
         {projectComposerOpen && (
-          <form
-            className="project-mobile-create"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const name = projectDraft.trim();
-              if (!name || !onCreateProject || creating) return;
-              setCreating(true);
-              void onCreateProject(name)
-                .then(() => {
-                  setProjectDraft('');
-                  setProjectComposerOpen(false);
-                })
-                .finally(() => setCreating(false));
-            }}
-          >
-            <input
-              value={projectDraft}
-              onChange={(event) => setProjectDraft(event.target.value)}
-              placeholder="清单名称"
-              aria-label="清单名称"
-              autoFocus
-            />
-            <button type="submit" disabled={!projectDraft.trim() || !onCreateProject || creating}>
-              创建
-            </button>
-          </form>
+          <div className="mobile-project-manager">
+            <form
+              className="project-mobile-create"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const name = projectDraft.trim();
+                if (!name || !onCreateProject || creating) return;
+                setCreating(true);
+                void onCreateProject(name)
+                  .then(() => setProjectDraft(''))
+                  .finally(() => setCreating(false));
+              }}
+            >
+              <input
+                value={projectDraft}
+                onChange={(event) => setProjectDraft(event.target.value)}
+                placeholder="清单名称"
+                aria-label="清单名称"
+                autoFocus
+              />
+              <button type="submit" disabled={!projectDraft.trim() || !onCreateProject || creating}>
+                创建
+              </button>
+            </form>
+            <div className="mobile-project-editor-list" aria-label="清单颜色设置">
+              {projects
+                .filter((project) => !isFocusLinkInboxProject(project.id))
+                .map((project, index) => (
+                  <MobileProjectEditor
+                    key={project.id}
+                    project={project}
+                    fallbackColor={defaultTaskProjectColor(index + 1)}
+                    onSave={onUpdateProject}
+                  />
+                ))}
+            </div>
+          </div>
         )}
       </div>
 
@@ -268,7 +303,7 @@ export function TaskBrowser({
                     aria-controls={regionId}
                   >
                     <span className="task-project-icon" style={{ color: group.color ?? undefined }}>
-                      {group.projectId ? (
+                      {group.projectId && !isFocusLinkInboxProject(group.projectId) ? (
                         <Folder aria-hidden="true" />
                       ) : (
                         <Inbox aria-hidden="true" />
@@ -293,7 +328,7 @@ export function TaskBrowser({
                           selectedPathKeys={selectedPathKeys}
                           forceOpen={forceGroupsOpen}
                           onToggle={toggleTask}
-                          onSelect={onSelect}
+                          onSelect={selectTask}
                           onStart={onStart}
                           onToggleComplete={onToggleComplete}
                         />
@@ -305,17 +340,49 @@ export function TaskBrowser({
             })}
           </div>
           <aside
-            className={`task-selection-detail ${selectedTask ? 'has-selection' : 'is-empty'}`}
+            className={`task-selection-detail ${selectedTask ? 'has-selection' : 'is-empty'} ${detailOpen ? 'is-open' : ''}`}
             aria-label="所选任务详情"
           >
             {selectedTask ? (
               <>
+                <button
+                  type="button"
+                  className="task-selection-close"
+                  onClick={() => setDetailOpen(false)}
+                  aria-label="关闭任务详情"
+                >
+                  ×
+                </button>
                 <div className="task-selection-kicker">SELECTED TASK</div>
                 <strong>{selectedTask.title || '未命名任务'}</strong>
                 <p>
                   父路径：
                   {[projectNameForTask(selectedTask, projects), ...selectedParentPath].join(' / ')}
                 </p>
+                {onMoveTask && selectedTask.source === 'local' && (
+                  <label className="task-selection-project">
+                    <span>所属清单</span>
+                    <select
+                      value={selectedTask.projectId ?? FOCUSLINK_INBOX_PROJECT_ID}
+                      disabled={movingTask}
+                      onChange={(event) => {
+                        setMovingTask(true);
+                        void onMoveTask(selectedTask, event.target.value).finally(() =>
+                          setMovingTask(false),
+                        );
+                      }}
+                    >
+                      <option value={FOCUSLINK_INBOX_PROJECT_ID}>收件箱</option>
+                      {projects
+                        .filter((project) => !isFocusLinkInboxProject(project.id))
+                        .map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
                 {selectedTask.tags.length > 0 && (
                   <div className="task-selection-tags">
                     {selectedTask.tags.slice(0, 4).map((tag) => (
@@ -338,6 +405,63 @@ export function TaskBrowser({
   );
 }
 
+function MobileProjectEditor({
+  project,
+  fallbackColor,
+  onSave,
+}: {
+  project: SyncedTaskProject;
+  fallbackColor: string;
+  onSave?: (
+    project: SyncedTaskProject,
+    input: { name?: string; color?: string | null },
+  ) => Promise<void>;
+}) {
+  const [name, setName] = useState(project.name);
+  const [color, setColor] = useState(project.color ?? fallbackColor);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    setName(project.name);
+    setColor(project.color ?? fallbackColor);
+  }, [fallbackColor, project.color, project.name]);
+  return (
+    <details className="mobile-project-editor">
+      <summary>
+        <Palette aria-hidden="true" />
+        <i style={{ background: color }} />
+        <strong>{project.name}</strong>
+        <ChevronRight aria-hidden="true" />
+      </summary>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!onSave || !name.trim() || saving) return;
+          setSaving(true);
+          void onSave(project, { name: name.trim(), color }).finally(() => setSaving(false));
+        }}
+      >
+        <input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} />
+        <div className="mobile-project-palette">
+          {TASK_PROJECT_COLOR_PALETTE.map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              className={candidate === color ? 'selected' : ''}
+              style={{ '--project-color': candidate } as CSSProperties}
+              onClick={() => setColor(candidate)}
+              aria-label={`选择颜色 ${candidate}`}
+              aria-pressed={candidate === color}
+            />
+          ))}
+        </div>
+        <button type="submit" disabled={!onSave || !name.trim() || saving}>
+          {saving ? '保存中' : '保存清单'}
+        </button>
+      </form>
+    </details>
+  );
+}
+
 function TaskBoard({
   tasks,
   projects,
@@ -353,12 +477,18 @@ function TaskBoard({
 }) {
   const openTasks = tasks.filter((task) => !task.isCompleted);
   const columns = [
-    { key: 'inbox', label: '收件箱', tasks: openTasks.filter((task) => !task.projectId) },
-    ...projects.map((project) => ({
-      key: project.id,
-      label: project.name,
-      tasks: openTasks.filter((task) => task.projectId === project.id),
-    })),
+    {
+      key: 'inbox',
+      label: '收件箱',
+      tasks: openTasks.filter((task) => !task.projectId || isFocusLinkInboxProject(task.projectId)),
+    },
+    ...projects
+      .filter((project) => !isFocusLinkInboxProject(project.id))
+      .map((project) => ({
+        key: project.id,
+        label: project.name,
+        tasks: openTasks.filter((task) => task.projectId === project.id),
+      })),
   ].filter((column) => column.tasks.length > 0);
   return (
     <div className="task-board" aria-label="任务看板">

@@ -184,11 +184,22 @@ export function SettingsPanel() {
     code: string;
     expiresAt: number;
   } | null>(null);
+  const [devicePairingRemaining, setDevicePairingRemaining] = useState(0);
+  const [devicePairingCopied, setDevicePairingCopied] = useState(false);
   useEffect(() => {
-    if (!devicePairingOffer) return;
-    const delay = Math.max(0, devicePairingOffer.expiresAt - Date.now());
-    const timer = window.setTimeout(() => setDevicePairingOffer(null), delay);
-    return () => window.clearTimeout(timer);
+    if (!devicePairingOffer) {
+      setDevicePairingRemaining(0);
+      setDevicePairingCopied(false);
+      return;
+    }
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((devicePairingOffer.expiresAt - Date.now()) / 1_000));
+      setDevicePairingRemaining(remaining);
+      if (remaining === 0) setDevicePairingOffer(null);
+    };
+    update();
+    const timer = window.setInterval(update, 1_000);
+    return () => window.clearInterval(timer);
   }, [devicePairingOffer]);
   useEffect(() => {
     window.focuslink.ticktick.status().then((s) => {
@@ -1344,6 +1355,22 @@ export function SettingsPanel() {
       keywords: '手机 平板 安卓 android 移动端 跨设备 账号 登录 实时 云端 device sync account',
       render: () => (
         <>
+          {!deviceSyncStatus?.signedIn && (
+            <ol className="settings-pairing-steps" aria-label="配对步骤">
+              <li>
+                <b>1</b>
+                <span>已授权设备打开多端同步</span>
+              </li>
+              <li>
+                <b>2</b>
+                <span>点“添加设备”生成 8 位码</span>
+              </li>
+              <li>
+                <b>3</b>
+                <span>在本机输入，任务/实时/账本自动同步</span>
+              </li>
+            </ol>
+          )}
           <Row
             label="FocusLink 设备授权"
             desc="本机功能不依赖登录；授权后才把任务、专注和统计同步到其他设备"
@@ -1406,14 +1433,25 @@ export function SettingsPanel() {
                 </strong>
               </div>
               <p>
-                一次性使用 ·{' '}
-                {new Intl.DateTimeFormat('zh-CN', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  hour12: false,
-                }).format(devicePairingOffer.expiresAt)}{' '}
-                前有效
+                一次性使用 · 剩余 {Math.floor(devicePairingRemaining / 60)}:
+                {String(devicePairingRemaining % 60).padStart(2, '0')}
               </p>
+              <button
+                type="button"
+                className="btn-outline text-[11px]"
+                onClick={() => {
+                  const copy = navigator.clipboard?.writeText(devicePairingOffer.code);
+                  if (!copy) return;
+                  void copy
+                    .then(() => {
+                      setDevicePairingCopied(true);
+                      window.setTimeout(() => setDevicePairingCopied(false), 1_500);
+                    })
+                    .catch(() => setDevicePairingCopied(false));
+                }}
+              >
+                {devicePairingCopied ? '已复制' : '复制配对码'}
+              </button>
             </div>
           )}
           {!deviceSyncStatus?.signedIn && (

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 
 export interface ConnectionSheetProps {
@@ -35,6 +35,21 @@ export function ConnectionSheet({
   const dialogRef = useRef<HTMLElement>(null);
   const primaryRef = useRef<HTMLButtonElement>(null);
   const reduceMotion = useReducedMotion();
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!pairingOffer) {
+      setRemainingSeconds(0);
+      setCopied(false);
+      return;
+    }
+    const update = () =>
+      setRemainingSeconds(Math.max(0, Math.ceil((pairingOffer.expiresAt - Date.now()) / 1_000)));
+    update();
+    const timer = window.setInterval(update, 1_000);
+    return () => window.clearInterval(timer);
+  }, [pairingOffer]);
 
   useEffect(() => {
     const previousFocus =
@@ -133,6 +148,20 @@ export function ConnectionSheet({
 
         {!authenticated ? (
           <>
+            <ol className="account-pairing-steps" aria-label="配对步骤">
+              <li>
+                <b>1</b>
+                <span>在已授权设备打开“多端同步”</span>
+              </li>
+              <li>
+                <b>2</b>
+                <span>点“添加设备”生成 8 位码</span>
+              </li>
+              <li>
+                <b>3</b>
+                <span>在这台设备输入，自动同步三类数据</span>
+              </li>
+            </ol>
             <form
               className="account-pairing-entry"
               onSubmit={(event) => {
@@ -175,7 +204,25 @@ export function ConnectionSheet({
                 <strong>
                   {pairingOffer.code.slice(0, 4)} {pairingOffer.code.slice(4)}
                 </strong>
-                <small>一次性使用，10 分钟内有效</small>
+                <small>
+                  一次性使用 · 剩余 {Math.floor(remainingSeconds / 60)}:
+                  {String(remainingSeconds % 60).padStart(2, '0')}
+                </small>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const copy = navigator.clipboard?.writeText(pairingOffer.code);
+                    if (!copy) return;
+                    void copy
+                      .then(() => {
+                        setCopied(true);
+                        window.setTimeout(() => setCopied(false), 1_500);
+                      })
+                      .catch(() => setCopied(false));
+                  }}
+                >
+                  {copied ? '已复制' : '复制配对码'}
+                </button>
               </div>
             )}
             <div className="sheet-secondary-actions account-sheet-actions">
