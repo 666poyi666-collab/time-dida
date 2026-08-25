@@ -284,6 +284,7 @@ export class TickTickAdapter implements TaskProvider {
         source: 'ticktick',
         externalId: t.externalId,
         projectId: t.projectId,
+        parentId: t.parentId ?? null,
         title: t.title,
         status: t.status,
         priority: t.priority,

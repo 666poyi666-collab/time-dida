@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { App as CapacitorApp, type URLOpenListenerEvent } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { APP_VERSION } from '@shared/version';
 
 import { AppNavigation, type MobileView } from './AppNavigation';
 import { normalizeDeviceSyncEndpoint } from '@shared/sync/deviceProtocol';
@@ -94,12 +95,15 @@ import {
 } from './appearance';
 import {
   classifyMobileLiveRequestError,
+  createDeviceSyncPairingCode,
+  exchangeDeviceSyncPairingCode,
   fetchLiveFocusSnapshot,
   fetchTaskSnapshot,
   publishTaskSnapshot,
   sendLiveFocusCommand,
   waitForLiveFocusSnapshot,
 } from './syncClient';
+import { normalizePairingCodeInput } from './pairingInput';
 import { resolveMobileLiveLifecycleAction } from './liveConnectionLifecycle';
 import {
   isOwnerAccountCallback,
@@ -155,6 +159,10 @@ export function MobileApp() {
   const [accountProfile, setAccountProfile] = useState(() => loadMobileAccountProfile());
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountLoginPolling, setAccountLoginPolling] = useState(false);
+  const [pairingCode, setPairingCode] = useState('');
+  const [pairingOffer, setPairingOffer] = useState<{ code: string; expiresAt: number } | null>(
+    null,
+  );
   const [cache, setCache] = useState<MobileCacheSnapshot>(EMPTY_CACHE);
   const [cacheReady, setCacheReady] = useState(false);
   // Account sync is optional. A new installation starts in the local focus
@@ -282,6 +290,16 @@ export function MobileApp() {
     saveMobileAppearance(appearance);
     return watchMobileSystemTheme(applyMobileAppearance, appearance);
   }, [appearance]);
+
+  useEffect(() => {
+    if (!pairingOffer) return;
+    const delay = Math.max(0, pairingOffer.expiresAt - Date.now());
+    const timer = window.setTimeout(() => {
+      setPairingOffer(null);
+      setCommandNotice('配对码已过期，请重新生成');
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [pairingOffer]);
 
   useEffect(() => {
     if (!isNativeFocusRuntimeAvailable()) return;
@@ -451,6 +469,85 @@ export function MobileApp() {
     },
     [accountLifecycle, applyOwnerAccountSession],
   );
+
+  const redeemPairingCode = useCallback(async () => {
+    const code = normalizePairingCodeInput(pairingCode);
+    if (!/^\d{8}$/.test(code)) {
+      setCommandNotice('请输入 8 位数字配对码');
+      return;
+    }
+    const operation = accountLifecycle.issue();
+    setAccountLoginPolling(false);
+    setAccountBusy(true);
+    setCommandNotice('正在加入多端同步…');
+    try {
+      const native = Capacitor.isNativePlatform();
+      const tablet = isTabletFocusViewport(window.innerWidth, window.innerHeight);
+      const result = await exchangeDeviceSyncPairingCode({
+        endpoint: OFFICIAL_FOCUSLINK_ENDPOINT,
+        code,
+        device: {
+          installationId: getOrCreateInstallationId(),
+          displayName: native
+            ? tablet
+              ? 'FocusLink Android 平板'
+              : 'FocusLink Android 手机'
+            : 'FocusLink Web',
+          platform: native ? 'android' : 'web',
+          deviceKind: tablet ? 'tablet' : 'phone',
+          appVersion: APP_VERSION,
+        },
+      });
+      if (!accountLifecycle.isCurrent(operation)) return;
+      const accountId = /^fl2_([A-Za-z0-9-]{6,80})_/.exec(result.accessToken)?.[1];
+      if (!accountId) throw new Error('配对响应无效');
+      const applied = await applyOwnerAccountSession(
+        {
+          accountId,
+          accountLabel: 'Poyi',
+          endpoint: OFFICIAL_FOCUSLINK_ENDPOINT,
+          accessToken: result.accessToken,
+          deviceId: result.deviceId,
+        },
+        operation,
+      );
+      if (applied) {
+        setPairingCode('');
+        setCommandNotice('设备已加入同步，正在读取任务、实时状态和账本');
+      }
+    } catch (error) {
+      if (!accountLifecycle.isCurrent(operation) || isAbortError(error)) return;
+      setCommandNotice(errorMessage(error));
+    } finally {
+      if (accountLifecycle.isCurrent(operation)) setAccountBusy(false);
+    }
+  }, [accountLifecycle, applyOwnerAccountSession, pairingCode]);
+
+  const createPairingCode = useCallback(async () => {
+    const token = preferencesRef.current.token;
+    const endpoint = preferencesRef.current.endpoint;
+    if (!token) {
+      setCommandNotice('请先在这台设备完成授权');
+      return;
+    }
+    setAccountBusy(true);
+    setCommandNotice('正在生成一次性配对码…');
+    try {
+      const offer = await createDeviceSyncPairingCode({
+        endpoint,
+        token,
+      });
+      if (preferencesRef.current.token !== token || preferencesRef.current.endpoint !== endpoint) {
+        return;
+      }
+      setPairingOffer(offer);
+      setCommandNotice('配对码已生成，请在新设备中输入');
+    } catch (error) {
+      setCommandNotice(errorMessage(error));
+    } finally {
+      setAccountBusy(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!accountLoginPolling || accountBusy || (preferences.endpoint && preferences.token)) return;
@@ -1521,6 +1618,8 @@ export function MobileApp() {
       preferencesRef.current = next;
       setPreferences(next);
       setAccountProfile(null);
+      setPairingOffer(null);
+      setPairingCode('');
       setConnectionState('unconfigured');
       setConfigOpen(true);
       setCommandNotice(
@@ -1716,8 +1815,13 @@ export function MobileApp() {
             accountLabel={accountProfile?.accountLabel ?? null}
             busy={accountBusy || pullState === 'pulling' || liveConnection === 'connecting'}
             notice={commandNotice}
+            pairingCode={pairingCode}
+            pairingOffer={pairingOffer}
             onClose={() => setConfigOpen(false)}
             onLogin={() => void bootstrapOwnerAccount()}
+            onPairingCodeChange={(value) => setPairingCode(normalizePairingCodeInput(value))}
+            onPair={() => void redeemPairingCode()}
+            onCreatePairingCode={() => void createPairingCode()}
             onLogout={handleForgetToken}
             onClearCache={() => setClearCacheDialogOpen(true)}
           />

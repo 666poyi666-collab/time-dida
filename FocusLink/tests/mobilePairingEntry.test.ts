@@ -57,8 +57,13 @@ describe('mobile owner account entry', () => {
         accountLabel: null,
         busy: false,
         notice: null,
+        pairingCode: '12345678',
+        pairingOffer: null,
         onClose: () => undefined,
         onLogin: () => undefined,
+        onPairingCodeChange: () => undefined,
+        onPair: () => undefined,
+        onCreatePairingCode: () => undefined,
         onLogout: () => undefined,
         onClearCache: () => undefined,
       }),
@@ -68,11 +73,35 @@ describe('mobile owner account entry', () => {
     expect(mobile).toContain('onClose={() => setConfigOpen(false)}');
     expect(markup).toContain('aria-label="关闭账号设置，返回本机模式"');
     expect(markup).toContain('本机模式可以直接使用');
-    expect(markup).toContain('打开设备授权页');
-    expect(markup).toContain('43 位一次性管理员授权码');
+    expect(markup).toContain('输入另一台设备显示的配对码');
+    expect(markup).toContain('加入多端同步');
+    expect(markup).toContain('首台设备或账号恢复');
     expect(markup).toContain('暂不授权，继续使用本机模式');
     expect(markup).not.toContain('这台设备已加入云同步');
     expect(sheet).toContain('onMouseDown={onClose}');
     expect(sheet).toContain("if (event.key !== 'Escape') return;");
+  });
+
+  it('shows one-time code generation on an already enrolled mobile device', () => {
+    const markup = renderToStaticMarkup(
+      createElement(ConnectionSheet, {
+        authenticated: true,
+        accountLabel: 'Poyi',
+        busy: false,
+        notice: null,
+        pairingCode: '',
+        pairingOffer: { code: '87654321', expiresAt: Date.now() + 600_000 },
+        onClose: () => undefined,
+        onLogin: () => undefined,
+        onPairingCodeChange: () => undefined,
+        onPair: () => undefined,
+        onCreatePairingCode: () => undefined,
+        onLogout: () => undefined,
+        onClearCache: () => undefined,
+      }),
+    );
+    expect(markup).toContain('8765 4321');
+    expect(markup).toContain('添加设备');
+    expect(markup).not.toContain('accessToken');
   });
 });

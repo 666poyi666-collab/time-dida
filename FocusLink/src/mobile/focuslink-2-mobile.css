@@ -895,6 +895,93 @@ body {
   line-height: 1.55;
 }
 
+.account-pairing-entry {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.account-pairing-entry label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.account-pairing-entry input {
+  width: 100%;
+  min-height: 62px;
+  padding: 0 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--number);
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.18em;
+  text-align: center;
+}
+
+.account-pairing-entry .primary-button {
+  margin-top: 0;
+}
+
+.account-owner-fallback {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--canvas);
+}
+
+.account-owner-fallback summary {
+  min-height: 32px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.account-owner-fallback p {
+  margin: 7px 0 10px;
+  color: var(--subtle);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.account-owner-fallback button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 11px;
+  color: var(--muted);
+}
+
+.account-pairing-offer {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--focus-soft);
+}
+
+.account-pairing-offer span,
+.account-pairing-offer small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.account-pairing-offer strong {
+  color: var(--focus-strong);
+  font-family: var(--number);
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.12em;
+}
+
 .account-sheet .primary-button {
   min-height: 52px;
   margin-top: 14px;

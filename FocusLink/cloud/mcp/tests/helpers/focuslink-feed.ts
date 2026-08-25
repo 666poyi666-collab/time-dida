@@ -1,4 +1,4 @@
-import { expect, vi } from "vitest";
+import { expect, vi } from 'vitest';
 
 import type {
   FeedChange,
@@ -6,19 +6,15 @@ import type {
   FeedEpochResponse,
   FeedSyncRequest,
   FeedSyncResponse,
-} from "../../src/feed-types";
-import { FOCUSLINK_SERVICE_ORIGIN } from "../../src/upstream";
+} from '../../src/feed-types';
+import { FOCUSLINK_SERVICE_ORIGIN } from '../../src/upstream';
 
-export const TEST_DEVICE_ID = "device-reader01";
-export const TEST_DEVICE_TOKEN =
-  "fl2_account1_reader01_0123456789abcdefghijklmnopqrstuvwxyzABCDE";
-export const TEST_ACCOUNT_KEY = "test-account";
+export const TEST_DEVICE_ID = 'device-reader01';
+export const TEST_DEVICE_TOKEN = 'fl2_account1_reader01_0123456789abcdefghijklmnopqrstuvwxyzABCDE';
+export const TEST_ACCOUNT_KEY = 'test-account';
 export const TEST_ORIGIN = FOCUSLINK_SERVICE_ORIGIN;
 
-export function epochResponse(
-  epoch: FeedEpoch = EPOCH_ONE,
-  changeSeq = 0,
-): FeedEpochResponse {
+export function epochResponse(epoch: FeedEpoch = EPOCH_ONE, changeSeq = 0): FeedEpochResponse {
   return {
     protocolVersion: 2,
     ...epoch,
@@ -28,14 +24,14 @@ export function epochResponse(
 }
 
 export const EPOCH_ONE: FeedEpoch = {
-  syncEpoch: "sync-1",
-  cursorEpoch: "cursor-1",
+  syncEpoch: 'sync-1',
+  cursorEpoch: 'cursor-1',
   accountGeneration: 1,
 };
 
 export const EPOCH_TWO: FeedEpoch = {
-  syncEpoch: "sync-2",
-  cursorEpoch: "cursor-2",
+  syncEpoch: 'sync-2',
+  cursorEpoch: 'cursor-2',
   accountGeneration: 2,
 };
 
@@ -69,7 +65,7 @@ export class FakeFocusLinkFeed {
   }
 
   install(): void {
-    vi.stubGlobal("fetch", vi.fn(this.fetch));
+    vi.stubGlobal('fetch', vi.fn(this.fetch));
   }
 
   fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -77,28 +73,28 @@ export class FakeFocusLinkFeed {
     // the fake usable while the adapter enforces redirects from the response
     // status (the production fetcher must use "manual").
     const safeInit =
-      init?.redirect === "error" ? ({ ...init, redirect: "manual" } satisfies RequestInit) : init;
+      init?.redirect === 'error' ? ({ ...init, redirect: 'manual' } satisfies RequestInit) : init;
     const request =
       input instanceof Request
         ? input
-        : new Request(typeof input === "string" ? input : input.toString(), safeInit);
+        : new Request(typeof input === 'string' ? input : input.toString(), safeInit);
     const url = new URL(request.url);
     const method = request.method.toUpperCase();
-    const body = method === "POST" ? ((await request.clone().json()) as FeedSyncRequest) : null;
+    const body = method === 'POST' ? ((await request.clone().json()) as FeedSyncRequest) : null;
     this.calls.push({
       method,
       pathname: url.pathname,
-      authorization: request.headers.get("authorization"),
+      authorization: request.headers.get('authorization'),
       redirect: init?.redirect,
       body,
     });
 
-    if (url.origin !== TEST_ORIGIN) return jsonError(404, "wrong_origin");
-    if (request.headers.get("authorization") !== `Bearer ${TEST_DEVICE_TOKEN}`)
-      return jsonError(401, "unauthenticated");
+    if (url.origin !== TEST_ORIGIN) return jsonError(404, 'wrong_origin');
+    if (request.headers.get('authorization') !== `Bearer ${TEST_DEVICE_TOKEN}`)
+      return jsonError(401, 'unauthenticated');
 
-    if (method === "GET" && url.pathname === "/sync/v2/status") {
-      if (this.failEpochWith !== null) return jsonError(this.failEpochWith, "epoch_unavailable");
+    if (method === 'GET' && url.pathname === '/sync/v2/status') {
+      if (this.failEpochWith !== null) return jsonError(this.failEpochWith, 'epoch_unavailable');
       const response: FeedEpochResponse = {
         protocolVersion: 2,
         ...this.epoch,
@@ -108,18 +104,20 @@ export class FakeFocusLinkFeed {
       return Response.json(response);
     }
 
-    if (method === "POST" && url.pathname === "/sync/v2/exchange") {
+    if (method === 'POST' && url.pathname === '/sync/v2/exchange') {
       const postNumber = this.calls.filter(
-        (call) => call.method === "POST" && call.pathname === "/sync/v2/exchange",
+        (call) => call.method === 'POST' && call.pathname === '/sync/v2/exchange',
       ).length;
-      if (this.failSyncCall === postNumber) return jsonError(503, "sync_unavailable");
+      if (this.failSyncCall === postNumber) return jsonError(503, 'sync_unavailable');
       if (!body || body.protocolVersion !== 2 || body.deviceId !== TEST_DEVICE_ID)
-        return jsonError(400, "invalid_request");
-      if (body.mutations.length !== 0) return jsonError(403, "write_forbidden");
-      if (!sameEpoch(body, this.epoch)) return jsonError(409, "epoch_changed");
+        return jsonError(400, 'invalid_request');
+      if (body.mutations.length !== 0) return jsonError(403, 'write_forbidden');
+      if (!sameEpoch(body, this.epoch)) return jsonError(409, 'epoch_changed');
 
       const after = decodeCursor(body.cursor);
-      const page = this.changes.filter((change) => change.changeSeq > after).slice(0, this.pageSize);
+      const page = this.changes
+        .filter((change) => change.changeSeq > after)
+        .slice(0, this.pageSize);
       const lastSeq = page.at(-1)?.changeSeq ?? after;
       const response: FeedSyncResponse = {
         protocolVersion: 2,
@@ -133,7 +131,7 @@ export class FakeFocusLinkFeed {
       return Response.json(response);
     }
 
-    return jsonError(404, "not_found");
+    return jsonError(404, 'not_found');
   };
 
   postBodies(): FeedSyncRequest[] {
@@ -143,7 +141,7 @@ export class FakeFocusLinkFeed {
   expectReadOnlyCredential(): void {
     for (const call of this.calls) {
       expect(call.authorization).toBe(`Bearer ${TEST_DEVICE_TOKEN}`);
-      expect(["/sync/v2/status", "/sync/v2/exchange"]).toContain(call.pathname);
+      expect(['/sync/v2/status', '/sync/v2/exchange']).toContain(call.pathname);
       if (call.body) expect(call.body.mutations).toEqual([]);
     }
   }
@@ -152,53 +150,53 @@ export class FakeFocusLinkFeed {
 export function ledgerChange(changeSeq: number, entityId: string, revision = 1): FeedChange {
   return {
     changeSeq,
-    entityType: "focus_ledger_v2",
+    entityType: 'focus_ledger_v2',
     entityId,
     revision,
-    fingerprint: fingerprint(changeSeq, "ledger"),
+    fingerprint: fingerprint(changeSeq, 'ledger'),
     deleted: false,
     payload: {
       sessionId: entityId,
       startedAt: 1_700_000_000_000 + changeSeq * 1_000,
       endedAt: 1_700_000_030_000 + changeSeq * 1_000,
-      status: "finished",
+      status: 'finished',
       activeElapsedMs: 30_000,
       pausedElapsedMs: 0,
       wallElapsedMs: 30_000,
-      originDeviceId: "phone-main",
+      originDeviceId: 'phone-main',
       segments: [],
       pauses: [],
     },
-    sourceDeviceId: "phone-main",
+    sourceDeviceId: 'phone-main',
   };
 }
 
 export function metadataChange(changeSeq: number, entityId: string, revision = 1): FeedChange {
   return {
     changeSeq,
-    entityType: "focus_metadata_v2",
+    entityType: 'focus_metadata_v2',
     entityId,
     revision,
-    fingerprint: fingerprint(changeSeq, "metadata"),
+    fingerprint: fingerprint(changeSeq, 'metadata'),
     deleted: false,
     payload: {
       sessionId: entityId,
       title: `Session ${entityId}`,
-      note: "synced from FocusLink",
-      subject: "chemistry",
-      tags: [{ tagId: "tag-chem", name: "化学" }],
+      note: 'synced from FocusLink',
+      subject: 'chemistry',
+      tags: [{ tagId: 'tag-chem', name: '化学' }],
       taskAssociation: null,
       updatedAt: 1_700_000_040_000 + changeSeq,
-      updatedByDeviceId: "phone-main",
+      updatedByDeviceId: 'phone-main',
     },
-    sourceDeviceId: "phone-main",
+    sourceDeviceId: 'phone-main',
   };
 }
 
 export function tombstoneChange(
   changeSeq: number,
   entityId: string,
-  entityType: FeedChange["entityType"] = "focus_ledger_v2",
+  entityType: FeedChange['entityType'] = 'focus_ledger_v2',
   revision = 2,
 ): FeedChange {
   return {
@@ -206,10 +204,10 @@ export function tombstoneChange(
     entityType,
     entityId,
     revision,
-    fingerprint: fingerprint(changeSeq, "deleted"),
+    fingerprint: fingerprint(changeSeq, 'deleted'),
     deleted: true,
     payload: null,
-    sourceDeviceId: "phone-main",
+    sourceDeviceId: 'phone-main',
   };
 }
 
@@ -232,10 +230,10 @@ function decodeCursor(cursor: string | null): number {
 }
 
 function fingerprint(sequence: number, salt: string): string {
-  return `${sequence.toString(16).padStart(8, "0")}${salt
-    .split("")
+  return `${sequence.toString(16).padStart(8, '0')}${salt
+    .split('')
     .map((char) => char.charCodeAt(0).toString(16))
-    .join("")}`.padEnd(64, "0");
+    .join('')}`.padEnd(64, '0');
 }
 
 function jsonError(status: number, code: string): Response {

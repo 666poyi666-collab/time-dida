@@ -386,8 +386,9 @@ async function validateFreshInstall(indexPath: string): Promise<void> {
     })()`);
     assert(accountGuide.visible === true, 'fresh install did not open device authorization sheet');
     assert(
-      accountGuide.text.includes('43 位一次性管理员授权码'),
-      'device authorization sheet does not explain the current owner-code requirement',
+      accountGuide.text.includes('输入另一台设备显示的配对码') &&
+        accountGuide.text.includes('首台设备或账号恢复'),
+      'device authorization sheet does not expose pairing and first-device recovery',
     );
     win.showInactive();
     await sleep(80);

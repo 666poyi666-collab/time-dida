@@ -71,7 +71,7 @@ export interface TaskCache {
   source: TaskSource;
   externalId: string;
   projectId: string | null;
-  parentId?: string | null;
+  parentId: string | null;
   title: string;
   status: string | null;
   priority: number | null;

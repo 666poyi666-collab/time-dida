@@ -2401,6 +2401,7 @@ function cacheTasks(tasks: Task[]): void {
         source: 'ticktick',
         externalId: task.externalId,
         projectId: task.projectId,
+        parentId: task.parentId ?? null,
         title: task.title,
         // checklist 子项在 dida 响应中可能是 status=1 + completedTime；Task 已完成归一化
         // 后必须把语义写进缓存，否则后续只读缓存时会错误显示为未完成。

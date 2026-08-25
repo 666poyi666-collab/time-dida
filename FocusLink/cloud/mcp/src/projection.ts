@@ -1,11 +1,11 @@
-import type { FeedEntityRow } from "./feed-types";
-import { listFeedEntities } from "./feed-store";
+import type { FeedEntityRow } from './feed-types';
+import { listFeedEntities } from './feed-store';
 
 export interface MaterializedSession {
   id: string;
   startedAt: number;
   endedAt: number;
-  status: "finished" | "aborted";
+  status: 'finished' | 'aborted';
   activeElapsedMs: number;
   pausedElapsedMs: number;
   wallElapsedMs: number;
@@ -54,7 +54,7 @@ export interface McpFocusRecord {
   id: string;
   startedAt: number;
   endedAt: number;
-  status: "finished" | "aborted";
+  status: 'finished' | 'aborted';
   activeElapsedMs: number;
   pausedElapsedMs: number;
   wallElapsedMs: number;
@@ -97,14 +97,14 @@ export function materializeProjection(rows: FeedEntityRow[]): ProjectionResult {
       invalidEntities += 1;
       continue;
     }
-    if (row.entity_type === "focus_ledger_v2") {
+    if (row.entity_type === 'focus_ledger_v2') {
       ledgerRows.set(row.entity_id, row);
-    } else if (row.entity_type === "focus_metadata_v2") {
+    } else if (row.entity_type === 'focus_metadata_v2') {
       metadataRows.set(row.entity_id, row);
-    } else if (row.entity_type === "focus_ledger_correction_v2") {
+    } else if (row.entity_type === 'focus_ledger_correction_v2') {
       const sessionId = payload.sessionId;
       const after = payload.after;
-      if (typeof sessionId !== "string" || !isRecord(after)) {
+      if (typeof sessionId !== 'string' || !isRecord(after)) {
         invalidEntities += 1;
         continue;
       }
@@ -145,8 +145,16 @@ export function materializeProjection(rows: FeedEntityRow[]): ProjectionResult {
     sessions.push({ ...session, corrected: Boolean(correction) });
   }
 
-  sessions.sort((left, right) => right.startedAt - left.startedAt || right.id.localeCompare(left.id));
-  return { sessions, tombstones, invalidEntities, opaqueEncryptedEntities, entityCount: rows.length };
+  sessions.sort(
+    (left, right) => right.startedAt - left.startedAt || right.id.localeCompare(left.id),
+  );
+  return {
+    sessions,
+    tombstones,
+    invalidEntities,
+    opaqueEncryptedEntities,
+    entityCount: rows.length,
+  };
 }
 
 export function sessionsForLocalDate(
@@ -154,11 +162,11 @@ export function sessionsForLocalDate(
   timeZone: string,
   date = new Date(),
 ): MaterializedSession[] {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
   });
   const target = formatter.format(date);
   return sessions.filter((session) => formatter.format(new Date(session.startedAt)) === target);
@@ -176,9 +184,7 @@ export function sessionsInRange(
   );
 }
 
-export function summarizeSessionsByTask(
-  sessions: MaterializedSession[],
-): {
+export function summarizeSessionsByTask(sessions: MaterializedSession[]): {
   tasks: FocusTaskSummary[];
   unassociated: FocusTaskSummary | null;
 } {
@@ -190,12 +196,12 @@ export function summarizeSessionsByTask(
       ? `id:${identity.taskId}`
       : identity.taskTitle
         ? `title:${identity.taskTitle}`
-        : "unassociated";
+        : 'unassociated';
     const existing = groups.get(key);
     if (existing) {
       existing.sessionCount += 1;
-      existing.finishedCount += session.status === "finished" ? 1 : 0;
-      existing.abortedCount += session.status === "aborted" ? 1 : 0;
+      existing.finishedCount += session.status === 'finished' ? 1 : 0;
+      existing.abortedCount += session.status === 'aborted' ? 1 : 0;
       existing.activeElapsedMs += session.activeElapsedMs;
       existing.pausedElapsedMs += session.pausedElapsedMs;
       existing.wallElapsedMs += session.wallElapsedMs;
@@ -209,8 +215,8 @@ export function summarizeSessionsByTask(
     groups.set(key, {
       ...identity,
       sessionCount: 1,
-      finishedCount: session.status === "finished" ? 1 : 0,
-      abortedCount: session.status === "aborted" ? 1 : 0,
+      finishedCount: session.status === 'finished' ? 1 : 0,
+      abortedCount: session.status === 'aborted' ? 1 : 0,
       activeElapsedMs: session.activeElapsedMs,
       pausedElapsedMs: session.pausedElapsedMs,
       wallElapsedMs: session.wallElapsedMs,
@@ -220,15 +226,13 @@ export function summarizeSessionsByTask(
     });
   }
 
-  const unassociated = groups.get("unassociated") ?? null;
-  groups.delete("unassociated");
+  const unassociated = groups.get('unassociated') ?? null;
+  groups.delete('unassociated');
   const tasks = [...groups.values()].sort(
     (left, right) =>
       right.activeElapsedMs - left.activeElapsedMs ||
       right.sessionCount - left.sessionCount ||
-      (left.taskTitle ?? left.taskId ?? "").localeCompare(
-        right.taskTitle ?? right.taskId ?? "",
-      ),
+      (left.taskTitle ?? left.taskId ?? '').localeCompare(right.taskTitle ?? right.taskId ?? ''),
   );
   return { tasks, unassociated };
 }
@@ -259,20 +263,21 @@ function parseSession(
   entityId: string,
   ledger: Record<string, unknown>,
   metadata: Record<string, unknown> | null,
-  authority: MaterializedSession["authority"],
-): Omit<MaterializedSession, "corrected"> | null {
+  authority: MaterializedSession['authority'],
+): Omit<MaterializedSession, 'corrected'> | null {
   if (
     ledger.sessionId !== entityId ||
     !isFiniteNumber(ledger.startedAt) ||
     !isFiniteNumber(ledger.endedAt) ||
-    (ledger.status !== "finished" && ledger.status !== "aborted") ||
+    (ledger.status !== 'finished' && ledger.status !== 'aborted') ||
     !isFiniteNonNegativeNumber(ledger.activeElapsedMs) ||
     !isFiniteNonNegativeNumber(ledger.pausedElapsedMs) ||
     !isFiniteNonNegativeNumber(ledger.wallElapsedMs) ||
-    typeof ledger.originDeviceId !== "string" ||
+    typeof ledger.originDeviceId !== 'string' ||
     !Array.isArray(ledger.segments) ||
     !Array.isArray(ledger.pauses)
-  ) return null;
+  )
+    return null;
   if (metadata && metadata.sessionId !== entityId) return null;
   return {
     id: entityId,
@@ -306,7 +311,7 @@ function parsePayload(value: string | null): Record<string, unknown> | null {
 }
 
 function nullableString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
+  return typeof value === 'string' ? value : null;
 }
 
 function taskIdentity(session: MaterializedSession): {
@@ -328,13 +333,13 @@ function taskIdentity(session: MaterializedSession): {
 }
 
 function firstNonEmptyString(...values: unknown[]): string | undefined {
-  return values.find(
-    (value): value is string => typeof value === "string" && value.trim().length > 0,
-  )?.trim();
+  return values
+    .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    ?.trim();
 }
 
 function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function isFiniteNonNegativeNumber(value: unknown): value is number {
@@ -342,5 +347,5 @@ function isFiniteNonNegativeNumber(value: unknown): value is number {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

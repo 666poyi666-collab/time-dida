@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   handleBootstrap,
@@ -6,44 +6,43 @@ import {
   validateBootstrapConfiguration,
   type BootstrapEnv,
   type BootstrapFlowRow,
-} from "../src/bootstrap";
+} from '../src/bootstrap';
 
 const IDENTITY_AUTHORITY_TOKEN =
-  "fia_0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-const BOOTSTRAP_PEPPER = "bootstrap-pepper-that-is-at-least-32-bytes-long!!";
-const INSTALLATION_ID = "android-test-installation-id-0001";
-const REGISTERED_TOKEN =
-  "fl2_poyi-owner_desktop01_0123456789abcdefghijklmnopqrstuvwxyzABCDE";
+  'fia_0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+const BOOTSTRAP_PEPPER = 'bootstrap-pepper-that-is-at-least-32-bytes-long!!';
+const INSTALLATION_ID = 'android-test-installation-id-0001';
+const REGISTERED_TOKEN = 'fl2_poyi-owner_desktop01_0123456789abcdefghijklmnopqrstuvwxyzABCDE';
 
 function validRegistration(overrides: Record<string, unknown> = {}) {
   return {
     protocolVersion: 1,
     installationId: INSTALLATION_ID,
-    displayName: "小米手机",
-    platform: "android",
-    deviceKind: "phone",
-    appVersion: "0.12.74",
+    displayName: '小米手机',
+    platform: 'android',
+    deviceKind: 'phone',
+    appVersion: '0.12.74',
     ...overrides,
   };
 }
 
 function validStartBody() {
-  return { protocolVersion: 1, action: "start", registration: validRegistration() };
+  return { protocolVersion: 1, action: 'start', registration: validRegistration() };
 }
 
-describe("owner-approved device bootstrap", () => {
-  it("returns login-required with an owner login URL on a clean start", async () => {
+describe('owner-approved device bootstrap', () => {
+  it('returns login-required with an owner login URL on a clean start', async () => {
     const db = memoryDb();
     const env = bootstrapEnv(db);
     const response = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", validStartBody()),
+      bootstrapRequest('/account/v1/device/bootstrap', validStartBody()),
       env,
     );
     expect(response.status).toBe(200);
     const body = (await response.json()) as Record<string, unknown>;
     expect(body).toMatchObject({
       protocolVersion: 1,
-      status: "login-required",
+      status: 'login-required',
     });
     expect(body.flowId).toMatch(/^flow_[A-Za-z0-9_-]{32,160}$/);
     expect(body.pollToken).toMatch(/^flb_[A-Za-z0-9_-]{43,160}$/);
@@ -51,17 +50,15 @@ describe("owner-approved device bootstrap", () => {
       `https://poyi-oauth-as.focuslink-poyi-6465e9.workers.dev/owner/sign-in?bootstrap_flow=${encodeURIComponent(String(body.flowId))}`,
     );
     expect(body.retryAfterMs).toBe(5_000);
-    expect(Number(body.expiresAt) - Number(body.serverTime)).toBeLessThanOrEqual(
-      10 * 60_000,
-    );
+    expect(Number(body.expiresAt) - Number(body.serverTime)).toBeLessThanOrEqual(10 * 60_000);
     expect(db.pendingRows()).toHaveLength(1);
   });
 
-  it("serves pending until the owner approves, then mints the exact authenticated envelope once", async () => {
+  it('serves pending until the owner approves, then mints the exact authenticated envelope once', async () => {
     const db = memoryDb();
     const env = bootstrapEnv(db);
     const start = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", validStartBody()),
+      bootstrapRequest('/account/v1/device/bootstrap', validStartBody()),
       env,
     );
     const started = (await start.json()) as Record<string, unknown>;
@@ -69,9 +66,9 @@ describe("owner-approved device bootstrap", () => {
     const pollToken = String(started.pollToken);
 
     const pending = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", {
+      bootstrapRequest('/account/v1/device/bootstrap', {
         protocolVersion: 1,
-        action: "poll",
+        action: 'poll',
         flowId,
         pollToken,
       }),
@@ -79,7 +76,7 @@ describe("owner-approved device bootstrap", () => {
     );
     expect(pending.status).toBe(200);
     expect(await pending.json()).toMatchObject({
-      status: "pending",
+      status: 'pending',
       flowId,
     });
 
@@ -88,12 +85,12 @@ describe("owner-approved device bootstrap", () => {
       env,
     );
     expect(approve.status).toBe(200);
-    expect(await approve.json()).toEqual({ flowId, status: "approved" });
+    expect(await approve.json()).toEqual({ flowId, status: 'approved' });
 
     const authenticated = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", {
+      bootstrapRequest('/account/v1/device/bootstrap', {
         protocolVersion: 1,
-        action: "poll",
+        action: 'poll',
         flowId,
         pollToken,
       }),
@@ -103,35 +100,33 @@ describe("owner-approved device bootstrap", () => {
     const body = (await authenticated.json()) as Record<string, unknown>;
     expect(body).toMatchObject({
       protocolVersion: 1,
-      status: "authenticated",
-      endpoint: "https://foxlink-mcp.focuslink-poyi-6465e9.workers.dev",
-      accountLabel: "Poyi",
+      status: 'authenticated',
+      endpoint: 'https://foxlink-mcp.focuslink-poyi-6465e9.workers.dev',
+      accountLabel: 'Poyi',
     });
     const device = body.device as Record<string, unknown>;
     expect(device).toMatchObject({
       protocolVersion: 1,
-      accountPublicId: "poyi-owner",
-      deviceId: "device-desktop01",
-      tokenType: "Bearer",
+      accountPublicId: 'poyi-owner',
+      deviceId: 'device-desktop01',
+      tokenType: 'Bearer',
     });
     expect(device.accessToken).toBe(REGISTERED_TOKEN);
     expect((device.scopes as string[]).sort()).toEqual(
-      ["sync:read", "sync:write", "live:read", "live:write"].sort(),
+      ['sync:read', 'sync:write', 'live:read', 'live:write'].sort(),
     );
     expect(env.FOCUSLINK_UPSTREAM.fetch).toHaveBeenCalledTimes(1);
     const forwarded = env.FOCUSLINK_UPSTREAM.fetch.mock.calls[0][0] as Request;
-    expect(new URL(forwarded.url).pathname).toBe("/sync/v1/devices/register");
-    expect(forwarded.headers.get("x-focuslink-identity-authority")).toBe(
-      IDENTITY_AUTHORITY_TOKEN,
-    );
-    expect(forwarded.headers.get("x-focuslink-owner-subject")).toBe("poyi-owner");
+    expect(new URL(forwarded.url).pathname).toBe('/sync/v1/devices/register');
+    expect(forwarded.headers.get('x-focuslink-identity-authority')).toBe(IDENTITY_AUTHORITY_TOKEN);
+    expect(forwarded.headers.get('x-focuslink-owner-subject')).toBe('poyi-owner');
     expect(await forwarded.json()).toEqual(validRegistration());
 
     // A repeated poll after consumption must not mint twice.
     const replay = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", {
+      bootstrapRequest('/account/v1/device/bootstrap', {
         protocolVersion: 1,
-        action: "poll",
+        action: 'poll',
         flowId,
         pollToken,
       }),
@@ -141,49 +136,48 @@ describe("owner-approved device bootstrap", () => {
     expect(env.FOCUSLINK_UPSTREAM.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("never authenticates before owner approval", async () => {
+  it('never authenticates before owner approval', async () => {
     const db = memoryDb();
     const env = bootstrapEnv(db);
     const start = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", validStartBody()),
+      bootstrapRequest('/account/v1/device/bootstrap', validStartBody()),
       env,
     );
     const started = (await start.json()) as Record<string, unknown>;
     const flowId = String(started.flowId);
     const pollToken = String(started.pollToken);
     const poll = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", {
+      bootstrapRequest('/account/v1/device/bootstrap', {
         protocolVersion: 1,
-        action: "poll",
+        action: 'poll',
         flowId,
         pollToken,
       }),
       env,
     );
-    expect(await poll.json()).toMatchObject({ status: "pending" });
+    expect(await poll.json()).toMatchObject({ status: 'pending' });
     expect(env.FOCUSLINK_UPSTREAM.fetch).not.toHaveBeenCalled();
   });
 
-  it("rejects an authenticated response shape from upstream", async () => {
+  it('rejects an authenticated response shape from upstream', async () => {
     const db = memoryDb();
     const env = bootstrapEnv(db);
     const upstream = binding(async () =>
       Response.json({
         protocolVersion: 1,
-        accountPublicId: "poyi-owner",
-        deviceId: "device-wrong",
-        accessToken:
-          "fl2_poyi-owner_wrong-test_0123456789abcdefghijklmnopqrstuvwxyzABCDE",
-        tokenType: "Bearer",
-        scopes: ["sync:read", "sync:write", "live:read", "live:write"],
+        accountPublicId: 'poyi-owner',
+        deviceId: 'device-wrong',
+        accessToken: 'fl2_poyi-owner_wrong-test_0123456789abcdefghijklmnopqrstuvwxyzABCDE',
+        tokenType: 'Bearer',
+        scopes: ['sync:read', 'sync:write', 'live:read', 'live:write'],
         expiresAt: Date.now() + 60_000,
         serverTime: Date.now(),
       }),
     );
     (env as { FOCUSLINK_UPSTREAM: unknown }).FOCUSLINK_UPSTREAM =
-      upstream as unknown as BootstrapEnv["FOCUSLINK_UPSTREAM"];
+      upstream as unknown as BootstrapEnv['FOCUSLINK_UPSTREAM'];
     const start = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", validStartBody()),
+      bootstrapRequest('/account/v1/device/bootstrap', validStartBody()),
       env,
     );
     const started = (await start.json()) as Record<string, unknown>;
@@ -195,9 +189,9 @@ describe("owner-approved device bootstrap", () => {
     );
     expect(approve.status).toBe(200);
     const response = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", {
+      bootstrapRequest('/account/v1/device/bootstrap', {
         protocolVersion: 1,
-        action: "poll",
+        action: 'poll',
         flowId,
         pollToken,
       }),
@@ -206,19 +200,19 @@ describe("owner-approved device bootstrap", () => {
     expect(response.status).toBe(502);
   });
 
-  it("rejects malformed registrations and anonymous credential smuggling", async () => {
+  it('rejects malformed registrations and anonymous credential smuggling', async () => {
     const db = memoryDb();
     const env = bootstrapEnv(db);
     const cases: Array<Record<string, unknown>> = [
-      { ...validStartBody(), registration: { ...validRegistration(), installationId: "short" } },
-      { ...validStartBody(), registration: { ...validRegistration(), platform: "ios" } },
-      { ...validStartBody(), registration: { ...validRegistration(), deviceKind: "router" } },
-      { ...validStartBody(), registration: { ...validRegistration(), scopes: ["sync:read"] } },
+      { ...validStartBody(), registration: { ...validRegistration(), installationId: 'short' } },
+      { ...validStartBody(), registration: { ...validRegistration(), platform: 'ios' } },
+      { ...validStartBody(), registration: { ...validRegistration(), deviceKind: 'router' } },
+      { ...validStartBody(), registration: { ...validRegistration(), scopes: ['sync:read'] } },
       { ...validStartBody(), extra: true },
     ];
     for (const body of cases) {
       const response = await handleBootstrap(
-        bootstrapRequest("/account/v1/device/bootstrap", body),
+        bootstrapRequest('/account/v1/device/bootstrap', body),
         env,
       );
       expect(response.status).toBe(400);
@@ -226,11 +220,11 @@ describe("owner-approved device bootstrap", () => {
     expect(db.pendingRows()).toHaveLength(0);
 
     const smuggled = await handleBootstrap(
-      new Request("https://worker.test/account/v1/device/bootstrap", {
-        method: "POST",
+      new Request('https://worker.test/account/v1/device/bootstrap', {
+        method: 'POST',
         headers: {
-          "content-type": "application/json",
-          authorization: "Bearer anything",
+          'content-type': 'application/json',
+          authorization: 'Bearer anything',
         },
         body: JSON.stringify(validStartBody()),
       }),
@@ -240,22 +234,22 @@ describe("owner-approved device bootstrap", () => {
     expect(db.pendingRows()).toHaveLength(0);
   });
 
-  it("rejects wrong poll tokens and expired flows", async () => {
+  it('rejects wrong poll tokens and expired flows', async () => {
     const db = memoryDb();
     const env = bootstrapEnv(db);
     const start = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", validStartBody()),
+      bootstrapRequest('/account/v1/device/bootstrap', validStartBody()),
       env,
     );
     const started = (await start.json()) as Record<string, unknown>;
     const flowId = String(started.flowId);
 
     const wrong = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", {
+      bootstrapRequest('/account/v1/device/bootstrap', {
         protocolVersion: 1,
-        action: "poll",
+        action: 'poll',
         flowId,
-        pollToken: `flb_${"y".repeat(43)}`,
+        pollToken: `flb_${'y'.repeat(43)}`,
       }),
       env,
     );
@@ -263,9 +257,9 @@ describe("owner-approved device bootstrap", () => {
 
     db.expire(flowId);
     const expired = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", {
+      bootstrapRequest('/account/v1/device/bootstrap', {
         protocolVersion: 1,
-        action: "poll",
+        action: 'poll',
         flowId,
         pollToken: String(started.pollToken),
       }),
@@ -274,25 +268,22 @@ describe("owner-approved device bootstrap", () => {
     expect(expired.status).toBe(410);
   });
 
-  it("lists pending flows for the admin surface and denies on demand", async () => {
+  it('lists pending flows for the admin surface and denies on demand', async () => {
     const db = memoryDb();
     const env = bootstrapEnv(db);
-    await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", validStartBody()),
-      env,
-    );
+    await handleBootstrap(bootstrapRequest('/account/v1/device/bootstrap', validStartBody()), env);
     const list = await handleBootstrapAdmin(
-      new Request("https://worker.test/sync/v1/bootstrap/flows"),
+      new Request('https://worker.test/sync/v1/bootstrap/flows'),
       env,
     );
     expect(list.status).toBe(200);
     const listed = (await list.json()) as { flows: Array<{ flowId: string; displayName: string }> };
     expect(listed.flows).toHaveLength(1);
     expect(listed.flows[0]).toMatchObject({
-      displayName: "小米手机",
-      platform: "android",
-      deviceKind: "phone",
-      appVersion: "0.12.74",
+      displayName: '小米手机',
+      platform: 'android',
+      deviceKind: 'phone',
+      appVersion: '0.12.74',
     });
 
     const denied = await handleBootstrapAdmin(
@@ -304,26 +295,26 @@ describe("owner-approved device bootstrap", () => {
     expect(denied.status).toBe(200);
     expect(await denied.json()).toEqual({
       flowId: listed.flows[0].flowId,
-      status: "denied",
+      status: 'denied',
     });
     const poll = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", {
+      bootstrapRequest('/account/v1/device/bootstrap', {
         protocolVersion: 1,
-        action: "poll",
+        action: 'poll',
         flowId: listed.flows[0].flowId,
-        pollToken: `flb_${"z".repeat(43)}`,
+        pollToken: `flb_${'z'.repeat(43)}`,
       }),
       env,
     );
     expect(poll.status).toBe(403);
   });
 
-  it("requires the fls_* admin hop and full configuration before serving flows", async () => {
+  it('requires the fls_* admin hop and full configuration before serving flows', async () => {
     const db = memoryDb();
     const env = bootstrapEnv(db);
-    const disabled = { ...env, FOCUSLINK_BOOTSTRAP_ENABLED: "false" };
+    const disabled = { ...env, FOCUSLINK_BOOTSTRAP_ENABLED: 'false' };
     const off = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", validStartBody()),
+      bootstrapRequest('/account/v1/device/bootstrap', validStartBody()),
       disabled,
     );
     expect(off.status).toBe(503);
@@ -333,7 +324,7 @@ describe("owner-approved device bootstrap", () => {
       FOCUSLINK_IDENTITY_AUTHORITY_TOKEN: undefined,
     };
     const unconfigured = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", validStartBody()),
+      bootstrapRequest('/account/v1/device/bootstrap', validStartBody()),
       missing,
     );
     expect(unconfigured.status).toBe(503);
@@ -349,18 +340,18 @@ describe("owner-approved device bootstrap", () => {
     });
   });
 
-  it("rate-limits start and poll surfaces", async () => {
+  it('rate-limits start and poll surfaces', async () => {
     const db = memoryDb();
     const env = bootstrapEnv(db);
     env.PAIR_RATE_LIMITER = {
       limit: vi.fn(async () => ({ success: false })),
     };
     const response = await handleBootstrap(
-      bootstrapRequest("/account/v1/device/bootstrap", validStartBody()),
+      bootstrapRequest('/account/v1/device/bootstrap', validStartBody()),
       env,
     );
     expect(response.status).toBe(429);
-    expect(response.headers.get("retry-after")).toBe("60");
+    expect(response.headers.get('retry-after')).toBe('60');
     expect(db.pendingRows()).toHaveLength(0);
   });
 });
@@ -414,7 +405,7 @@ function memoryDb(): MemDb {
   }
 
   async function handleStatement(sql: string, args: unknown[]) {
-    if (sql.includes("INSERT INTO bootstrap_flows")) {
+    if (sql.includes('INSERT INTO bootstrap_flows')) {
       const [flowId, registrationJson, pollTokenHmac, expiresAt, createdAt] = args as [
         string,
         string,
@@ -426,28 +417,26 @@ function memoryDb(): MemDb {
         flow_id: flowId,
         registration_json: registrationJson,
         poll_token_hmac: pollTokenHmac,
-        status: "pending",
+        status: 'pending',
         expires_at: expiresAt,
         created_at: createdAt,
         consumed_at: null,
         device_json: null,
       });
     }
-    if (sql.includes("UPDATE bootstrap_flows SET status")) {
+    if (sql.includes('UPDATE bootstrap_flows SET status')) {
       // Literal-status updates (expired) bind only the flow id; parameterized
       // status updates (approve/deny) bind [status, flowId].
-      const flowId = sql.includes("SET status = ?")
-        ? String(args[1])
-        : String(args[0]);
+      const flowId = sql.includes('SET status = ?') ? String(args[1]) : String(args[0]);
       const row = rows.get(flowId);
       if (row) {
         row.status = sql.includes("'expired'")
-          ? "expired"
+          ? 'expired'
           : sql.includes("'consumed'")
-            ? "consumed"
+            ? 'consumed'
             : sql.includes("'denied'")
-              ? "denied"
-              : "approved";
+              ? 'denied'
+              : 'approved';
       }
     }
     if (sql.includes("status = 'consumed'")) {
@@ -456,7 +445,7 @@ function memoryDb(): MemDb {
       const flowId = String(args[2]);
       const row = rows.get(flowId);
       if (row) {
-        row.status = "consumed";
+        row.status = 'consumed';
         row.consumed_at = normalize(args[0]) as number | null;
         row.device_json = normalize(args[1]) as string | null;
       }
@@ -464,18 +453,18 @@ function memoryDb(): MemDb {
   }
 
   function handleFirst(sql: string, args: unknown[]) {
-    if (sql.includes("COUNT(*) AS count")) return { count: 0 };
-    if (sql.includes("FROM bootstrap_flows WHERE flow_id = ?")) {
+    if (sql.includes('COUNT(*) AS count')) return { count: 0 };
+    if (sql.includes('FROM bootstrap_flows WHERE flow_id = ?')) {
       return rows.get(String(args[0])) ?? null;
     }
-    if (sql.includes("SELECT flow_id, status, expires_at FROM bootstrap_flows")) {
+    if (sql.includes('SELECT flow_id, status, expires_at FROM bootstrap_flows')) {
       return rows.get(String(args[0])) ?? null;
     }
     return null;
   }
 
   function handleAll(sql: string) {
-    if (sql.includes("FROM bootstrap_flows")) {
+    if (sql.includes('FROM bootstrap_flows')) {
       return [...rows.values()];
     }
     return [];
@@ -484,7 +473,7 @@ function memoryDb(): MemDb {
   return {
     pendingRows() {
       return [...rows.values()]
-        .filter((row) => row.status === "pending" || row.status === "approved")
+        .filter((row) => row.status === 'pending' || row.status === 'approved')
         .map((row) => ({
           flowId: row.flow_id,
           registration: JSON.parse(row.registration_json) as Record<string, unknown>,
@@ -506,21 +495,21 @@ function bootstrapEnv(db: ReturnType<typeof memoryDb>): BootstrapEnv & {
     FOCUSLINK_UPSTREAM: binding(async () =>
       Response.json({
         protocolVersion: 1,
-        accountPublicId: "poyi-owner",
-        deviceId: "device-desktop01",
+        accountPublicId: 'poyi-owner',
+        deviceId: 'device-desktop01',
         accessToken: REGISTERED_TOKEN,
-        tokenType: "Bearer",
-        scopes: ["sync:read", "sync:write", "live:read", "live:write"],
+        tokenType: 'Bearer',
+        scopes: ['sync:read', 'sync:write', 'live:read', 'live:write'],
         expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1_000,
         serverTime: Date.now(),
       }),
-    ) as unknown as BootstrapEnv["FOCUSLINK_UPSTREAM"],
+    ) as unknown as BootstrapEnv['FOCUSLINK_UPSTREAM'],
     FOCUSLINK_IDENTITY_AUTHORITY_TOKEN: IDENTITY_AUTHORITY_TOKEN,
-    FOCUSLINK_OWNER_SUBJECT: "poyi-owner",
-    FOCUSLINK_OWNER_LABEL: "Poyi",
+    FOCUSLINK_OWNER_SUBJECT: 'poyi-owner',
+    FOCUSLINK_OWNER_LABEL: 'Poyi',
     FOCUSLINK_BOOTSTRAP_PEPPER: BOOTSTRAP_PEPPER,
-    FOCUSLINK_BOOTSTRAP_ENABLED: "true",
-    FOCUSLINK_ALLOWED_ORIGINS: "https://localhost",
+    FOCUSLINK_BOOTSTRAP_ENABLED: 'true',
+    FOCUSLINK_ALLOWED_ORIGINS: 'https://localhost',
     PAIR_RATE_LIMITER: {
       limit: vi.fn(async () => ({ success: true })),
     },
@@ -535,23 +524,23 @@ function binding(handler: (request: Request) => Promise<Response>) {
 
 function bootstrapRequest(path: string, value: unknown): Request {
   return new Request(`https://worker.test${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(value),
   });
 }
 
 function adminRequest(path: string, value: unknown): Request {
   return new Request(`https://worker.test${path}`, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "content-type": "application/json",
-      authorization: "FocusLinkService fls_0123456789abcdefghijklmnopqrstuvwxyzABCDEF",
-      "x-focuslink-service-client": "poyi-oauth-as",
-      "x-focuslink-service-audience": `https://worker.test${path}`,
-      "x-focuslink-service-action": path.endsWith("/approve")
-        ? "focuslink.bootstrap.flow.approve"
-        : "focuslink.bootstrap.flow.deny",
+      'content-type': 'application/json',
+      authorization: 'FocusLinkService fls_0123456789abcdefghijklmnopqrstuvwxyzABCDEF',
+      'x-focuslink-service-client': 'poyi-oauth-as',
+      'x-focuslink-service-audience': `https://worker.test${path}`,
+      'x-focuslink-service-action': path.endsWith('/approve')
+        ? 'focuslink.bootstrap.flow.approve'
+        : 'focuslink.bootstrap.flow.deny',
     },
     body: JSON.stringify(value),
   });

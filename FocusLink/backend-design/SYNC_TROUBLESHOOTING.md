@@ -180,6 +180,17 @@ v0.12.80 在小米 `D68P65855TPBHYWS` 与华为 `f8630574` 上反复失败。两
 
 专注云文件按一次性批次消费，后一次上传可能覆盖手机尚未取走的前一批。多条记录必须同批上传；真实设备验证时严格按“停止手机应用 → 上传一个完整批次 → 启动手机应用 → 读取下载数量”执行，避免后台提前消费后再误读为 0 条。
 
+## FL-SYNC-010：8 位设备配对码无效、过期或尝试过多
+
+可信设备生成的数字码只在 10 分钟内、单次有效。新设备输入时只移除空格/换行，不改写其他字符；非 8 位数字在本机直接拒绝。authority 对不存在、已使用和已过期统一返回 `pairing_expired`，这是防枚举设计，不能据此判断某个码是否曾经存在。
+
+- `pair_rate_limited`：同一客户端或同一凭据哈希尝试过多，遵守 `Retry-After`，不要连续重试或换设备枚举。
+- `pairing_binding_mismatch`：offer 已绑定另一 installation metadata；保留当前设备数据，回可信设备重新生成。
+- 401/403 / `scope_denied`：生成端不是有效的已登录写设备；先确认该设备自己的任务/实时同步凭据仍有效，不要把管理员 token、pair authority 或服务凭据复制进 UI。
+- 成功兑换后仍没有任务/实时/账本：分别读取 task revision、live connection 和 completed-ledger 状态。兑换成功只证明设备凭据已登记；三条链路必须各自形成确认，不得用其中一条冒充全部同步完成。
+
+排查时严禁记录 8 位明码、Bearer token 或完整 installationId。服务端只允许 HMAC/哈希 key；若日志出现原始 code，视为安全回归并停止发布。
+
 ## 日志位置与收集方式
 
 Windows 日志在 `%APPDATA%\focuslink\logs\focuslink-YYYY-MM-DD.log`。只提供包含错误编号/时间、endpoint（可打码）和 HTTP 状态的片段；不要提供 `focuslink-device-sync-credential.json`、访问令牌或整个 SQLite 文件。

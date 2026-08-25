@@ -6,8 +6,13 @@ export interface ConnectionSheetProps {
   accountLabel: string | null;
   busy: boolean;
   notice: string | null;
+  pairingCode: string;
+  pairingOffer: { code: string; expiresAt: number } | null;
   onClose: () => void;
   onLogin: () => void;
+  onPairingCodeChange: (value: string) => void;
+  onPair: () => void;
+  onCreatePairingCode: () => void;
   onLogout: () => void;
   onClearCache: () => void;
 }
@@ -17,8 +22,13 @@ export function ConnectionSheet({
   accountLabel,
   busy,
   notice,
+  pairingCode,
+  pairingOffer,
   onClose,
   onLogin,
+  onPairingCodeChange,
+  onPair,
+  onCreatePairingCode,
   onLogout,
   onClearCache,
 }: ConnectionSheetProps) {
@@ -47,7 +57,9 @@ export function ConnectionSheet({
   const keepFocusInside = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== 'Tab') return;
     const focusable = Array.from(
-      dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? [],
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'input:not(:disabled), button:not(:disabled)',
+      ) ?? [],
     );
     if (focusable.length === 0) return;
     const first = focusable[0];
@@ -113,18 +125,6 @@ export function ConnectionSheet({
           </p>
         </div>
 
-        {!authenticated && (
-          <div className="account-login-guide">
-            <strong>当前授权方式</strong>
-            <ol>
-              <li>打开 Poyi 设备授权页</li>
-              <li>输入 43 位一次性管理员授权码</li>
-              <li>在网页批准当前设备，FocusLink 会自动继续</li>
-            </ol>
-            <p>目前没有普通账号密码或自助注册码；没有管理员授权码时，重复点击无法完成登录。</p>
-          </div>
-        )}
-
         {notice && (
           <p className="account-sheet-notice" role="status">
             {notice}
@@ -132,24 +132,64 @@ export function ConnectionSheet({
         )}
 
         {!authenticated ? (
-          <button
-            ref={primaryRef}
-            className="primary-button"
-            type="button"
-            onClick={onLogin}
-            disabled={busy}
-          >
-            {busy ? '等待网页授权…' : '打开设备授权页'}
-          </button>
+          <>
+            <form
+              className="account-pairing-entry"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onPair();
+              }}
+            >
+              <label htmlFor="focuslink-pairing-code">输入另一台设备显示的配对码</label>
+              <input
+                id="focuslink-pairing-code"
+                value={pairingCode}
+                onChange={(event) => onPairingCodeChange(event.target.value)}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="0000 0000"
+                aria-label="8 位设备配对码"
+              />
+              <button
+                ref={primaryRef}
+                className="primary-button"
+                type="submit"
+                disabled={busy || pairingCode.length !== 8}
+              >
+                {busy ? '正在加入同步…' : '加入多端同步'}
+              </button>
+            </form>
+            <details className="account-owner-fallback">
+              <summary>首台设备或账号恢复</summary>
+              <p>没有任何已登录设备时，使用 Poyi 管理员恢复入口完成首台设备授权。</p>
+              <button type="button" onClick={onLogin} disabled={busy}>
+                打开管理员恢复页
+              </button>
+            </details>
+          </>
         ) : (
-          <div className="sheet-secondary-actions account-sheet-actions">
-            <button ref={primaryRef} type="button" onClick={onClearCache} disabled={busy}>
-              清除本机缓存
-            </button>
-            <button type="button" onClick={onLogout} disabled={busy}>
-              退出登录
-            </button>
-          </div>
+          <>
+            {pairingOffer && (
+              <div className="account-pairing-offer" role="status">
+                <span>在新设备输入</span>
+                <strong>
+                  {pairingOffer.code.slice(0, 4)} {pairingOffer.code.slice(4)}
+                </strong>
+                <small>一次性使用，10 分钟内有效</small>
+              </div>
+            )}
+            <div className="sheet-secondary-actions account-sheet-actions">
+              <button ref={primaryRef} type="button" onClick={onCreatePairingCode} disabled={busy}>
+                {busy ? '正在生成…' : '添加设备'}
+              </button>
+              <button type="button" onClick={onClearCache} disabled={busy}>
+                清除本机缓存
+              </button>
+              <button type="button" onClick={onLogout} disabled={busy}>
+                退出登录
+              </button>
+            </div>
+          </>
         )}
         {!authenticated && (
           <button className="account-sheet-local" type="button" onClick={onClose}>

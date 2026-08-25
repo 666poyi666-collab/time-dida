@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  FOCUSLINK_PAIRING_CODE_TTL_MS,
   createDeviceSyncPairingUrl,
+  isFocusLinkPairingCode,
+  normalizeFocusLinkPairingCode,
   parseDeviceSyncPairingUrl,
 } from '@shared/sync/pairingProtocol';
 
@@ -35,5 +38,14 @@ describe('device sync pairing deep link', () => {
         1,
       ),
     ).toBeNull();
+  });
+});
+
+describe('numeric trusted-device pairing input', () => {
+  it('removes pasted whitespace but never changes non-whitespace characters', () => {
+    expect(normalizeFocusLinkPairingCode(' 12 34\n56\t78 ')).toBe('12345678');
+    expect(isFocusLinkPairingCode('12345678')).toBe(true);
+    expect(isFocusLinkPairingCode('1234 5678')).toBe(false);
+    expect(FOCUSLINK_PAIRING_CODE_TTL_MS).toBe(10 * 60 * 1_000);
   });
 });

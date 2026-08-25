@@ -49,8 +49,10 @@ import {
 } from './integrations/tomatodo/bridgeLifecycle.js';
 import { getDeviceSyncStatus, runDeviceSync } from './sync/deviceSyncService.js';
 import {
+  createDeviceSyncPairingCode,
   loginDeviceSyncAccount,
   logoutDeviceSyncAccount,
+  redeemDeviceSyncPairingCode,
 } from './sync/deviceSyncAccountService.js';
 import {
   listSessions,
@@ -615,6 +617,20 @@ export function registerIpc(
   ipcMain.handle('device-sync:status', () => getDeviceSyncStatus());
   ipcMain.handle('device-sync:login', async () => {
     const result = await loginDeviceSyncAccount();
+    const next = getSettings();
+    onSettingsChanged(['deviceSync'], next);
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) {
+        w.webContents.send('settings:changed', next);
+        w.webContents.send('settings:domain-changed', ['deviceSync']);
+      }
+    }
+    return result;
+  });
+  ipcMain.handle('device-sync:create-pairing-code', () => createDeviceSyncPairingCode());
+  ipcMain.handle('device-sync:redeem-pairing-code', async (_event, code: unknown) => {
+    if (typeof code !== 'string' || code.length > 64) throw new Error('配对码格式无效');
+    const result = await redeemDeviceSyncPairingCode(code);
     const next = getSettings();
     onSettingsChanged(['deviceSync'], next);
     for (const w of BrowserWindow.getAllWindows()) {

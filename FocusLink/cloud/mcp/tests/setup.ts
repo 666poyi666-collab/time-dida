@@ -1,8 +1,10 @@
-import { applyD1Migrations, env, reset, type D1Migration } from "cloudflare:test";
-import { beforeEach, vi } from "vitest";
-import { clearOAuthCachesForTest } from "../src/oauth";
+import { applyD1Migrations, env, reset, type D1Migration } from 'cloudflare:test';
+import { beforeEach, vi } from 'vitest';
+import { clearOAuthCachesForTest } from '../src/oauth';
 
 declare global {
+  // Cloudflare's generated Env augmentation is necessarily a namespace merge.
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Cloudflare {
     interface Env {
       FOCUSLINK_ACCOUNT_KEY: string;

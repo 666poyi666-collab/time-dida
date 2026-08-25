@@ -10,7 +10,7 @@ vi.mock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 vi.mock('../electron/credentials.js', () => ({
   credentials: {
     has: vi.fn(() => true),
-    get: vi.fn(() => ({ accessToken: 'oauth-secret-token' })),
+    get: vi.fn(() => ({ accessToken: 'oauth-wrong-test-token' })),
     set: vi.fn(),
     delete: vi.fn(),
   },
@@ -55,6 +55,7 @@ function seedCache(completed: boolean): void {
       source: 'ticktick',
       externalId: 'task-1',
       projectId: 'project-1',
+      parentId: null,
       title: '中文任务',
       status: completed ? 'completed' : 'incomplete',
       priority: null,

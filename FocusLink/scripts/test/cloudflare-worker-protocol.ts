@@ -346,6 +346,7 @@ async function runProtocol(context: ProtocolContext): Promise<SavedState> {
 
   const status = await request<EpochStatus>(context, '/sync/v2/status', { method: 'GET' });
   assertEpoch(status);
+  await verifyNumericPairing(context, runId);
 
   const invalidCursor = await raw(context, '/sync/v2/exchange', {
     method: 'POST',
@@ -612,6 +613,74 @@ async function runProtocol(context: ProtocolContext): Promise<SavedState> {
     liveEntityId,
     liveRevision: finished.snapshot.revision,
   };
+}
+
+async function verifyNumericPairing(context: ProtocolContext, runId: string): Promise<void> {
+  const offerResponse = await fetch(context.endpoint + '/sync/v1/pair/offers', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${context.deviceToken}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      displayName: 'FocusLink protocol device',
+      scopes: ['sync:read', 'sync:write', 'live:read', 'live:write'],
+    }),
+    redirect: 'error',
+    signal: AbortSignal.timeout(5_000),
+  });
+  assert.equal(offerResponse.status, 200);
+  const offer = (await offerResponse.json()) as { code?: unknown; expiresAt?: unknown };
+  assert.match(String(offer.code), /^\d{8}$/);
+  assert.equal(Number.isSafeInteger(offer.expiresAt), true);
+  assert(Number(offer.expiresAt) > Date.now());
+
+  const installationId = `pair-${randomToken(24)}`;
+  const claimBody = {
+    code: String(offer.code),
+    device: {
+      installationId,
+      displayName: 'FocusLink paired protocol device',
+      platform: 'web',
+      deviceKind: 'phone',
+      appVersion: 'protocol-test',
+    },
+  };
+  const exchange = await fetch(context.endpoint + '/sync/v1/pair/exchange', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(claimBody),
+    redirect: 'error',
+    signal: AbortSignal.timeout(5_000),
+  });
+  assert.equal(exchange.status, 200);
+  const credential = (await exchange.json()) as {
+    accessToken?: unknown;
+    deviceId?: unknown;
+    scopes?: unknown;
+  };
+  assert.equal(typeof credential.accessToken, 'string');
+  const parsed = parseDeviceToken(String(credential.accessToken));
+  assert(parsed, 'numeric pairing did not return a canonical fl2 credential');
+  assert.equal(credential.deviceId, `device-${parsed.devicePublicId}`);
+  assert.deepEqual(credential.scopes, ['sync:read', 'sync:write', 'live:read', 'live:write']);
+  const pairedContext: ProtocolContext = {
+    endpoint: context.endpoint,
+    installationId,
+    deviceId: String(credential.deviceId),
+    deviceToken: String(credential.accessToken),
+  };
+  assertEpoch(await request<EpochStatus>(pairedContext, '/sync/v2/status', { method: 'GET' }));
+
+  const replay = await fetch(context.endpoint + '/sync/v1/pair/exchange', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(claimBody),
+    redirect: 'error',
+    signal: AbortSignal.timeout(5_000),
+  });
+  assert.equal(replay.status, 410, `${runId} numeric pairing replay must be rejected`);
+  assert.equal(await responseErrorCode(replay), 'pairing_expired');
 }
 
 async function verifyPersistence(context: ProtocolContext, state: SavedState): Promise<void> {

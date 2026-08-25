@@ -43,6 +43,7 @@ beforeEach(() => {
 describe('local task completion mutations', () => {
   it('supports complete and reopen without replacing the task identity', () => {
     const created = LocalTaskProvider.create('本地学习任务');
+    expect(localState.tasks[0]?.parentId).toBeNull();
     const completed = LocalTaskProvider.setCompleted(created.id, true);
     const reopened = LocalTaskProvider.setCompleted(created.id, false);
 

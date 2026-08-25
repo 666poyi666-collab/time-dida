@@ -1,11 +1,11 @@
-import { z } from "zod";
+import { z } from 'zod';
 
-import { BoundedBodyError, readBoundedBody } from "./bounded-body";
-import { focuslinkUpstreamUrl } from "./upstream";
+import { BoundedBodyError, readBoundedBody } from './bounded-body';
+import { focuslinkUpstreamUrl } from './upstream';
 
 const EPOCH_MS = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const DURATION_MS = EPOCH_MS;
-const TASK_SOURCE = z.enum(["local", "ticktick"]);
+const TASK_SOURCE = z.enum(['local', 'ticktick']);
 const NULLABLE_TASK_SOURCE = z.union([TASK_SOURCE, z.null()]);
 const NULLABLE_EPOCH_MS = z.union([EPOCH_MS, z.null()]);
 const NULLABLE_TITLE = z.union([z.string().max(1_000), z.null()]);
@@ -43,7 +43,7 @@ const sessionSchema = z
     sessionId: z.string().min(1).max(256),
     startedAt: EPOCH_MS,
     endedAt: EPOCH_MS,
-    status: z.enum(["finished", "aborted"]),
+    status: z.enum(['finished', 'aborted']),
     activeMs: DURATION_MS,
     pausedMs: DURATION_MS,
     wallMs: DURATION_MS,
@@ -53,27 +53,27 @@ const sessionSchema = z
   })
   .strict()
   .refine((session) => session.endedAt >= session.startedAt, {
-    message: "session time range is invalid",
+    message: 'session time range is invalid',
   });
 
 const freshnessSchema = z
   .object({
-    state: z.enum(["fresh", "stale", "unknown"]),
+    state: z.enum(['fresh', 'stale', 'unknown']),
     ageMs: z.union([DURATION_MS, z.null()]),
     staleAfterMs: z.literal(900_000),
   })
   .strict()
   .refine(
     (freshness) =>
-      freshness.state === "unknown" ||
+      freshness.state === 'unknown' ||
       (freshness.ageMs !== null && Number.isSafeInteger(freshness.ageMs)),
-    { message: "verified freshness requires ageMs" },
+    { message: 'verified freshness requires ageMs' },
   );
 
 export const focusMcpProjectionSchema = z
   .object({
     schemaVersion: z.literal(1),
-    authority: z.literal("focuslink-account-do"),
+    authority: z.literal('focuslink-account-do'),
     generatedAt: EPOCH_MS,
     lastVerifiedAt: NULLABLE_EPOCH_MS,
     dataThrough: NULLABLE_EPOCH_MS,
@@ -98,12 +98,11 @@ export const focusMcpProjectionSchema = z
   })
   .strict()
   .refine((projection) => projection.range.to > projection.range.from, {
-    message: "projection range is invalid",
+    message: 'projection range is invalid',
   })
   .refine(
-    (projection) =>
-      projection.freshness.state === "unknown" || projection.lastVerifiedAt !== null,
-    { message: "verified freshness requires lastVerifiedAt" },
+    (projection) => projection.freshness.state === 'unknown' || projection.lastVerifiedAt !== null,
+    { message: 'verified freshness requires lastVerifiedAt' },
   );
 
 export type FocusMcpProjection = z.infer<typeof focusMcpProjectionSchema>;
@@ -127,72 +126,70 @@ export async function fetchFocusMcpProjection(
   input: FocusSummaryRequest,
 ): Promise<FocusMcpProjection> {
   validateRequest(input);
-  if (!SERVICE_TOKEN.test(env.FOCUSLINK_MCP_SERVICE_TOKEN ?? "")) {
-    throw new Error("focuslink_mcp_service_not_configured");
+  if (!SERVICE_TOKEN.test(env.FOCUSLINK_MCP_SERVICE_TOKEN ?? '')) {
+    throw new Error('focuslink_mcp_service_not_configured');
   }
   if (!env.FOCUSLINK_UPSTREAM) {
-    throw new Error("focuslink_authority_binding_missing");
+    throw new Error('focuslink_authority_binding_missing');
   }
 
-  const url = focuslinkUpstreamUrl("/internal/mcp/v1/focus/summary");
-  url.searchParams.set("from", String(input.from));
-  url.searchParams.set("to", String(input.to));
-  url.searchParams.set("limit", String(input.limit));
+  const url = focuslinkUpstreamUrl('/internal/mcp/v1/focus/summary');
+  url.searchParams.set('from', String(input.from));
+  url.searchParams.set('to', String(input.to));
+  url.searchParams.set('limit', String(input.limit));
   let response: Response;
   try {
     response = await env.FOCUSLINK_UPSTREAM.fetch(
       new Request(url, {
-        method: "GET",
+        method: 'GET',
         headers: {
-          accept: "application/json",
-          "x-focuslink-mcp-service": env.FOCUSLINK_MCP_SERVICE_TOKEN,
+          accept: 'application/json',
+          'x-focuslink-mcp-service': env.FOCUSLINK_MCP_SERVICE_TOKEN,
         },
-        redirect: "manual",
+        redirect: 'manual',
         signal: AbortSignal.timeout(15_000),
       }),
     );
   } catch {
-    throw new Error("focuslink_authority_unavailable");
+    throw new Error('focuslink_authority_unavailable');
   }
   if (response.status >= 300 && response.status < 400) {
     await response.body?.cancel();
-    throw new Error("focuslink_authority_redirect_rejected");
+    throw new Error('focuslink_authority_redirect_rejected');
   }
   if (!response.ok) {
     await response.body?.cancel();
     throw new Error(
       response.status === 401
-        ? "focuslink_authority_service_rejected"
-        : "focuslink_authority_unavailable",
+        ? 'focuslink_authority_service_rejected'
+        : 'focuslink_authority_unavailable',
     );
   }
   let bytes: Uint8Array;
   try {
     bytes = await readBoundedBody(response.body, response.headers, MAX_RESPONSE_BYTES);
   } catch (error) {
-    if (error instanceof BoundedBodyError && error.reason === "too_large") {
-      throw new Error("focuslink_authority_response_too_large");
+    if (error instanceof BoundedBodyError && error.reason === 'too_large') {
+      throw new Error('focuslink_authority_response_too_large');
     }
-    throw new Error("focuslink_authority_unavailable");
+    throw new Error('focuslink_authority_unavailable');
   }
   let raw: unknown;
   try {
-    raw = JSON.parse(
-      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
-    ) as unknown;
+    raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown;
   } catch {
-    throw new Error("focuslink_authority_protocol_error");
+    throw new Error('focuslink_authority_protocol_error');
   }
   const parsed = focusMcpProjectionSchema.safeParse(raw);
   if (!parsed.success) {
-    throw new Error("focuslink_authority_protocol_error");
+    throw new Error('focuslink_authority_protocol_error');
   }
   if (
     parsed.data.range.from !== input.from ||
     parsed.data.range.to !== input.to ||
     parsed.data.recentSessions.length > input.limit
   ) {
-    throw new Error("focuslink_authority_protocol_error");
+    throw new Error('focuslink_authority_protocol_error');
   }
   return parsed.data;
 }
@@ -208,6 +205,6 @@ function validateRequest(input: FocusSummaryRequest): void {
     input.limit < 1 ||
     input.limit > 100
   ) {
-    throw new Error("invalid_focus_summary_request");
+    throw new Error('invalid_focus_summary_request');
   }
 }

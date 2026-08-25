@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   classifyMobileLiveRequestError,
+  createDeviceSyncPairingCode,
   exchangeDeviceSyncPairingCode,
   fetchLiveFocusSnapshot,
   fetchTaskSnapshot,
@@ -38,8 +39,8 @@ describe('mobile sync client request recovery', () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          accessToken: 'received-long-lived-token',
-          deviceId: 'device-assigned-by-authority',
+          accessToken: DEVICE_TOKEN,
+          deviceId: 'device-mobile1',
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),
@@ -53,8 +54,8 @@ describe('mobile sync client request recovery', () => {
         device: { platform: 'android', appVersion: 'test', displayName: 'Test device' },
       }),
     ).resolves.toEqual({
-      accessToken: 'received-long-lived-token',
-      deviceId: 'device-assigned-by-authority',
+      accessToken: DEVICE_TOKEN,
+      deviceId: 'device-mobile1',
     });
     expect(fetchMock).toHaveBeenCalledWith(
       'https://sync.example.test/sync/v1/pair/exchange',
@@ -67,6 +68,102 @@ describe('mobile sync client request recovery', () => {
         }),
       }),
     );
+  });
+
+  it('normalizes an 8-digit code and sends the full pending installation binding', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(Response.json({ accessToken: DEVICE_TOKEN, deviceId: 'device-mobile1' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await exchangeDeviceSyncPairingCode({
+      endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+      code: ' 12 34\n56 78 ',
+      device: {
+        platform: 'android',
+        deviceKind: 'tablet',
+        appVersion: '0.12.97',
+        displayName: 'FocusLink 平板',
+        installationId: 'android-0123456789abcdefghijklmnop',
+      },
+    });
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(request.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(JSON.parse(String(request.body))).toEqual({
+      code: '12345678',
+      device: {
+        platform: 'android',
+        deviceKind: 'tablet',
+        appVersion: '0.12.97',
+        displayName: 'FocusLink 平板',
+        installationId: 'android-0123456789abcdefghijklmnop',
+      },
+    });
+  });
+
+  it('lets an enrolled device create one short-lived numeric offer without exposing its token in the body', async () => {
+    const expiresAt = Date.now() + 10 * 60_000;
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ code: '87654321', expiresAt }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      createDeviceSyncPairingCode({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        token: DEVICE_TOKEN,
+      }),
+    ).resolves.toEqual({ code: '87654321', expiresAt });
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(request.headers).toEqual({
+      authorization: `Bearer ${DEVICE_TOKEN}`,
+      'content-type': 'application/json',
+    });
+    expect(request).toMatchObject({
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+    });
+    expect(String(request.body)).not.toContain(DEVICE_TOKEN);
+  });
+
+  it('never sends an enrolled device credential to an untrusted pairing origin', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      createDeviceSyncPairingCode({
+        endpoint: 'https://evil.example',
+        token: DEVICE_TOKEN,
+      }),
+    ).rejects.toThrow(/FocusLink|HTTPS/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when a numeric exchange returns a token bound to another device id', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        Response.json({
+          accessToken: DEVICE_TOKEN,
+          deviceId: 'device-someone-else',
+        }),
+      ),
+    );
+    await expect(
+      exchangeDeviceSyncPairingCode({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        code: '12345678',
+        device: {
+          platform: 'android',
+          deviceKind: 'phone',
+          appVersion: '0.12.97',
+          displayName: 'FocusLink phone',
+          installationId: 'android-0123456789abcdefghijklmnop',
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_pairing_response' });
   });
 
   it('rejects an expired pairing response without retaining a credential', async () => {

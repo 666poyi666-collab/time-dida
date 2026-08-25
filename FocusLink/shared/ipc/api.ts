@@ -224,6 +224,11 @@ export interface DeviceSyncPairingOffer {
   expiresAt: number;
 }
 
+export interface DeviceSyncNumericPairingOffer {
+  code: string;
+  expiresAt: number;
+}
+
 export interface DeviceSyncRunResult {
   pushed: number;
   pulled: number;
@@ -483,6 +488,8 @@ export interface FocusLinkAPI {
   deviceSync: {
     status(): Promise<DeviceSyncStatus>;
     login(): Promise<DeviceSyncAccountLoginResult>;
+    createPairingCode(): Promise<DeviceSyncNumericPairingOffer>;
+    redeemPairingCode(code: string): Promise<DeviceSyncAccountLoginResult>;
     logout(): Promise<DeviceSyncStatus>;
     syncNow(): Promise<DeviceSyncRunResult>;
   };

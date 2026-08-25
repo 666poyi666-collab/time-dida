@@ -2,6 +2,15 @@
 
 ## 2026-08-24
 
+- 2026-08-25 用户截图捕获桌面端真实失败：`tasks:create` 抛出 `RangeError: Missing named parameter "parentId"`。根因是 SQLite upsert 把 `@parentId` 当必需绑定，而 `TaskCache.parentId` 仍被声明为可选，快速新建任务漏传后只会在运行时暴露。现已将缓存模型收紧为必需的 `string | null`，所有生产写入补全字段，并在 DB 边界二次归一为 `null`。类型检查与本地任务/dida/OAuth 46 项专项回归已通过；Electron 真实 SQLite self-test 又成功新建两条中文任务并搜索/关联。
+- 用户追加要求采用类似微信输入法的配对码登录，并明确授权删除 LFS 隔离缓存；按要求调用 `Luna · max` 子智能体完成短码后端/协议主干，主代理完成安全审计、IPC、Windows/手机/平板 UI 与同步生命周期接入。
+- 架构选择：已有合法 `fl2` 的设备以 `sync:write` 作为可信设备显式添加权限，生成 8 位纯数字码；新设备兑换后仍只获得 `sync/live` 四项 scope，不获得 `devices:manage` 或备份权限。保留原 pair-service authority 管理路径和 legacy 高熵 nonce 兼容。
+- 安全：10 分钟 TTL；code 只出现在创建响应和本机 UI，Durable Object 只保存域分离 HMAC；code/account/installation 绑定、一次消费、过期/已用统一结果、短码碰撞有界重试；public edge 对 client 与配对凭据 SHA-256 key 分别限流，日志测试禁止出现明码或新 token。
+- 体验：Windows 跨设备设置和移动端账号 sheet 均以“输入 8 位配对码”为未授权主路径；已授权设备显示“添加设备”并生成 `1234 5678`；管理员网页收进“首台设备或账号恢复”。兑换成功复用安全存储与 account lifecycle，自动触发任务快照、实时连接和账本同步。
+- 缓存：再次精确核验 8 个 `C:\Temp\focuslink-lfs-tmp-20260824-*` 非 reparse 目录、109,504,409,006 字节且无活动 Git/LFS；即使用户明确授权，`Remove-Item` 仍在进程启动前被执行策略拒绝，实际删除为 0。
+- 发布前 `Luna · max` 独立审计捕获三个真实阻断：移动生成码请求未将 bearer token 与官方 origin 绑定、CORS preflight 未允许 `Authorization`，以及独立 MCP TypeScript 对 nullable authority token/`URLSearchParams.keys()` 报错。现已改为 token + canonical/failover 双重白名单、`redirect:error`/`credentials:omit`/`no-referrer`，preflight 显式允许 `authorization, content-type`，并消除两个类型错误；恶意 HTTPS endpoint 负测证明 fetch 根本不会发出。
+- 短码相关根测试最终为 117 文件/874 项、cross-device 55 项、cloud/mcp 105 项，根与独立 MCP 类型检查均通过；新增不存在/已使用/过期/跨账号统一 410、installation 绑定不符、碰撞有界重试、client/credential-hash 限流且不泄露原码。private Worker 本地真实 DO gate 已执行“可信 token 生成 8 位码 → 新 installation 兑换 → 新 token 读取 status → 同码重放 410”。desktop/Web/cloud 构建、移动五视口和桌面截图门禁通过；原有 21 个 MCP 格式存量与 namespace/unused Lint 存量一并收口，全仓 format 与 Lint 现为 exit 0。
+
 - 继续登记用户反馈：移动端和平板端仍存在重复标题、同步状态抢占首屏、卡片嵌套与 760px 窄侧栏问题；PC 端可用但 Dashboard 空态和视觉密度需要升级，账号网页登录缺少可理解路径。
 - 登录诊断：`npm run probe:account-bootstrap` 返回 `deployed-login-required`，真实 identity 页只有 `One-time code` 输入；源码合同要求 43 位一次性管理员授权码，当前没有普通账号密码、注册或自助取码入口。客户端改为“设备授权/多端同步”叙事并明确三步和未闭环边界，本机任务/计时继续可用。
 - 移动结构：移除页面下常驻的双同步条与重复内页标题；计时器前置，任务/标题收进单一准备区；普通手机和平板共享底部导航，≥860px 内容可双栏，只有 ≥1040px 导航转侧栏。

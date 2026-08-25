@@ -702,6 +702,64 @@ html.dark {
   color: rgb(var(--app-warning));
 }
 
+.settings-pairing-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-pairing-entry input {
+  width: 150px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: var(--radius-sm);
+  background: rgb(var(--app-bg));
+  color: rgb(var(--app-text));
+  font-family: var(--font-number);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+
+.settings-pairing-offer {
+  display: flex;
+  min-height: 92px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 0 16px 14px;
+  padding: 14px 18px;
+  border: 1px solid rgb(var(--app-accent) / 0.28);
+  border-radius: var(--radius-md);
+  background: rgb(var(--app-accent-soft) / 0.68);
+}
+
+.settings-pairing-offer > div {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-pairing-offer span,
+.settings-pairing-offer p {
+  color: rgb(var(--app-muted));
+  font-size: 10px;
+}
+
+.settings-pairing-offer strong {
+  color: rgb(var(--app-accent));
+  font-family: var(--font-number);
+  font-size: 28px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.14em;
+}
+
+.settings-pairing-offer p {
+  margin: 0;
+  text-align: right;
+}
+
 @media (min-width: 1500px) {
   .history-body {
     grid-template-columns: minmax(0, 1fr) 410px;

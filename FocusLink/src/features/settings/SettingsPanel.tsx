@@ -10,6 +10,7 @@ import { ipcErrorMessage } from '../../app/ipcError';
 import type { AppSettings } from '@shared/types';
 import type { DeviceSyncStatus, TomatodoBridgeStatus } from '@shared/ipc/api';
 import { APP_VERSION } from '@shared/version';
+import { normalizeFocusLinkPairingCode } from '@shared/sync/pairingProtocol';
 import { resolveFontProfile, resolveTimerStyle } from '@shared/theme';
 import { motion } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
@@ -178,6 +179,17 @@ export function SettingsPanel() {
   const [deviceSyncStatus, setDeviceSyncStatus] = useState<DeviceSyncStatus | null>(null);
   const [deviceSyncSaving, setDeviceSyncSaving] = useState(false);
   const [deviceSyncRunning, setDeviceSyncRunning] = useState(false);
+  const [devicePairingCode, setDevicePairingCode] = useState('');
+  const [devicePairingOffer, setDevicePairingOffer] = useState<{
+    code: string;
+    expiresAt: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!devicePairingOffer) return;
+    const delay = Math.max(0, devicePairingOffer.expiresAt - Date.now());
+    const timer = window.setTimeout(() => setDevicePairingOffer(null), delay);
+    return () => window.clearTimeout(timer);
+  }, [devicePairingOffer]);
   useEffect(() => {
     window.focuslink.ticktick.status().then((s) => {
       setConnected(s.connected);
@@ -312,6 +324,43 @@ export function SettingsPanel() {
       addToast('已退出 FocusLink 账号；本机记录仍保留', 'success');
     } catch (error) {
       addToast(`退出失败：${ipcErrorMessage(error)}`, 'error');
+    } finally {
+      setDeviceSyncSaving(false);
+    }
+  };
+
+  const handleCreateDevicePairingCode = async () => {
+    setDeviceSyncSaving(true);
+    try {
+      const offer = await window.focuslink.deviceSync.createPairingCode();
+      setDevicePairingOffer(offer);
+      addToast('配对码已生成，10 分钟内在新设备输入', 'success');
+    } catch (error) {
+      addToast(`生成配对码失败：${ipcErrorMessage(error)}`, 'error');
+    } finally {
+      setDeviceSyncSaving(false);
+    }
+  };
+
+  const handleRedeemDevicePairingCode = async () => {
+    const code = normalizeFocusLinkPairingCode(devicePairingCode);
+    if (!/^\d{8}$/.test(code)) {
+      addToast('请输入 8 位数字配对码', 'info');
+      return;
+    }
+    setDeviceSyncSaving(true);
+    try {
+      const result = await window.focuslink.deviceSync.redeemPairingCode(code);
+      setDeviceSyncStatus(result.status);
+      setSettings(await window.focuslink.settings.get());
+      setDevicePairingCode('');
+      addToast(
+        result.syncError ? '设备已加入同步，网络恢复后会继续同步' : '设备已加入多端同步',
+        result.syncError ? 'info' : 'success',
+      );
+    } catch (error) {
+      addToast(`配对失败：${ipcErrorMessage(error)}`, 'error');
+      await refreshDeviceSyncStatus();
     } finally {
       setDeviceSyncSaving(false);
     }
@@ -1306,6 +1355,15 @@ export function SettingsPanel() {
                 </span>
                 <button
                   type="button"
+                  className="btn-accent text-[11px]"
+                  onClick={() => void handleCreateDevicePairingCode()}
+                  disabled={deviceSyncSaving}
+                >
+                  {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Plus size="xs" />}
+                  添加设备
+                </button>
+                <button
+                  type="button"
                   className="btn-outline text-[11px]"
                   onClick={() => void handleDeviceSyncLogout()}
                   disabled={deviceSyncSaving}
@@ -1314,25 +1372,62 @@ export function SettingsPanel() {
                 </button>
               </div>
             ) : (
+              <div className="settings-pairing-entry">
+                <input
+                  value={devicePairingCode}
+                  onChange={(event) => {
+                    const next = normalizeFocusLinkPairingCode(event.target.value);
+                    if (/^\d{0,8}$/.test(next)) setDevicePairingCode(next);
+                  }}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={9}
+                  placeholder="输入 8 位配对码"
+                  aria-label="8 位设备配对码"
+                />
+                <button
+                  type="button"
+                  className="btn-accent text-[11px]"
+                  onClick={() => void handleRedeemDevicePairingCode()}
+                  disabled={deviceSyncSaving || devicePairingCode.length !== 8}
+                >
+                  {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Link size="xs" />}
+                  加入同步
+                </button>
+              </div>
+            )}
+          </Row>
+          {deviceSyncStatus?.signedIn && devicePairingOffer && (
+            <div className="settings-pairing-offer" role="status" aria-live="polite">
+              <div>
+                <span>在新设备输入</span>
+                <strong aria-label={`配对码 ${devicePairingOffer.code}`}>
+                  {devicePairingOffer.code.slice(0, 4)} {devicePairingOffer.code.slice(4)}
+                </strong>
+              </div>
+              <p>
+                一次性使用 ·{' '}
+                {new Intl.DateTimeFormat('zh-CN', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: false,
+                }).format(devicePairingOffer.expiresAt)}{' '}
+                前有效
+              </p>
+            </div>
+          )}
+          {!deviceSyncStatus?.signedIn && (
+            <div className="settings-account-explainer">
+              <strong>没有配对码？</strong>
+              <p>在另一台已加入 FocusLink 同步的设备中选择“添加设备”，生成一次性配对码。</p>
               <button
                 type="button"
-                className="btn-accent text-[11px]"
+                className="btn-outline text-[11px]"
                 onClick={() => void handleDeviceSyncLogin()}
                 disabled={deviceSyncSaving}
               >
-                {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Link size="xs" />}
-                打开设备授权页
+                首台设备或恢复账号
               </button>
-            )}
-          </Row>
-          {!deviceSyncStatus?.signedIn && (
-            <div className="settings-account-explainer">
-              <strong>为什么网页登录不上？</strong>
-              <p>
-                当前网页不是账号密码登录，只接受后台签发的 43
-                位一次性管理员授权码；还没有普通账号注册或找回密码入口。
-              </p>
-              <span>没有管理员授权码时可继续使用本机模式，不影响创建任务与计时。</span>
             </div>
           )}
           <div

@@ -1,5 +1,24 @@
 import { DEVICE_SYNC_PROTOCOL_VERSION, normalizeDeviceSyncEndpoint } from './deviceProtocol';
 
+/** Numeric pairing is intentionally short-lived and rate-limited at the public edge. */
+export const FOCUSLINK_PAIRING_CODE_LENGTH = 8 as const;
+export const FOCUSLINK_PAIRING_CODE_TTL_MS = 10 * 60 * 1_000;
+export const FOCUSLINK_PAIRING_CODE_PATTERN = /^\d{8}$/;
+
+/**
+ * Normalize what a human pasted from a desktop pairing dialog. Whitespace is
+ * presentation noise; every other character is retained so the transport can
+ * fail closed with its stable invalid-code error instead of silently changing
+ * the credential the user entered.
+ */
+export function normalizeFocusLinkPairingCode(value: string): string {
+  return value.replace(/\s/g, '');
+}
+
+export function isFocusLinkPairingCode(value: string): boolean {
+  return FOCUSLINK_PAIRING_CODE_PATTERN.test(value);
+}
+
 export interface DeviceSyncPairingLink {
   protocolVersion: number;
   endpoint: string;

@@ -543,7 +543,7 @@ const UPSERT_TASK_CACHE_SQL = `INSERT INTO tasks_cache
 
 export function upsertTaskCache(task: TaskCache): void {
   const db = getDb();
-  db.prepare(UPSERT_TASK_CACHE_SQL).run(task);
+  db.prepare(UPSERT_TASK_CACHE_SQL).run({ ...task, parentId: task.parentId ?? null });
 }
 
 /**
@@ -556,7 +556,7 @@ export function upsertTaskCaches(tasks: readonly TaskCache[]): void {
   const db = getDb();
   const statement = db.prepare(UPSERT_TASK_CACHE_SQL);
   const writeAll = db.transaction((rows: readonly TaskCache[]) => {
-    for (const task of rows) statement.run(task);
+    for (const task of rows) statement.run({ ...task, parentId: task.parentId ?? null });
   });
   writeAll(tasks);
 }

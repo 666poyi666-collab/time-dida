@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest';
 
-import { readBoundedBody } from "../src/bounded-body";
+import { readBoundedBody } from '../src/bounded-body';
 
-describe("bounded stream reader", () => {
-  it("cancels immediately when declared content length exceeds the limit", async () => {
+describe('bounded stream reader', () => {
+  it('cancels immediately when declared content length exceeds the limit', async () => {
     let cancelled = false;
     const body = new ReadableStream<Uint8Array>({
       pull(controller) {
@@ -14,12 +14,12 @@ describe("bounded stream reader", () => {
       },
     });
     await expect(
-      readBoundedBody(body, new Headers({ "content-length": "11" }), 10),
-    ).rejects.toMatchObject({ reason: "too_large" });
+      readBoundedBody(body, new Headers({ 'content-length': '11' }), 10),
+    ).rejects.toMatchObject({ reason: 'too_large' });
     expect(cancelled).toBe(true);
   });
 
-  it("stops streaming at the byte boundary instead of buffering the full body", async () => {
+  it('stops streaming at the byte boundary instead of buffering the full body', async () => {
     let cancelled = false;
     let emitted = 0;
     const body = new ReadableStream<Uint8Array>({
@@ -32,13 +32,13 @@ describe("bounded stream reader", () => {
       },
     });
     await expect(readBoundedBody(body, new Headers(), 10)).rejects.toMatchObject({
-      reason: "too_large",
+      reason: 'too_large',
     });
     expect(emitted).toBe(3);
     expect(cancelled).toBe(true);
   });
 
-  it("returns an exact byte sequence under the limit", async () => {
+  it('returns an exact byte sequence under the limit', async () => {
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new Uint8Array([1, 2]));
@@ -46,6 +46,6 @@ describe("bounded stream reader", () => {
         controller.close();
       },
     });
-    expect([...await readBoundedBody(body, new Headers(), 3)]).toEqual([1, 2, 3]);
+    expect([...(await readBoundedBody(body, new Headers(), 3))]).toEqual([1, 2, 3]);
   });
 });

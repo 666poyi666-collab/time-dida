@@ -5,6 +5,7 @@ import { APP_VERSION } from '@shared/version';
 import {
   FOCUSLINK_CANONICAL_SYNC_ORIGIN,
   FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
+  FOCUSLINK_ENROLLED_DEVICE_SCOPES,
   isFocusLinkDeviceAccessToken,
   type FocusLinkDeviceRegistrationRequest,
 } from '@shared/sync/identityProtocol';
@@ -17,7 +18,11 @@ import {
   type FocusLinkAccountBootstrapRequest,
   type FocusLinkAccountBootstrapResponse,
 } from '@shared/sync/accountBootstrapProtocol';
-import type { DeviceSyncAccountLoginResult } from '@shared/ipc/api';
+import {
+  FOCUSLINK_PAIRING_CODE_PATTERN,
+  normalizeFocusLinkPairingCode,
+} from '@shared/sync/pairingProtocol';
+import type { DeviceSyncAccountLoginResult, DeviceSyncNumericPairingOffer } from '@shared/ipc/api';
 import { getMeta, setMeta } from '../db/index.js';
 import { logger } from '../logger.js';
 import { getSettings, updateSettings } from '../settingsStore.js';
@@ -86,6 +91,54 @@ export function loginDeviceSyncAccount(): Promise<DeviceSyncAccountLoginResult> 
   const controller = new AbortController();
   loginAbortController = controller;
   const operation = loginDeviceSyncAccountInternal(generation, controller.signal).finally(() => {
+    if (loginInFlight === operation) loginInFlight = null;
+    if (loginAbortController === controller) loginAbortController = null;
+  });
+  loginInFlight = operation;
+  return operation;
+}
+
+export async function createDeviceSyncPairingCode(): Promise<DeviceSyncNumericPairingOffer> {
+  const token = getDeviceSyncToken();
+  if (!isFocusLinkDeviceAccessToken(token ?? '')) {
+    throw new Error('请先在这台设备完成授权');
+  }
+  const response = await requestPairing('/sync/v1/pair/offers', {
+    headers: { authorization: `Bearer ${token}` },
+    body: {
+      displayName: 'FocusLink 新设备',
+      scopes: [...FOCUSLINK_ENROLLED_DEVICE_SCOPES],
+    },
+  });
+  if (getDeviceSyncToken() !== token) throw new Error('账号连接已变化，请重新生成配对码');
+  if (
+    !isRecord(response) ||
+    typeof response.code !== 'string' ||
+    !FOCUSLINK_PAIRING_CODE_PATTERN.test(response.code) ||
+    !Number.isSafeInteger(response.expiresAt) ||
+    Number(response.expiresAt) <= Date.now() ||
+    Number(response.expiresAt) > Date.now() + 15 * 60_000
+  ) {
+    throw new Error('配对服务响应无效');
+  }
+  logger.info('deviceSyncAccount', 'trusted device pairing code created', {
+    expiresAt: Number(response.expiresAt),
+  });
+  return { code: response.code, expiresAt: Number(response.expiresAt) };
+}
+
+export function redeemDeviceSyncPairingCode(
+  codeInput: string,
+): Promise<DeviceSyncAccountLoginResult> {
+  if (loginInFlight) return loginInFlight;
+  const generation = ++loginGeneration;
+  const controller = new AbortController();
+  loginAbortController = controller;
+  const operation = redeemDeviceSyncPairingCodeInternal(
+    codeInput,
+    generation,
+    controller.signal,
+  ).finally(() => {
     if (loginInFlight === operation) loginInFlight = null;
     if (loginAbortController === controller) loginAbortController = null;
   });
@@ -187,6 +240,55 @@ async function loginDeviceSyncAccountInternal(
   throw new Error('登录等待超时，请重新点击登录');
 }
 
+async function redeemDeviceSyncPairingCodeInternal(
+  codeInput: string,
+  generation: number,
+  signal: AbortSignal,
+): Promise<DeviceSyncAccountLoginResult> {
+  assertCurrentLogin(generation, signal);
+  if (getDeviceSyncAccountIdentity().signedIn) {
+    throw new Error('这台设备已经加入多端同步');
+  }
+  const code = normalizeFocusLinkPairingCode(codeInput);
+  if (!FOCUSLINK_PAIRING_CODE_PATTERN.test(code)) {
+    throw new Error('请输入 8 位数字配对码');
+  }
+  const registration = registrationRequest();
+  const response = await requestPairing(
+    '/sync/v1/pair/exchange',
+    {
+      body: {
+        code,
+        device: {
+          installationId: registration.installationId,
+          displayName: registration.displayName,
+          platform: registration.platform,
+          deviceKind: registration.deviceKind,
+          appVersion: registration.appVersion,
+        },
+      },
+    },
+    signal,
+  );
+  assertCurrentLogin(generation, signal);
+  if (
+    !isRecord(response) ||
+    typeof response.accessToken !== 'string' ||
+    !isFocusLinkDeviceAccessToken(response.accessToken) ||
+    typeof response.deviceId !== 'string' ||
+    response.deviceId !== deviceIdFromToken(response.accessToken)
+  ) {
+    throw new Error('配对响应无效');
+  }
+  invalidateDeviceSyncConnection();
+  setDeviceSyncToken(response.accessToken);
+  enableOfficialSync();
+  logger.info('deviceSyncAccount', 'device enrolled with trusted pairing code', {
+    deviceId: response.deviceId,
+  });
+  return finishLogin(generation, signal);
+}
+
 async function finishLogin(
   generation: number,
   signal: AbortSignal,
@@ -243,6 +345,69 @@ function cleanDeviceName(value: string): string {
     .trim()
     .slice(0, 70);
   return cleaned || 'Windows 电脑';
+}
+
+async function requestPairing(
+  path: '/sync/v1/pair/offers' | '/sync/v1/pair/exchange',
+  input: { headers?: Record<string, string>; body: Record<string, unknown> },
+  parentSignal?: AbortSignal,
+): Promise<unknown> {
+  const controller = new AbortController();
+  const abortFromParent = () => controller.abort(parentSignal?.reason);
+  if (parentSignal?.aborted) abortFromParent();
+  else parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${OFFICIAL_FOCUSLINK_ENDPOINT}${path}`, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        ...input.headers,
+      },
+      body: JSON.stringify(input.body),
+      redirect: 'error',
+      signal: controller.signal,
+    });
+    const value = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) throw new Error(pairingErrorMessage(value, response.status));
+    return value;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      if (parentSignal?.aborted) throw new Error('配对已取消');
+      throw new Error('配对服务请求超时');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    parentSignal?.removeEventListener('abort', abortFromParent);
+  }
+}
+
+function pairingErrorMessage(value: unknown, status: number): string {
+  const code = isRecord(value)
+    ? typeof value.error === 'string'
+      ? value.error
+      : isRecord(value.error) && typeof value.error.code === 'string'
+        ? value.error.code
+        : typeof value.code === 'string'
+          ? value.code
+          : ''
+    : '';
+  if (code === 'pairing_expired') return '配对码已过期或已使用';
+  if (code === 'pair_rate_limited') return '尝试次数过多，请稍后再试';
+  if (code === 'scope_denied' || status === 401 || status === 403)
+    return '当前设备没有生成配对码的权限';
+  return `配对服务返回 HTTP ${status}`;
+}
+
+function deviceIdFromToken(token: string): string | null {
+  const match = /^fl2_[A-Za-z0-9-]{6,80}_([A-Za-z0-9-]{6,80})_/.exec(token);
+  return match ? `device-${match[1]}` : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 async function requestBootstrap(

@@ -159,6 +159,10 @@ export default {
       /^Bearer fl2_[A-Za-z0-9-]{6,80}_[A-Za-z0-9-]{6,80}_[A-Za-z0-9_-]{32,160}$/.test(
         authorization ?? '',
       );
+    const devicePairOffer = pairOffer && isDevice && presentedPairAuthority === null;
+    if (pairOffer && isDevice && presentedPairAuthority !== null) {
+      return errorJson(403, 'credential_boundary_violation', 'pairing credentials are exclusive');
+    }
     // Pair-offer creation is the sole route that accepts the dedicated second-hop
     // authority credential. The public Gateway first validates owner session +
     // CSRF and its own audience-bound service credential; this private Worker then
@@ -169,7 +173,7 @@ export default {
       (presentedIdentityAuthority !== null && !deviceRegistration) ||
       (presentedOwnerSubject !== null && !deviceRegistration) ||
       (pairOffer
-        ? !pairAuthority
+        ? !pairAuthority && !devicePairOffer
         : deviceRegistration
           ? !identityAuthority
           : !pairingExchange && !isDevice)

@@ -1,13 +1,13 @@
 export const SYNC_PROTOCOL_VERSION = 2 as const;
 
 export const FEED_ENTITY_TYPES = [
-  "focus_ledger_v2",
-  "focus_metadata_v2",
-  "focus_ledger_correction_v2",
-  "focus_guard_rule_v1",
-  "focus_guard_state_v1",
-  "focus_guard_completion_v1",
-  "focus_guard_config_v1",
+  'focus_ledger_v2',
+  'focus_metadata_v2',
+  'focus_ledger_correction_v2',
+  'focus_guard_rule_v1',
+  'focus_guard_state_v1',
+  'focus_guard_completion_v1',
+  'focus_guard_config_v1',
 ] as const;
 
 export type FeedEntityType = (typeof FEED_ENTITY_TYPES)[number];
@@ -52,7 +52,7 @@ export interface FeedSyncResponse extends FeedEpoch {
   serverTime: number;
 }
 
-export type FeedStatus = "never_synced" | "syncing" | "synced" | "degraded";
+export type FeedStatus = 'never_synced' | 'syncing' | 'synced' | 'degraded';
 
 export interface FeedStateRow {
   account_key: string;

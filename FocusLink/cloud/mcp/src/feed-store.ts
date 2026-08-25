@@ -4,7 +4,7 @@ import type {
   FeedEpochResponse,
   FeedStateRow,
   FeedStatus,
-} from "./feed-types";
+} from './feed-types';
 
 const STATE_COLUMNS = `account_key, device_id, cursor, sync_epoch, cursor_epoch,
   account_generation, last_change_seq, observed_head_change_seq, head_observed_at,
@@ -32,9 +32,9 @@ export async function prepareFeedState(
   const current = await getFeedState(db, accountKey);
   const corruptCheckpoint = Boolean(
     current &&
-      ((current.cursor === null && current.last_change_seq !== 0) ||
-        current.last_change_seq < 0 ||
-        !Number.isSafeInteger(current.last_change_seq)),
+    ((current.cursor === null && current.last_change_seq !== 0) ||
+      current.last_change_seq < 0 ||
+      !Number.isSafeInteger(current.last_change_seq)),
   );
   const reset =
     !current ||
@@ -47,7 +47,7 @@ export async function prepareFeedState(
   if (reset) {
     const resetCount = current ? current.reset_count + 1 : 0;
     await db.batch([
-      db.prepare("DELETE FROM feed_entities WHERE account_key = ?").bind(accountKey),
+      db.prepare('DELETE FROM feed_entities WHERE account_key = ?').bind(accountKey),
       db
         .prepare(
           `INSERT INTO feed_state (
@@ -101,7 +101,7 @@ export async function prepareFeedState(
   }
 
   const state = await getFeedState(db, accountKey);
-  if (!state) throw new Error("feed_state_write_failed");
+  if (!state) throw new Error('feed_state_write_failed');
   return { state, reset };
 }
 
@@ -119,29 +119,29 @@ export async function applyFeedPage(
     now: string;
   },
 ): Promise<FeedStateRow> {
-  const currentRows = input.changes.length === 0
-    ? []
-    : await db.batch(
-        input.changes.map((change) =>
-          db
-            .prepare(
-              `SELECT revision, fingerprint, deleted, change_seq
+  const currentRows =
+    input.changes.length === 0
+      ? []
+      : await db.batch(
+          input.changes.map((change) =>
+            db
+              .prepare(
+                `SELECT revision, fingerprint, deleted, change_seq
                FROM feed_entities
                WHERE account_key = ? AND entity_type = ? AND entity_id = ?`,
-            )
-            .bind(input.accountKey, change.entityType, change.entityId),
-        ),
-      );
+              )
+              .bind(input.accountKey, change.entityType, change.entityId),
+          ),
+        );
   const entityVersions = new Map<
     string,
     { revision: number; fingerprint: string; deleted: number; change_seq: number }
   >();
   input.changes.forEach((change, index) => {
     const row = currentRows[index]?.results[0] as
-      | { revision: number; fingerprint: string; deleted: number; change_seq: number }
-      | undefined;
+      { revision: number; fingerprint: string; deleted: number; change_seq: number } | undefined;
     if (row?.change_seq && row.change_seq > input.previous.last_change_seq) {
-      throw new Error("feed_entity_checkpoint_inconsistent");
+      throw new Error('feed_entity_checkpoint_inconsistent');
     }
     if (row) entityVersions.set(`${change.entityType}\u0000${change.entityId}`, row);
   });
@@ -149,7 +149,8 @@ export async function applyFeedPage(
   let lastSequence = input.previous.last_change_seq;
   const statements: D1PreparedStatement[] = [];
   for (const change of input.changes) {
-    if (change.changeSeq !== lastSequence + 1) throw new Error("feed_change_sequence_not_contiguous");
+    if (change.changeSeq !== lastSequence + 1)
+      throw new Error('feed_change_sequence_not_contiguous');
     lastSequence = change.changeSeq;
     const entityKey = `${change.entityType}\u0000${change.entityId}`;
     const prior = entityVersions.get(entityKey);
@@ -159,7 +160,7 @@ export async function applyFeedPage(
         (change.revision === prior.revision &&
           (change.fingerprint !== prior.fingerprint || Number(change.deleted) !== prior.deleted)))
     ) {
-      throw new Error("feed_entity_revision_regressed");
+      throw new Error('feed_entity_revision_regressed');
     }
     entityVersions.set(entityKey, {
       revision: change.revision,
@@ -222,7 +223,7 @@ export async function applyFeedPage(
         input.serverTime,
         input.epoch.changeSeq,
         input.now,
-        input.complete ? "synced" : "syncing",
+        input.complete ? 'synced' : 'syncing',
         input.now,
         input.complete ? 1 : 0,
         input.now,
@@ -231,7 +232,7 @@ export async function applyFeedPage(
   );
   await db.batch(statements);
   const state = await getFeedState(db, input.accountKey);
-  if (!state) throw new Error("feed_state_checkpoint_failed");
+  if (!state) throw new Error('feed_state_checkpoint_failed');
   return state;
 }
 
@@ -283,5 +284,5 @@ export async function feedEntityCounts(
 }
 
 export function isFeedStatus(value: string): value is FeedStatus {
-  return ["never_synced", "syncing", "synced", "degraded"].includes(value);
+  return ['never_synced', 'syncing', 'synced', 'degraded'].includes(value);
 }

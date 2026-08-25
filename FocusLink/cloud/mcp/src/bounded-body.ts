@@ -1,5 +1,5 @@
 export class BoundedBodyError extends Error {
-  constructor(readonly reason: "too_large" | "unreadable") {
+  constructor(readonly reason: 'too_large' | 'unreadable') {
     super(reason);
   }
 }
@@ -9,10 +9,10 @@ export async function readBoundedBody(
   headers: Headers,
   maximumBytes: number,
 ): Promise<Uint8Array> {
-  const declared = headers.get("content-length");
+  const declared = headers.get('content-length');
   if (declared !== null && /^\d+$/.test(declared) && Number(declared) > maximumBytes) {
     await body?.cancel().catch(() => undefined);
-    throw new BoundedBodyError("too_large");
+    throw new BoundedBodyError('too_large');
   }
   if (!body) return new Uint8Array();
 
@@ -26,14 +26,14 @@ export async function readBoundedBody(
       total += next.value.byteLength;
       if (total > maximumBytes) {
         await reader.cancel().catch(() => undefined);
-        throw new BoundedBodyError("too_large");
+        throw new BoundedBodyError('too_large');
       }
       chunks.push(next.value);
     }
   } catch (error) {
     if (error instanceof BoundedBodyError) throw error;
     await reader.cancel().catch(() => undefined);
-    throw new BoundedBodyError("unreadable");
+    throw new BoundedBodyError('unreadable');
   } finally {
     reader.releaseLock();
   }

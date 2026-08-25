@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // The Durable Object base only needs to be definable for the module to load; this
 // pure guard never instantiates it. Mirrors tests/cloudflareWorkerRouting.test.ts.
@@ -10,18 +12,90 @@ vi.mock('cloudflare:workers', () => ({
 
 import {
   ProtocolError,
+  assertPairOfferClaimAvailable,
   assertV2DeviceBinding,
   authorizeV2CredentialRecord,
   deriveRegisteredDevicePublicId,
   encodeDevicePublicId,
   parseV2DeviceCredential,
+  pairMetadataMatches,
   readJson,
   rejectUnexpectedQuery,
+  shouldRetryPairCodeCollision,
   validateV2Mutation,
   type V2DeviceCredentialRecord,
   type V2Identity,
 } from '../cloudflare/accountDurableObject';
 import type { EncryptedFocusGuardEnvelopeV1, SyncV2Mutation } from '../shared/sync/v2Protocol';
+
+const authoritySource = fs.readFileSync(
+  path.join(process.cwd(), 'cloudflare', 'accountDurableObject.ts'),
+  'utf8',
+);
+
+describe('numeric pairing authority storage contract', () => {
+  it('stores only a domain-separated HMAC and consumes offers once', () => {
+    expect(authoritySource).toContain("'code_hmac'");
+    expect(authoritySource).toContain('pairingCodeHmacInput(numericCode)');
+    expect(authoritySource).toContain('UPDATE v2_pair_offers SET used_at = ?');
+    expect(authoritySource).toContain("await this.authorizeV2(request, 'sync:write')");
+    const insert = /INSERT INTO v2_pair_offers[\s\S]*?\n\s*\);/.exec(authoritySource);
+    expect(insert, 'pair offer insert must remain inspectable').not.toBeNull();
+    expect(insert![0]).not.toContain('numericCode');
+  });
+
+  it('collapses unknown, used, expired and cross-account claims to the same 410 result', () => {
+    const now = 2_000_000_000_000;
+    const cases = [
+      undefined,
+      { used_at: now - 1, expires_at: now + 60_000, account_public_id: 'account-a' },
+      { used_at: null, expires_at: now, account_public_id: 'account-a' },
+      { used_at: null, expires_at: now + 60_000, account_public_id: 'account-b' },
+    ];
+    for (const offer of cases) {
+      expectCode(() => assertPairOfferClaimAvailable(offer, now, 'account-a'), 'pairing_expired');
+    }
+    expect(() =>
+      assertPairOfferClaimAvailable(
+        { used_at: null, expires_at: now + 60_000, account_public_id: 'account-a' },
+        now,
+        'account-a',
+      ),
+    ).not.toThrow();
+  });
+
+  it('rejects a code already bound to another installation metadata tuple', () => {
+    const offer = {
+      installation_id: 'android-0123456789abcdefghijklmnop',
+      display_name: 'FocusLink 手机',
+      platform: 'android',
+      device_kind: 'phone',
+      app_version: '0.12.97',
+    } as Parameters<typeof pairMetadataMatches>[0];
+    const matching = {
+      installationId: 'android-0123456789abcdefghijklmnop',
+      displayName: 'FocusLink 手机',
+      platform: 'android' as const,
+      deviceKind: 'phone' as const,
+      appVersion: '0.12.97',
+    };
+    expect(pairMetadataMatches(offer, matching)).toBe(true);
+    expect(
+      pairMetadataMatches(offer, {
+        ...matching,
+        installationId: 'android-abcdefghijklmnopqrstuvwxyz012345',
+      }),
+    ).toBe(false);
+  });
+
+  it('retries code-HMAC collisions only three times before failing closed', () => {
+    const collision = new Error('UNIQUE constraint failed: v2_pair_offers.code_hmac');
+    expect([0, 1, 2, 3].map((attempt) => shouldRetryPairCodeCollision(collision, attempt))).toEqual(
+      [true, true, true, false],
+    );
+    expect(shouldRetryPairCodeCollision(new Error('disk unavailable'), 0)).toBe(false);
+  });
+});
 
 describe('device public id encoding', () => {
   it('never emits the underscore reserved as an fl2 credential separator', () => {
@@ -161,7 +235,7 @@ describe('device credential negative cases', () => {
     );
   });
 
-  it('requires an explicitly granted devices:manage scope for pair offers', () => {
+  it('does not infer devices:manage from an ordinary sync:write credential', () => {
     expectCode(
       () => authorizeV2CredentialRecord(credential, active, 'digest-a', 'devices:manage', now),
       'scope_denied',

@@ -226,6 +226,20 @@ export default defineConfig({
               });
             }
             if (url.pathname === "/sync/v1/pair/offers") {
+              const authorization = request.headers.get("authorization");
+              if (
+                authorization ===
+                "Bearer fl2_account1_reader01_0123456789abcdefghijklmnopqrstuvwxyzABCDE"
+              ) {
+                return Response.json({ error: "forbidden" }, { status: 403 });
+              }
+              const deviceOffer = authorization?.startsWith("Bearer fl2_");
+              if (deviceOffer) {
+                return Response.json({
+                  code: "01234567",
+                  expiresAt: Date.now() + 10 * 60 * 1_000,
+                });
+              }
               return Response.json({
                 nonce: "n".repeat(43),
                 expiresAt: Date.now() + 10 * 60 * 1_000,

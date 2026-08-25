@@ -13,16 +13,16 @@ describe('desktop FocusLink account settings', () => {
   it('keeps service internals out of the normal settings surface', () => {
     expect(source).not.toContain('服务地址');
     expect(source).not.toContain('访问令牌');
-    expect(source).not.toContain('配对码');
     expect(source).not.toContain('编辑连接');
     expect(source).not.toContain('deviceSync.endpoint');
     expect(source).not.toContain('deviceSyncToken');
   });
 
-  it('offers explicit device authorization, local mode, sync status and logout instead', () => {
+  it('offers trusted-device pairing, recovery, sync status and logout', () => {
     expect(source).toContain('FocusLink 设备授权');
-    expect(source).toContain('打开设备授权页');
-    expect(source).toMatch(/43\s+位一次性管理员授权码/);
+    expect(source).toContain('输入 8 位配对码');
+    expect(source).toContain('添加设备');
+    expect(source).toContain('首台设备或恢复账号');
     expect(source).toContain('本机功能不依赖登录');
     expect(source).toContain('退出登录');
   });
@@ -55,6 +55,10 @@ describe('desktop FocusLink account settings', () => {
     expect(ipcSource).not.toContain("ipcMain.handle('device-sync:configure'");
     expect(ipcSource).not.toContain("ipcMain.handle('device-sync:quick-setup'");
     expect(ipcSource).not.toContain("ipcMain.handle('device-sync:create-pairing-offer'");
+    expect(preloadSource).toContain('device-sync:create-pairing-code');
+    expect(preloadSource).toContain('device-sync:redeem-pairing-code');
+    expect(ipcSource).toContain("ipcMain.handle('device-sync:create-pairing-code'");
+    expect(ipcSource).toContain("ipcMain.handle('device-sync:redeem-pairing-code'");
     expect(ipcSource).toContain('sanitizeRendererSettingsPatch(requested)');
   });
 });

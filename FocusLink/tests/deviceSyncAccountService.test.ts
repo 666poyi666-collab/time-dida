@@ -73,9 +73,11 @@ vi.mock('../electron/sync/deviceSyncService.js', () => ({
 }));
 
 import {
+  createDeviceSyncPairingCode,
   loginDeviceSyncAccount,
   logoutDeviceSyncAccount,
   OFFICIAL_FOCUSLINK_ENDPOINT,
+  redeemDeviceSyncPairingCode,
 } from '../electron/sync/deviceSyncAccountService';
 
 describe('desktop owner account enrollment', () => {
@@ -315,6 +317,48 @@ describe('desktop owner account enrollment', () => {
     );
 
     await expect(loginDeviceSyncAccount()).rejects.toThrow('账号登录网关尚未部署');
+  });
+
+  it('creates an 8-digit offer from an enrolled device without logging the code', async () => {
+    harness.token = `fl2_account1_desktop1_${'z'.repeat(32)}`;
+    const expiresAt = Date.now() + 10 * 60_000;
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ code: '24681357', expiresAt }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(createDeviceSyncPairingCode()).resolves.toEqual({ code: '24681357', expiresAt });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${OFFICIAL_FOCUSLINK_ENDPOINT}/sync/v1/pair/offers`);
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+      authorization: `Bearer ${harness.token}`,
+    });
+    expect(JSON.stringify(harness.logs)).not.toContain('24681357');
+  });
+
+  it('redeems a numeric code, stores the device-bound credential, and starts initial sync', async () => {
+    const token = `fl2_account1_desktop2_${'q'.repeat(32)}`;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(Response.json({ accessToken: token, deviceId: 'device-desktop2' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(redeemDeviceSyncPairingCode(' 1234 5678 ')).resolves.toMatchObject({
+      status: { signedIn: true },
+      syncError: null,
+    });
+
+    expect(harness.token).toBe(token);
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      code: string;
+      device: Record<string, unknown>;
+    };
+    expect(body.code).toBe('12345678');
+    expect(body.device).toMatchObject({
+      platform: 'windows',
+      deviceKind: 'desktop',
+      appVersion: expect.any(String),
+      displayName: expect.stringContaining('FocusLink'),
+    });
+    expect(body.device.installationId).toMatch(/^windows-[A-Za-z0-9_-]{32}$/);
+    expect(JSON.stringify(harness.logs)).not.toContain('12345678');
   });
 
   it('clears only the device credential on logout and leaves local data untouched', () => {

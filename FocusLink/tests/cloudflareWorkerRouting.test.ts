@@ -165,6 +165,28 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
     expect(forwarded[0].url).toContain('/v2/pair/offers');
   });
 
+  it('forwards numeric offer creation from an authenticated device through the internal identity header', async () => {
+    const forwarded: ForwardedCall[] = [];
+    const env = makeEnv(forwarded);
+    const response = await call(
+      '/sync/v1/pair/offers',
+      {
+        method: 'POST',
+        authorization: `Bearer ${VALID_DEVICE_TOKEN}`,
+      },
+      env,
+    );
+    expect(response.status).toBe(200);
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]).toMatchObject({
+      authorization: null,
+      forwardedAuthorization: `Bearer ${VALID_DEVICE_TOKEN}`,
+      pairAuthority: null,
+      account: 'account-public',
+    });
+    expect(forwarded[0].url).toContain('/v2/pair/offers');
+  });
+
   it('rejects missing, malformed and incorrect pair authority before the DO', async () => {
     const forwarded: ForwardedCall[] = [];
     for (const pairAuthority of [undefined, `fla_${'p'.repeat(42)}`, `fla_${'x'.repeat(48)}`]) {

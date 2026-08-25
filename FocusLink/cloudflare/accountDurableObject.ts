@@ -22,6 +22,10 @@ import {
   type FocusLinkDeviceRegistrationResponse,
 } from '../shared/sync/identityProtocol';
 import {
+  FOCUSLINK_PAIRING_CODE_PATTERN,
+  FOCUSLINK_PAIRING_CODE_TTL_MS,
+} from '../shared/sync/pairingProtocol';
+import {
   LIVE_FOCUS_MAX_TRANSITIONS,
   LIVE_FOCUS_MAX_WAIT_MS,
   LIVE_FOCUS_PROTOCOL_VERSION,
@@ -330,6 +334,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.initializeSchema();
+    this.ensurePairOfferSchema();
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -456,8 +461,18 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         return json(this.syncV2(accountId, body));
       }
       if (url.pathname === '/v2/pair/offers' && request.method === 'POST') {
-        await this.authorizeV2(request, 'devices:manage');
-        return json(this.createPairOffer(await readJson(request, 16 * 1024)));
+        // A trusted device may add another device with its normal write
+        // capability. The offer itself never grants device-management scope;
+        // the dedicated service-authority path remains available to the owner
+        // admin flow and inventory tooling.
+        const identity = await this.authorizeV2(request, 'sync:write');
+        return json(
+          await this.createPairOffer(
+            await readJson(request, 16 * 1024),
+            identity,
+            publicId(accountId),
+          ),
+        );
       }
       if (url.pathname === '/v2/pair/exchange' && request.method === 'POST') {
         return json(await this.exchangePairOffer(accountId, await readJson(request, 16 * 1024)));
@@ -735,11 +750,17 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_v2_devices_public ON v2_devices(device_public_id);
       CREATE TABLE IF NOT EXISTS v2_pair_offers (
         nonce TEXT PRIMARY KEY,
+        account_public_id TEXT,
         device_public_id TEXT NOT NULL,
         display_name TEXT NOT NULL,
         scopes_json TEXT NOT NULL,
         expires_at INTEGER NOT NULL,
-        used_at INTEGER
+        used_at INTEGER,
+        code_hmac TEXT,
+        installation_id TEXT,
+        platform TEXT,
+        device_kind TEXT,
+        app_version TEXT
       );
       CREATE TABLE IF NOT EXISTS v2_conflicts (
         conflict_id TEXT PRIMARY KEY,
@@ -837,6 +858,40 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
           ON CONFLICT(key) DO UPDATE SET value=excluded.value;
       `);
     });
+  }
+
+  /** Add pairing metadata to accounts created before numeric pairing shipped. */
+  private ensurePairOfferSchema(): void {
+    const existingColumns = new Set(
+      this.sql
+        .exec<{ name: string }>('PRAGMA table_info(v2_pair_offers)')
+        .toArray()
+        .map((row) => row.name),
+    );
+    const columns: Array<[string, string]> = [
+      ['account_public_id', 'TEXT'],
+      ['code_hmac', 'TEXT'],
+      ['installation_id', 'TEXT'],
+      ['platform', 'TEXT'],
+      ['device_kind', 'TEXT'],
+      ['app_version', 'TEXT'],
+    ];
+    for (const [name, type] of columns) {
+      if (existingColumns.has(name)) continue;
+      try {
+        this.sql.exec(`ALTER TABLE v2_pair_offers ADD COLUMN ${name} ${type}`);
+        existingColumns.add(name);
+      } catch (error) {
+        if (!isDuplicateColumnError(error)) throw error;
+      }
+    }
+    try {
+      this.sql.exec(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_v2_pair_offers_code_hmac ON v2_pair_offers(code_hmac)',
+      );
+    } catch (error) {
+      throw error;
+    }
   }
 
   private focusMcpProjection(url: URL) {
@@ -1741,37 +1796,83 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     return identity;
   }
 
-  private createPairOffer(value: unknown): {
-    nonce: string;
-    expiresAt: number;
-    devicePublicId: string;
-  } {
-    if (!isRecord(value))
-      throw new ProtocolError(400, 'invalid_request', 'pair offer body required');
-    const displayName = typeof value.displayName === 'string' ? value.displayName.trim() : '';
-    const scopes = Array.isArray(value.scopes)
-      ? value.scopes.filter((item): item is string => typeof item === 'string')
-      : [];
-    if (
-      !displayName ||
-      displayName.length > 100 ||
-      scopes.length === 0 ||
-      !scopes.every(isDeviceScope)
-    )
-      throw new ProtocolError(400, 'invalid_request', 'invalid pair offer');
-    const nonce = randomToken(32);
-    const devicePublicId = randomDevicePublicId();
-    const expiresAt = Date.now() + 10 * 60 * 1000;
-    this.sql.exec(
-      `INSERT INTO v2_pair_offers(nonce, device_public_id, display_name, scopes_json, expires_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      nonce,
-      devicePublicId,
-      displayName,
-      JSON.stringify(scopes),
-      expiresAt,
+  private async createPairOffer(
+    value: unknown,
+    identity: V2Identity,
+    accountPublicId: string,
+  ): Promise<
+    | { code: string; expiresAt: number }
+    | { nonce: string; expiresAt: number; devicePublicId: string }
+  > {
+    if (!isRecord(value) || !hasOnlyKeys(value, PAIR_OFFER_KEYS)) {
+      throw new ProtocolError(400, 'invalid_pair_offer', 'invalid pair offer');
+    }
+    const displayName = normalizePairDisplayName(value.displayName);
+    const scopes = parsePairScopes(value.scopes);
+    const hasTargetMetadata = ['installationId', 'platform', 'deviceKind', 'appVersion'].some(
+      (key) => key in value,
     );
-    return { nonce, expiresAt, devicePublicId };
+    const metadata = parsePairDeviceMetadata(
+      hasTargetMetadata
+        ? {
+            installationId: value.installationId,
+            displayName,
+            platform: value.platform,
+            deviceKind: value.deviceKind,
+            appVersion: value.appVersion,
+          }
+        : {},
+      false,
+    );
+    if (!displayName || !scopes || metadata === 'invalid') {
+      throw new ProtocolError(400, 'invalid_pair_offer', 'invalid pair offer');
+    }
+    const pepper = this.env.FOCUSLINK_DEVICE_PEPPER;
+    if (!pepper) {
+      throw new ProtocolError(503, 'credential_missing', 'device pepper is not configured');
+    }
+
+    const expiresAt = Date.now() + FOCUSLINK_PAIRING_CODE_TTL_MS;
+    // Owner/service authority keeps the legacy high-entropy nonce contract.
+    // A normal trusted device receives the human-facing numeric code. The
+    // numeric value is never inserted into storage or passed to a logger.
+    let nonce = '';
+    let devicePublicId = '';
+    let numericCode = '';
+    let inserted = false;
+    for (let attempt = 0; attempt < 4 && !inserted; attempt += 1) {
+      nonce = randomToken(32);
+      devicePublicId = randomDevicePublicId();
+      numericCode = randomPairingCode();
+      const codeHmac = await hmacHex(pepper, pairingCodeHmacInput(numericCode));
+      try {
+        this.sql.exec(
+          `INSERT INTO v2_pair_offers(
+             nonce, account_public_id, device_public_id, display_name, scopes_json, expires_at, code_hmac,
+             installation_id, platform, device_kind, app_version
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          nonce,
+          accountPublicId,
+          devicePublicId,
+          displayName,
+          JSON.stringify(scopes),
+          expiresAt,
+          codeHmac,
+          metadata === null ? null : metadata.installationId,
+          metadata === null ? null : metadata.platform,
+          metadata === null ? null : metadata.deviceKind,
+          metadata === null ? null : metadata.appVersion,
+        );
+        inserted = true;
+      } catch (error) {
+        if (!shouldRetryPairCodeCollision(error, attempt)) {
+          throw new ProtocolError(500, 'store_corrupt', 'pair offer could not be stored');
+        }
+      }
+    }
+    if (!inserted) throw new ProtocolError(503, 'pairing_unavailable', 'pairing is unavailable');
+    if (identity.owner) return { nonce, expiresAt, devicePublicId };
+    return { code: numericCode, expiresAt };
   }
 
   private async exchangePairOffer(
@@ -1783,52 +1884,149 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     scopes: string[];
     expiresAt: number;
   }> {
-    if (!isRecord(value) || typeof value.nonce !== 'string')
-      throw new ProtocolError(400, 'invalid_request', 'pair nonce required');
-    const offer = this.sql
-      .exec<{
-        nonce: string;
-        device_public_id: string;
-        display_name: string;
-        scopes_json: string;
-        expires_at: number;
-        used_at: number | null;
-      }>('SELECT * FROM v2_pair_offers WHERE nonce = ?', value.nonce)
-      .toArray()[0];
-    if (!offer || offer.used_at !== null || offer.expires_at <= Date.now())
-      throw new ProtocolError(410, 'pairing_expired', 'pair offer expired or already used');
+    if (!isRecord(value) || !hasOnlyKeys(value, PAIR_EXCHANGE_KEYS)) {
+      throw new ProtocolError(400, 'invalid_pairing_request', 'invalid pairing request');
+    }
+    const code = typeof value.code === 'string' ? value.code : null;
+    const nonce = typeof value.nonce === 'string' ? value.nonce : null;
+    if ((code === null) === (nonce === null)) {
+      throw new ProtocolError(400, 'invalid_pairing_code', 'invalid pairing code');
+    }
+    const metadata = parsePairDeviceMetadata(value.device, code !== null);
+    if (metadata === 'invalid' || metadata === null) {
+      throw new ProtocolError(400, 'invalid_pairing_device', 'invalid pairing device');
+    }
     const pepper = this.env.FOCUSLINK_DEVICE_PEPPER;
     if (!pepper)
       throw new ProtocolError(503, 'credential_missing', 'device pepper is not configured');
+    const lookup =
+      code !== null
+        ? FOCUSLINK_PAIRING_CODE_PATTERN.test(code)
+          ? { field: 'code_hmac', value: await hmacHex(pepper, pairingCodeHmacInput(code)) }
+          : null
+        : /^[A-Za-z0-9_-]{8,160}$/.test(nonce!)
+          ? { field: 'nonce', value: nonce! }
+          : null;
+    if (!lookup) {
+      throw new ProtocolError(400, 'invalid_pairing_code', 'invalid pairing code');
+    }
+
+    this.ensureRegistrationSchema();
     const accountPublicId = publicId(accountId);
-    const deviceId = `device-${offer.device_public_id}`;
+    const installationHmac =
+      code !== null
+        ? await registeredDeviceInstallationHmac(pepper, accountId, metadata.installationId)
+        : null;
+    const derivedDevicePublicId = installationHmac?.slice(0, 24) ?? null;
+    let devicePublicId = derivedDevicePublicId ?? '';
+    let deviceId = '';
     const secret = randomToken(48);
     const secretHmac = await hmacHex(pepper, secret);
-    const expiresAt = Date.now() + 365 * 24 * 60 * 60 * 1000;
-    const scopes = JSON.parse(offer.scopes_json) as string[];
+    const expiresAt = Date.now() + 365 * DAY_MS;
+    let scopes: string[] = [...FOCUSLINK_ENROLLED_DEVICE_SCOPES];
+    const now = Date.now();
+    let offer: PairOfferRow | undefined;
     this.ctx.storage.transactionSync(() => {
+      offer = this.sql
+        .exec<PairOfferRow>(
+          `SELECT nonce, device_public_id, display_name, scopes_json, expires_at, used_at,
+             code_hmac, account_public_id, installation_id, platform, device_kind, app_version
+           FROM v2_pair_offers WHERE ${lookup.field} = ?`,
+          lookup.value,
+        )
+        .toArray()[0];
+      assertPairOfferClaimAvailable(offer, now, accountPublicId);
+      // Legacy offers predate numeric installation binding and already carry
+      // their public device id. Do not rotate it during a compatibility claim.
+      devicePublicId = derivedDevicePublicId ?? offer.device_public_id;
+      deviceId = `device-${devicePublicId}`;
+      if (code === null) {
+        try {
+          const legacyScopes = parsePairScopes(JSON.parse(offer.scopes_json) as unknown);
+          if (legacyScopes) scopes = legacyScopes;
+        } catch {
+          // A malformed historical scope row is fail-closed to enrolled scopes.
+        }
+      }
+      if (code !== null) {
+        const matches = pairMetadataMatches(offer, metadata);
+        if (!matches) {
+          throw new ProtocolError(
+            409,
+            'pairing_binding_mismatch',
+            'pairing device metadata does not match the offer',
+          );
+        }
+        // A desktop-generated offer does not know the target installation in
+        // advance. Bind it exactly once at the first valid code redemption.
+        if (offer.installation_id === null) {
+          this.sql.exec(
+            `UPDATE v2_pair_offers
+             SET display_name = ?, installation_id = ?, platform = ?, device_kind = ?, app_version = ?
+             WHERE nonce = ? AND used_at IS NULL`,
+            metadata.displayName,
+            metadata.installationId,
+            metadata.platform,
+            metadata.deviceKind,
+            metadata.appVersion,
+            offer.nonce,
+          );
+        }
+      }
       this.sql.exec(
-        `INSERT INTO v2_devices(device_id, device_public_id, account_public_id, display_name,
-         scopes_json, secret_hmac, pepper_version, expires_at, last_seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, 2, ?, ?)`,
-        deviceId,
-        offer.device_public_id,
-        accountPublicId,
-        offer.display_name,
-        offer.scopes_json,
-        secretHmac,
-        expiresAt,
-        Date.now(),
-      );
-      this.sql.exec(
-        'UPDATE v2_pair_offers SET used_at = ? WHERE nonce = ?',
-        Date.now(),
+        `UPDATE v2_pair_offers SET used_at = ? WHERE nonce = ? AND used_at IS NULL`,
+        now,
         offer.nonce,
       );
+      const scopesJson = JSON.stringify(scopes);
+      this.sql.exec(
+        `INSERT INTO v2_devices(device_id, device_public_id, account_public_id, display_name,
+         scopes_json, secret_hmac, pepper_version, expires_at, last_seen_at, stale, revoked_at)
+         VALUES (?, ?, ?, ?, ?, ?, 2, ?, ?, 0, NULL)
+         ON CONFLICT(device_id) DO UPDATE SET
+           device_public_id=excluded.device_public_id,
+           account_public_id=excluded.account_public_id,
+           display_name=excluded.display_name,
+           scopes_json=excluded.scopes_json,
+           secret_hmac=excluded.secret_hmac,
+           pepper_version=2,
+           expires_at=excluded.expires_at,
+           last_seen_at=excluded.last_seen_at,
+           stale=0,
+           revoked_at=NULL`,
+        deviceId,
+        devicePublicId,
+        accountPublicId,
+        code !== null ? metadata.displayName : offer.display_name,
+        scopesJson,
+        secretHmac,
+        expiresAt,
+        now,
+      );
+      if (installationHmac !== null) {
+        this.sql.exec(
+          `INSERT INTO v2_device_registrations(device_id, installation_hmac, platform, device_kind,
+           app_version, registered_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(device_id) DO UPDATE SET
+             installation_hmac=excluded.installation_hmac,
+             platform=excluded.platform,
+             device_kind=excluded.device_kind,
+             app_version=excluded.app_version,
+             updated_at=excluded.updated_at`,
+          deviceId,
+          installationHmac,
+          metadata.platform,
+          metadata.deviceKind,
+          metadata.appVersion,
+          now,
+          now,
+        );
+      }
     });
     return {
       deviceId,
-      accessToken: `fl2_${accountPublicId}_${offer.device_public_id}_${secret}`,
+      accessToken: `fl2_${accountPublicId}_${devicePublicId}_${secret}`,
       scopes,
       expiresAt,
     };
@@ -3213,6 +3411,193 @@ function isCorrectionRecord(value: unknown): value is FocusLedgerCorrectionV2 {
 
 function isFingerprint(value: unknown): value is string {
   return typeof value === 'string' && /^[a-f0-9]{32,128}$/i.test(value);
+}
+
+const PAIR_OFFER_KEYS = [
+  'displayName',
+  'scopes',
+  'installationId',
+  'platform',
+  'deviceKind',
+  'appVersion',
+] as const;
+const PAIR_EXCHANGE_KEYS = ['code', 'nonce', 'device'] as const;
+
+export interface PairDeviceMetadata {
+  installationId: string;
+  displayName: string;
+  platform: 'windows' | 'android' | 'web' | 'macos' | 'linux' | 'ios';
+  deviceKind: 'desktop' | 'phone' | 'tablet' | 'watch';
+  appVersion: string;
+}
+
+interface PairOfferRow extends Record<string, SqlStorageValue> {
+  nonce: string;
+  account_public_id: string | null;
+  device_public_id: string;
+  display_name: string;
+  scopes_json: string;
+  expires_at: number;
+  used_at: number | null;
+  code_hmac: string | null;
+  installation_id: string | null;
+  platform: string | null;
+  device_kind: string | null;
+  app_version: string | null;
+}
+
+function normalizePairDisplayName(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const normalized = value.trim();
+  return normalized && normalized.length <= 100 && !/[\u0000-\u001f\u007f-\u009f]/.test(normalized)
+    ? normalized
+    : '';
+}
+
+function parsePairScopes(value: unknown): string[] | null {
+  if (value === undefined) return [...FOCUSLINK_ENROLLED_DEVICE_SCOPES];
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > FOCUSLINK_ENROLLED_DEVICE_SCOPES.length ||
+    !value.every((item): item is string => typeof item === 'string' && isDeviceScope(item)) ||
+    new Set(value).size !== value.length ||
+    !value.includes('sync:read') ||
+    value.some((scope) => scope === 'devices:manage' || scope === 'backups:manage')
+  ) {
+    return null;
+  }
+  return [...value];
+}
+
+function parsePairDeviceMetadata(
+  value: unknown,
+  required: boolean,
+): PairDeviceMetadata | null | 'invalid' {
+  if (!isRecord(value)) return 'invalid';
+  const keys = Object.keys(value);
+  const metadataKeys = new Set<string>(
+    PAIR_OFFER_KEYS.filter((key) => key !== 'scopes' && key !== 'displayName'),
+  );
+  const hasMetadata = keys.some((key) => metadataKeys.has(key));
+  if (!required && !hasMetadata) return null;
+  const allowed = new Set([
+    'installationId',
+    'displayName',
+    'platform',
+    'deviceKind',
+    'appVersion',
+  ]);
+  if (keys.some((key) => !allowed.has(key))) return 'invalid';
+  // The old nonce contract only carried platform/appVersion/displayName. Keep
+  // that path parseable while all numeric-code claims require the complete
+  // installation binding below.
+  if (
+    !required &&
+    typeof value.installationId !== 'string' &&
+    typeof value.deviceKind !== 'string'
+  ) {
+    if (
+      !['windows', 'macos', 'linux', 'android', 'ios', 'web'].includes(String(value.platform)) ||
+      typeof value.appVersion !== 'string' ||
+      !/^[0-9A-Za-z.+-]{1,32}$/.test(value.appVersion)
+    ) {
+      return 'invalid';
+    }
+    return {
+      installationId: `legacy-${randomToken(16)}`,
+      displayName:
+        typeof value.displayName === 'string' && normalizePairDisplayName(value.displayName)
+          ? normalizePairDisplayName(value.displayName)
+          : 'FocusLink device',
+      platform: value.platform as PairDeviceMetadata['platform'],
+      deviceKind: value.platform === 'windows' ? 'desktop' : 'phone',
+      appVersion: value.appVersion,
+    };
+  }
+  if (
+    typeof value.installationId !== 'string' ||
+    !/^[A-Za-z0-9._~-]{20,160}$/.test(value.installationId) ||
+    typeof value.displayName !== 'string' ||
+    !normalizePairDisplayName(value.displayName) ||
+    !['windows', 'android', 'web'].includes(String(value.platform)) ||
+    !['desktop', 'phone', 'tablet', 'watch'].includes(String(value.deviceKind)) ||
+    typeof value.appVersion !== 'string' ||
+    !/^[0-9A-Za-z.+-]{1,32}$/.test(value.appVersion)
+  ) {
+    return 'invalid';
+  }
+  return {
+    installationId: value.installationId,
+    displayName: normalizePairDisplayName(value.displayName),
+    platform: value.platform as PairDeviceMetadata['platform'],
+    deviceKind: value.deviceKind as PairDeviceMetadata['deviceKind'],
+    appVersion: value.appVersion,
+  };
+}
+
+export function pairMetadataMatches(offer: PairOfferRow, metadata: PairDeviceMetadata): boolean {
+  if (offer.installation_id === null) return true;
+  return (
+    offer.installation_id === metadata.installationId &&
+    offer.platform === metadata.platform &&
+    offer.device_kind === metadata.deviceKind &&
+    offer.app_version === metadata.appVersion &&
+    offer.display_name === metadata.displayName
+  );
+}
+
+function pairingCodeHmacInput(code: string): string {
+  return `focuslink-pair-code-v1:${code}`;
+}
+
+function randomPairingCode(): string {
+  // Reject the short tail of Uint32 so every 8-digit code has equal weight.
+  const limit = Math.floor(0x1_0000_0000 / 100_000_000) * 100_000_000;
+  while (true) {
+    const bytes = new Uint32Array(1);
+    crypto.getRandomValues(bytes);
+    if (bytes[0] < limit) return String(bytes[0] % 100_000_000).padStart(8, '0');
+  }
+}
+
+function isPairCodeCollisionError(error: unknown): boolean {
+  return error instanceof Error && /v2_pair_offers(?:\.code_hmac|_code_hmac)/i.test(error.message);
+}
+
+export function shouldRetryPairCodeCollision(error: unknown, attempt: number): boolean {
+  return (
+    Number.isInteger(attempt) && attempt >= 0 && attempt < 3 && isPairCodeCollisionError(error)
+  );
+}
+
+export function assertPairOfferClaimAvailable(
+  offer:
+    | {
+        used_at: number | null;
+        expires_at: number;
+        account_public_id: string | null;
+      }
+    | undefined,
+  now: number,
+  accountPublicId: string,
+): asserts offer is {
+  used_at: number | null;
+  expires_at: number;
+  account_public_id: string | null;
+} {
+  if (
+    !offer ||
+    offer.used_at !== null ||
+    offer.expires_at <= now ||
+    (offer.account_public_id !== null && offer.account_public_id !== accountPublicId)
+  ) {
+    throw new ProtocolError(410, 'pairing_expired', 'pair offer expired or already used');
+  }
+}
+
+function isDuplicateColumnError(error: unknown): boolean {
+  return error instanceof Error && /duplicate column name/i.test(error.message);
 }
 
 function isDeviceScope(value: string): boolean {

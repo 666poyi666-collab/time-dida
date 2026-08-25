@@ -74,6 +74,7 @@ export const LocalTaskProvider = {
       source: 'local' as TaskSource,
       externalId: id,
       projectId: _projectId ?? LOCAL_PROJECT_ID,
+      parentId: null,
       title,
       status: 'incomplete',
       priority: null,

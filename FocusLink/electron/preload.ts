@@ -127,6 +127,9 @@ const api = {
   deviceSync: {
     status: () => ipcRenderer.invoke('device-sync:status'),
     login: () => ipcRenderer.invoke('device-sync:login'),
+    createPairingCode: () => ipcRenderer.invoke('device-sync:create-pairing-code'),
+    redeemPairingCode: (code: string) =>
+      ipcRenderer.invoke('device-sync:redeem-pairing-code', code),
     logout: () => ipcRenderer.invoke('device-sync:logout'),
     syncNow: () => ipcRenderer.invoke('device-sync:run'),
   },

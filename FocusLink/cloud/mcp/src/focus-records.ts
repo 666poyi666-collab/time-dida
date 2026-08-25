@@ -1,11 +1,11 @@
-import { z } from "zod";
+import { z } from 'zod';
 
-import { BoundedBodyError, readBoundedBody } from "./bounded-body";
-import { focuslinkUpstreamUrl } from "./upstream";
+import { BoundedBodyError, readBoundedBody } from './bounded-body';
+import { focuslinkUpstreamUrl } from './upstream';
 
 const EPOCH_MS = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const DURATION_MS = EPOCH_MS;
-const TASK_SOURCE = z.enum(["local", "ticktick"]);
+const TASK_SOURCE = z.enum(['local', 'ticktick']);
 const NULLABLE_TITLE = z.union([z.string().max(1_000), z.null()]);
 const NULLABLE_EPOCH_MS = z.union([EPOCH_MS, z.null()]);
 const taskSchema = z
@@ -36,7 +36,7 @@ const recordSchema = z
     id: z.string().min(1).max(256),
     startedAt: EPOCH_MS,
     endedAt: EPOCH_MS,
-    status: z.enum(["finished", "aborted"]),
+    status: z.enum(['finished', 'aborted']),
     activeElapsedMs: DURATION_MS,
     pausedElapsedMs: DURATION_MS,
     wallElapsedMs: DURATION_MS,
@@ -55,20 +55,20 @@ const recordSchema = z
   })
   .strict()
   .refine((record) => record.endedAt >= record.startedAt, {
-    message: "record time range is invalid",
+    message: 'record time range is invalid',
   });
 
 const liveSchema = z
   .object({
     revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     serverTime: EPOCH_MS,
-    state: z.enum(["idle", "running", "paused"]),
+    state: z.enum(['idle', 'running', 'paused']),
     session: z.union([
       z
         .object({
           id: z.string().min(1).max(256),
           title: NULLABLE_TITLE,
-          state: z.enum(["running", "paused"]),
+          state: z.enum(['running', 'paused']),
           startedAt: EPOCH_MS,
           activeElapsedMs: DURATION_MS,
           pauseElapsedMs: DURATION_MS,
@@ -78,7 +78,11 @@ const liveSchema = z
           segments: z
             .array(
               z
-                .object({ id: z.string().min(1).max(256), startedAt: EPOCH_MS, endedAt: NULLABLE_EPOCH_MS })
+                .object({
+                  id: z.string().min(1).max(256),
+                  startedAt: EPOCH_MS,
+                  endedAt: NULLABLE_EPOCH_MS,
+                })
                 .strict(),
             )
             .max(100),
@@ -104,7 +108,7 @@ const liveSchema = z
 
 const freshnessSchema = z
   .object({
-    state: z.enum(["fresh", "stale", "unknown"]),
+    state: z.enum(['fresh', 'stale', 'unknown']),
     ageMs: z.union([DURATION_MS, z.null()]),
     staleAfterMs: z.literal(900_000),
   })
@@ -113,7 +117,7 @@ const freshnessSchema = z
 export const focusMcpRecordsSchema = z
   .object({
     schemaVersion: z.literal(1),
-    authority: z.literal("focuslink-account-do"),
+    authority: z.literal('focuslink-account-do'),
     generatedAt: EPOCH_MS,
     lastVerifiedAt: NULLABLE_EPOCH_MS,
     freshness: freshnessSchema,
@@ -123,7 +127,7 @@ export const focusMcpRecordsSchema = z
   })
   .strict()
   .refine((value) => value.range.to > value.range.from, {
-    message: "records range is invalid",
+    message: 'records range is invalid',
   });
 
 export type FocusMcpRecords = z.infer<typeof focusMcpRecordsSchema>;
@@ -147,57 +151,57 @@ export async function fetchFocusMcpRecords(
   input: FocusRecordsRequest,
 ): Promise<FocusMcpRecords> {
   validateRequest(input);
-  if (!SERVICE_TOKEN.test(env.FOCUSLINK_MCP_SERVICE_TOKEN ?? "")) {
-    throw new Error("focuslink_mcp_service_not_configured");
+  if (!SERVICE_TOKEN.test(env.FOCUSLINK_MCP_SERVICE_TOKEN ?? '')) {
+    throw new Error('focuslink_mcp_service_not_configured');
   }
-  if (!env.FOCUSLINK_UPSTREAM) throw new Error("focuslink_authority_binding_missing");
+  if (!env.FOCUSLINK_UPSTREAM) throw new Error('focuslink_authority_binding_missing');
 
-  const url = focuslinkUpstreamUrl("/internal/mcp/v1/focus/records");
-  url.searchParams.set("from", String(input.from));
-  url.searchParams.set("to", String(input.to));
-  url.searchParams.set("limit", String(input.limit));
+  const url = focuslinkUpstreamUrl('/internal/mcp/v1/focus/records');
+  url.searchParams.set('from', String(input.from));
+  url.searchParams.set('to', String(input.to));
+  url.searchParams.set('limit', String(input.limit));
   let response: Response;
   try {
     response = await env.FOCUSLINK_UPSTREAM.fetch(
       new Request(url, {
-        method: "GET",
+        method: 'GET',
         headers: {
-          accept: "application/json",
-          "x-focuslink-mcp-service": env.FOCUSLINK_MCP_SERVICE_TOKEN,
+          accept: 'application/json',
+          'x-focuslink-mcp-service': env.FOCUSLINK_MCP_SERVICE_TOKEN,
         },
-        redirect: "manual",
+        redirect: 'manual',
         signal: AbortSignal.timeout(15_000),
       }),
     );
   } catch {
-    throw new Error("focuslink_authority_unavailable");
+    throw new Error('focuslink_authority_unavailable');
   }
   if (response.status >= 300 && response.status < 400) {
     await response.body?.cancel();
-    throw new Error("focuslink_authority_redirect_rejected");
+    throw new Error('focuslink_authority_redirect_rejected');
   }
   if (!response.ok) {
     await response.body?.cancel();
     throw new Error(
       response.status === 401
-        ? "focuslink_authority_service_rejected"
-        : "focuslink_authority_unavailable",
+        ? 'focuslink_authority_service_rejected'
+        : 'focuslink_authority_unavailable',
     );
   }
   let bytes: Uint8Array;
   try {
     bytes = await readBoundedBody(response.body, response.headers, MAX_RESPONSE_BYTES);
   } catch (error) {
-    if (error instanceof BoundedBodyError && error.reason === "too_large") {
-      throw new Error("focuslink_authority_response_too_large");
+    if (error instanceof BoundedBodyError && error.reason === 'too_large') {
+      throw new Error('focuslink_authority_response_too_large');
     }
-    throw new Error("focuslink_authority_unavailable");
+    throw new Error('focuslink_authority_unavailable');
   }
   let raw: unknown;
   try {
-    raw = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
+    raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown;
   } catch {
-    throw new Error("focuslink_authority_protocol_error");
+    throw new Error('focuslink_authority_protocol_error');
   }
   const parsed = focusMcpRecordsSchema.safeParse(raw);
   if (
@@ -206,7 +210,7 @@ export async function fetchFocusMcpRecords(
     parsed.data.range.to !== input.to ||
     parsed.data.records.length > input.limit
   ) {
-    throw new Error("focuslink_authority_protocol_error");
+    throw new Error('focuslink_authority_protocol_error');
   }
   return parsed.data;
 }
@@ -222,6 +226,6 @@ function validateRequest(input: FocusRecordsRequest): void {
     input.limit < 1 ||
     input.limit > 100
   ) {
-    throw new Error("invalid_focus_records_request");
+    throw new Error('invalid_focus_records_request');
   }
 }

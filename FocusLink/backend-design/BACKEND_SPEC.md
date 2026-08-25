@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相；当前实现 v0.12.96（实施中）
+> 状态：v0.12.x 后端单一真相；当前实现 v0.12.97（实施中）
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -29,7 +29,7 @@
 - Bootstrap 固定为 `uninitialized → inventory-uploaded → manifest-received → base-established → v2-active`。generation 或 epoch 改变时保留 Outbox 并重新建立 base。
 - 设备 90 天未上线标 stale；tombstone 至少保留 180 天并等待全部活跃设备水位；graveyard 继续阻止旧副本复活。
 - 设备令牌使用 `fl2_` 路由格式；账号 DO 只保存 pepper HMAC、scope、过期和撤销状态，token 正文不落日志。
-- FocusLink 账号当前只接受管理员派发的唯一 subject `poyi-owner`。新设备不再走用户可见 pairing：canonical identity gateway 验证 owner 登录后，使用独立 `fia_*` authority 调用设备登记；Account DO 按 `(accountId, installationId)` 的 HMAC 派生稳定 deviceId，并为 Windows、手机、平板、手表分别签发独立 `fl2`。客户端只能获得固定 sync/live read/write scope，不能自报 owner 或 devices:manage。
+- FocusLink 账号当前只接受管理员派发的唯一 subject `poyi-owner`。首台设备/账号恢复由 canonical identity gateway 验证 owner 后，使用独立 `fia_*` authority 登记；后续设备优先由任一已有合法 `fl2 + sync:write` 的可信设备生成 8 位短码。Account DO 按 `(accountId, installationId)` 的 HMAC 派生稳定 deviceId，并为 Windows、手机、平板、手表分别签发独立 `fl2`。客户端只能获得固定 sync/live read/write scope，不能自报 owner、devices:manage 或 backups:manage。
 - 新设备入口固定为 `POST /account/v1/device/bootstrap` 的两阶段合同。`start` 携带严格设备 registration；gateway 返回 `flowId`、只供该流程使用的高熵 `flb_*` poll token 和 canonical `/owner/*` HTTPS 登录 URL。客户端只打开一次系统浏览器，随后用 `poll` 的 `flowId + pollToken` 领取结果；poll token 必须短期、单次消费，日志和诊断只能输出脱敏状态。未完成 owner 登录时直接返回 `authenticated`、轮询中更换 flow/credential、非 canonical 登录 origin 或回退到 installationId 领取凭据均为安全失败。
 - endpoint、authority secret、owner subject 和配对兼容层都属于基础设施细节，不进入 renderer 表单。旧合法 `fl2` 原位迁移为已登录；退出只删除本机凭据，不删除账本。移动端必须把稳定 installationId 与 authority 分配的 deviceId 分开保存，重新登录不得制造幽灵设备。
 - 推送只传 needSync hint，HTTPS/cursor 始终是数据真相。当前厂商凭据缺失，状态为 `credential-missing`。
@@ -276,7 +276,7 @@ SHA-256 版本，避免两个 desktop store 实例互相覆盖。加密 material
 - 服务端对 cursor 之后同一实体的多次历史 revision 先折叠为最新状态，再按 change sequence、条数与响应字节预算分页；全新设备不得先导入旧 revision 再把同一批历史误判为本地冲突。
 - 当前桌面端不执行远端删除，也不自动覆盖已有会话；删除/编辑冲突需要后续显式清理与合并流程。
 - Electron 访问令牌只经 `safeStorage` 加密落盘，不进入 `AppSettings`、renderer 日志或多端 payload。
-- 回环测试后端可生成 2 分钟一次性配对 offer；生产配对只走 canonical `POST /sync/v1/pair/offers` 与 `POST /sync/v1/pair/exchange`。二维码/短码只暴露协议版本、canonical endpoint、密码学随机 nonce 和过期时间；兑换成功后立即消费，过期或重放返回 410。配对路由不记录请求体、nonce 或令牌；Android 兑换后的令牌进入 Keystore，Web/PWA 遵循用户明确选择的会话级/记住策略。
+- 回环测试后端可生成 2 分钟一次性配对 offer；生产配对只走 canonical `POST /sync/v1/pair/offers` 与 `POST /sync/v1/pair/exchange`。可信设备 offer 返回 8 位数字码和 10 分钟过期时间，DO 只保存域分离 HMAC；dedicated pair-service 仍可使用 legacy 高熵 nonce。兑换成功后原子消费，未知、过期或重放统一返回 410。public edge 用 client + 凭据 SHA-256 key 限流；配对路由不记录请求体、code、nonce 或令牌。Android 兑换后的令牌进入 Keystore，Web/PWA 遵循用户明确选择的会话级/记住策略。
 - Electron 只有在首次 `GET /sync/v2/live` 成功并通过协议校验后才切换到实时事实源；握手失败时保持本机 idle/计时可用，并以 `2s → 4s → 8s … → 60s` 有界退避重连。已确认的 running/paused 实时会话断线时不得切回本机空闲状态或伪造云端确认。
 - 生成 completed bundle 时，旧版本遗留的暂停孤立引用只在传输副本中归一为 `segmentId: null`，原始 SQLite 行不被静默删除；诊断必须记录会话 ID 和孤立数量。
 
@@ -300,8 +300,8 @@ canonical adapter 与私有 authority 的路由表如下。`/v1/*`、`/v2/*` 和
 | `/sync/v2/live`                  | GET        | device token · `live:read`                                                                 | `/v1/live`（仅 DO 内部）         |
 | `/sync/v2/live/wait`             | GET        | device token · `live:read`                                                                 | `/v1/live/wait`（仅 DO 内部）    |
 | `/sync/v2/live/command`          | POST       | device token · `live:write`                                                                | `/v1/live/command`（仅 DO 内部） |
-| `/sync/v1/pair/offers`           | POST       | adapter 先验 owner session + CSRF；fl2 token 仍由 DO 校验 `devices:manage`                 | `/v2/pair/offers`                |
-| `/sync/v1/pair/exchange`         | POST       | 一次性高熵 nonce；不得要求已有 bearer                                                      | `/v2/pair/exchange`              |
+| `/sync/v1/pair/offers`           | POST       | pair-service authority，或已有 `fl2` 由 DO 最终校验 `sync:write`；设备路径强限流           | `/v2/pair/offers`                |
+| `/sync/v1/pair/exchange`         | POST       | 8 位短码 + 完整 installation metadata，或兼容一次性高熵 nonce；不得要求已有 bearer         | `/v2/pair/exchange`              |
 | `/sync/v1/devices/register`      | POST       | 仅 identity gateway 的独立 `fia_*` + 精确 `poyi-owner`；公网客户端不得直连                 | `/v2/devices/register`           |
 | `/internal/mcp/v1/focus/summary` | GET        | 仅 MCP service binding credential；公网 OAuth 由 `foxlink-cloud-mcp` 校验 `focuslink:read` | 同名内部投影                     |
 

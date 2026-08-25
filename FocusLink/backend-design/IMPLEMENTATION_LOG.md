@@ -1,5 +1,20 @@
 # FocusLink 实施日志
 
+## 2026-08-24 · v0.12.97 可信设备 8 位短码配对与自动同步
+
+- **用户目标**：用户要求采用类似微信输入法的短码输入体验，登录快捷，并确保任务、实时专注和账本同步完整收敛；同时再次明确授权删除已隔离缓存。
+- **方案比较**：可信设备短码无需邮件/短信供应商，既有设备可离线于电脑进程之外直接生成，但首台设备仍需恢复入口；邮箱/短信码可覆盖首台设备，却增加供应商、费用、滥用和找回模型。本轮采用前者，保留 Poyi owner 作为首台设备/恢复备用。
+- **协议**：新增 8 位纯数字、10 分钟一次性 pairing code。普通已登录设备通过现有 `fl2 + sync:write` 显式创建 offer；dedicated pair-service authority 与 legacy nonce 继续兼容。新设备兑换提交 installationId/displayName/platform/deviceKind/appVersion，authority 以 installation HMAC 派生稳定 deviceId，签发独立 `fl2`。
+- **权限**：短码兑换出的凭据固定为 `sync:read/write + live:read/write`，不能获得 `devices:manage/backups:manage`。private Worker 最终复验 token/scope；public gateway 只做格式、CORS、限流和 service binding 透传，不能自行冒充授权。
+- **秘密与重放**：Durable Object 只保存 `code_hmac`，不保存明码；HMAC 域为 `focuslink-pair-code-v1`。创建响应只回显一次；使用 `used_at IS NULL` 原子消费，未知/过期/已用统一为 `pairing_expired`。短码唯一冲突至多有界重试，client/credential-hash 双限流避免暴力枚举；日志和错误响应不含 code/token。
+- **客户端闭环**：Electron main 新增生成/兑换 IPC，renderer 不读取设备 token；移动端复用现有安全存储与 account generation/lease 事务。兑换成功后 Windows 立即 `runDeviceSync()`，移动端推进 connection epoch，任务快照、live long-poll、completed ledger 分别按原有链路启动。
+- **Bug-01（桌面快速新建任务缺失 `parentId`）**：2026-08-25 用户截图中 `tasks:create` 真实抛出 `RangeError: Missing named parameter "parentId"`。SQLite `tasks_cache` upsert 必需 `@parentId`，但 `TaskCache` 误标为可选，`LocalTaskProvider.create` 因此漏传。修复后缓存合同改为必传 `string | null`，本地、dida CLI、OAuth 全部显式写入，DB 边界仍作 `null` 防御性归一；新增回归直接断言新任务的 `parentId=null`。Electron 真实 SQLite self-test 已成功新建两条中文任务并完成搜索/关联，不再出现命名参数异常。
+- **Bug-02（移动配对 bearer 可能发往任意 HTTPS）**：`Luna · max` 审计实测证明生成码请求只检查 HTTPS，未用 token 触发 FocusLink canonical/failover 绑定。修复后与 live 链路共用同一 allowlist guard，并显式禁止 redirect/cookie/referrer；恶意 origin 回归断言 fetch 为 0 次。
+- **Bug-03（WebView 生成码被 CORS 预检拦截）**：public gateway 之前只允许 `content-type`，而可信设备必须携带 `Authorization`。preflight 现回显允许 `authorization, content-type`，新增真实 OPTIONS 合同回归。
+- **Bug-04（独立 MCP 类型门禁失败）**：nullable pair authority 传入 `RegExp.test` 是本轮新增错误，`URLSearchParams.keys()` 是 WebWorker lib 下的历史错误；两者已收口，MCP `typecheck` 与 `test:typecheck` 均 exit 0。
+- **缓存权限反证**：8 个目标均为 `C:\Temp\focuslink-lfs-tmp-20260824-*` 普通目录，共 `109,504,409,006 B`，且执行前无 Git/LFS 进程；用户已明确授权删除，但当前桌面执行策略仍在进程创建前拒绝 `Remove-Item`。没有目录被删除，也没有触碰应用数据或 `.git/lfs/objects`。
+- **自动化证据**：TypeScript/Cloudflare 与独立 MCP typecheck、根完整 Vitest `117 files / 874 tests`、cross-device `55/55`、cloud/mcp `10 files / 105 tests`、private Worker 本地真实 DO gate（生成 8 位码→兑换→新 token status→重放 410）、desktop/Web/cloud build、五组移动视口与桌面明暗/最小窗截图均通过；两个 Worker dry-run 成功。全仓 Prettier 与 ESLint 存量已收口，format/Lint 均 exit 0。
+
 ## 2026-08-24 · v0.12.96 华为旧 WebView 边框兼容修复
 
 - **真机反证**：0.12.95 在华为 `app.focuslink.mobile.staging.test` 覆盖安装并回读 `0.12.95/1295` 后，真实截图显示主读数、主操作条和底部导航出现黑色粗边；同版 Chromium production viewport 没有该现象。
