@@ -20,8 +20,10 @@ describe('desktop FocusLink account settings', () => {
 
   it('offers trusted-device pairing, recovery, sync status and logout', () => {
     expect(source).toContain('FocusLink 设备授权');
-    expect(source).toContain('输入 8 位配对码');
+    expect(source).toContain('8 位设备配对码');
     expect(source).toContain('添加设备');
+    expect(source).toContain('已配对设备');
+    expect(source).toContain('删除设备');
     expect(source).toContain('首台设备或恢复账号');
     expect(source).toContain('本机功能不依赖登录');
     expect(source).toContain('退出登录');

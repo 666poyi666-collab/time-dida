@@ -59,11 +59,13 @@ describe('mobile owner account entry', () => {
         notice: null,
         pairingCode: '12345678',
         pairingOffer: null,
+        devices: [],
         onClose: () => undefined,
         onLogin: () => undefined,
         onPairingCodeChange: () => undefined,
         onPair: () => undefined,
         onCreatePairingCode: () => undefined,
+        onRevokeDevice: () => undefined,
         onLogout: () => undefined,
         onClearCache: () => undefined,
       }),
@@ -91,11 +93,13 @@ describe('mobile owner account entry', () => {
         notice: null,
         pairingCode: '',
         pairingOffer: { code: '87654321', expiresAt: Date.now() + 600_000 },
+        devices: [],
         onClose: () => undefined,
         onLogin: () => undefined,
         onPairingCodeChange: () => undefined,
         onPair: () => undefined,
         onCreatePairingCode: () => undefined,
+        onRevokeDevice: () => undefined,
         onLogout: () => undefined,
         onClearCache: () => undefined,
       }),
@@ -103,5 +107,44 @@ describe('mobile owner account entry', () => {
     expect(markup).toContain('8765 4321');
     expect(markup).toContain('添加设备');
     expect(markup).not.toContain('accessToken');
+  });
+
+  it('renders the paired-device roster with an explicit revoke action', () => {
+    const markup = renderToStaticMarkup(
+      createElement(ConnectionSheet, {
+        authenticated: true,
+        accountLabel: 'Poyi',
+        busy: false,
+        notice: null,
+        pairingCode: '',
+        pairingOffer: null,
+        devices: [
+          {
+            deviceId: 'device-tablet01',
+            devicePublicId: 'tablet01',
+            displayName: 'FocusLink 平板',
+            platform: 'android',
+            deviceKind: 'tablet',
+            appVersion: '0.12.102',
+            expiresAt: Date.now() + 60_000,
+            revokedAt: null,
+            lastSeenAt: Date.now(),
+            stale: false,
+            registeredAt: Date.now(),
+          },
+        ],
+        onClose: () => undefined,
+        onLogin: () => undefined,
+        onPairingCodeChange: () => undefined,
+        onPair: () => undefined,
+        onCreatePairingCode: () => undefined,
+        onRevokeDevice: () => undefined,
+        onLogout: () => undefined,
+        onClearCache: () => undefined,
+      }),
+    );
+    expect(markup).toContain('已配对设备');
+    expect(markup).toContain('FocusLink 平板');
+    expect(markup).toContain('删除设备');
   });
 });

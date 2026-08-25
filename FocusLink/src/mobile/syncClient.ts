@@ -13,6 +13,7 @@ import {
   normalizeFocusLinkPairingCode,
 } from '@shared/sync/pairingProtocol';
 import { readDeviceSyncJsonResponse } from '@shared/sync/httpTransport';
+import type { DeviceSyncManagedDevice } from '@shared/ipc/api';
 import {
   LIVE_FOCUS_COMMAND_PATH,
   LIVE_FOCUS_MAX_TITLE_LENGTH,
@@ -125,6 +126,75 @@ export async function createDeviceSyncPairingCode(input: {
   return { code: payload.code, expiresAt: Number(payload.expiresAt) };
 }
 
+export async function listDeviceSyncDevices(input: {
+  endpoint: string;
+  token: string;
+  signal?: AbortSignal;
+}): Promise<DeviceSyncManagedDevice[]> {
+  const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
+  requireMobileCloudEndpoint(endpoint, input.token);
+  const response = await fetchWithTimeout(
+    `${endpoint}/sync/v2/devices`,
+    {
+      method: 'GET',
+      headers: { accept: 'application/json', authorization: `Bearer ${input.token}` },
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+    },
+    input.signal,
+    10_000,
+  );
+  const payload = await readDeviceSyncJsonResponse(response, 64 * 1024);
+  if (!response.ok)
+    throw new DeviceSyncPairingError(
+      'device_roster_unavailable',
+      '设备列表暂不可用',
+      response.status,
+    );
+  if (!isRecord(payload) || !Array.isArray(payload.devices)) {
+    throw new DeviceSyncPairingError('invalid_device_roster', '设备列表响应无效', response.status);
+  }
+  return payload.devices.filter(isManagedDevice) as DeviceSyncManagedDevice[];
+}
+
+export async function revokeDeviceSyncDevice(input: {
+  endpoint: string;
+  token: string;
+  deviceId: string;
+  signal?: AbortSignal;
+}): Promise<{ deviceId: string; revokedAt: number }> {
+  const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
+  requireMobileCloudEndpoint(endpoint, input.token);
+  if (!/^device-[A-Za-z0-9-]{6,194}$/.test(input.deviceId)) {
+    throw new DeviceSyncPairingError('invalid_device_id', '设备标识无效');
+  }
+  const response = await fetchWithTimeout(
+    `${endpoint}/sync/v2/devices/${input.deviceId}/revoke`,
+    {
+      method: 'POST',
+      headers: { accept: 'application/json', authorization: `Bearer ${input.token}` },
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+    },
+    input.signal,
+    10_000,
+  );
+  const payload = await readDeviceSyncJsonResponse(response, 16 * 1024);
+  if (
+    !response.ok ||
+    !isRecord(payload) ||
+    payload.deviceId !== input.deviceId ||
+    !Number.isSafeInteger(payload.revokedAt)
+  ) {
+    throw new DeviceSyncPairingError('device_revoke_failed', '设备删除失败', response.status);
+  }
+  return { deviceId: input.deviceId, revokedAt: Number(payload.revokedAt) };
+}
+
 export async function exchangeDeviceSyncPairingCode(input: {
   endpoint: string;
   code: string;
@@ -221,6 +291,23 @@ function pairingResponseErrorCode(payload: unknown): string {
   return isRecord(payload.error) && typeof payload.error.code === 'string'
     ? payload.error.code
     : 'pairing_failed';
+}
+
+function isManagedDevice(value: unknown): value is DeviceSyncManagedDevice {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.deviceId === 'string' &&
+    typeof value.devicePublicId === 'string' &&
+    typeof value.displayName === 'string' &&
+    (value.platform === null || typeof value.platform === 'string') &&
+    (value.deviceKind === null || typeof value.deviceKind === 'string') &&
+    (value.appVersion === null || typeof value.appVersion === 'string') &&
+    (value.expiresAt === null || Number.isSafeInteger(value.expiresAt)) &&
+    (value.revokedAt === null || Number.isSafeInteger(value.revokedAt)) &&
+    (value.lastSeenAt === null || Number.isSafeInteger(value.lastSeenAt)) &&
+    typeof value.stale === 'boolean' &&
+    (value.registeredAt === null || Number.isSafeInteger(value.registeredAt))
+  );
 }
 
 function pairingErrorMessage(code: string): string {

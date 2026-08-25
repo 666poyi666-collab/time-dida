@@ -103,6 +103,8 @@ import {
   classifyMobileLiveRequestError,
   createDeviceSyncPairingCode,
   exchangeDeviceSyncPairingCode,
+  listDeviceSyncDevices,
+  revokeDeviceSyncDevice,
   fetchLiveFocusSnapshot,
   fetchTaskSnapshot,
   publishTaskSnapshot,
@@ -144,6 +146,7 @@ import {
 import { runMobileSyncV2 } from './v2Sync';
 import { readMobileV2Bootstrap, readMobileV2Status } from './v2Cache';
 import { persistCompletedOfflineFocus } from './offlineCompletion';
+import type { DeviceSyncManagedDevice } from '@shared/ipc/api';
 import {
   createTaskSnapshotRequestLifecycle,
   startVisibleTaskSnapshotRefresh,
@@ -170,6 +173,7 @@ export function MobileApp() {
   const [pairingOffer, setPairingOffer] = useState<{ code: string; expiresAt: number } | null>(
     null,
   );
+  const [managedDevices, setManagedDevices] = useState<DeviceSyncManagedDevice[]>([]);
   const [cache, setCache] = useState<MobileCacheSnapshot>(EMPTY_CACHE);
   const [cacheReady, setCacheReady] = useState(false);
   // Account sync is optional. A new installation starts in the local focus
@@ -229,6 +233,18 @@ export function MobileApp() {
   const mobileAppActive = useRef(true);
   const connectionKeyRef = useRef(mobileAccountConnectionKey(initialPreferences));
   const accountLifecycle = useRef(createMobileAccountLifecycle()).current;
+
+  const refreshManagedDevices = useCallback(async (connection = preferencesRef.current) => {
+    if (!connection.endpoint || !connection.token) {
+      setManagedDevices([]);
+      return;
+    }
+    try {
+      setManagedDevices(await listDeviceSyncDevices(connection));
+    } catch {
+      setManagedDevices([]);
+    }
+  }, []);
 
   const commitNativeConnectionLease = useCallback((lease: string | null) => {
     nativeConnectionLeaseRef.current = lease;
@@ -307,6 +323,10 @@ export function MobileApp() {
     }, delay);
     return () => window.clearTimeout(timer);
   }, [pairingOffer]);
+
+  useEffect(() => {
+    void refreshManagedDevices(preferences);
+  }, [preferences, refreshManagedDevices]);
 
   useEffect(() => {
     if (!isNativeFocusRuntimeAvailable()) return;
@@ -428,9 +448,10 @@ export function MobileApp() {
           ? '账号已登录，但本机资料持久化失败；当前会话继续同步并将在下次启动重试'
           : '账号已登录，正在同步这台设备',
       );
+      void refreshManagedDevices(next);
       return true;
     },
-    [accountLifecycle, commitNativeConnectionLease, resetAccountScopedState],
+    [accountLifecycle, commitNativeConnectionLease, refreshManagedDevices, resetAccountScopedState],
   );
 
   const bootstrapOwnerAccount = useCallback(
@@ -477,58 +498,82 @@ export function MobileApp() {
     [accountLifecycle, applyOwnerAccountSession],
   );
 
-  const redeemPairingCode = useCallback(async () => {
-    const code = normalizePairingCodeInput(pairingCode);
-    if (!/^\d{8}$/.test(code)) {
-      setCommandNotice('请输入 8 位数字配对码');
-      return;
-    }
-    const operation = accountLifecycle.issue();
-    setAccountLoginPolling(false);
-    setAccountBusy(true);
-    setCommandNotice('正在加入多端同步…');
-    try {
-      const native = Capacitor.isNativePlatform();
-      const tablet = isTabletFocusViewport(window.innerWidth, window.innerHeight);
-      const result = await exchangeDeviceSyncPairingCode({
-        endpoint: OFFICIAL_FOCUSLINK_ENDPOINT,
-        code,
-        device: {
-          installationId: getOrCreateInstallationId(),
-          displayName: native
-            ? tablet
-              ? 'FocusLink Android 平板'
-              : 'FocusLink Android 手机'
-            : 'FocusLink Web',
-          platform: native ? 'android' : 'web',
-          deviceKind: tablet ? 'tablet' : 'phone',
-          appVersion: APP_VERSION,
-        },
-      });
-      if (!accountLifecycle.isCurrent(operation)) return;
-      const accountId = /^fl2_([A-Za-z0-9-]{6,80})_/.exec(result.accessToken)?.[1];
-      if (!accountId) throw new Error('配对响应无效');
-      const applied = await applyOwnerAccountSession(
-        {
-          accountId,
-          accountLabel: 'Poyi',
-          endpoint: OFFICIAL_FOCUSLINK_ENDPOINT,
-          accessToken: result.accessToken,
-          deviceId: result.deviceId,
-        },
-        operation,
-      );
-      if (applied) {
-        setPairingCode('');
-        setCommandNotice('设备已加入同步，正在读取任务、实时状态和账本');
+  const redeemPairingCode = useCallback(
+    async (inputValue = pairingCode) => {
+      const code = normalizePairingCodeInput(inputValue);
+      if (!/^\d{8}$/.test(code)) {
+        setCommandNotice('请输入 8 位数字配对码');
+        return;
       }
+      const operation = accountLifecycle.issue();
+      setAccountLoginPolling(false);
+      setAccountBusy(true);
+      setCommandNotice('正在加入多端同步…');
+      try {
+        const native = Capacitor.isNativePlatform();
+        const tablet = isTabletFocusViewport(window.innerWidth, window.innerHeight);
+        const result = await exchangeDeviceSyncPairingCode({
+          endpoint: OFFICIAL_FOCUSLINK_ENDPOINT,
+          code,
+          device: {
+            installationId: getOrCreateInstallationId(),
+            displayName: native
+              ? tablet
+                ? 'FocusLink Android 平板'
+                : 'FocusLink Android 手机'
+              : 'FocusLink Web',
+            platform: native ? 'android' : 'web',
+            deviceKind: tablet ? 'tablet' : 'phone',
+            appVersion: APP_VERSION,
+          },
+        });
+        if (!accountLifecycle.isCurrent(operation)) return;
+        const accountId = /^fl2_([A-Za-z0-9-]{6,80})_/.exec(result.accessToken)?.[1];
+        if (!accountId) throw new Error('配对响应无效');
+        const applied = await applyOwnerAccountSession(
+          {
+            accountId,
+            accountLabel: 'Poyi',
+            endpoint: OFFICIAL_FOCUSLINK_ENDPOINT,
+            accessToken: result.accessToken,
+            deviceId: result.deviceId,
+          },
+          operation,
+        );
+        if (applied) {
+          setPairingCode('');
+          setCommandNotice('设备已加入同步，正在读取任务、实时状态和账本');
+        }
+      } catch (error) {
+        if (!accountLifecycle.isCurrent(operation) || isAbortError(error)) return;
+        setCommandNotice(errorMessage(error));
+      } finally {
+        if (accountLifecycle.isCurrent(operation)) setAccountBusy(false);
+      }
+    },
+    [accountLifecycle, applyOwnerAccountSession, pairingCode],
+  );
+
+  const revokeManagedDevice = useCallback(async (deviceIdToRevoke: string) => {
+    const connection = preferencesRef.current;
+    if (!connection.endpoint || !connection.token) return;
+    setAccountBusy(true);
+    try {
+      await revokeDeviceSyncDevice({
+        endpoint: connection.endpoint,
+        token: connection.token,
+        deviceId: deviceIdToRevoke,
+      });
+      setManagedDevices((current) =>
+        current.filter((device) => device.deviceId !== deviceIdToRevoke),
+      );
+      setCommandNotice('设备已删除，后续同步已停止');
     } catch (error) {
-      if (!accountLifecycle.isCurrent(operation) || isAbortError(error)) return;
       setCommandNotice(errorMessage(error));
     } finally {
-      if (accountLifecycle.isCurrent(operation)) setAccountBusy(false);
+      setAccountBusy(false);
     }
-  }, [accountLifecycle, applyOwnerAccountSession, pairingCode]);
+  }, []);
 
   const createPairingCode = useCallback(async () => {
     const token = preferencesRef.current.token;
@@ -1902,11 +1947,13 @@ export function MobileApp() {
             notice={commandNotice}
             pairingCode={pairingCode}
             pairingOffer={pairingOffer}
+            devices={managedDevices}
             onClose={() => setConfigOpen(false)}
             onLogin={() => void bootstrapOwnerAccount()}
             onPairingCodeChange={(value) => setPairingCode(normalizePairingCodeInput(value))}
-            onPair={() => void redeemPairingCode()}
+            onPair={(value) => void redeemPairingCode(value)}
             onCreatePairingCode={() => void createPairingCode()}
+            onRevokeDevice={(deviceIdToRevoke) => void revokeManagedDevice(deviceIdToRevoke)}
             onLogout={handleForgetToken}
             onClearCache={() => setClearCacheDialogOpen(true)}
           />

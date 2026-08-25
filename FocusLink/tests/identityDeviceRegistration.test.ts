@@ -4,6 +4,7 @@ import {
   FOCUSLINK_CANONICAL_SYNC_ORIGIN,
   FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
   FOCUSLINK_ENROLLED_DEVICE_SCOPES,
+  FOCUSLINK_OWNER_DEVICE_SCOPES,
   FOCUSLINK_SYNC_FAILOVER_ORIGIN,
   focusLinkSyncEndpointCandidates,
   isAllowedFocusLinkDeviceConnection,
@@ -67,9 +68,9 @@ describe('FocusLink identity device registration protocol', () => {
     expect(
       validateFocusLinkDeviceRegistrationResponse({
         ...valid,
-        scopes: [...valid.scopes, 'devices:manage'],
+        scopes: [...FOCUSLINK_OWNER_DEVICE_SCOPES],
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       validateFocusLinkDeviceRegistrationResponse({
         ...valid,

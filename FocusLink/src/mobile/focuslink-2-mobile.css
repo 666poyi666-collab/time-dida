@@ -922,6 +922,13 @@ body {
   text-align: center;
 }
 
+.account-pairing-hint {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+  text-align: center;
+}
+
 .account-pairing-entry .primary-button {
   margin-top: 0;
 }
@@ -980,6 +987,51 @@ body {
   font-size: 30px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.12em;
+}
+
+.account-device-roster {
+  display: grid;
+  gap: 0;
+  margin-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.account-device-row {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.account-device-row > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.account-device-row strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-device-row span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.account-device-row button {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .account-sheet .primary-button {

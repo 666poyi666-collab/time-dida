@@ -229,6 +229,20 @@ export interface DeviceSyncNumericPairingOffer {
   expiresAt: number;
 }
 
+export interface DeviceSyncManagedDevice {
+  deviceId: string;
+  devicePublicId: string;
+  displayName: string;
+  platform: 'windows' | 'android' | 'web' | null;
+  deviceKind: 'desktop' | 'phone' | 'tablet' | 'watch' | null;
+  appVersion: string | null;
+  expiresAt: number | null;
+  revokedAt: number | null;
+  lastSeenAt: number | null;
+  stale: boolean;
+  registeredAt: number | null;
+}
+
 export interface DeviceSyncRunResult {
   pushed: number;
   pulled: number;
@@ -495,6 +509,8 @@ export interface FocusLinkAPI {
     login(): Promise<DeviceSyncAccountLoginResult>;
     createPairingCode(): Promise<DeviceSyncNumericPairingOffer>;
     redeemPairingCode(code: string): Promise<DeviceSyncAccountLoginResult>;
+    listDevices(): Promise<DeviceSyncManagedDevice[]>;
+    revokeDevice(deviceId: string): Promise<{ deviceId: string; revokedAt: number }>;
     logout(): Promise<DeviceSyncStatus>;
     syncNow(): Promise<DeviceSyncRunResult>;
   };

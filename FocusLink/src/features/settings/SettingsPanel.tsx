@@ -8,7 +8,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../app/store';
 import { ipcErrorMessage } from '../../app/ipcError';
 import type { AppSettings } from '@shared/types';
-import type { DeviceSyncStatus, TomatodoBridgeStatus } from '@shared/ipc/api';
+import type {
+  DeviceSyncManagedDevice,
+  DeviceSyncStatus,
+  TomatodoBridgeStatus,
+} from '@shared/ipc/api';
 import { APP_VERSION } from '@shared/version';
 import { normalizeFocusLinkPairingCode } from '@shared/sync/pairingProtocol';
 import { resolveFontProfile, resolveTimerStyle } from '@shared/theme';
@@ -179,6 +183,7 @@ export function SettingsPanel() {
   const [deviceSyncStatus, setDeviceSyncStatus] = useState<DeviceSyncStatus | null>(null);
   const [deviceSyncSaving, setDeviceSyncSaving] = useState(false);
   const [deviceSyncRunning, setDeviceSyncRunning] = useState(false);
+  const [managedDevices, setManagedDevices] = useState<DeviceSyncManagedDevice[]>([]);
   const [devicePairingCode, setDevicePairingCode] = useState('');
   const [devicePairingOffer, setDevicePairingOffer] = useState<{
     code: string;
@@ -186,6 +191,7 @@ export function SettingsPanel() {
   } | null>(null);
   const [devicePairingRemaining, setDevicePairingRemaining] = useState(0);
   const [devicePairingCopied, setDevicePairingCopied] = useState(false);
+  const devicePairingAutoAttemptRef = useRef('');
   useEffect(() => {
     if (!devicePairingOffer) {
       setDevicePairingRemaining(0);
@@ -280,7 +286,17 @@ export function SettingsPanel() {
 
   const refreshDeviceSyncStatus = async () => {
     try {
-      setDeviceSyncStatus(await window.focuslink.deviceSync.status());
+      const status = await window.focuslink.deviceSync.status();
+      setDeviceSyncStatus(status);
+      if (status.signedIn) {
+        try {
+          setManagedDevices(await window.focuslink.deviceSync.listDevices());
+        } catch {
+          setManagedDevices([]);
+        }
+      } else {
+        setManagedDevices([]);
+      }
     } catch {
       setDeviceSyncStatus((current) =>
         current
@@ -291,6 +307,24 @@ export function SettingsPanel() {
             }
           : null,
       );
+    }
+  };
+
+  const handleRevokeDevice = async (device: DeviceSyncManagedDevice) => {
+    if (device.deviceId === deviceSyncStatus?.deviceId) {
+      addToast('不能从设备列表删除当前设备，请使用退出登录', 'info');
+      return;
+    }
+    if (!window.confirm(`删除“${device.displayName}”？它将停止访问 FocusLink 同步。`)) return;
+    setDeviceSyncSaving(true);
+    try {
+      await window.focuslink.deviceSync.revokeDevice(device.deviceId);
+      setManagedDevices((current) => current.filter((item) => item.deviceId !== device.deviceId));
+      addToast('设备已删除，后续同步已停止', 'success');
+    } catch (error) {
+      addToast(`删除设备失败：${ipcErrorMessage(error)}`, 'error');
+    } finally {
+      setDeviceSyncSaving(false);
     }
   };
 
@@ -353,8 +387,8 @@ export function SettingsPanel() {
     }
   };
 
-  const handleRedeemDevicePairingCode = async () => {
-    const code = normalizeFocusLinkPairingCode(devicePairingCode);
+  const handleRedeemDevicePairingCode = async (inputValue = devicePairingCode) => {
+    const code = normalizeFocusLinkPairingCode(inputValue);
     if (!/^\d{8}$/.test(code)) {
       addToast('请输入 8 位数字配对码', 'info');
       return;
@@ -365,6 +399,7 @@ export function SettingsPanel() {
       setDeviceSyncStatus(result.status);
       setSettings(await window.focuslink.settings.get());
       setDevicePairingCode('');
+      devicePairingAutoAttemptRef.current = '';
       addToast(
         result.syncError ? '设备已加入同步，网络恢复后会继续同步' : '设备已加入多端同步',
         result.syncError ? 'info' : 'success',
@@ -1404,14 +1439,28 @@ export function SettingsPanel() {
                   value={devicePairingCode}
                   onChange={(event) => {
                     const next = normalizeFocusLinkPairingCode(event.target.value);
-                    if (/^\d{0,8}$/.test(next)) setDevicePairingCode(next);
+                    if (!/^\d{0,8}$/.test(next)) return;
+                    setDevicePairingCode(next);
+                    if (next.length < 8) devicePairingAutoAttemptRef.current = '';
+                    if (
+                      next.length === 8 &&
+                      devicePairingAutoAttemptRef.current !== next &&
+                      !deviceSyncSaving
+                    ) {
+                      devicePairingAutoAttemptRef.current = next;
+                      void handleRedeemDevicePairingCode(next);
+                    }
                   }}
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   maxLength={9}
-                  placeholder="输入 8 位配对码"
+                  placeholder="1234 5678"
                   aria-label="8 位设备配对码"
+                  aria-describedby="focuslink-desktop-pairing-hint"
                 />
+                <span id="focuslink-desktop-pairing-hint" className="settings-pairing-hint">
+                  粘贴带空格的配对码，输入完整后自动加入同步
+                </span>
                 <button
                   type="button"
                   className="btn-accent text-[11px]"
@@ -1452,6 +1501,39 @@ export function SettingsPanel() {
               >
                 {devicePairingCopied ? '已复制' : '复制配对码'}
               </button>
+            </div>
+          )}
+          {deviceSyncStatus?.signedIn && managedDevices.length > 0 && (
+            <div className="settings-device-roster" aria-label="已配对设备">
+              <div className="settings-device-roster-heading">
+                <strong>已配对设备</strong>
+                <span>{managedDevices.length} 台</span>
+              </div>
+              {managedDevices.map((device) => (
+                <div className="settings-device-row" key={device.deviceId}>
+                  <div>
+                    <strong>{device.displayName}</strong>
+                    <span>
+                      {device.deviceId === deviceSyncStatus.deviceId
+                        ? '此设备'
+                        : (device.deviceKind ?? '设备')}
+                      {device.stale ? ' · 久未同步' : ' · 最近在线'}
+                    </span>
+                  </div>
+                  {device.deviceId === deviceSyncStatus.deviceId ? (
+                    <span className="settings-status-badge tone-success">当前</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-outline text-[11px]"
+                      onClick={() => void handleRevokeDevice(device)}
+                      disabled={deviceSyncSaving}
+                    >
+                      删除设备
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           )}
           {!deviceSyncStatus?.signedIn && (

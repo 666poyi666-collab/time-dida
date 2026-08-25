@@ -18,6 +18,7 @@ import {
 import {
   FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
   FOCUSLINK_ENROLLED_DEVICE_SCOPES,
+  FOCUSLINK_OWNER_DEVICE_SCOPES,
   parseFocusLinkDeviceRegistrationRequest,
   type FocusLinkDeviceRegistrationResponse,
 } from '../shared/sync/identityProtocol';
@@ -2057,7 +2058,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     const secretHmac = await hmacHex(pepper, secret);
     const now = Date.now();
     const expiresAt = now + 365 * DAY_MS;
-    const scopes = [...FOCUSLINK_ENROLLED_DEVICE_SCOPES];
+    const scopes = [...FOCUSLINK_OWNER_DEVICE_SCOPES];
     const existing = this.sql
       .exec<{ device_id: string }>(
         'SELECT device_id FROM v2_device_registrations WHERE installation_hmac = ?',

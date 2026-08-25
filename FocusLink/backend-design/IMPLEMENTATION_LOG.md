@@ -1,5 +1,13 @@
 # FocusLink 实施日志
 
+## 2026-08-25 · v0.12.102 微信输入法式配对码入口
+
+- **用户复测**：0.12.101 虽已有 8 位码协议，但输入端仍是设置项，移动端需要手动点提交且未自动聚焦；用户明确要求类似微信输入法的快捷输入体验。
+- **交互修复**：桌面与手机/平板配对输入自动聚焦；`normalizeFocusLinkPairingCode` 统一清理空格/换行；输入满 8 位自动兑换并以码值去重，避免 React/粘贴事件重复提交；失败保留内容，删改后可重试；成功后沿用既有 `applyOwnerAccountSession` / `finishLogin` 读取任务、live 和账本。
+- **边界**：不开放匿名生成码，不绕过首台设备恢复，不改变服务端一次消费、TTL、scope 和限流。已授权设备仍通过“添加设备”生成码；没有任何授权设备时，UI 将恢复授权作为次要入口而不是伪造登录成功。
+- **设备管理**：云端已有 owner-only `/v2/devices` 列表/撤销路由，但客户端此前没有接入。owner bootstrap credential 现在使用 `sync:read/write + live:read/write + devices:manage`；numeric pairing 仍只签发四项同步/live scope。桌面与移动端新增设备列表和“删除设备”，撤销后远端凭据立即失效；删除当前设备要求退出登录。
+- **候选身份**：0.12.101 已安装 Windows/华为并完成基础回归；本轮交互变化提升为 0.12.102/1302，待完整门禁与三端实装。
+
 ## 2026-08-25 · v0.12.101 安装版 EPIPE 终止与最终三端重验
 
 - **真实反证**：0.12.100 安装版由短命 PowerShell 启动、父管道关闭后，通过 CDP 调用 CLI 检测触发错误。同步 `try/catch` 不能捕获 stdout/stderr 延迟发出的 `EPIPE`；全局 `uncaughtException` 再次写 logger，形成递归。20 MiB 单文件上限避免了单文件再次达到 155 GB，但仍轮转出 715 个 `focuslink-2026-08-25*.log`，合计 `14,968,917,567 B`。

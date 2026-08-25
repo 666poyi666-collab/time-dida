@@ -92,6 +92,12 @@ export const FOCUSLINK_ENROLLED_DEVICE_SCOPES = [
   'live:write',
 ] as const;
 
+/** Only the first owner-authorized device can manage the paired-device roster. */
+export const FOCUSLINK_OWNER_DEVICE_SCOPES = [
+  ...FOCUSLINK_ENROLLED_DEVICE_SCOPES,
+  'devices:manage',
+] as const;
+
 export type FocusLinkDevicePlatform = 'windows' | 'android' | 'web';
 export type FocusLinkDeviceKind = 'desktop' | 'phone' | 'tablet' | 'watch';
 
@@ -181,18 +187,19 @@ export function validateFocusLinkDeviceRegistrationResponse(
     typeof value.accessToken === 'string' &&
     isFocusLinkDeviceAccessToken(value.accessToken) &&
     value.tokenType === 'Bearer' &&
-    hasExactEnrolledScopes(value.scopes) &&
+    hasExactDeviceScopes(value.scopes) &&
     Number.isSafeInteger(value.expiresAt) &&
     Number.isSafeInteger(value.serverTime)
   );
 }
 
-function hasExactEnrolledScopes(value: unknown): value is string[] {
-  return (
-    Array.isArray(value) &&
-    value.length === FOCUSLINK_ENROLLED_DEVICE_SCOPES.length &&
-    new Set(value).size === FOCUSLINK_ENROLLED_DEVICE_SCOPES.length &&
-    FOCUSLINK_ENROLLED_DEVICE_SCOPES.every((scope) => value.includes(scope))
+function hasExactDeviceScopes(value: unknown): value is string[] {
+  return [FOCUSLINK_ENROLLED_DEVICE_SCOPES, FOCUSLINK_OWNER_DEVICE_SCOPES].some(
+    (scopes) =>
+      Array.isArray(value) &&
+      value.length === scopes.length &&
+      new Set(value).size === scopes.length &&
+      scopes.every((scope) => value.includes(scope)),
   );
 }
 

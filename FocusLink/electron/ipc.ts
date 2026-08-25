@@ -53,6 +53,8 @@ import {
   loginDeviceSyncAccount,
   logoutDeviceSyncAccount,
   redeemDeviceSyncPairingCode,
+  listDeviceSyncDevices,
+  revokeDeviceSyncDevice,
 } from './sync/deviceSyncAccountService.js';
 import {
   listSessions,
@@ -653,6 +655,11 @@ export function registerIpc(
       }
     }
     return result;
+  });
+  ipcMain.handle('device-sync:list-devices', () => listDeviceSyncDevices());
+  ipcMain.handle('device-sync:revoke-device', async (_event, deviceId: unknown) => {
+    if (typeof deviceId !== 'string') throw new Error('设备标识无效');
+    return revokeDeviceSyncDevice(deviceId);
   });
   ipcMain.handle('device-sync:logout', () => {
     logoutDeviceSyncAccount();

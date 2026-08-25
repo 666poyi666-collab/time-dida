@@ -25,6 +25,7 @@ const CANONICAL_AUTHORITY_ROUTES = new Map([
   ['/sync/v1/pair/offers', '/v2/pair/offers'],
   ['/sync/v1/pair/exchange', '/v2/pair/exchange'],
   ['/sync/v1/devices/register', '/v2/devices/register'],
+  ['/sync/v2/devices', '/v2/devices'],
 ]);
 
 export default {
@@ -129,7 +130,11 @@ export default {
     if (isRetiredPublicRoute(url.pathname)) {
       return errorJson(410, 'legacy_route_retired', 'use /sync/v2/exchange or /sync/v2/status');
     }
-    const authorityPath = CANONICAL_AUTHORITY_ROUTES.get(url.pathname);
+    const authorityPath =
+      CANONICAL_AUTHORITY_ROUTES.get(url.pathname) ??
+      (/^\/sync\/v2\/devices\/device-[A-Za-z0-9-]{6,194}\/revoke$/.test(url.pathname)
+        ? url.pathname.replace(/^\/sync\/v2/, '')
+        : null);
     if (!authorityPath) return errorJson(404, 'not_found', 'route not found');
     if (request.method === 'OPTIONS') return preflight(request, env);
 

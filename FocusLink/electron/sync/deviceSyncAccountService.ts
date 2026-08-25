@@ -22,7 +22,11 @@ import {
   FOCUSLINK_PAIRING_CODE_PATTERN,
   normalizeFocusLinkPairingCode,
 } from '@shared/sync/pairingProtocol';
-import type { DeviceSyncAccountLoginResult, DeviceSyncNumericPairingOffer } from '@shared/ipc/api';
+import type {
+  DeviceSyncAccountLoginResult,
+  DeviceSyncManagedDevice,
+  DeviceSyncNumericPairingOffer,
+} from '@shared/ipc/api';
 import { getMeta, setMeta } from '../db/index.js';
 import { logger } from '../logger.js';
 import { getSettings, updateSettings } from '../settingsStore.js';
@@ -125,6 +129,30 @@ export async function createDeviceSyncPairingCode(): Promise<DeviceSyncNumericPa
     expiresAt: Number(response.expiresAt),
   });
   return { code: response.code, expiresAt: Number(response.expiresAt) };
+}
+
+export async function listDeviceSyncDevices(): Promise<DeviceSyncManagedDevice[]> {
+  const token = getDeviceSyncToken();
+  if (!token || !isFocusLinkDeviceAccessToken(token)) throw new Error('请先在这台设备完成授权');
+  const response = await requestDeviceRoster('/sync/v2/devices', token, 'GET');
+  if (!isRecord(response) || !Array.isArray(response.devices)) throw new Error('设备列表响应无效');
+  return response.devices.filter(isManagedDevice) as DeviceSyncManagedDevice[];
+}
+
+export async function revokeDeviceSyncDevice(
+  deviceId: string,
+): Promise<{ deviceId: string; revokedAt: number }> {
+  const token = getDeviceSyncToken();
+  if (!token || !isFocusLinkDeviceAccessToken(token)) throw new Error('请先在这台设备完成授权');
+  if (!/^device-[A-Za-z0-9-]{6,194}$/.test(deviceId)) throw new Error('设备标识无效');
+  const response = await requestDeviceRoster(`/sync/v2/devices/${deviceId}/revoke`, token, 'POST');
+  if (
+    !isRecord(response) ||
+    response.deviceId !== deviceId ||
+    !Number.isSafeInteger(response.revokedAt)
+  )
+    throw new Error('设备撤销响应无效');
+  return { deviceId, revokedAt: Number(response.revokedAt) };
 }
 
 export function redeemDeviceSyncPairingCode(
@@ -382,6 +410,39 @@ async function requestPairing(
     clearTimeout(timeout);
     parentSignal?.removeEventListener('abort', abortFromParent);
   }
+}
+
+async function requestDeviceRoster(
+  path: string,
+  token: string,
+  method: 'GET' | 'POST',
+): Promise<unknown> {
+  const endpoint = OFFICIAL_FOCUSLINK_ENDPOINT;
+  const response = await fetch(`${endpoint}${path}`, {
+    method,
+    headers: { accept: 'application/json', authorization: `Bearer ${token}` },
+    redirect: 'error',
+  });
+  const value = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) throw new Error('设备列表服务暂不可用');
+  return value;
+}
+
+function isManagedDevice(value: unknown): value is DeviceSyncManagedDevice {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.deviceId === 'string' &&
+    typeof value.devicePublicId === 'string' &&
+    typeof value.displayName === 'string' &&
+    (value.platform === null || typeof value.platform === 'string') &&
+    (value.deviceKind === null || typeof value.deviceKind === 'string') &&
+    (value.appVersion === null || typeof value.appVersion === 'string') &&
+    (value.expiresAt === null || Number.isSafeInteger(value.expiresAt)) &&
+    (value.revokedAt === null || Number.isSafeInteger(value.revokedAt)) &&
+    (value.lastSeenAt === null || Number.isSafeInteger(value.lastSeenAt)) &&
+    typeof value.stale === 'boolean' &&
+    (value.registeredAt === null || Number.isSafeInteger(value.registeredAt))
+  );
 }
 
 function pairingErrorMessage(value: unknown, status: number): string {

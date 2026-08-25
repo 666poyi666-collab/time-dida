@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
+import { normalizeFocusLinkPairingCode } from '@shared/sync/pairingProtocol';
+import type { DeviceSyncManagedDevice } from '@shared/ipc/api';
 
 export interface ConnectionSheetProps {
   authenticated: boolean;
@@ -8,11 +10,13 @@ export interface ConnectionSheetProps {
   notice: string | null;
   pairingCode: string;
   pairingOffer: { code: string; expiresAt: number } | null;
+  devices: DeviceSyncManagedDevice[];
   onClose: () => void;
   onLogin: () => void;
   onPairingCodeChange: (value: string) => void;
-  onPair: () => void;
+  onPair: (value?: string) => void;
   onCreatePairingCode: () => void;
+  onRevokeDevice: (deviceId: string) => void;
   onLogout: () => void;
   onClearCache: () => void;
 }
@@ -24,16 +28,20 @@ export function ConnectionSheet({
   notice,
   pairingCode,
   pairingOffer,
+  devices,
   onClose,
   onLogin,
   onPairingCodeChange,
   onPair,
   onCreatePairingCode,
+  onRevokeDevice,
   onLogout,
   onClearCache,
 }: ConnectionSheetProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const primaryRef = useRef<HTMLButtonElement>(null);
+  const pairingInputRef = useRef<HTMLInputElement>(null);
+  const autoSubmittedCodeRef = useRef('');
   const reduceMotion = useReducedMotion();
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -55,7 +63,8 @@ export function ConnectionSheet({
     const previousFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.documentElement.classList.add('connection-sheet-open');
-    primaryRef.current?.focus();
+    if (!authenticated) pairingInputRef.current?.focus();
+    else primaryRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
@@ -67,7 +76,7 @@ export function ConnectionSheet({
       document.documentElement.classList.remove('connection-sheet-open');
       previousFocus?.focus();
     };
-  }, [onClose]);
+  }, [authenticated, onClose]);
 
   const keepFocusInside = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== 'Tab') return;
@@ -171,14 +180,28 @@ export function ConnectionSheet({
             >
               <label htmlFor="focuslink-pairing-code">输入另一台设备显示的配对码</label>
               <input
+                ref={pairingInputRef}
                 id="focuslink-pairing-code"
                 value={pairingCode}
-                onChange={(event) => onPairingCodeChange(event.target.value)}
+                onChange={(event) => {
+                  const next = normalizeFocusLinkPairingCode(event.target.value);
+                  onPairingCodeChange(next);
+                  if (next.length < 8) autoSubmittedCodeRef.current = '';
+                  if (next.length === 8 && autoSubmittedCodeRef.current !== next) {
+                    autoSubmittedCodeRef.current = next;
+                    onPair(next);
+                  }
+                }}
                 inputMode="numeric"
                 autoComplete="one-time-code"
+                maxLength={9}
                 placeholder="0000 0000"
                 aria-label="8 位设备配对码"
+                aria-describedby="focuslink-pairing-code-status"
               />
+              <span id="focuslink-pairing-code-status" className="account-pairing-hint">
+                粘贴带空格的配对码，输入完整后自动加入同步
+              </span>
               <button
                 ref={primaryRef}
                 className="primary-button"
@@ -223,6 +246,28 @@ export function ConnectionSheet({
                 >
                   {copied ? '已复制' : '复制配对码'}
                 </button>
+              </div>
+            )}
+            {devices.length > 0 && (
+              <div className="account-device-roster" aria-label="已配对设备">
+                {devices.map((device) => (
+                  <div className="account-device-row" key={device.deviceId}>
+                    <div>
+                      <strong>{device.displayName}</strong>
+                      <span>{device.stale ? '久未同步' : '最近在线'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`删除“${device.displayName}”？`))
+                          onRevokeDevice(device.deviceId);
+                      }}
+                      disabled={busy}
+                    >
+                      删除设备
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
             <div className="sheet-secondary-actions account-sheet-actions">
