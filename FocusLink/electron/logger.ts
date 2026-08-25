@@ -22,6 +22,13 @@ export function writeConsoleErrorSafely(
   }
 }
 
+export function shouldMirrorErrorToConsole(
+  isPackaged: boolean,
+  consoleAvailable: boolean,
+): boolean {
+  return !isPackaged && consoleAvailable;
+}
+
 /**
  * JSON.stringify(Error) normally produces `{}`, which erased the only useful evidence for the
  * intermittent main/renderer crashes reported in production. Keep errors, nested causes, bigint
@@ -58,9 +65,12 @@ class Logger {
   private stream: fs.WriteStream | null = null;
   private buffer: string[] = [];
   private writtenBytes = 0;
-  private consoleAvailable = true;
+  private consoleAvailable = false;
+  private consoleGuardsAttached = false;
 
   init(): void {
+    this.consoleAvailable = !app.isPackaged;
+    this.attachConsoleErrorGuards();
     const logsDir = path.join(app.getPath('userData'), 'logs');
     if (!fs.existsSync(logsDir)) {
       fs.mkdirSync(logsDir, { recursive: true });
@@ -77,6 +87,16 @@ class Logger {
     // flush buffer
     this.buffer.forEach((line) => this.writeToFile(line));
     this.buffer = [];
+  }
+
+  private attachConsoleErrorGuards(): void {
+    if (this.consoleGuardsAttached) return;
+    this.consoleGuardsAttached = true;
+    const disableConsoleMirror = (): void => {
+      this.consoleAvailable = false;
+    };
+    process.stdout?.on('error', disableConsoleMirror);
+    process.stderr?.on('error', disableConsoleMirror);
   }
 
   private openStream(): void {
@@ -127,7 +147,7 @@ class Logger {
     const metaStr = meta != null ? ' ' + serializeLogMeta(meta) : '';
     const line = `[${ts}] [${level.toUpperCase()}] [${scope}] ${msg}${metaStr}\n`;
     this.writeToFile(line);
-    if (level === 'error' && this.consoleAvailable) {
+    if (level === 'error' && shouldMirrorErrorToConsole(app.isPackaged, this.consoleAvailable)) {
       this.consoleAvailable = writeConsoleErrorSafely(line.trim());
     }
   }

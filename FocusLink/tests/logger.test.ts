@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_LOG_FILE_BYTES, serializeLogMeta, writeConsoleErrorSafely } from '../electron/logger';
+import {
+  MAX_LOG_FILE_BYTES,
+  serializeLogMeta,
+  shouldMirrorErrorToConsole,
+  writeConsoleErrorSafely,
+} from '../electron/logger';
 
 describe('serializeLogMeta', () => {
   it('preserves Error identity, message, stack and nested cause', () => {
@@ -42,5 +47,11 @@ describe('logger output safety', () => {
 
   it('caps each physical log file at a bounded diagnostic size', () => {
     expect(MAX_LOG_FILE_BYTES).toBe(20 * 1024 * 1024);
+  });
+
+  it('never mirrors packaged errors into inherited stdout or stderr pipes', () => {
+    expect(shouldMirrorErrorToConsole(true, true)).toBe(false);
+    expect(shouldMirrorErrorToConsole(false, true)).toBe(true);
+    expect(shouldMirrorErrorToConsole(false, false)).toBe(false);
   });
 });

@@ -151,6 +151,10 @@ async function validateViewport(
     await sleep(500);
     await closeAccountSheet(win);
     win.showInactive();
+    // Electron 43 may apply the Windows border metrics once the frameless window is first shown,
+    // even when the initial BrowserWindow options use content sizing. Reassert the intended CSS
+    // viewport after that transition so the acceptance gate measures the device size, not DWM.
+    win.setContentSize(viewport.width, viewport.height);
     await sleep(160);
 
     const shell = await readShellMetrics(win);

@@ -1,5 +1,15 @@
 # FocusLink 实施日志
 
+## 2026-08-25 · v0.12.101 安装版 EPIPE 终止与最终三端重验
+
+- **真实反证**：0.12.100 安装版由短命 PowerShell 启动、父管道关闭后，通过 CDP 调用 CLI 检测触发错误。同步 `try/catch` 不能捕获 stdout/stderr 延迟发出的 `EPIPE`；全局 `uncaughtException` 再次写 logger，形成递归。20 MiB 单文件上限避免了单文件再次达到 155 GB，但仍轮转出 715 个 `focuslink-2026-08-25*.log`，合计 `14,968,917,567 B`。
+- **缓存处置**：先确认 FocusLink 未运行，再逐文件验证绝对路径均位于 `%APPDATA%/focuslink/logs`、名称严格匹配当日模式且不是 reparse point；只清空上述 715 个失控生成日志，释放全部 `14,968,917,567 B`。其他 6 个日期日志、SQLite、任务、设置与凭据均未改动。
+- **根因修复**：packaged 环境完全禁止错误向父 stdout/stderr 镜像，只写有界文件日志；开发环境保留 console mirror，并为两个 process stream 注册异步 `error` guard，任一管道失效即关闭后续镜像。单物理文件 20 MiB 上限与 500 行内存缓冲继续保留。
+- **候选身份**：0.12.100/1300 已真实安装且失败，不得复用。最终候选提升为 0.12.101/1301，继承 0.12.99 的任务清单、24 小时地图、移动 UI 与配对交互。
+- **依赖安全**：2026-08-25 当前 npm 审计把早先 0 漏洞更新为 27 项（2 critical/20 high/5 moderate）。方案 A 只做非破坏 patch 仍留下 Electron/Vitest runtime/build 漏洞；方案 B 直接跳 Electron 44/Vite 8 会叠加当天新 stable 与 Rolldown 迁移风险。本轮采用受支持中间路径：Electron 43.4.1、Vite 7.3.6、Vitest 4.1.11、electron-builder 26.15.3、electron-rebuild 4.2.0、Wrangler 4.125.0；审计最终为 0。
+- **SQLite ABI**：Electron 43 首次 selftest 捕获 `better-sqlite3` 11.10.0 的 ABI 125 与目标 148 不匹配；本机没有 Visual Studio C++ 工具链，未擅自安装系统级编译器。升级到首个 N-API 大版本 13.0.3 后不再按 Electron ABI 构建；内存库回读 SQLite 3.53.4，Electron selftest/task/device-sync DB/running+paused crash recovery 全部通过。
+- **验证状态**：production console gate、format/typecheck/lint、完整 Vitest `120 files / 889 tests`、cross-device `56/56`、npm audit 0、Cloud build、Vite 7 production build 与 Electron 原生回归通过。桌面 13 张截图、360/412/640/760/915×412 移动明暗四页面通过；Electron 43 初次 show 后重新锁定 content size，测试仍验证真实 CSS viewport。packaged 断管测试与 Windows/小米/华为实装将在本节继续回填。
+
 ## 2026-08-25 · v0.12.100 EPIPE 日志磁盘安全与最终候选
 
 - **Bug-01（断开 stdout 导致 155,984,434,050 B 日志递归）**：0.12.99 Windows 静默安装后，应用由短命令行 PowerShell 启动并继承 stdout/stderr；父进程被终止后 `console.error` 同步抛 `EPIPE`，全局 `uncaughtException` 再调 `logger.error`，后者再次 `console.error`，形成无界递归。当日日志在停止增长时回读 `155,984,434,050 B`；确认 FocusLink 进程终止且文件可独占打开后，精确清空该生成日志，从 155,984,434,050 B 降为 0 B。该诊断内容不可恢复，用户任务/SQLite/凭据未触碰。
