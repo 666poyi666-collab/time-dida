@@ -6,6 +6,8 @@
 - 用户授权清理缓存后，逐项校验并清空 Electron `Cache/Code Cache/Dawn*Cache/GPUCache`、测试截图/隔离 profile、桌面打包副本和 LFS 临时缓存；共 70 个目标目录、7516 个文件，当前目标文件均为 0 B。递归删除目录被系统策略拒绝，空目录残留不影响空间；SQLite、设置、Local Storage、Network 和凭据未触碰。
 - 小米 `192.168.1.5:5555` 复连结果：网络端口 5555 可达但 ADB 设备状态仍为 `offline`，kill/start server、disconnect/reconnect 和 `adb reconnect offline` 均未恢复；没有强行重启或清除手机数据。
 - 0.12.103 最终门禁：根 Vitest `120 files / 891 tests`、cross-device `57`、npm audit 0、桌面/移动生产截图与 Android 1303 JVM/lint/assemble 通过；Windows 回读 `0.12.103 / 8122a1e`，华为回读 `0.12.103/1303`。小米仍只记录安装阻断，不做手机像素测试。
+- 根据用户截图继续收敛 PC 跨设备页：未授权状态明确显示“输入另一台设备的本机配对码”，恢复入口改为“首次授权（只需一次）”，授权设备按钮改为“显示本机配对码”，减少输入和生成两个动作混淆。该修正归入 0.12.103 同一批次，不新增版本号。
+- 0.12.103 PC 文案修正已重新生成并安装，最终包身份 `af5ca29`；Windows 回读 `0.12.103`，startup verifier 通过。
 
 - 用户实测 0.12.102 配对显示 `request timeout`。根因是配对/设备管理请求只请求 canonical 主站，没有复用实时链路的 failover；0.12.103 统一在 canonical 与 `focuslink.pyzzgk.dpdns.org` 之间按网络失败/5xx 重试。
 - 已授权设备进入多端同步后自动生成本机当前配对码，界面不再把它描述成抽象的“添加设备”；另一台设备输入该码后仍走原有任务、实时专注、账本同步链路。

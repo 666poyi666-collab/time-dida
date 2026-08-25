@@ -1414,15 +1414,15 @@ export function SettingsPanel() {
             <ol className="settings-pairing-steps" aria-label="配对步骤">
               <li>
                 <b>1</b>
-                <span>已授权设备打开多端同步</span>
+                <span>另一台设备先完成授权</span>
               </li>
               <li>
                 <b>2</b>
-                <span>点“添加设备”生成 8 位码</span>
+                <span>打开它的本机配对码</span>
               </li>
               <li>
                 <b>3</b>
-                <span>在本机输入，任务/实时/账本自动同步</span>
+                <span>在这台电脑输入，自动同步</span>
               </li>
             </ol>
           )}
@@ -1455,7 +1455,9 @@ export function SettingsPanel() {
               </div>
             ) : (
               <div className="settings-pairing-entry">
+                <label htmlFor="focuslink-desktop-pairing-code">输入另一台设备的本机配对码</label>
                 <input
+                  id="focuslink-desktop-pairing-code"
                   value={devicePairingCode}
                   onChange={(event) => {
                     const next = normalizeFocusLinkPairingCode(event.target.value);
@@ -1474,7 +1476,7 @@ export function SettingsPanel() {
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   maxLength={9}
-                  placeholder="1234 5678"
+                  placeholder="8 位数字"
                   aria-label="8 位设备配对码"
                   aria-describedby="focuslink-desktop-pairing-hint"
                 />
@@ -1558,15 +1560,17 @@ export function SettingsPanel() {
           )}
           {!deviceSyncStatus?.signedIn && (
             <div className="settings-account-explainer">
-              <strong>没有配对码？</strong>
-              <p>在另一台已加入 FocusLink 同步的设备中选择“添加设备”，生成一次性配对码。</p>
+              <strong>没有另一台已授权设备？</strong>
+              <p>
+                配对码只能由已授权设备生成。首次使用需要先完成一次账号授权，之后其他设备都用配对码加入。
+              </p>
               <button
                 type="button"
                 className="btn-outline text-[11px]"
                 onClick={() => void handleDeviceSyncLogin()}
                 disabled={deviceSyncSaving}
               >
-                首台设备或恢复账号
+                首次授权（只需一次）
               </button>
             </div>
           )}
