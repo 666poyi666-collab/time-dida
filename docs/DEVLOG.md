@@ -5,6 +5,7 @@
 - 用户指出近期版本号迭代过密。后续采用版本节流：同一功能批次的中间 UI、测试、日志和网络修复共用一个候选号；完整兼容功能才升 minor，协议/权限/迁移不兼容才升 major。当前配对整组统一收敛到 `0.12.103`，不再为本批次继续产生 `0.12.104+`。
 - 用户授权清理缓存后，逐项校验并清空 Electron `Cache/Code Cache/Dawn*Cache/GPUCache`、测试截图/隔离 profile、桌面打包副本和 LFS 临时缓存；共 70 个目标目录、7516 个文件，当前目标文件均为 0 B。递归删除目录被系统策略拒绝，空目录残留不影响空间；SQLite、设置、Local Storage、Network 和凭据未触碰。
 - 小米 `192.168.1.5:5555` 复连结果：网络端口 5555 可达但 ADB 设备状态仍为 `offline`，kill/start server、disconnect/reconnect 和 `adb reconnect offline` 均未恢复；没有强行重启或清除手机数据。
+- 0.12.103 最终门禁：根 Vitest `120 files / 891 tests`、cross-device `57`、npm audit 0、桌面/移动生产截图与 Android 1303 JVM/lint/assemble 通过；Windows 回读 `0.12.103 / 8122a1e`，华为回读 `0.12.103/1303`。小米仍只记录安装阻断，不做手机像素测试。
 
 - 用户实测 0.12.102 配对显示 `request timeout`。根因是配对/设备管理请求只请求 canonical 主站，没有复用实时链路的 failover；0.12.103 统一在 canonical 与 `focuslink.pyzzgk.dpdns.org` 之间按网络失败/5xx 重试。
 - 已授权设备进入多端同步后自动生成本机当前配对码，界面不再把它描述成抽象的“添加设备”；另一台设备输入该码后仍走原有任务、实时专注、账本同步链路。
