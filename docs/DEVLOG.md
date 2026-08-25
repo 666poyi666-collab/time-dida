@@ -3,6 +3,9 @@
 ## 2026-08-24
 
 - 2026-08-25 干净提交 `36da9d8` 生成的 0.12.97 installer 在真实静默覆盖时连续停在旧卸载器退出码 2；读取安装窗口子控件确认消息为 `Failed to uninstall old application files`，独占打开全部安装文件又证明不是文件锁；注册表/EXE 仍回读 0.12.96。根因是已有 NSIS 恢复宏仅在 `postinstall` 时修改依赖模板，不是每次打包的可重现前置。`dist`/`dist:win` 现显式先运行补丁脚本，候选按版本不复用规则提升为 0.12.98/1298；0.12.97 未安装、未发布。
+- 0.12.98 干净提交 `284b82f` 打包时明确执行 NSIS 补丁；Windows 覆盖 exit 0，注册表/EXE/启动日志回读 `0.12.98 / 0.12.98.0 / 284b82f`。小米 xaga 和华为 DBY-W09 staging 均覆盖安装并回读 `0.12.98/1298`；华为截图确认 8 位码输入 sheet 在旧 WebView 的层级、边框与底部操作正常。小米当时在游戏前台，未强制打断做像素验收。
+- 两层 Worker 已真实部署并通过公网 CORS/无凭据负测。当前 Windows 无安全凭据文件、华为显示本机模式，说明不存在可以合法生成 8 位码的首台可信设备。公网真实双设备兑换与三路数据收敛仍需用户先完成首设备管理员恢复，本轮未读取或伪造凭据。
+- 最终 packaged UI/mini/live fallback 均回读 0.12.98/`284b82f`并通过；Android JVM 36/36、lint 与 official APK 备份通过。`release-v01298` 收敛四文件，installer/portable SHA-256 为 `5DBF44CD…7BA` / `9805B9B4…FD`。0.12.97 失败候选目录已精确删除，只含可重建产物；不可恢复。
 - 2026-08-25 用户截图捕获桌面端真实失败：`tasks:create` 抛出 `RangeError: Missing named parameter "parentId"`。根因是 SQLite upsert 把 `@parentId` 当必需绑定，而 `TaskCache.parentId` 仍被声明为可选，快速新建任务漏传后只会在运行时暴露。现已将缓存模型收紧为必需的 `string | null`，所有生产写入补全字段，并在 DB 边界二次归一为 `null`。类型检查与本地任务/dida/OAuth 46 项专项回归已通过；Electron 真实 SQLite self-test 又成功新建两条中文任务并搜索/关联。
 - 用户追加要求采用类似微信输入法的配对码登录，并明确授权删除 LFS 隔离缓存；按要求调用 `Luna · max` 子智能体完成短码后端/协议主干，主代理完成安全审计、IPC、Windows/手机/平板 UI 与同步生命周期接入。
 - 架构选择：已有合法 `fl2` 的设备以 `sync:write` 作为可信设备显式添加权限，生成 8 位纯数字码；新设备兑换后仍只获得 `sync/live` 四项 scope，不获得 `devices:manage` 或备份权限。保留原 pair-service authority 管理路径和 legacy 高熵 nonce 兼容。
