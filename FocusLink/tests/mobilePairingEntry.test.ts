@@ -105,7 +105,7 @@ describe('mobile owner account entry', () => {
       }),
     );
     expect(markup).toContain('8765 4321');
-    expect(markup).toContain('添加设备');
+    expect(markup).toContain('本机配对码');
     expect(markup).not.toContain('accessToken');
   });
 

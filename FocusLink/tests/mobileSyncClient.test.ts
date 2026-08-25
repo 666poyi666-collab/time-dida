@@ -102,6 +102,34 @@ describe('mobile sync client request recovery', () => {
     });
   });
 
+  it('retries pairing on the official failover after canonical timeout', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('network timeout'))
+      .mockResolvedValueOnce(
+        Response.json({ accessToken: DEVICE_TOKEN, deviceId: 'device-mobile1' }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      exchangeDeviceSyncPairingCode({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        code: '12345678',
+        device: {
+          platform: 'android',
+          deviceKind: 'tablet',
+          appVersion: '0.12.103',
+          displayName: 'FocusLink 平板',
+          installationId: 'android-0123456789abcdefghijklmnop',
+        },
+      }),
+    ).resolves.toMatchObject({ deviceId: 'device-mobile1' });
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      `${FOCUSLINK_SYNC_FAILOVER_ORIGIN}/sync/v1/pair/exchange`,
+      `${FOCUSLINK_CANONICAL_SYNC_ORIGIN}/sync/v1/pair/exchange`,
+    ]);
+  });
+
   it('lets an enrolled device create one short-lived numeric offer without exposing its token in the body', async () => {
     const expiresAt = Date.now() + 10 * 60_000;
     const fetchMock = vi.fn().mockResolvedValue(Response.json({ code: '87654321', expiresAt }));

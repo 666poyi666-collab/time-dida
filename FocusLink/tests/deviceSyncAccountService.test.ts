@@ -79,6 +79,7 @@ import {
   OFFICIAL_FOCUSLINK_ENDPOINT,
   redeemDeviceSyncPairingCode,
 } from '../electron/sync/deviceSyncAccountService';
+import { FOCUSLINK_SYNC_FAILOVER_ORIGIN } from '../shared/sync/identityProtocol';
 
 describe('desktop owner account enrollment', () => {
   beforeEach(() => {
@@ -326,7 +327,9 @@ describe('desktop owner account enrollment', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(createDeviceSyncPairingCode()).resolves.toEqual({ code: '24681357', expiresAt });
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${OFFICIAL_FOCUSLINK_ENDPOINT}/sync/v1/pair/offers`);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `${FOCUSLINK_SYNC_FAILOVER_ORIGIN}/sync/v1/pair/offers`,
+    );
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
       authorization: `Bearer ${harness.token}`,
     });

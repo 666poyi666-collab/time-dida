@@ -223,7 +223,7 @@ export function ConnectionSheet({
           <>
             {pairingOffer && (
               <div className="account-pairing-offer" role="status">
-                <span>在新设备输入</span>
+                <span>本机配对码 · 在另一台设备输入</span>
                 <strong>
                   {pairingOffer.code.slice(0, 4)} {pairingOffer.code.slice(4)}
                 </strong>
@@ -272,7 +272,7 @@ export function ConnectionSheet({
             )}
             <div className="sheet-secondary-actions account-sheet-actions">
               <button ref={primaryRef} type="button" onClick={onCreatePairingCode} disabled={busy}>
-                {busy ? '正在生成…' : '添加设备'}
+                {busy ? '正在生成…' : pairingOffer ? '刷新本机配对码' : '显示本机配对码'}
               </button>
               <button type="button" onClick={onClearCache} disabled={busy}>
                 清除本机缓存

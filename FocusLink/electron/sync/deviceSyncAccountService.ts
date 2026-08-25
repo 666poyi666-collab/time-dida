@@ -4,6 +4,7 @@ import { shell } from 'electron';
 import { APP_VERSION } from '@shared/version';
 import {
   FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+  focusLinkSyncEndpointCandidates,
   FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
   FOCUSLINK_ENROLLED_DEVICE_SCOPES,
   isFocusLinkDeviceAccessToken,
@@ -380,36 +381,45 @@ async function requestPairing(
   input: { headers?: Record<string, string>; body: Record<string, unknown> },
   parentSignal?: AbortSignal,
 ): Promise<unknown> {
-  const controller = new AbortController();
-  const abortFromParent = () => controller.abort(parentSignal?.reason);
-  if (parentSignal?.aborted) abortFromParent();
-  else parentSignal?.addEventListener('abort', abortFromParent, { once: true });
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch(`${OFFICIAL_FOCUSLINK_ENDPOINT}${path}`, {
-      method: 'POST',
-      headers: {
-        accept: 'application/json',
-        'content-type': 'application/json',
-        ...input.headers,
-      },
-      body: JSON.stringify(input.body),
-      redirect: 'error',
-      signal: controller.signal,
-    });
-    const value = (await response.json().catch(() => null)) as unknown;
-    if (!response.ok) throw new Error(pairingErrorMessage(value, response.status));
-    return value;
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      if (parentSignal?.aborted) throw new Error('配对已取消');
-      throw new Error('配对服务请求超时');
+  const candidates = focusLinkSyncEndpointCandidates(OFFICIAL_FOCUSLINK_ENDPOINT);
+  let lastError: unknown = null;
+  for (const [index, endpoint] of candidates.entries()) {
+    const controller = new AbortController();
+    const abortFromParent = () => controller.abort(parentSignal?.reason);
+    if (parentSignal?.aborted) abortFromParent();
+    else parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${endpoint}${path}`, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          ...input.headers,
+        },
+        body: JSON.stringify(input.body),
+        redirect: 'error',
+        signal: controller.signal,
+      });
+      const value = (await response.json().catch(() => null)) as unknown;
+      if (response.status >= 500 && index < candidates.length - 1) continue;
+      if (!response.ok) throw new Error(pairingErrorMessage(value, response.status));
+      return value;
+    } catch (error) {
+      lastError = error;
+      if (parentSignal?.aborted || index === candidates.length - 1) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          if (parentSignal?.aborted) throw new Error('配对已取消');
+          throw new Error('配对服务请求超时');
+        }
+        throw error;
+      }
+    } finally {
+      clearTimeout(timeout);
+      parentSignal?.removeEventListener('abort', abortFromParent);
     }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-    parentSignal?.removeEventListener('abort', abortFromParent);
   }
+  throw lastError instanceof Error ? lastError : new Error('配对服务请求失败');
 }
 
 async function requestDeviceRoster(
@@ -417,15 +427,27 @@ async function requestDeviceRoster(
   token: string,
   method: 'GET' | 'POST',
 ): Promise<unknown> {
-  const endpoint = OFFICIAL_FOCUSLINK_ENDPOINT;
-  const response = await fetch(`${endpoint}${path}`, {
-    method,
-    headers: { accept: 'application/json', authorization: `Bearer ${token}` },
-    redirect: 'error',
-  });
-  const value = (await response.json().catch(() => null)) as unknown;
-  if (!response.ok) throw new Error('设备列表服务暂不可用');
-  return value;
+  let lastError: unknown = null;
+  for (const [index, endpoint] of focusLinkSyncEndpointCandidates(
+    OFFICIAL_FOCUSLINK_ENDPOINT,
+  ).entries()) {
+    try {
+      const response = await fetch(`${endpoint}${path}`, {
+        method,
+        headers: { accept: 'application/json', authorization: `Bearer ${token}` },
+        redirect: 'error',
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      const value = (await response.json().catch(() => null)) as unknown;
+      if (response.status >= 500 && index === 0) continue;
+      if (!response.ok) throw new Error('设备列表服务暂不可用');
+      return value;
+    } catch (error) {
+      lastError = error;
+      if (index > 0) throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('设备列表服务暂不可用');
 }
 
 function isManagedDevice(value: unknown): value is DeviceSyncManagedDevice {

@@ -84,8 +84,9 @@ export async function createDeviceSyncPairingCode(input: {
   if (!isFocusLinkDeviceAccessToken(input.token)) {
     throw new DeviceSyncPairingError('authentication_failed', '当前设备尚未加入多端同步');
   }
-  const response = await fetchWithTimeout(
-    `${endpoint}/sync/v1/pair/offers`,
+  const response = await fetchPairingWithFailover(
+    endpoint,
+    '/sync/v1/pair/offers',
     {
       method: 'POST',
       headers: {
@@ -133,8 +134,9 @@ export async function listDeviceSyncDevices(input: {
 }): Promise<DeviceSyncManagedDevice[]> {
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
   requireMobileCloudEndpoint(endpoint, input.token);
-  const response = await fetchWithTimeout(
-    `${endpoint}/sync/v2/devices`,
+  const response = await fetchPairingWithFailover(
+    endpoint,
+    '/sync/v2/devices',
     {
       method: 'GET',
       headers: { accept: 'application/json', authorization: `Bearer ${input.token}` },
@@ -170,8 +172,9 @@ export async function revokeDeviceSyncDevice(input: {
   if (!/^device-[A-Za-z0-9-]{6,194}$/.test(input.deviceId)) {
     throw new DeviceSyncPairingError('invalid_device_id', '设备标识无效');
   }
-  const response = await fetchWithTimeout(
-    `${endpoint}/sync/v2/devices/${input.deviceId}/revoke`,
+  const response = await fetchPairingWithFailover(
+    endpoint,
+    `/sync/v2/devices/${input.deviceId}/revoke`,
     {
       method: 'POST',
       headers: { accept: 'application/json', authorization: `Bearer ${input.token}` },
@@ -237,8 +240,9 @@ export async function exchangeDeviceSyncPairingCode(input: {
           ...(input.device.displayName ? { displayName: input.device.displayName } : {}),
         },
       };
-  const response = await fetchWithTimeout(
-    `${endpoint}/sync/v1/pair/exchange`,
+  const response = await fetchPairingWithFailover(
+    endpoint,
+    '/sync/v1/pair/exchange',
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -291,6 +295,32 @@ function pairingResponseErrorCode(payload: unknown): string {
   return isRecord(payload.error) && typeof payload.error.code === 'string'
     ? payload.error.code
     : 'pairing_failed';
+}
+
+async function fetchPairingWithFailover(
+  endpoint: string,
+  path: string,
+  init: RequestInit,
+  signal: AbortSignal | undefined,
+  timeoutMs = 10_000,
+): Promise<Response> {
+  const candidates = focusLinkSyncEndpointCandidates(endpoint);
+  let lastError: unknown = null;
+  for (const [index, candidate] of candidates.entries()) {
+    if (signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+    try {
+      const response = await fetchWithTimeout(`${candidate}${path}`, init, signal, timeoutMs);
+      if (response.status >= 500 && index < candidates.length - 1) {
+        await response.body?.cancel();
+        continue;
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (signal?.aborted || index === candidates.length - 1) throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('配对服务请求失败');
 }
 
 function isManagedDevice(value: unknown): value is DeviceSyncManagedDevice {

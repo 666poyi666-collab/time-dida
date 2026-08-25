@@ -192,6 +192,7 @@ export function SettingsPanel() {
   const [devicePairingRemaining, setDevicePairingRemaining] = useState(0);
   const [devicePairingCopied, setDevicePairingCopied] = useState(false);
   const devicePairingAutoAttemptRef = useRef('');
+  const devicePairingAutoOfferAttemptedRef = useRef(false);
   useEffect(() => {
     if (!devicePairingOffer) {
       setDevicePairingRemaining(0);
@@ -386,6 +387,25 @@ export function SettingsPanel() {
       setDeviceSyncSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!deviceSyncStatus?.signedIn) {
+      devicePairingAutoOfferAttemptedRef.current = false;
+      return;
+    }
+    if (
+      activeTab !== 'devices' ||
+      devicePairingOffer ||
+      deviceSyncSaving ||
+      devicePairingAutoOfferAttemptedRef.current
+    )
+      return;
+    devicePairingAutoOfferAttemptedRef.current = true;
+    void handleCreateDevicePairingCode();
+    // The handler is stable for the lifetime of this settings panel; the effect only gates
+    // the first roster view so a transient failover error cannot create a retry loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, devicePairingOffer, deviceSyncSaving, deviceSyncStatus?.signedIn]);
 
   const handleRedeemDevicePairingCode = async (inputValue = devicePairingCode) => {
     const code = normalizeFocusLinkPairingCode(inputValue);
@@ -1422,7 +1442,7 @@ export function SettingsPanel() {
                   disabled={deviceSyncSaving}
                 >
                   {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Plus size="xs" />}
-                  添加设备
+                  显示本机配对码
                 </button>
                 <button
                   type="button"
@@ -1476,7 +1496,7 @@ export function SettingsPanel() {
           {deviceSyncStatus?.signedIn && devicePairingOffer && (
             <div className="settings-pairing-offer" role="status" aria-live="polite">
               <div>
-                <span>在新设备输入</span>
+                <span>本机配对码 · 在另一台设备输入</span>
                 <strong aria-label={`配对码 ${devicePairingOffer.code}`}>
                   {devicePairingOffer.code.slice(0, 4)} {devicePairingOffer.code.slice(4)}
                 </strong>
