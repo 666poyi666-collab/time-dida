@@ -2,6 +2,7 @@
 
 ## 2026-08-24
 
+- 2026-08-25 干净提交 `36da9d8` 生成的 0.12.97 installer 在真实静默覆盖时连续停在旧卸载器退出码 2；读取安装窗口子控件确认消息为 `Failed to uninstall old application files`，独占打开全部安装文件又证明不是文件锁；注册表/EXE 仍回读 0.12.96。根因是已有 NSIS 恢复宏仅在 `postinstall` 时修改依赖模板，不是每次打包的可重现前置。`dist`/`dist:win` 现显式先运行补丁脚本，候选按版本不复用规则提升为 0.12.98/1298；0.12.97 未安装、未发布。
 - 2026-08-25 用户截图捕获桌面端真实失败：`tasks:create` 抛出 `RangeError: Missing named parameter "parentId"`。根因是 SQLite upsert 把 `@parentId` 当必需绑定，而 `TaskCache.parentId` 仍被声明为可选，快速新建任务漏传后只会在运行时暴露。现已将缓存模型收紧为必需的 `string | null`，所有生产写入补全字段，并在 DB 边界二次归一为 `null`。类型检查与本地任务/dida/OAuth 46 项专项回归已通过；Electron 真实 SQLite self-test 又成功新建两条中文任务并搜索/关联。
 - 用户追加要求采用类似微信输入法的配对码登录，并明确授权删除 LFS 隔离缓存；按要求调用 `Luna · max` 子智能体完成短码后端/协议主干，主代理完成安全审计、IPC、Windows/手机/平板 UI 与同步生命周期接入。
 - 架构选择：已有合法 `fl2` 的设备以 `sync:write` 作为可信设备显式添加权限，生成 8 位纯数字码；新设备兑换后仍只获得 `sync/live` 四项 scope，不获得 `devices:manage` 或备份权限。保留原 pair-service authority 管理路径和 legacy 高熵 nonce 兼容。

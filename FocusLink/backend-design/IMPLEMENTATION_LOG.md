@@ -1,6 +1,6 @@
 # FocusLink 实施日志
 
-## 2026-08-24 · v0.12.97 可信设备 8 位短码配对与自动同步
+## 2026-08-25 · v0.12.98 可信设备 8 位短码配对、自动同步与安装器恢复
 
 - **用户目标**：用户要求采用类似微信输入法的短码输入体验，登录快捷，并确保任务、实时专注和账本同步完整收敛；同时再次明确授权删除已隔离缓存。
 - **方案比较**：可信设备短码无需邮件/短信供应商，既有设备可离线于电脑进程之外直接生成，但首台设备仍需恢复入口；邮箱/短信码可覆盖首台设备，却增加供应商、费用、滥用和找回模型。本轮采用前者，保留 Poyi owner 作为首台设备/恢复备用。
@@ -12,6 +12,7 @@
 - **Bug-02（移动配对 bearer 可能发往任意 HTTPS）**：`Luna · max` 审计实测证明生成码请求只检查 HTTPS，未用 token 触发 FocusLink canonical/failover 绑定。修复后与 live 链路共用同一 allowlist guard，并显式禁止 redirect/cookie/referrer；恶意 origin 回归断言 fetch 为 0 次。
 - **Bug-03（WebView 生成码被 CORS 预检拦截）**：public gateway 之前只允许 `content-type`，而可信设备必须携带 `Authorization`。preflight 现回显允许 `authorization, content-type`，新增真实 OPTIONS 合同回归。
 - **Bug-04（独立 MCP 类型门禁失败）**：nullable pair authority 传入 `RegExp.test` 是本轮新增错误，`URLSearchParams.keys()` 是 WebWorker lib 下的历史错误；两者已收口，MCP `typecheck` 与 `test:typecheck` 均 exit 0。
+- **Bug-05（v0.12.97 静默覆盖被旧卸载器代码 2 阻断）**：干净提交 `36da9d8` 的 0.12.97 installer 打包/smoke 通过，但真实 `/S` 覆盖时旧 `Uninstall FocusLink.exe` 连续返回 2，安装器显示 `Failed to uninstall old application files`；注册表和已安装 EXE 仍为 0.12.96，因此不得宣称 0.12.97 安装成功。根因是 `build/installer.nsh` 的有界恢复宏依赖一次性 `postinstall` 修改 `node_modules` 模板，本次干净打包时该补丁未存在。`dist`/`dist:win` 现在打包前必定运行 `patch-electron-builder-nsis.cjs`，候选提升为 0.12.98/1298，0.12.97 产物废弃。
 - **缓存权限反证**：8 个目标均为 `C:\Temp\focuslink-lfs-tmp-20260824-*` 普通目录，共 `109,504,409,006 B`，且执行前无 Git/LFS 进程；用户已明确授权删除，但当前桌面执行策略仍在进程创建前拒绝 `Remove-Item`。没有目录被删除，也没有触碰应用数据或 `.git/lfs/objects`。
 - **自动化证据**：TypeScript/Cloudflare 与独立 MCP typecheck、根完整 Vitest `117 files / 874 tests`、cross-device `55/55`、cloud/mcp `10 files / 105 tests`、private Worker 本地真实 DO gate（生成 8 位码→兑换→新 token status→重放 410）、desktop/Web/cloud build、五组移动视口与桌面明暗/最小窗截图均通过；两个 Worker dry-run 成功。全仓 Prettier 与 ESLint 存量已收口，format/Lint 均 exit 0。
 

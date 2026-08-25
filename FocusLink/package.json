@@ -1,6 +1,6 @@
 {
   "name": "focuslink",
-  "version": "0.12.97",
+  "version": "0.12.98",
   "description": "FocusLink - 本地优先的任务、专注与多端时间账本工作台",
   "author": "FocusLink",
   "main": "dist-electron/main.js",
@@ -33,8 +33,8 @@
     "gen-version": "node scripts/build/gen-version.js",
     "clean:desktop-build": "node scripts/build/clean-desktop-build.mjs",
     "build": "npm run gen-version && npm run clean:desktop-build && tsc --noEmit && npm run typecheck:cloudflare && vite build",
-    "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win",
+    "dist": "node scripts/build/patch-electron-builder-nsis.cjs && npm run build && electron-builder",
+    "dist:win": "node scripts/build/patch-electron-builder-nsis.cjs && npm run build && electron-builder --win",
     "test": "vitest run",
     "test:watch": "vitest",
     "manual-test": "vitest run scripts/regression/manual-timer-regression.ts",

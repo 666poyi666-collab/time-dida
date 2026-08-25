@@ -14,6 +14,12 @@ describe('Windows installer process policy', () => {
   it('keeps the smoke bypass and closes current-user instances without enumeration', () => {
     expect(builderConfig).toContain('include: build/installer.nsh');
     expect(packageManifest).toContain('node scripts/build/patch-electron-builder-nsis.cjs');
+    expect(packageManifest).toMatch(
+      /"dist": "node scripts\/build\/patch-electron-builder-nsis\.cjs && npm run build/,
+    );
+    expect(packageManifest).toMatch(
+      /"dist:win": "node scripts\/build\/patch-electron-builder-nsis\.cjs && npm run build/,
+    );
     expect(builderPatchScript).toContain('customUninstallRetryExhausted');
     expect(builderPatchScript).toContain('retry hook anchor was not found');
     expect(installerScript).toContain('FOCUSLINK_INSTALLER_SKIP_CLOSE');
