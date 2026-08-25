@@ -972,10 +972,10 @@ async function main() {
     [results.idle.bodyScroll[0] === results.idle.viewport[0], 'no horizontal overflow'],
     [results.idle.bodyScroll[1] === results.idle.viewport[1], 'no vertical overflow'],
     [
-      results.windowSizes.large.outer[0] >= 980 &&
-        results.windowSizes.large.outer[0] <= 1280 &&
-        results.windowSizes.large.outer[1] >= 660 &&
-        results.windowSizes.large.outer[1] <= 720,
+      results.windowSizes.large.viewport[0] >= 980 &&
+        results.windowSizes.large.viewport[0] <= 1280 &&
+        results.windowSizes.large.viewport[1] >= 660 &&
+        results.windowSizes.large.viewport[1] <= 720,
       'main window accepts requested or display-clamped large bounds',
     ],
     [
@@ -983,7 +983,8 @@ async function main() {
       'main window has no horizontal overflow at large bounds',
     ],
     [
-      results.windowSizes.minimum.outer[0] >= 980 && results.windowSizes.minimum.outer[1] >= 660,
+      results.windowSizes.minimum.viewport[0] >= 980 &&
+        results.windowSizes.minimum.viewport[1] >= 660,
       'main window enforces its 980 by 660 minimum bounds',
     ],
     [

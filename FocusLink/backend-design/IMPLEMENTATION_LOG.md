@@ -9,6 +9,7 @@
 - **依赖安全**：2026-08-25 当前 npm 审计把早先 0 漏洞更新为 27 项（2 critical/20 high/5 moderate）。方案 A 只做非破坏 patch 仍留下 Electron/Vitest runtime/build 漏洞；方案 B 直接跳 Electron 44/Vite 8 会叠加当天新 stable 与 Rolldown 迁移风险。本轮采用受支持中间路径：Electron 43.4.1、Vite 7.3.6、Vitest 4.1.11、electron-builder 26.15.3、Wrangler 4.125.0；审计最终为 0。
 - **SQLite ABI**：Electron 43 首次 selftest 捕获 `better-sqlite3` 11.10.0 的 ABI 125 与目标 148 不匹配；本机没有 Visual Studio C++ 工具链，未擅自安装系统级编译器。升级到首个 N-API 大版本 13.0.3 后不再按 Electron ABI 构建；内存库回读 SQLite 3.53.4，Electron selftest/task/device-sync DB/running+paused crash recovery 全部通过。
 - **Bug-02（builder 误重建 N-API SQLite）**：electron-builder 26 首次 dist 仍因包内 `binding.gyp` 调用 node-gyp，未使用已通过回归的 N-API prebuild，并在 Python/MSVC 探测阶段失败。移除多余的直接 `@electron/rebuild` 与旧 `npm run rebuild`，在 builder 配置明确 `npmRebuild: false`；`asarUnpack` 继续带入 `better-sqlite3/prebuilds`。失败 dist 没有生成可发布 EXE。
+- **Bug-03（Electron 43 外框与内容区分离）**：首个完整 packaged UI smoke 中 requested/viewport 为 `1280×720`，但无框窗口 outer bounds 为 `1294×728`；旧断言把 outer 强行限制到内容尺寸而失败。产品内容区和无溢出均正确，门禁改为以 `viewport` 验证 1280×720 与 980×660 内容合同，outer 只保留证据，不放宽内容尺寸。
 - **验证状态**：production console gate、format/typecheck/lint、完整 Vitest `120 files / 889 tests`、cross-device `56/56`、npm audit 0、Cloud build、Vite 7 production build 与 Electron 原生回归通过。桌面 13 张截图、360/412/640/760/915×412 移动明暗四页面通过；Electron 43 初次 show 后重新锁定 content size，测试仍验证真实 CSS viewport。packaged 断管测试与 Windows/小米/华为实装将在本节继续回填。
 
 ## 2026-08-25 · v0.12.100 EPIPE 日志磁盘安全与最终候选
