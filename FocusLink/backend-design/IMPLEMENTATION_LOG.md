@@ -6,6 +6,7 @@
 - **交互修复**：桌面与手机/平板配对输入自动聚焦；`normalizeFocusLinkPairingCode` 统一清理空格/换行；输入满 8 位自动兑换并以码值去重，避免 React/粘贴事件重复提交；失败保留内容，删改后可重试；成功后沿用既有 `applyOwnerAccountSession` / `finishLogin` 读取任务、live 和账本。
 - **边界**：不开放匿名生成码，不绕过首台设备恢复，不改变服务端一次消费、TTL、scope 和限流。已授权设备仍通过“添加设备”生成码；没有任何授权设备时，UI 将恢复授权作为次要入口而不是伪造登录成功。
 - **设备管理**：云端已有 owner-only `/v2/devices` 列表/撤销路由，但客户端此前没有接入。owner bootstrap credential 现在使用 `sync:read/write + live:read/write + devices:manage`；numeric pairing 仍只签发四项同步/live scope。桌面与移动端新增设备列表和“删除设备”，撤销后远端凭据立即失效；删除当前设备要求退出登录。
+- **线上部署**：私有 `focuslink-sync` 已部署版本 `4ae939d8-8091-4e17-ac83-2821cfc71fc6`，公网 `foxlink-mcp` 已部署版本 `3b98acd8-1675-4595-a63a-ad7f49a74216`。公网 `/healthz` 回读 200，未携带设备凭据访问 `/sync/v2/devices` 回读 401 `device_credential_required`；bootstrap probe 仍为真实 `deployed-login-required`。
 - **候选身份**：0.12.101 已安装 Windows/华为并完成基础回归；本轮交互变化提升为 0.12.102/1302。Windows 已静默覆盖并回读 `0.12.102 / ebf8eb4`，华为平板已 `adb install -r` 回读 `0.12.102/1302`；按用户新口径小米只做安装，但 `192.168.1.5:5555` 当前 ADB offline，未宣称三端完成。
 
 ## 2026-08-25 · v0.12.101 安装版 EPIPE 终止与最终三端重验
