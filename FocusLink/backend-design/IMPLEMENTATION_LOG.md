@@ -1,5 +1,13 @@
 # FocusLink 实施日志
 
+## 2026-08-25 · v0.12.100 EPIPE 日志磁盘安全与最终候选
+
+- **Bug-01（断开 stdout 导致 155,984,434,050 B 日志递归）**：0.12.99 Windows 静默安装后，应用由短命令行 PowerShell 启动并继承 stdout/stderr；父进程被终止后 `console.error` 同步抛 `EPIPE`，全局 `uncaughtException` 再调 `logger.error`，后者再次 `console.error`，形成无界递归。当日日志在停止增长时回读 `155,984,434,050 B`；确认 FocusLink 进程终止且文件可独占打开后，精确清空该生成日志，从 155,984,434,050 B 降为 0 B。该诊断内容不可恢复，用户任务/SQLite/凭据未触碰。
+- **修复**：`writeConsoleErrorSafely` 捕获控制台 sink 异常，第一次失败后本进程不再写控制台；日志 stream 同步/异步错误均改为失效管道与有界 500 行内存缓冲，不使用 logger 报告 logger 错误。每个物理日志最大 20 MiB；启动时遇到已超限当日日志或运行中到达上限时切换到新时间后缀文件。
+- **候选身份**：0.12.99/1299 已真实安装 Windows，之后发生 logger 源码修复，不得复用该版本号。最终三端候选提升为 0.12.100/1300，继承下方 0.12.99 全部任务/Dashboard/移动 UI 变更。
+- **打包历史证据**：0.12.99 第一次 NSIS 返回 `Can't open output file`，第二次在生成卸载器时 `spawn UNKNOWN`；每次都精确清理未完成的 `release-v01299` 中间产物，第三次直接对同一份干净 `dist/dist-electron` 封装成功；packaged UI/mini/live fallback 回读 `0.12.99 / 73a8ff2` 通过。该产物因 logger 修复废弃，只作证据。
+- **当前验证**：EPIPE synthetic sink 回归、日志单文件 20 MiB 上限合同、format/typecheck/lint 和完整 Vitest `120 files / 888 tests` 通过。0.12.100 干净提交、重打包、断开父管道的真实日志增长验证与三设备实装待后续回填。
+
 ## 2026-08-25 · v0.12.99 24 小时时间地图与独立清单系统
 
 - **用户目标**：PC 基础界面可用，但 Dashboard 24 小时时间轴必须清晰可读；任务需要独立清单归属、清单颜色与跨清单移动；手机/平板的 UI、配对和功能要与 PC 大致一致。

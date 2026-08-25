@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { serializeLogMeta } from '../electron/logger';
+import { MAX_LOG_FILE_BYTES, serializeLogMeta, writeConsoleErrorSafely } from '../electron/logger';
 
 describe('serializeLogMeta', () => {
   it('preserves Error identity, message, stack and nested cause', () => {
@@ -27,5 +27,20 @@ describe('serializeLogMeta', () => {
       count: '7',
       self: '[Circular]',
     });
+  });
+});
+
+describe('logger output safety', () => {
+  it('swallows a detached stderr EPIPE instead of creating an exception loop', () => {
+    const error = Object.assign(new Error('broken pipe'), { code: 'EPIPE' });
+    expect(
+      writeConsoleErrorSafely('fatal diagnostic', () => {
+        throw error;
+      }),
+    ).toBe(false);
+  });
+
+  it('caps each physical log file at a bounded diagnostic size', () => {
+    expect(MAX_LOG_FILE_BYTES).toBe(20 * 1024 * 1024);
   });
 });

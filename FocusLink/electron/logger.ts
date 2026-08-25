@@ -5,6 +5,23 @@ import path from 'node:path';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+export const MAX_LOG_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_BUFFER_LINES = 500;
+
+export function writeConsoleErrorSafely(
+  line: string,
+  sink: (value: string) => void = (value) => console.error(value),
+): boolean {
+  try {
+    sink(line);
+    return true;
+  } catch {
+    // A detached parent pipe can make console.error throw EPIPE. Logging must never
+    // recursively become another uncaughtException.
+    return false;
+  }
+}
+
 /**
  * JSON.stringify(Error) normally produces `{}`, which erased the only useful evidence for the
  * intermittent main/renderer crashes reported in production. Keep errors, nested causes, bigint
@@ -40,6 +57,8 @@ class Logger {
   private logFile: string | null = null;
   private stream: fs.WriteStream | null = null;
   private buffer: string[] = [];
+  private writtenBytes = 0;
+  private consoleAvailable = true;
 
   init(): void {
     const logsDir = path.join(app.getPath('userData'), 'logs');
@@ -47,23 +66,70 @@ class Logger {
       fs.mkdirSync(logsDir, { recursive: true });
     }
     const today = new Date().toISOString().slice(0, 10);
-    this.logFile = path.join(logsDir, `focuslink-${today}.log`);
-    this.stream = fs.createWriteStream(this.logFile, { flags: 'a' });
+    const dailyFile = path.join(logsDir, `focuslink-${today}.log`);
+    const dailySize = fs.existsSync(dailyFile) ? fs.statSync(dailyFile).size : 0;
+    this.logFile =
+      dailySize >= MAX_LOG_FILE_BYTES
+        ? path.join(logsDir, `focuslink-${today}-${Date.now()}.log`)
+        : dailyFile;
+    this.writtenBytes = this.logFile === dailyFile ? dailySize : 0;
+    this.openStream();
     // flush buffer
-    this.buffer.forEach((line) => this.stream?.write(line));
+    this.buffer.forEach((line) => this.writeToFile(line));
     this.buffer = [];
+  }
+
+  private openStream(): void {
+    if (!this.logFile) return;
+    const stream = fs.createWriteStream(this.logFile, { flags: 'a' });
+    stream.on('error', () => {
+      if (this.stream === stream) this.stream = null;
+    });
+    this.stream = stream;
+  }
+
+  private rotate(timestamp: string): void {
+    const logsDir = path.join(app.getPath('userData'), 'logs');
+    const today = timestamp.slice(0, 10);
+    const suffix = timestamp.replace(/[^0-9]/g, '').slice(8);
+    this.stream?.end();
+    this.stream = null;
+    this.logFile = path.join(logsDir, `focuslink-${today}-${suffix}.log`);
+    this.writtenBytes = 0;
+    this.openStream();
+  }
+
+  private pushBuffer(line: string): void {
+    this.buffer.push(line);
+    if (this.buffer.length > MAX_BUFFER_LINES) this.buffer.shift();
+  }
+
+  private writeToFile(line: string): void {
+    const bytes = Buffer.byteLength(line);
+    if (this.stream && this.writtenBytes + bytes > MAX_LOG_FILE_BYTES) {
+      this.rotate(new Date().toISOString());
+    }
+    if (!this.stream) {
+      this.pushBuffer(line);
+      return;
+    }
+    try {
+      this.stream.write(line);
+      this.writtenBytes += bytes;
+    } catch {
+      this.stream = null;
+      this.pushBuffer(line);
+    }
   }
 
   private write(level: LogLevel, scope: string, msg: string, meta?: unknown): void {
     const ts = new Date().toISOString();
     const metaStr = meta != null ? ' ' + serializeLogMeta(meta) : '';
     const line = `[${ts}] [${level.toUpperCase()}] [${scope}] ${msg}${metaStr}\n`;
-    if (this.stream) {
-      this.stream.write(line);
-    } else {
-      this.buffer.push(line);
+    this.writeToFile(line);
+    if (level === 'error' && this.consoleAvailable) {
+      this.consoleAvailable = writeConsoleErrorSafely(line.trim());
     }
-    if (level === 'error') console.error(line.trim());
   }
 
   debug(scope: string, msg: string, meta?: unknown): void {
