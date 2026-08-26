@@ -67,7 +67,7 @@ npm run smoke:live-fallback -- <本次构建的 win-unpacked\FocusLink.exe>
 
 服务可达但鉴权或设备绑定失败。普通用户只需确认各设备登录同一 FocusLink 管理员账号；产品 UI 不再要求服务地址、token 或配对码。已有设备升级后若失去登录态，先核对安全存储中的旧 `fl2` 是否仍可被识别，禁止清数据；新设备登录失败时运行 `npm run probe:account-bootstrap`，`not-deployed` 表示 canonical gateway 尚未上线，不能误报为账号密码错误。切换账号后客户端只清理旧连接的本机 cursor/实时缓存，不删除 SQLite 会话。
 
-若 probe 返回 `deployed-login-required` 且系统浏览器打开 `Poyi OAuth / Owner sign in`，当前页面要求的不是账号密码，而是 43 位一次性管理员授权码。2026-08-24 实测该页只有 `One-time code` 字段，身份服务没有普通注册、找回密码或自助取码入口；没有管理员授权码时，反复点击登录不会成功。这应报告为首台设备身份供应未闭环，不能归类成 transport outage，也不能通过清缓存、删除数据库、展示 token 或内置固定验证码规避。FocusLink 本机任务和计时仍应可用。
+若 probe 返回 `deployed-login-required`，当前页面要求的不是账号密码，而是 43 位一次性管理员授权码。历史事实：2026-08-24 生产页只有 `Poyi OAuth / Owner sign in / One-time code`，没有说明其与 8 位配对码的区别。当前事实：2026-08-26 `poyi-oauth-as` 版本 `a6137e93-0e49-463b-ad91-3b80bc2ead52` 已把该入口改为 `授权第一台设备 · FocusLink` 中文页，并明确已有授权设备时应关闭网页、回到 FocusLink 输入其 8 位本机配对码。身份服务仍没有普通注册、找回密码或自助取 43 位管理员码入口；完全没有授权设备且没有管理员授权码时，反复点击授权不会成功。这应报告为首台设备身份供应未闭环，不能归类成 transport outage，也不能通过清缓存、删除数据库、展示 token 或内置固定验证码规避。FocusLink 本机任务和计时仍应可用。
 
 若手机任务页长期停在旧 revision：先确认 canonical `GET /sync/v2/tasks` 响应含 `Cache-Control: no-store`，再比较 PC 发布日志的 revision/source/payload 确认与手机回读。移动端可见态应在 15 秒内拉新；低 revision 不覆盖本机缓存，同 revision 异文会报告 authority 不一致。PC 的 pending task snapshot 只有服务端原样回读后才清除，因此 pending 未清说明发布链仍未确认，不要手工伪造 revision。
 
