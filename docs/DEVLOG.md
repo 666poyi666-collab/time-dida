@@ -8,6 +8,12 @@
 - 版本节流说明：0.12.104 是新增三条协议路由、设备管理权限和三端交互的完整行为候选，不是文案小修；本候选后续修补继续共用 0.12.104，不连续增加补丁号。
 - 后台 Codex review 对历史 release EXE 反复执行 Git/LFS diff，`.git/lfs/tmp` 一度增长约 16.56 GB。确认来源且无活动 `git-lfs` 后只清空临时文件内容；新增不提交的本地 attributes 覆盖，193 个残留空文件合计 0 B，未触碰 LFS objects、发布 EXE、SQLite、设置或凭据。
 - 0.12.104 源码候选已提交为 `a2e30b6`，随后记录版本生成元数据；Windows 打包、设备安装回读和最终线上双设备实测仍在继续。
+- 0.12.104 构建/验收：根类型检查、Lint、全量 Vitest `120 files / 898 tests`、移动视口、桌面 UI、Cloudflare 本地协议门禁与 MCP `10 files / 108 tests` 通过；Android `assembleDebug`、`testDebugUnitTest`、`lintDebug` 均成功并回读 `0.12.104/1304`。首次从含中文路径执行 Gradle 时出现 7 个 `ClassNotFoundException`，改用同一工作区的 `F:` 短路径重跑后全量 Android 单元测试与 lint 通过，确认是路径/worker 启动问题而非源码失败。
+- 0.12.104 Worker 已部署：公网 `foxlink-mcp` `f34ee99a-ad22-42d7-aa84-3492554cf23b`，私有 `focuslink-sync` `6e525dd1-73f4-402c-b52e-feab7343416b`；公网 healthz 200，匿名 request/claim 无效体 400，匿名 approve 401，带 bearer 的匿名 request 403。
+- 0.12.104 Windows installer/portable 已从干净候选构建，SHA256 已写入 `release-v012104/SHA256SUMS.txt`；构建时历史 `release-v012104/win-unpacked.tmp/resources/default_app.asar` 被系统进程锁定，无法按策略删除，已记录为发布目录 hygiene 残留，不把中间物列入下载清单。
+- 华为 DBY-W09 `192.168.1.7:5555` 已 `adb install -r` 并回读 `0.12.104/1304`；小米 xaga `192.168.1.5:5555` 仍装有旧签名 `0.12.87`，新 debug APK 因签名不一致被 Android 拒绝，未卸载旧包、未清数据，故小米本轮安装门禁 BLOCKED。
+- 最终复验：根 `npm test` `120 files / 898 tests`、`npm audit --audit-level=high` 0 漏洞、typecheck/lint/format 全部通过；打包版 UI/mini/live fallback smoke 全部 exit 0。华为平板实机打开多端同步后成功生成 8 位本机码并显示 10 分钟倒计时，截图确认双向文案、输入框和键盘布局可用。
+- Windows 静默安装器 exit 0，卸载项 `FocusLink 0.12.104 / DisplayVersion=0.12.104`，已安装 EXE `FileVersion=0.12.104 / ProductVersion=0.12.104.0`，应用已重启；APK 备份 `.tmp/android-apk-backups/FocusLink-0.12.104-1304-debug.apk`，SHA256 `1F641CC7FB3BDC4E822EEEF301FA26264A645E8A0005EB7479D439500BF1661A`。
 
 ## 2026-08-25
 

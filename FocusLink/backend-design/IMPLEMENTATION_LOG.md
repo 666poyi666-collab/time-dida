@@ -9,6 +9,10 @@
 - **三端交互**：PC、手机和平板都会显示本机码；未授权设备把码输入任一已授权设备即可等待自动加入，也可继续输入已授权设备的码立即加入；已授权设备的输入框改为“批准设备”。完全没有已授权设备时仍需首次管理员授权，不能让两个陌生未授权设备互相提升权限。
 - **身份页修复**：生产共享 OAuth 已部署 `a6137e93-0e49-463b-ad91-3b80bc2ead52`；公网回读 `授权第一台设备 · FocusLink`、CSP/no-store/frame deny 正确，1365×900 与 390×844 渲染无横向溢出。
 - **候选身份**：0.12.103 已实际安装，新增跨端行为不得复用；候选提升为 0.12.104/1304。按版本节流，本组后续测试与 UI 修补继续使用 0.12.104。
+- **本轮门禁**：根类型检查、Lint、全量 Vitest `120 files / 898 tests`、移动 360/412/640/760/915 横竖屏、桌面 UI、Cloudflare 本地真实配对闭环与 MCP `108` 项通过；Android `assembleDebug`、`testDebugUnitTest`、`lintDebug` 均通过并回读 `0.12.104/1304`。含中文路径首次运行 Gradle 的 7 个 `ClassNotFoundException` 通过同一工作区 `F:` 短路径重跑消除，确认是 Gradle worker 路径解析问题而非 Android 源码失败。
+- **线上部署**：公网 gateway `foxlink-mcp` 版本 `f34ee99a-ad22-42d7-aa84-3492554cf23b`，私有 authority `focuslink-sync` 版本 `6e525dd1-73f4-402c-b52e-feab7343416b`；`/healthz=200`，匿名 request/claim/approve credential boundary 负测分别回读 400/400/401，匿名 request 携 bearer 回读 403。
+- **安装矩阵**：Huawei DBY-W09 `192.168.1.7:5555` 已安装并回读 `0.12.104/1304`；Xiaomi xaga `192.168.1.5:5555` 旧官方包签名与本地 debug APK 不同，`adb install -r` 回读 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，未卸载旧包或清数据，故小米为 BLOCKED。Windows 0.12.104 安装器待完成 `/S` 覆盖回读；本地打包目录另有被系统进程锁定的 `win-unpacked.tmp`，四文件下载目录的中间物清理未完成。
+- **最终回填**：根 `npm test` `120 files / 898 tests`、`npm audit --audit-level=high` 0、typecheck/lint/format、打包版 UI/mini/live fallback smoke 全部通过。Windows `/S` exit 0，卸载项与安装 EXE 均回读 `0.12.104`，应用已重启；Android APK 备份 SHA256 `1F641CC7FB3BDC4E822EEEF301FA26264A645E8A0005EB7479D439500BF1661A`。华为平板真机生成本机码并截图确认倒计时、输入框自动聚焦与软键盘不遮挡；小米仍因签名不一致 BLOCKED。最终 EXE 哈希见 `release-v012104/SHA256SUMS.txt`。
 
 ## 2026-08-25 · v0.12.103 配对超时与本机配对码
 
