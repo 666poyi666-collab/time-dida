@@ -16,6 +16,7 @@
 - Windows 静默安装器 exit 0，卸载项 `FocusLink 0.12.104 / DisplayVersion=0.12.104`，已安装 EXE `FileVersion=0.12.104 / ProductVersion=0.12.104.0`，应用已重启；APK 备份 `.tmp/android-apk-backups/FocusLink-0.12.104-1304-debug.apk`，SHA256 `1F641CC7FB3BDC4E822EEEF301FA26264A645E8A0005EB7479D439500BF1661A`。
 - 兼容收口：旧“已授权设备生成码”路径也申请 `devices:manage`，与新设备本机码反向批准路径权限一致；定向 typecheck 与 64 项账户/移动/权限回归通过，仍归入 0.12.104。
 - 权限收口源码提交为 `9b6138c`；已有 `106dcbf` Windows/APK 候选随之废弃，0.12.104 将从新提交重新构建和覆盖安装，不复用旧哈希。
+- 权限收口最终候选身份为 `8db91bf`：Windows 启动验证与 `/S` 覆盖回读通过，华为回读 `0.12.104/1304`；小米仍因旧签名拒绝覆盖并保留 `0.12.87`。最终 APK SHA256 `BA19FD3A2488F3189E49D00388D1F14E7D9143B49202C55EE13BC510E6C6B107`，Windows 哈希已更新到候选目录。
 
 ## 2026-08-25
 

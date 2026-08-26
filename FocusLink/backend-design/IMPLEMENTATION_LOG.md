@@ -13,7 +13,8 @@
 - **线上部署**：公网 gateway `foxlink-mcp` 版本 `f34ee99a-ad22-42d7-aa84-3492554cf23b`，私有 authority `focuslink-sync` 版本 `6e525dd1-73f4-402c-b52e-feab7343416b`；`/healthz=200`，匿名 request/claim/approve credential boundary 负测分别回读 400/400/401，匿名 request 携 bearer 回读 403。
 - **安装矩阵**：Huawei DBY-W09 `192.168.1.7:5555` 已安装并回读 `0.12.104/1304`；Xiaomi xaga `192.168.1.5:5555` 旧官方包签名与本地 debug APK 不同，`adb install -r` 回读 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，未卸载旧包或清数据，故小米为 BLOCKED。Windows 0.12.104 安装器待完成 `/S` 覆盖回读；本地打包目录另有被系统进程锁定的 `win-unpacked.tmp`，四文件下载目录的中间物清理未完成。
 - **最终回填**：根 `npm test` `120 files / 898 tests`、`npm audit --audit-level=high` 0、typecheck/lint/format、打包版 UI/mini/live fallback smoke 全部通过。Windows `/S` exit 0，卸载项与安装 EXE 均回读 `0.12.104`，应用已重启；Android APK 备份 SHA256 `1F641CC7FB3BDC4E822EEEF301FA26264A645E8A0005EB7479D439500BF1661A`。华为平板真机生成本机码并截图确认倒计时、输入框自动聚焦与软键盘不遮挡；小米仍因签名不一致 BLOCKED。最终 EXE 哈希见 `release-v012104/SHA256SUMS.txt`。
-- **兼容收口**：旧的“已授权设备生成码”路径也统一申请 `devices:manage`，与“新设备本机码反向批准”路径权限一致；定向 typecheck 与 64 项账户/移动/权限回归通过，仍归入 0.12.104，不新增版本号。
+- **兼容收口**：旧的“已授权设备生成码”路径也统一申请 `devices:manage`，与“新设备本机码反向批准”路径权限一致；定向 typecheck 与 64 项账户/移动/权限回归通过，仍归入 0.12.104，不新增版本号。权限收口候选源码身份更新为 `8db91bf`，重新构建后的 Windows/APK 旧哈希全部废弃。
+- **权限候选重验**：从系统临时目录重新打包，启动验证回读 `0.12.104 / 8db91bf`；Windows `/S` exit 0，卸载项与安装 EXE 回读 `0.12.104`；华为覆盖安装回读 `0.12.104/1304`，小米仍因旧签名 `INSTALL_FAILED_UPDATE_INCOMPATIBLE` 保留 `0.12.87`，不卸载不清数据。新 APK SHA256 `BA19FD3A2488F3189E49D00388D1F14E7D9143B49202C55EE13BC510E6C6B107`。
 
 ## 2026-08-25 · v0.12.103 配对超时与本机配对码
 

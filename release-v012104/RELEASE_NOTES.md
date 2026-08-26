@@ -2,7 +2,7 @@
 
 > 发布日期：2026-08-26
 >
-> 对应提交：`106dcbf`（源码功能提交：`a2e30b6`）
+> 对应提交：`8db91bf`（源码功能提交：`a2e30b6`，权限收口：`9b6138c`）
 >
 > 发布类型：本地候选，未创建 GitHub Release
 >
@@ -20,7 +20,7 @@
 
 - format/typecheck/lint、根 Vitest `120 files / 898 tests`、MCP `10 files / 108 tests`、Cloudflare 本地真实配对闭环均通过。
 - 桌面 packaged UI、固定两态 mini、live fallback smoke 通过；移动 360/412/640/760/915 横竖屏明暗门禁通过。
-- Windows 静默覆盖回读 `0.12.104 / 106dcbf`；华为平板回读 `0.12.104/1304`。小米因历史包签名不同而保留旧包，未清数据。
+- Windows 静默覆盖回读 `0.12.104 / 8db91bf`；华为平板回读 `0.12.104/1304`。小米因历史包签名不同而保留旧包，未清数据。
 - 公网新路由的 credential-boundary 负测通过；真实 8 位码批准与任务/live/账本三路收敛需已有授权设备后补最终回读。
 
 ## 已知限制
@@ -30,5 +30,5 @@
 
 ## 下载与校验
 
-| `FocusLink-0.12.104-x64.exe` | `1D97BB56DFF048CE6EC8A7FC24FFB95086B20F968820CBE7EE0224BA4969FB74` |
-| `FocusLink-0.12.104-x64-portable.exe` | `BF717C9C2AB594F5E50521F9542A9C49CC858169E059ED371022916B475BAAB3` |
+| `FocusLink-0.12.104-x64.exe` | `CC930E5E32175CB936FF13E314393B9D808188047F8F93FABE76AA84DDA26AAF` |
+| `FocusLink-0.12.104-x64-portable.exe` | `87A59B426F10A3210C3034629F38028CEB9B542541D5BF549023ECE97AE20549` |
