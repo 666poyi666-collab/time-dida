@@ -5,6 +5,7 @@ import {
 } from '@shared/sync/deviceProtocol';
 import {
   focusLinkSyncEndpointCandidates,
+  FOCUSLINK_PAIRED_DEVICE_SCOPES,
   isFocusLinkDeviceAccessToken,
   isAllowedFocusLinkDeviceConnection,
 } from '@shared/sync/identityProtocol';
@@ -96,7 +97,7 @@ export async function createDeviceSyncPairingCode(input: {
       },
       body: JSON.stringify({
         displayName: 'FocusLink 新设备',
-        scopes: ['sync:read', 'sync:write', 'live:read', 'live:write'],
+        scopes: [...FOCUSLINK_PAIRED_DEVICE_SCOPES],
       }),
       cache: 'no-store',
       credentials: 'omit',

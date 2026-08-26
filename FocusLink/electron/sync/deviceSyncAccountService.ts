@@ -6,7 +6,7 @@ import {
   FOCUSLINK_CANONICAL_SYNC_ORIGIN,
   focusLinkSyncEndpointCandidates,
   FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
-  FOCUSLINK_ENROLLED_DEVICE_SCOPES,
+  FOCUSLINK_PAIRED_DEVICE_SCOPES,
   isFocusLinkDeviceAccessToken,
   type FocusLinkDeviceRegistrationRequest,
 } from '@shared/sync/identityProtocol';
@@ -120,7 +120,7 @@ export async function createDeviceSyncPairingCode(): Promise<DeviceSyncNumericPa
         headers: { authorization: `Bearer ${token}` },
         body: {
           displayName: 'FocusLink 新设备',
-          scopes: [...FOCUSLINK_ENROLLED_DEVICE_SCOPES],
+          scopes: [...FOCUSLINK_PAIRED_DEVICE_SCOPES],
         },
       })
     : await requestPairing('/sync/v1/pair/requests', {

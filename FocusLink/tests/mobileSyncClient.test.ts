@@ -157,6 +157,13 @@ describe('mobile sync client request recovery', () => {
       referrerPolicy: 'no-referrer',
     });
     expect(String(request.body)).not.toContain(DEVICE_TOKEN);
+    expect(JSON.parse(String(request.body)).scopes).toEqual([
+      'sync:read',
+      'sync:write',
+      'live:read',
+      'live:write',
+      'devices:manage',
+    ]);
   });
 
   it('creates a code on a credential-free device, waits for approval, then claims its token', async () => {
