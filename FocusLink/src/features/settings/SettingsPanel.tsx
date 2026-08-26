@@ -191,6 +191,7 @@ export function SettingsPanel() {
   } | null>(null);
   const [devicePairingRemaining, setDevicePairingRemaining] = useState(0);
   const [devicePairingCopied, setDevicePairingCopied] = useState(false);
+  const [devicePairingPollTick, setDevicePairingPollTick] = useState(0);
   const devicePairingAutoAttemptRef = useRef('');
   const devicePairingAutoOfferAttemptedRef = useRef(false);
   useEffect(() => {
@@ -202,7 +203,10 @@ export function SettingsPanel() {
     const update = () => {
       const remaining = Math.max(0, Math.ceil((devicePairingOffer.expiresAt - Date.now()) / 1_000));
       setDevicePairingRemaining(remaining);
-      if (remaining === 0) setDevicePairingOffer(null);
+      if (remaining === 0) {
+        setDevicePairingOffer(null);
+        devicePairingAutoOfferAttemptedRef.current = false;
+      }
     };
     update();
     const timer = window.setInterval(update, 1_000);
@@ -346,6 +350,7 @@ export function SettingsPanel() {
     try {
       const result = await window.focuslink.deviceSync.login();
       setDeviceSyncStatus(result.status);
+      setDevicePairingOffer(null);
       setSettings(await window.focuslink.settings.get());
       if (result.syncError) {
         addToast('账号已登录；本机记录会在网络恢复后自动同步', 'info');
@@ -366,6 +371,9 @@ export function SettingsPanel() {
     setDeviceSyncSaving(true);
     try {
       setDeviceSyncStatus(await window.focuslink.deviceSync.logout());
+      setDevicePairingOffer(null);
+      setDevicePairingCode('');
+      devicePairingAutoOfferAttemptedRef.current = false;
       setSettings(await window.focuslink.settings.get());
       addToast('已退出 FocusLink 账号；本机记录仍保留', 'success');
     } catch (error) {
@@ -380,7 +388,12 @@ export function SettingsPanel() {
     try {
       const offer = await window.focuslink.deviceSync.createPairingCode();
       setDevicePairingOffer(offer);
-      addToast('配对码已生成，10 分钟内在新设备输入', 'success');
+      addToast(
+        deviceSyncStatus?.signedIn
+          ? '本机配对码已生成，可在新设备中输入'
+          : '本机配对码已生成，请在一台已授权设备中输入',
+        'success',
+      );
     } catch (error) {
       addToast(`生成配对码失败：${ipcErrorMessage(error)}`, 'error');
     } finally {
@@ -389,10 +402,6 @@ export function SettingsPanel() {
   };
 
   useEffect(() => {
-    if (!deviceSyncStatus?.signedIn) {
-      devicePairingAutoOfferAttemptedRef.current = false;
-      return;
-    }
     if (
       activeTab !== 'devices' ||
       devicePairingOffer ||
@@ -407,6 +416,57 @@ export function SettingsPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, devicePairingOffer, deviceSyncSaving, deviceSyncStatus?.signedIn]);
 
+  useEffect(() => {
+    if (
+      activeTab !== 'devices' ||
+      deviceSyncStatus?.signedIn ||
+      !devicePairingOffer ||
+      devicePairingOffer.expiresAt <= Date.now() ||
+      deviceSyncSaving
+    )
+      return;
+    let disposed = false;
+    const timer = window.setTimeout(() => {
+      void window.focuslink.deviceSync
+        .pollPairingCode()
+        .then(async (result) => {
+          if (disposed) return;
+          if (result.status === 'pending') {
+            setDevicePairingPollTick((current) => current + 1);
+            return;
+          }
+          setDeviceSyncStatus(result.result.status);
+          setSettings(await window.focuslink.settings.get());
+          setDevicePairingOffer(null);
+          setDevicePairingCode('');
+          addToast(
+            result.result.syncError
+              ? '配对已批准，网络恢复后会继续同步'
+              : '配对已批准，本机已加入多端同步',
+            result.result.syncError ? 'info' : 'success',
+          );
+        })
+        .catch((error) => {
+          if (disposed) return;
+          setDevicePairingOffer(null);
+          devicePairingAutoOfferAttemptedRef.current = false;
+          addToast(`配对等待失败：${ipcErrorMessage(error)}`, 'error');
+        });
+    }, 1_500);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    activeTab,
+    addToast,
+    devicePairingOffer,
+    devicePairingPollTick,
+    deviceSyncSaving,
+    deviceSyncStatus?.signedIn,
+    setSettings,
+  ]);
+
   const handleRedeemDevicePairingCode = async (inputValue = devicePairingCode) => {
     const code = normalizeFocusLinkPairingCode(inputValue);
     if (!/^\d{8}$/.test(code)) {
@@ -415,8 +475,16 @@ export function SettingsPanel() {
     }
     setDeviceSyncSaving(true);
     try {
+      if (deviceSyncStatus?.signedIn) {
+        const approved = await window.focuslink.deviceSync.approvePairingCode(code);
+        setDevicePairingCode('');
+        devicePairingAutoAttemptRef.current = '';
+        addToast(`已批准“${approved.displayName}”，对方设备会自动加入同步`, 'success');
+        return;
+      }
       const result = await window.focuslink.deviceSync.redeemPairingCode(code);
       setDeviceSyncStatus(result.status);
+      setDevicePairingOffer(null);
       setSettings(await window.focuslink.settings.get());
       setDevicePairingCode('');
       devicePairingAutoAttemptRef.current = '';
@@ -1412,8 +1480,8 @@ export function SettingsPanel() {
         <>
           {!deviceSyncStatus?.signedIn && (
             <div className="settings-pairing-simple">
-              <strong>输入另一台设备的本机配对码</strong>
-              <span>对方设备打开“我的配对码”，你输入后会自动加入同步。</span>
+              <strong>每台设备都有自己的配对码</strong>
+              <span>把本机码输入已授权设备，或在下方输入已授权设备的码。</span>
             </div>
           )}
           <Row
@@ -1444,51 +1512,27 @@ export function SettingsPanel() {
                 </button>
               </div>
             ) : (
-              <div className="settings-pairing-entry">
-                <label htmlFor="focuslink-desktop-pairing-code">输入另一台设备的本机配对码</label>
-                <input
-                  id="focuslink-desktop-pairing-code"
-                  value={devicePairingCode}
-                  onChange={(event) => {
-                    const next = normalizeFocusLinkPairingCode(event.target.value);
-                    if (!/^\d{0,8}$/.test(next)) return;
-                    setDevicePairingCode(next);
-                    if (next.length < 8) devicePairingAutoAttemptRef.current = '';
-                    if (
-                      next.length === 8 &&
-                      devicePairingAutoAttemptRef.current !== next &&
-                      !deviceSyncSaving
-                    ) {
-                      devicePairingAutoAttemptRef.current = next;
-                      void handleRedeemDevicePairingCode(next);
-                    }
-                  }}
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={9}
-                  placeholder="8 位数字"
-                  aria-label="8 位设备配对码"
-                  aria-describedby="focuslink-desktop-pairing-hint"
-                />
-                <span id="focuslink-desktop-pairing-hint" className="settings-pairing-hint">
-                  粘贴带空格的配对码，输入完整后自动加入同步
-                </span>
+              <div className="flex items-center gap-2">
+                <span className="settings-status-badge">等待配对</span>
                 <button
                   type="button"
                   className="btn-accent text-[11px]"
-                  onClick={() => void handleRedeemDevicePairingCode()}
-                  disabled={deviceSyncSaving || devicePairingCode.length !== 8}
+                  onClick={() => void handleCreateDevicePairingCode()}
+                  disabled={deviceSyncSaving}
                 >
-                  {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Link size="xs" />}
-                  加入同步
+                  {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Plus size="xs" />}
+                  刷新本机配对码
                 </button>
               </div>
             )}
           </Row>
-          {deviceSyncStatus?.signedIn && devicePairingOffer && (
+          {devicePairingOffer && (
             <div className="settings-pairing-offer" role="status" aria-live="polite">
               <div>
-                <span>本机配对码 · 在另一台设备输入</span>
+                <span>
+                  本机配对码 ·{' '}
+                  {deviceSyncStatus?.signedIn ? '可在新设备输入' : '请在已授权设备输入'}
+                </span>
                 <strong aria-label={`配对码 ${devicePairingOffer.code}`}>
                   {devicePairingOffer.code.slice(0, 4)} {devicePairingOffer.code.slice(4)}
                 </strong>
@@ -1515,6 +1559,51 @@ export function SettingsPanel() {
               </button>
             </div>
           )}
+          <div className="settings-pairing-entry">
+            <label htmlFor="focuslink-desktop-pairing-code">
+              {deviceSyncStatus?.signedIn
+                ? '输入新设备显示的本机配对码'
+                : '输入另一台已授权设备的本机配对码'}
+            </label>
+            <input
+              id="focuslink-desktop-pairing-code"
+              value={devicePairingCode}
+              onChange={(event) => {
+                const next = normalizeFocusLinkPairingCode(event.target.value);
+                if (!/^\d{0,8}$/.test(next)) return;
+                setDevicePairingCode(next);
+                if (next.length < 8) devicePairingAutoAttemptRef.current = '';
+                if (
+                  next.length === 8 &&
+                  devicePairingAutoAttemptRef.current !== next &&
+                  !deviceSyncSaving
+                ) {
+                  devicePairingAutoAttemptRef.current = next;
+                  void handleRedeemDevicePairingCode(next);
+                }
+              }}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={9}
+              placeholder="8 位数字"
+              aria-label="8 位设备配对码"
+              aria-describedby="focuslink-desktop-pairing-hint"
+            />
+            <span id="focuslink-desktop-pairing-hint" className="settings-pairing-hint">
+              {deviceSyncStatus?.signedIn
+                ? '输入完整后会批准对方设备，它会自动加入同步'
+                : '输入完整后自动加入；也可把上方本机码交给已授权设备批准'}
+            </span>
+            <button
+              type="button"
+              className="btn-accent text-[11px]"
+              onClick={() => void handleRedeemDevicePairingCode()}
+              disabled={deviceSyncSaving || devicePairingCode.length !== 8}
+            >
+              {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Link size="xs" />}
+              {deviceSyncStatus?.signedIn ? '批准设备' : '加入同步'}
+            </button>
+          </div>
           {deviceSyncStatus?.signedIn && managedDevices.length > 0 && (
             <div className="settings-device-roster" aria-label="已配对设备">
               <div className="settings-device-roster-heading">
@@ -1552,7 +1641,7 @@ export function SettingsPanel() {
             <div className="settings-account-explainer">
               <strong>没有另一台已授权设备？</strong>
               <p>
-                配对码只能由已授权设备生成。首次使用需要先完成一次账号授权，之后其他设备都用配对码加入。
+                本机码已经可以生成，但必须由一台已授权设备批准。完全没有已授权设备时，才需要完成一次首次授权。
               </p>
               <button
                 type="button"

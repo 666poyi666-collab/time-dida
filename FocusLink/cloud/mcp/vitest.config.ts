@@ -246,6 +246,35 @@ export default defineConfig({
                 devicePublicId: "reader01",
               });
             }
+            if (url.pathname === "/sync/v1/pair/requests") {
+              return Response.json({
+                code: "13572468",
+                requestToken: `flpr_${"r".repeat(43)}`,
+                expiresAt: Date.now() + 10 * 60 * 1_000,
+              });
+            }
+            if (url.pathname === "/sync/v1/pair/approve") {
+              return Response.json({
+                status: "approved",
+                displayName: "FocusLink test tablet",
+                expiresAt: Date.now() + 10 * 60 * 1_000,
+              });
+            }
+            if (url.pathname === "/sync/v1/pair/claim") {
+              return Response.json({
+                status: "authenticated",
+                deviceId: "device-mobile01",
+                accessToken: `fl2_account1_mobile01_${"m".repeat(43)}`,
+                scopes: [
+                  "sync:read",
+                  "sync:write",
+                  "live:read",
+                  "live:write",
+                  "devices:manage",
+                ],
+                expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1_000,
+              });
+            }
             if (url.pathname === "/sync/v1/pair/devices") {
               return Response.json({
                 devices: [

@@ -4,6 +4,7 @@ import { DEVICE_SYNC_PROTOCOL_VERSION, normalizeDeviceSyncEndpoint } from './dev
 export const FOCUSLINK_PAIRING_CODE_LENGTH = 8 as const;
 export const FOCUSLINK_PAIRING_CODE_TTL_MS = 10 * 60 * 1_000;
 export const FOCUSLINK_PAIRING_CODE_PATTERN = /^\d{8}$/;
+export const FOCUSLINK_PAIRING_REQUEST_TOKEN_PATTERN = /^flpr_[A-Za-z0-9_-]{43,160}$/;
 
 /**
  * Normalize what a human pasted from a desktop pairing dialog. Whitespace is

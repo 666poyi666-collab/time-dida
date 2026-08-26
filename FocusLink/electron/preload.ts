@@ -133,6 +133,9 @@ const api = {
     status: () => ipcRenderer.invoke('device-sync:status'),
     login: () => ipcRenderer.invoke('device-sync:login'),
     createPairingCode: () => ipcRenderer.invoke('device-sync:create-pairing-code'),
+    pollPairingCode: () => ipcRenderer.invoke('device-sync:poll-pairing-code'),
+    approvePairingCode: (code: string) =>
+      ipcRenderer.invoke('device-sync:approve-pairing-code', code),
     redeemPairingCode: (code: string) =>
       ipcRenderer.invoke('device-sync:redeem-pairing-code', code),
     listDevices: () => ipcRenderer.invoke('device-sync:list-devices'),

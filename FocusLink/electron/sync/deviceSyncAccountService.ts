@@ -21,12 +21,15 @@ import {
 } from '@shared/sync/accountBootstrapProtocol';
 import {
   FOCUSLINK_PAIRING_CODE_PATTERN,
+  FOCUSLINK_PAIRING_REQUEST_TOKEN_PATTERN,
   normalizeFocusLinkPairingCode,
 } from '@shared/sync/pairingProtocol';
 import type {
   DeviceSyncAccountLoginResult,
   DeviceSyncManagedDevice,
   DeviceSyncNumericPairingOffer,
+  DeviceSyncPairingApprovalResult,
+  DeviceSyncPairingPollResult,
 } from '@shared/ipc/api';
 import { getMeta, setMeta } from '../db/index.js';
 import { logger } from '../logger.js';
@@ -48,6 +51,11 @@ const REQUEST_TIMEOUT_MS = 15_000;
 let loginInFlight: Promise<DeviceSyncAccountLoginResult> | null = null;
 let loginGeneration = 0;
 let loginAbortController: AbortController | null = null;
+let pendingLocalPairRequest: {
+  requestToken: string;
+  expiresAt: number;
+} | null = null;
+let pairingPollInFlight: Promise<DeviceSyncPairingPollResult> | null = null;
 
 export function getDeviceSyncAccountIdentity(): {
   signedIn: boolean;
@@ -105,17 +113,22 @@ export function loginDeviceSyncAccount(): Promise<DeviceSyncAccountLoginResult> 
 
 export async function createDeviceSyncPairingCode(): Promise<DeviceSyncNumericPairingOffer> {
   const token = getDeviceSyncToken();
-  if (!isFocusLinkDeviceAccessToken(token ?? '')) {
-    throw new Error('请先在这台设备完成授权');
+  const signedIn = isFocusLinkDeviceAccessToken(token ?? '');
+  const registration = pairingDeviceRequest();
+  const response = signedIn
+    ? await requestPairing('/sync/v1/pair/offers', {
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          displayName: 'FocusLink 新设备',
+          scopes: [...FOCUSLINK_ENROLLED_DEVICE_SCOPES],
+        },
+      })
+    : await requestPairing('/sync/v1/pair/requests', {
+        body: { device: registration },
+      });
+  if (signedIn && getDeviceSyncToken() !== token) {
+    throw new Error('账号连接已变化，请重新生成配对码');
   }
-  const response = await requestPairing('/sync/v1/pair/offers', {
-    headers: { authorization: `Bearer ${token}` },
-    body: {
-      displayName: 'FocusLink 新设备',
-      scopes: [...FOCUSLINK_ENROLLED_DEVICE_SCOPES],
-    },
-  });
-  if (getDeviceSyncToken() !== token) throw new Error('账号连接已变化，请重新生成配对码');
   if (
     !isRecord(response) ||
     typeof response.code !== 'string' ||
@@ -126,10 +139,119 @@ export async function createDeviceSyncPairingCode(): Promise<DeviceSyncNumericPa
   ) {
     throw new Error('配对服务响应无效');
   }
-  logger.info('deviceSyncAccount', 'trusted device pairing code created', {
-    expiresAt: Number(response.expiresAt),
-  });
+  if (!signedIn) {
+    if (
+      typeof response.requestToken !== 'string' ||
+      !FOCUSLINK_PAIRING_REQUEST_TOKEN_PATTERN.test(response.requestToken)
+    ) {
+      throw new Error('配对服务响应无效');
+    }
+    pendingLocalPairRequest = {
+      requestToken: response.requestToken,
+      expiresAt: Number(response.expiresAt),
+    };
+  }
+  logger.info(
+    'deviceSyncAccount',
+    signedIn ? 'trusted device pairing code created' : 'local device pairing request created',
+    {
+      expiresAt: Number(response.expiresAt),
+    },
+  );
   return { code: response.code, expiresAt: Number(response.expiresAt) };
+}
+
+export function pollDeviceSyncPairingCode(): Promise<DeviceSyncPairingPollResult> {
+  if (pairingPollInFlight) return pairingPollInFlight;
+  const operation = pollDeviceSyncPairingCodeInternal().finally(() => {
+    if (pairingPollInFlight === operation) pairingPollInFlight = null;
+  });
+  pairingPollInFlight = operation;
+  return operation;
+}
+
+async function pollDeviceSyncPairingCodeInternal(): Promise<DeviceSyncPairingPollResult> {
+  if (getDeviceSyncAccountIdentity().signedIn) {
+    return {
+      status: 'authenticated',
+      result: { status: getDeviceSyncStatus(), sync: null, syncError: null },
+    };
+  }
+  const pending = pendingLocalPairRequest;
+  if (!pending || pending.expiresAt <= Date.now()) {
+    pendingLocalPairRequest = null;
+    throw new Error('本机配对码已过期，请重新生成');
+  }
+  const registration = pairingDeviceRequest();
+  const response = await requestPairing('/sync/v1/pair/claim', {
+    body: { requestToken: pending.requestToken, device: registration },
+  });
+  if (
+    isRecord(response) &&
+    response.status === 'pending' &&
+    Number.isSafeInteger(response.expiresAt) &&
+    Number.isSafeInteger(response.retryAfterMs)
+  ) {
+    return {
+      status: 'pending',
+      expiresAt: Number(response.expiresAt),
+      retryAfterMs: Number(response.retryAfterMs),
+    };
+  }
+  if (
+    !isRecord(response) ||
+    response.status !== 'authenticated' ||
+    typeof response.accessToken !== 'string' ||
+    !isFocusLinkDeviceAccessToken(response.accessToken) ||
+    typeof response.deviceId !== 'string' ||
+    response.deviceId !== deviceIdFromToken(response.accessToken)
+  ) {
+    throw new Error('配对领取响应无效');
+  }
+  const generation = ++loginGeneration;
+  const controller = new AbortController();
+  loginAbortController?.abort();
+  loginAbortController = controller;
+  invalidateDeviceSyncConnection();
+  setDeviceSyncToken(response.accessToken);
+  enableOfficialSync();
+  pendingLocalPairRequest = null;
+  try {
+    return {
+      status: 'authenticated',
+      result: await finishLogin(generation, controller.signal),
+    };
+  } finally {
+    if (loginAbortController === controller) loginAbortController = null;
+  }
+}
+
+export async function approveDeviceSyncPairingCode(
+  codeInput: string,
+): Promise<DeviceSyncPairingApprovalResult> {
+  const token = getDeviceSyncToken();
+  if (!token || !isFocusLinkDeviceAccessToken(token)) {
+    throw new Error('只有已授权设备可以批准另一台设备');
+  }
+  const code = normalizeFocusLinkPairingCode(codeInput);
+  if (!FOCUSLINK_PAIRING_CODE_PATTERN.test(code)) throw new Error('请输入 8 位数字配对码');
+  const response = await requestPairing('/sync/v1/pair/approve', {
+    headers: { authorization: `Bearer ${token}` },
+    body: { code },
+  });
+  if (
+    !isRecord(response) ||
+    response.status !== 'approved' ||
+    typeof response.displayName !== 'string' ||
+    !Number.isSafeInteger(response.expiresAt)
+  ) {
+    throw new Error('配对批准响应无效');
+  }
+  return {
+    status: 'approved',
+    displayName: response.displayName,
+    expiresAt: Number(response.expiresAt),
+  };
 }
 
 export async function listDeviceSyncDevices(): Promise<DeviceSyncManagedDevice[]> {
@@ -180,6 +302,8 @@ export function logoutDeviceSyncAccount(): void {
   loginAbortController?.abort();
   loginAbortController = null;
   loginInFlight = null;
+  pairingPollInFlight = null;
+  pendingLocalPairRequest = null;
   invalidateDeviceSyncConnection();
   setDeviceSyncToken(null);
   updateSettings({
@@ -360,6 +484,17 @@ function registrationRequest(): FocusLinkDeviceRegistrationRequest {
   };
 }
 
+function pairingDeviceRequest(): Omit<FocusLinkDeviceRegistrationRequest, 'protocolVersion'> {
+  const registration = registrationRequest();
+  return {
+    installationId: registration.installationId,
+    displayName: registration.displayName,
+    platform: registration.platform,
+    deviceKind: registration.deviceKind,
+    appVersion: registration.appVersion,
+  };
+}
+
 function getOrCreateInstallationId(): string {
   const existing = getMeta(META_INSTALLATION_ID)?.trim();
   if (existing && /^[A-Za-z0-9._~-]{20,160}$/.test(existing)) return existing;
@@ -377,7 +512,12 @@ function cleanDeviceName(value: string): string {
 }
 
 async function requestPairing(
-  path: '/sync/v1/pair/offers' | '/sync/v1/pair/exchange',
+  path:
+    | '/sync/v1/pair/offers'
+    | '/sync/v1/pair/exchange'
+    | '/sync/v1/pair/requests'
+    | '/sync/v1/pair/approve'
+    | '/sync/v1/pair/claim',
   input: { headers?: Record<string, string>; body: Record<string, unknown> },
   parentSignal?: AbortSignal,
 ): Promise<unknown> {

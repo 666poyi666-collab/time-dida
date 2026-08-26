@@ -19,12 +19,14 @@ import {
   FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
   FOCUSLINK_ENROLLED_DEVICE_SCOPES,
   FOCUSLINK_OWNER_DEVICE_SCOPES,
+  FOCUSLINK_PAIRED_DEVICE_SCOPES,
   parseFocusLinkDeviceRegistrationRequest,
   type FocusLinkDeviceRegistrationResponse,
 } from '../shared/sync/identityProtocol';
 import {
   FOCUSLINK_PAIRING_CODE_PATTERN,
   FOCUSLINK_PAIRING_CODE_TTL_MS,
+  FOCUSLINK_PAIRING_REQUEST_TOKEN_PATTERN,
 } from '../shared/sync/pairingProtocol';
 import {
   LIVE_FOCUS_MAX_TRANSITIONS,
@@ -478,6 +480,17 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       if (url.pathname === '/v2/pair/exchange' && request.method === 'POST') {
         return json(await this.exchangePairOffer(accountId, await readJson(request, 16 * 1024)));
       }
+      if (url.pathname === '/v2/pair/requests' && request.method === 'POST') {
+        return json(await this.createPairRequest(accountId, await readJson(request, 16 * 1024)));
+      }
+      if (url.pathname === '/v2/pair/approve' && request.method === 'POST') {
+        const identity = await this.authorizeV2(request, 'sync:write');
+        return json(await this.approvePairRequest(await readJson(request, 16 * 1024), identity));
+      }
+      if (url.pathname === '/v2/pair/claim' && request.method === 'POST') {
+        const result = await this.claimPairRequest(accountId, await readJson(request, 16 * 1024));
+        return json(result, result.status === 'pending' ? 202 : 200);
+      }
       if (url.pathname === '/v2/devices/register' && request.method === 'POST') {
         rejectUnexpectedQuery(url);
         if (
@@ -763,6 +776,22 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         device_kind TEXT,
         app_version TEXT
       );
+      CREATE TABLE IF NOT EXISTS v2_pair_requests (
+        request_id TEXT PRIMARY KEY,
+        account_public_id TEXT NOT NULL,
+        code_hmac TEXT NOT NULL UNIQUE,
+        request_token_hmac TEXT NOT NULL UNIQUE,
+        installation_id TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        device_kind TEXT NOT NULL,
+        app_version TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        credential_expires_at INTEGER NOT NULL,
+        approved_at INTEGER,
+        approved_by_device_id TEXT,
+        claimed_at INTEGER
+      );
       CREATE TABLE IF NOT EXISTS v2_conflicts (
         conflict_id TEXT PRIMARY KEY,
         entity_type TEXT NOT NULL,
@@ -893,6 +922,28 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     } catch (error) {
       throw error;
     }
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS v2_pair_requests (
+        request_id TEXT PRIMARY KEY,
+        account_public_id TEXT NOT NULL,
+        code_hmac TEXT NOT NULL UNIQUE,
+        request_token_hmac TEXT NOT NULL UNIQUE,
+        installation_id TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        device_kind TEXT NOT NULL,
+        app_version TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        credential_expires_at INTEGER NOT NULL,
+        approved_at INTEGER,
+        approved_by_device_id TEXT,
+        claimed_at INTEGER
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_v2_pair_requests_code_hmac
+        ON v2_pair_requests(code_hmac);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_v2_pair_requests_token_hmac
+        ON v2_pair_requests(request_token_hmac);
+    `);
   }
 
   private focusMcpProjection(url: URL) {
@@ -1924,7 +1975,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     const secret = randomToken(48);
     const secretHmac = await hmacHex(pepper, secret);
     const expiresAt = Date.now() + 365 * DAY_MS;
-    let scopes: string[] = [...FOCUSLINK_ENROLLED_DEVICE_SCOPES];
+    let scopes: string[] = [...FOCUSLINK_PAIRED_DEVICE_SCOPES];
     const now = Date.now();
     let offer: PairOfferRow | undefined;
     this.ctx.storage.transactionSync(() => {
@@ -2030,6 +2081,252 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       accessToken: `fl2_${accountPublicId}_${devicePublicId}_${secret}`,
       scopes,
       expiresAt,
+    };
+  }
+
+  /**
+   * Create the code shown by a device that has not joined the account yet.
+   * The short code can only be approved by an enrolled write-capable device;
+   * the high-entropy request token remains on the requesting device and is
+   * required to claim the resulting credential.
+   */
+  private async createPairRequest(
+    accountId: string,
+    value: unknown,
+  ): Promise<{ code: string; requestToken: string; expiresAt: number }> {
+    if (!isRecord(value) || !hasOnlyKeys(value, PAIR_REQUEST_KEYS)) {
+      throw new ProtocolError(400, 'invalid_pair_request', 'invalid pair request');
+    }
+    const metadata = parsePairDeviceMetadata(value.device, true);
+    if (metadata === 'invalid' || metadata === null) {
+      throw new ProtocolError(400, 'invalid_pairing_device', 'invalid pairing device');
+    }
+    const pepper = this.env.FOCUSLINK_DEVICE_PEPPER;
+    if (!pepper)
+      throw new ProtocolError(503, 'credential_missing', 'device pepper is not configured');
+
+    const now = Date.now();
+    const expiresAt = now + FOCUSLINK_PAIRING_CODE_TTL_MS;
+    const credentialExpiresAt = now + 365 * DAY_MS;
+    this.sql.exec('DELETE FROM v2_pair_requests WHERE expires_at < ?', now - DAY_MS);
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const requestId = randomToken(32);
+      const code = randomPairingCode();
+      const requestToken = `flpr_${randomToken(32)}`;
+      const [codeHmac, requestTokenHmac] = await Promise.all([
+        hmacHex(pepper, pairingCodeHmacInput(code)),
+        hmacHex(pepper, pairingRequestTokenHmacInput(requestToken)),
+      ]);
+      try {
+        this.sql.exec(
+          `INSERT INTO v2_pair_requests(
+             request_id, account_public_id, code_hmac, request_token_hmac,
+             installation_id, display_name, platform, device_kind, app_version,
+             expires_at, credential_expires_at, approved_at, approved_by_device_id, claimed_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
+          requestId,
+          publicId(accountId),
+          codeHmac,
+          requestTokenHmac,
+          metadata.installationId,
+          metadata.displayName,
+          metadata.platform,
+          metadata.deviceKind,
+          metadata.appVersion,
+          expiresAt,
+          credentialExpiresAt,
+        );
+        return { code, requestToken, expiresAt };
+      } catch (error) {
+        if (!isPairRequestCollisionError(error) || attempt >= 3) {
+          throw new ProtocolError(500, 'store_corrupt', 'pair request could not be stored');
+        }
+      }
+    }
+    throw new ProtocolError(503, 'pairing_unavailable', 'pairing is unavailable');
+  }
+
+  private async approvePairRequest(
+    value: unknown,
+    identity: V2Identity,
+  ): Promise<{ status: 'approved'; displayName: string; expiresAt: number }> {
+    if (
+      !isRecord(value) ||
+      !hasOnlyKeys(value, PAIR_APPROVE_KEYS) ||
+      typeof value.code !== 'string' ||
+      !FOCUSLINK_PAIRING_CODE_PATTERN.test(value.code)
+    ) {
+      throw new ProtocolError(400, 'invalid_pairing_code', 'invalid pairing code');
+    }
+    const pepper = this.env.FOCUSLINK_DEVICE_PEPPER;
+    if (!pepper)
+      throw new ProtocolError(503, 'credential_missing', 'device pepper is not configured');
+    const codeHmac = await hmacHex(pepper, pairingCodeHmacInput(value.code));
+    const now = Date.now();
+    let row: PairRequestRow | undefined;
+    this.ctx.storage.transactionSync(() => {
+      row = this.sql
+        .exec<PairRequestRow>(
+          `SELECT request_id, account_public_id, code_hmac, request_token_hmac,
+             installation_id, display_name, platform, device_kind, app_version,
+             expires_at, credential_expires_at, approved_at, approved_by_device_id, claimed_at
+           FROM v2_pair_requests WHERE code_hmac = ?`,
+          codeHmac,
+        )
+        .toArray()[0];
+      assertPairRequestAvailable(row, now);
+      if (row.approved_at === null) {
+        this.sql.exec(
+          `UPDATE v2_pair_requests
+           SET approved_at = ?, approved_by_device_id = ?
+           WHERE request_id = ? AND approved_at IS NULL`,
+          now,
+          identity.deviceId,
+          row.request_id,
+        );
+      }
+    });
+    return { status: 'approved', displayName: row!.display_name, expiresAt: row!.expires_at };
+  }
+
+  private async claimPairRequest(
+    accountId: string,
+    value: unknown,
+  ): Promise<
+    | { status: 'pending'; expiresAt: number; retryAfterMs: number }
+    | {
+        status: 'authenticated';
+        deviceId: string;
+        accessToken: string;
+        scopes: string[];
+        expiresAt: number;
+      }
+  > {
+    if (
+      !isRecord(value) ||
+      !hasOnlyKeys(value, PAIR_CLAIM_KEYS) ||
+      typeof value.requestToken !== 'string' ||
+      !FOCUSLINK_PAIRING_REQUEST_TOKEN_PATTERN.test(value.requestToken)
+    ) {
+      throw new ProtocolError(400, 'invalid_pair_request_token', 'invalid pair request token');
+    }
+    const metadata = parsePairDeviceMetadata(value.device, true);
+    if (metadata === 'invalid' || metadata === null) {
+      throw new ProtocolError(400, 'invalid_pairing_device', 'invalid pairing device');
+    }
+    const pepper = this.env.FOCUSLINK_DEVICE_PEPPER;
+    if (!pepper)
+      throw new ProtocolError(503, 'credential_missing', 'device pepper is not configured');
+    const requestTokenHmac = await hmacHex(
+      pepper,
+      pairingRequestTokenHmacInput(value.requestToken),
+    );
+    const now = Date.now();
+    const row = this.sql
+      .exec<PairRequestRow>(
+        `SELECT request_id, account_public_id, code_hmac, request_token_hmac,
+           installation_id, display_name, platform, device_kind, app_version,
+           expires_at, credential_expires_at, approved_at, approved_by_device_id, claimed_at
+         FROM v2_pair_requests WHERE request_token_hmac = ?`,
+        requestTokenHmac,
+      )
+      .toArray()[0];
+    assertPairRequestAvailable(row, now);
+    if (!pairRequestMetadataMatches(row, metadata)) {
+      throw new ProtocolError(
+        409,
+        'pairing_binding_mismatch',
+        'pairing device metadata does not match the request',
+      );
+    }
+    if (row.approved_at === null) {
+      return { status: 'pending', expiresAt: row.expires_at, retryAfterMs: 1_500 };
+    }
+
+    this.ensureRegistrationSchema();
+    const accountPublicId = publicId(accountId);
+    if (row.account_public_id !== accountPublicId) {
+      throw new ProtocolError(410, 'pairing_expired', 'pair request is unavailable');
+    }
+    const installationHmac = await registeredDeviceInstallationHmac(
+      pepper,
+      accountId,
+      metadata.installationId,
+    );
+    const devicePublicId = installationHmac.slice(0, 24);
+    const deviceId = `device-${devicePublicId}`;
+    const secret = await hmacHex(pepper, `focuslink-pair-request-secret-v1:${value.requestToken}`);
+    const secretHmac = await hmacHex(pepper, secret);
+    const scopes = [...FOCUSLINK_PAIRED_DEVICE_SCOPES];
+    const scopesJson = JSON.stringify(scopes);
+    this.ctx.storage.transactionSync(() => {
+      const current = this.sql
+        .exec<PairRequestRow>(
+          `SELECT request_id, account_public_id, code_hmac, request_token_hmac,
+             installation_id, display_name, platform, device_kind, app_version,
+             expires_at, credential_expires_at, approved_at, approved_by_device_id, claimed_at
+           FROM v2_pair_requests WHERE request_id = ?`,
+          row.request_id,
+        )
+        .toArray()[0];
+      assertPairRequestAvailable(current, now);
+      if (current.approved_at === null || !pairRequestMetadataMatches(current, metadata)) {
+        throw new ProtocolError(409, 'pairing_not_approved', 'pair request is not approved');
+      }
+      this.sql.exec(
+        `INSERT INTO v2_devices(device_id, device_public_id, account_public_id, display_name,
+         scopes_json, secret_hmac, pepper_version, expires_at, last_seen_at, stale, revoked_at)
+         VALUES (?, ?, ?, ?, ?, ?, 2, ?, ?, 0, NULL)
+         ON CONFLICT(device_id) DO UPDATE SET
+           device_public_id=excluded.device_public_id,
+           account_public_id=excluded.account_public_id,
+           display_name=excluded.display_name,
+           scopes_json=excluded.scopes_json,
+           secret_hmac=excluded.secret_hmac,
+           pepper_version=2,
+           expires_at=excluded.expires_at,
+           last_seen_at=excluded.last_seen_at,
+           stale=0,
+           revoked_at=NULL`,
+        deviceId,
+        devicePublicId,
+        accountPublicId,
+        metadata.displayName,
+        scopesJson,
+        secretHmac,
+        current.credential_expires_at,
+        now,
+      );
+      this.sql.exec(
+        `INSERT INTO v2_device_registrations(device_id, installation_hmac, platform, device_kind,
+         app_version, registered_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(device_id) DO UPDATE SET
+           installation_hmac=excluded.installation_hmac,
+           platform=excluded.platform,
+           device_kind=excluded.device_kind,
+           app_version=excluded.app_version,
+           updated_at=excluded.updated_at`,
+        deviceId,
+        installationHmac,
+        metadata.platform,
+        metadata.deviceKind,
+        metadata.appVersion,
+        now,
+        now,
+      );
+      this.sql.exec(
+        'UPDATE v2_pair_requests SET claimed_at = COALESCE(claimed_at, ?) WHERE request_id = ?',
+        now,
+        current.request_id,
+      );
+    });
+    return {
+      status: 'authenticated',
+      deviceId,
+      accessToken: `fl2_${accountPublicId}_${devicePublicId}_${secret}`,
+      scopes,
+      expiresAt: row.credential_expires_at,
     };
   }
 
@@ -3423,6 +3720,9 @@ const PAIR_OFFER_KEYS = [
   'appVersion',
 ] as const;
 const PAIR_EXCHANGE_KEYS = ['code', 'nonce', 'device'] as const;
+const PAIR_REQUEST_KEYS = ['device'] as const;
+const PAIR_APPROVE_KEYS = ['code'] as const;
+const PAIR_CLAIM_KEYS = ['requestToken', 'device'] as const;
 
 export interface PairDeviceMetadata {
   installationId: string;
@@ -3447,6 +3747,23 @@ interface PairOfferRow extends Record<string, SqlStorageValue> {
   app_version: string | null;
 }
 
+interface PairRequestRow extends Record<string, SqlStorageValue> {
+  request_id: string;
+  account_public_id: string;
+  code_hmac: string;
+  request_token_hmac: string;
+  installation_id: string;
+  display_name: string;
+  platform: string;
+  device_kind: string;
+  app_version: string;
+  expires_at: number;
+  credential_expires_at: number;
+  approved_at: number | null;
+  approved_by_device_id: string | null;
+  claimed_at: number | null;
+}
+
 function normalizePairDisplayName(value: unknown): string {
   if (typeof value !== 'string') return '';
   const normalized = value.trim();
@@ -3460,11 +3777,11 @@ function parsePairScopes(value: unknown): string[] | null {
   if (
     !Array.isArray(value) ||
     value.length === 0 ||
-    value.length > FOCUSLINK_ENROLLED_DEVICE_SCOPES.length ||
+    value.length > FOCUSLINK_PAIRED_DEVICE_SCOPES.length ||
     !value.every((item): item is string => typeof item === 'string' && isDeviceScope(item)) ||
     new Set(value).size !== value.length ||
     !value.includes('sync:read') ||
-    value.some((scope) => scope === 'devices:manage' || scope === 'backups:manage')
+    value.some((scope) => scope === 'backups:manage')
   ) {
     return null;
   }
@@ -3550,6 +3867,33 @@ export function pairMetadataMatches(offer: PairOfferRow, metadata: PairDeviceMet
 
 function pairingCodeHmacInput(code: string): string {
   return `focuslink-pair-code-v1:${code}`;
+}
+
+function pairingRequestTokenHmacInput(requestToken: string): string {
+  return `focuslink-pair-request-token-v1:${requestToken}`;
+}
+
+function assertPairRequestAvailable(
+  row: PairRequestRow | undefined,
+  now: number,
+): asserts row is PairRequestRow {
+  if (!row || row.expires_at <= now) {
+    throw new ProtocolError(410, 'pairing_expired', 'pair request expired');
+  }
+}
+
+function pairRequestMetadataMatches(row: PairRequestRow, metadata: PairDeviceMetadata): boolean {
+  return (
+    row.installation_id === metadata.installationId &&
+    row.display_name === metadata.displayName &&
+    row.platform === metadata.platform &&
+    row.device_kind === metadata.deviceKind &&
+    row.app_version === metadata.appVersion
+  );
+}
+
+function isPairRequestCollisionError(error: unknown): boolean {
+  return error instanceof Error && /v2_pair_requests/i.test(error.message);
 }
 
 function randomPairingCode(): string {

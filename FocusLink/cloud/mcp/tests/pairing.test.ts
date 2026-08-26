@@ -104,6 +104,113 @@ describe('canonical one-time device pairing', () => {
     expect(replay.status).toBe(410);
   });
 
+  it('supports a device-owned code that an enrolled device approves before claim', async () => {
+    const requestToken = `flpr_${'r'.repeat(43)}`;
+    let approved = false;
+    const expiresAt = Date.now() + 10 * 60 * 1_000;
+    const device = {
+      installationId: `android-${'i'.repeat(32)}`,
+      displayName: 'FocusLink Android 平板',
+      platform: 'android',
+      deviceKind: 'tablet',
+      appVersion: '0.12.104',
+    };
+    const upstream = binding(async (request) => {
+      const path = new URL(request.url).pathname;
+      if (path === '/sync/v1/pair/requests') {
+        expect(request.headers.has('authorization')).toBe(false);
+        expect(await request.json()).toEqual({ device });
+        return Response.json({ code: '24681357', requestToken, expiresAt });
+      }
+      if (path === '/sync/v1/pair/approve') {
+        expect(request.headers.get('authorization')).toBe(`Bearer ${READER_TOKEN}`);
+        expect(await request.json()).toEqual({ code: '24681357' });
+        approved = true;
+        return Response.json({ status: 'approved', displayName: device.displayName, expiresAt });
+      }
+      expect(path).toBe('/sync/v1/pair/claim');
+      expect(request.headers.has('authorization')).toBe(false);
+      expect(await request.json()).toEqual({ requestToken, device });
+      if (!approved) {
+        return Response.json(
+          { status: 'pending', expiresAt, retryAfterMs: 1_500 },
+          { status: 202 },
+        );
+      }
+      return Response.json({
+        status: 'authenticated',
+        deviceId: 'device-reader01',
+        accessToken: READER_TOKEN,
+        scopes: ['sync:read', 'sync:write', 'live:read', 'live:write'],
+        expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1_000,
+      });
+    });
+    const env = pairEnv(upstream);
+    const created = await handleCanonicalPairing(
+      pairRequest('/sync/v1/pair/requests', { device }),
+      env,
+      false,
+    );
+    expect(created.status).toBe(200);
+    await expect(created.json()).resolves.toMatchObject({ code: '24681357', requestToken });
+
+    const pending = await handleCanonicalPairing(
+      pairRequest('/sync/v1/pair/claim', { requestToken, device }),
+      env,
+      false,
+    );
+    expect(pending.status).toBe(202);
+    await expect(pending.json()).resolves.toMatchObject({ status: 'pending' });
+
+    const approval = await handleCanonicalPairing(
+      pairRequest('/sync/v1/pair/approve', { code: '24681357' }, `Bearer ${READER_TOKEN}`),
+      env,
+      false,
+    );
+    expect(approval.status).toBe(200);
+
+    const claimed = await handleCanonicalPairing(
+      pairRequest('/sync/v1/pair/claim', { requestToken, device }),
+      env,
+      false,
+    );
+    expect(claimed.status).toBe(200);
+    await expect(claimed.json()).resolves.toMatchObject({
+      status: 'authenticated',
+      accessToken: READER_TOKEN,
+    });
+  });
+
+  it('keeps request and claim credential-free while approval requires a device token', async () => {
+    const upstream = binding(async () => Response.json({ error: 'must_not_run' }));
+    const env = pairEnv(upstream);
+    const device = {
+      installationId: `web-${'i'.repeat(32)}`,
+      displayName: 'FocusLink Web',
+      platform: 'web',
+      deviceKind: 'phone',
+      appVersion: '0.12.104',
+    };
+    for (const [path, body] of [
+      ['/sync/v1/pair/requests', { device }],
+      ['/sync/v1/pair/claim', { requestToken: `flpr_${'r'.repeat(43)}`, device }],
+    ] as const) {
+      const response = await handleCanonicalPairing(
+        pairRequest(path, body, `Bearer ${READER_TOKEN}`),
+        env,
+        false,
+      );
+      expect(response.status).toBe(403);
+    }
+    const approval = await handleCanonicalPairing(
+      pairRequest('/sync/v1/pair/approve', { code: '12345678' }),
+      env,
+      false,
+    );
+    expect(approval.status).toBe(401);
+    expect(upstream.fetch).not.toHaveBeenCalled();
+  });
+
   it('rejects OAuth, device, and OOB credentials on the anonymous claim surface', async () => {
     const upstream = binding(async () => Response.json({ error: 'must_not_run' }));
     const env = pairEnv(upstream);
@@ -216,7 +323,7 @@ describe('canonical one-time device pairing', () => {
     const excessive = await handleCanonicalPairing(
       pairRequest('/sync/v1/pair/offers', {
         displayName: 'phone',
-        scopes: ['sync:read', 'devices:manage'],
+        scopes: ['sync:read', 'backups:manage'],
       }),
       env,
       true,

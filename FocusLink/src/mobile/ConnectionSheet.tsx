@@ -9,7 +9,7 @@ export interface ConnectionSheetProps {
   busy: boolean;
   notice: string | null;
   pairingCode: string;
-  pairingOffer: { code: string; expiresAt: number } | null;
+  pairingOffer: { code: string; expiresAt: number; requestToken?: string } | null;
   devices: DeviceSyncManagedDevice[];
   onClose: () => void;
   onLogin: () => void;
@@ -63,8 +63,7 @@ export function ConnectionSheet({
     const previousFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.documentElement.classList.add('connection-sheet-open');
-    if (!authenticated) pairingInputRef.current?.focus();
-    else primaryRef.current?.focus();
+    pairingInputRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
@@ -96,6 +95,53 @@ export function ConnectionSheet({
       first.focus();
     }
   };
+
+  const pairingEntry = (
+    <form
+      className="account-pairing-entry"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onPair();
+      }}
+    >
+      <label htmlFor="focuslink-pairing-code">
+        {authenticated ? '输入新设备显示的本机配对码' : '输入另一台已授权设备的本机配对码'}
+      </label>
+      <input
+        ref={pairingInputRef}
+        id="focuslink-pairing-code"
+        value={pairingCode}
+        onChange={(event) => {
+          const next = normalizeFocusLinkPairingCode(event.target.value);
+          onPairingCodeChange(next);
+          if (next.length < 8) autoSubmittedCodeRef.current = '';
+          if (next.length === 8 && autoSubmittedCodeRef.current !== next) {
+            autoSubmittedCodeRef.current = next;
+            onPair(next);
+          }
+        }}
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={9}
+        placeholder="0000 0000"
+        aria-label="8 位设备配对码"
+        aria-describedby="focuslink-pairing-code-status"
+      />
+      <span id="focuslink-pairing-code-status" className="account-pairing-hint">
+        {authenticated
+          ? '输入后会批准那台新设备，它会自动加入同步'
+          : '也可以把上方本机码输入已授权设备，批准后本机会自动加入'}
+      </span>
+      <button
+        ref={primaryRef}
+        className="primary-button"
+        type="submit"
+        disabled={busy || pairingCode.length !== 8}
+      >
+        {busy ? '正在处理…' : authenticated ? '批准设备' : '加入同步'}
+      </button>
+    </form>
+  );
 
   return (
     <motion.div
@@ -141,7 +187,7 @@ export function ConnectionSheet({
         </header>
 
         <div className="account-sheet-summary">
-          <strong>{authenticated ? '这台设备已加入同步' : '输入配对码即可同步'}</strong>
+          <strong>{authenticated ? '这台设备已加入同步' : '每台设备都有自己的配对码'}</strong>
           <p>
             {authenticated
               ? `${accountLabel ?? 'FocusLink 账号'} · 这台设备已加入云同步。`
@@ -155,52 +201,49 @@ export function ConnectionSheet({
           </p>
         )}
 
+        {pairingOffer && (
+          <div className="account-pairing-offer" role="status">
+            <span>本机配对码 · {authenticated ? '可在新设备输入' : '请在已授权设备输入'}</span>
+            <strong>
+              {pairingOffer.code.slice(0, 4)} {pairingOffer.code.slice(4)}
+            </strong>
+            <small>
+              一次性使用 · 剩余 {Math.floor(remainingSeconds / 60)}:
+              {String(remainingSeconds % 60).padStart(2, '0')}
+            </small>
+            <button
+              type="button"
+              onClick={() => {
+                const copy = navigator.clipboard?.writeText(pairingOffer.code);
+                if (!copy) return;
+                void copy
+                  .then(() => {
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1_500);
+                  })
+                  .catch(() => setCopied(false));
+              }}
+            >
+              {copied ? '已复制' : '复制配对码'}
+            </button>
+          </div>
+        )}
+
         {!authenticated ? (
           <>
             <div className="account-pairing-simple">
-              <strong>输入另一台设备的本机配对码</strong>
-              <p>对方设备打开“我的配对码”，你输入后会自动加入同步。</p>
+              <strong>任选一种方式，结果一样</strong>
+              <p>把本机码输入已授权设备，或在这里输入已授权设备的码。</p>
             </div>
-            <form
-              className="account-pairing-entry"
-              onSubmit={(event) => {
-                event.preventDefault();
-                onPair();
-              }}
+            {pairingEntry}
+            <button
+              type="button"
+              className="account-refresh-pairing"
+              onClick={onCreatePairingCode}
+              disabled={busy}
             >
-              <label htmlFor="focuslink-pairing-code">输入另一台设备的本机配对码</label>
-              <input
-                ref={pairingInputRef}
-                id="focuslink-pairing-code"
-                value={pairingCode}
-                onChange={(event) => {
-                  const next = normalizeFocusLinkPairingCode(event.target.value);
-                  onPairingCodeChange(next);
-                  if (next.length < 8) autoSubmittedCodeRef.current = '';
-                  if (next.length === 8 && autoSubmittedCodeRef.current !== next) {
-                    autoSubmittedCodeRef.current = next;
-                    onPair(next);
-                  }
-                }}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={9}
-                placeholder="0000 0000"
-                aria-label="8 位设备配对码"
-                aria-describedby="focuslink-pairing-code-status"
-              />
-              <span id="focuslink-pairing-code-status" className="account-pairing-hint">
-                粘贴带空格的配对码，输入完整后自动加入同步
-              </span>
-              <button
-                ref={primaryRef}
-                className="primary-button"
-                type="submit"
-                disabled={busy || pairingCode.length !== 8}
-              >
-                {busy ? '正在配对…' : '输入配对码'}
-              </button>
-            </form>
+              {pairingOffer ? '刷新本机配对码' : '显示本机配对码'}
+            </button>
             <details className="account-owner-fallback">
               <summary>首次设备授权</summary>
               <p>如果没有任何已授权设备，先完成一次账号授权。之后所有设备都用本机配对码加入。</p>
@@ -211,33 +254,7 @@ export function ConnectionSheet({
           </>
         ) : (
           <>
-            {pairingOffer && (
-              <div className="account-pairing-offer" role="status">
-                <span>本机配对码 · 在另一台设备输入</span>
-                <strong>
-                  {pairingOffer.code.slice(0, 4)} {pairingOffer.code.slice(4)}
-                </strong>
-                <small>
-                  一次性使用 · 剩余 {Math.floor(remainingSeconds / 60)}:
-                  {String(remainingSeconds % 60).padStart(2, '0')}
-                </small>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const copy = navigator.clipboard?.writeText(pairingOffer.code);
-                    if (!copy) return;
-                    void copy
-                      .then(() => {
-                        setCopied(true);
-                        window.setTimeout(() => setCopied(false), 1_500);
-                      })
-                      .catch(() => setCopied(false));
-                  }}
-                >
-                  {copied ? '已复制' : '复制配对码'}
-                </button>
-              </div>
-            )}
+            {pairingEntry}
             {devices.length > 0 && (
               <div className="account-device-roster" aria-label="已配对设备">
                 {devices.map((device) => (
@@ -261,7 +278,7 @@ export function ConnectionSheet({
               </div>
             )}
             <div className="sheet-secondary-actions account-sheet-actions">
-              <button ref={primaryRef} type="button" onClick={onCreatePairingCode} disabled={busy}>
+              <button type="button" onClick={onCreatePairingCode} disabled={busy}>
                 {busy ? '正在生成…' : pairingOffer ? '刷新本机配对码' : '显示本机配对码'}
               </button>
               <button type="button" onClick={onClearCache} disabled={busy}>

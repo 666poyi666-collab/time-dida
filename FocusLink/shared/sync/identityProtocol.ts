@@ -92,11 +92,13 @@ export const FOCUSLINK_ENROLLED_DEVICE_SCOPES = [
   'live:write',
 ] as const;
 
-/** Only the first owner-authorized device can manage the paired-device roster. */
-export const FOCUSLINK_OWNER_DEVICE_SCOPES = [
+/** New user-paired devices can manage the same owner-controlled device roster. */
+export const FOCUSLINK_PAIRED_DEVICE_SCOPES = [
   ...FOCUSLINK_ENROLLED_DEVICE_SCOPES,
   'devices:manage',
 ] as const;
+
+export const FOCUSLINK_OWNER_DEVICE_SCOPES = [...FOCUSLINK_PAIRED_DEVICE_SCOPES] as const;
 
 export type FocusLinkDevicePlatform = 'windows' | 'android' | 'web';
 export type FocusLinkDeviceKind = 'desktop' | 'phone' | 'tablet' | 'watch';

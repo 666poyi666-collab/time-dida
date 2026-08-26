@@ -58,8 +58,12 @@ describe('desktop FocusLink account settings', () => {
     expect(ipcSource).not.toContain("ipcMain.handle('device-sync:quick-setup'");
     expect(ipcSource).not.toContain("ipcMain.handle('device-sync:create-pairing-offer'");
     expect(preloadSource).toContain('device-sync:create-pairing-code');
+    expect(preloadSource).toContain('device-sync:poll-pairing-code');
+    expect(preloadSource).toContain('device-sync:approve-pairing-code');
     expect(preloadSource).toContain('device-sync:redeem-pairing-code');
     expect(ipcSource).toContain("ipcMain.handle('device-sync:create-pairing-code'");
+    expect(ipcSource).toContain("ipcMain.handle('device-sync:poll-pairing-code'");
+    expect(ipcSource).toContain("ipcMain.handle('device-sync:approve-pairing-code'");
     expect(ipcSource).toContain("ipcMain.handle('device-sync:redeem-pairing-code'");
     expect(ipcSource).toContain('sanitizeRendererSettingsPatch(requested)');
   });

@@ -74,9 +74,10 @@ describe('mobile owner account entry', () => {
     expect(mobile).toContain('const [configOpen, setConfigOpen] = useState(false);');
     expect(mobile).toContain('onClose={() => setConfigOpen(false)}');
     expect(markup).toContain('aria-label="关闭账号设置，返回本机模式"');
-    expect(markup).toContain('输入配对码即可同步');
-    expect(markup).toContain('输入另一台设备的本机配对码');
-    expect(markup).toContain('输入配对码');
+    expect(markup).toContain('每台设备都有自己的配对码');
+    expect(markup).toContain('输入另一台已授权设备的本机配对码');
+    expect(markup).toContain('显示本机配对码');
+    expect(markup).toContain('批准后本机会自动加入');
     expect(markup).toContain('首次设备授权');
     expect(markup).toContain('暂不配对，继续本机使用');
     expect(markup).not.toContain('这台设备已加入云同步');
@@ -106,6 +107,8 @@ describe('mobile owner account entry', () => {
     );
     expect(markup).toContain('8765 4321');
     expect(markup).toContain('本机配对码');
+    expect(markup).toContain('输入新设备显示的本机配对码');
+    expect(markup).toContain('批准设备');
     expect(markup).not.toContain('accessToken');
   });
 

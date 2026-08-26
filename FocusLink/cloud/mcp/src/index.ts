@@ -496,7 +496,12 @@ export const worker = {
       return readiness(env);
     }
 
-    if (url.pathname === '/sync/v1/pair/exchange') {
+    if (
+      url.pathname === '/sync/v1/pair/exchange' ||
+      url.pathname === '/sync/v1/pair/requests' ||
+      url.pathname === '/sync/v1/pair/approve' ||
+      url.pathname === '/sync/v1/pair/claim'
+    ) {
       return handleCanonicalPairing(request, env, false);
     }
     if (url.pathname === '/sync/v1/pair/offers') {

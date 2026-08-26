@@ -24,6 +24,9 @@ const CANONICAL_AUTHORITY_ROUTES = new Map([
   ['/sync/v2/live/command', '/v1/live/command'],
   ['/sync/v1/pair/offers', '/v2/pair/offers'],
   ['/sync/v1/pair/exchange', '/v2/pair/exchange'],
+  ['/sync/v1/pair/requests', '/v2/pair/requests'],
+  ['/sync/v1/pair/approve', '/v2/pair/approve'],
+  ['/sync/v1/pair/claim', '/v2/pair/claim'],
   ['/sync/v1/devices/register', '/v2/devices/register'],
   ['/sync/v2/devices', '/v2/devices'],
 ]);
@@ -143,6 +146,10 @@ export default {
     const authorization = request.headers.get('authorization');
     const pairOffer = url.pathname === '/sync/v1/pair/offers';
     const pairingExchange = url.pathname === '/sync/v1/pair/exchange';
+    const pairingRequest = url.pathname === '/sync/v1/pair/requests';
+    const pairingApproval = url.pathname === '/sync/v1/pair/approve';
+    const pairingClaim = url.pathname === '/sync/v1/pair/claim';
+    const anonymousPairing = pairingExchange || pairingRequest || pairingClaim;
     const deviceRegistration = url.pathname === '/sync/v1/devices/register';
     const presentedPairAuthority = request.headers.get('x-focuslink-pair-authority');
     const presentedIdentityAuthority = request.headers.get('x-focuslink-identity-authority');
@@ -168,6 +175,9 @@ export default {
     if (pairOffer && isDevice && presentedPairAuthority !== null) {
       return errorJson(403, 'credential_boundary_violation', 'pairing credentials are exclusive');
     }
+    if (anonymousPairing && authorization !== null) {
+      return errorJson(403, 'credential_boundary_violation', 'anonymous pairing accepts no bearer');
+    }
     // Pair-offer creation is the sole route that accepts the dedicated second-hop
     // authority credential. The public Gateway first validates owner session +
     // CSRF and its own audience-bound service credential; this private Worker then
@@ -181,7 +191,9 @@ export default {
         ? !pairAuthority && !devicePairOffer
         : deviceRegistration
           ? !identityAuthority
-          : !pairingExchange && !isDevice)
+          : pairingApproval
+            ? !isDevice
+            : !anonymousPairing && !isDevice)
     ) {
       return withCors(
         request,

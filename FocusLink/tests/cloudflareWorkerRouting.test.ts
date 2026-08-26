@@ -187,6 +187,43 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
     expect(forwarded[0].url).toContain('/v2/pair/offers');
   });
 
+  it('routes device-owned codes through anonymous request/claim and authenticated approval', async () => {
+    const forwarded: ForwardedCall[] = [];
+    const env = makeEnv(forwarded);
+    expect((await call('/sync/v1/pair/requests', { method: 'POST' }, env)).status).toBe(200);
+    expect((await call('/sync/v1/pair/claim', { method: 'POST' }, env)).status).toBe(200);
+    expect(
+      (
+        await call(
+          '/sync/v1/pair/approve',
+          { method: 'POST', authorization: `Bearer ${VALID_DEVICE_TOKEN}` },
+          env,
+        )
+      ).status,
+    ).toBe(200);
+    expect(forwarded.map((call) => new URL(call.url).pathname)).toEqual([
+      '/v2/pair/requests',
+      '/v2/pair/claim',
+      '/v2/pair/approve',
+    ]);
+    expect(forwarded[0].forwardedAuthorization).toBeNull();
+    expect(forwarded[1].forwardedAuthorization).toBeNull();
+    expect(forwarded[2].forwardedAuthorization).toBe(`Bearer ${VALID_DEVICE_TOKEN}`);
+  });
+
+  it('rejects bearer credentials on anonymous pairing and requires one for approval', async () => {
+    const forwarded: ForwardedCall[] = [];
+    const env = makeEnv(forwarded);
+    for (const path of ['/sync/v1/pair/requests', '/sync/v1/pair/claim']) {
+      expect(
+        (await call(path, { method: 'POST', authorization: `Bearer ${VALID_DEVICE_TOKEN}` }, env))
+          .status,
+      ).toBe(403);
+    }
+    expect((await call('/sync/v1/pair/approve', { method: 'POST' }, env)).status).toBe(401);
+    expect(forwarded).toHaveLength(0);
+  });
+
   it('rejects missing, malformed and incorrect pair authority before the DO', async () => {
     const forwarded: ForwardedCall[] = [];
     for (const pairAuthority of [undefined, `fla_${'p'.repeat(42)}`, `fla_${'x'.repeat(48)}`]) {

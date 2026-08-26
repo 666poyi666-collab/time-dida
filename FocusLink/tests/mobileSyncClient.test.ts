@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  approveDeviceSyncPairingCode,
+  claimDeviceSyncPairingRequest,
   classifyMobileLiveRequestError,
   createDeviceSyncPairingCode,
+  createDeviceSyncPairingRequest,
   exchangeDeviceSyncPairingCode,
   fetchLiveFocusSnapshot,
   fetchTaskSnapshot,
@@ -154,6 +157,89 @@ describe('mobile sync client request recovery', () => {
       referrerPolicy: 'no-referrer',
     });
     expect(String(request.body)).not.toContain(DEVICE_TOKEN);
+  });
+
+  it('creates a code on a credential-free device, waits for approval, then claims its token', async () => {
+    const expiresAt = Date.now() + 10 * 60_000;
+    const requestToken = `flpr_${'r'.repeat(43)}`;
+    const device = {
+      platform: 'android' as const,
+      deviceKind: 'tablet' as const,
+      appVersion: '0.12.104',
+      displayName: 'FocusLink Android 平板',
+      installationId: 'android-0123456789abcdefghijklmnop',
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ code: '13572468', requestToken, expiresAt }))
+      .mockResolvedValueOnce(
+        Response.json({ status: 'pending', expiresAt, retryAfterMs: 1_500 }, { status: 202 }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          status: 'authenticated',
+          accessToken: DEVICE_TOKEN,
+          deviceId: 'device-mobile1',
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      createDeviceSyncPairingRequest({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        device,
+      }),
+    ).resolves.toEqual({ code: '13572468', requestToken, expiresAt });
+    await expect(
+      claimDeviceSyncPairingRequest({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        requestToken,
+        device,
+      }),
+    ).resolves.toEqual({ status: 'pending', expiresAt, retryAfterMs: 1_500 });
+    await expect(
+      claimDeviceSyncPairingRequest({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        requestToken,
+        device,
+      }),
+    ).resolves.toEqual({
+      status: 'authenticated',
+      accessToken: DEVICE_TOKEN,
+      deviceId: 'device-mobile1',
+    });
+    for (const call of fetchMock.mock.calls) {
+      expect((call[1] as RequestInit).headers).not.toHaveProperty('authorization');
+    }
+  });
+
+  it('lets an enrolled mobile device approve another device code', async () => {
+    const expiresAt = Date.now() + 10 * 60_000;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ status: 'approved', displayName: 'FocusLink Windows', expiresAt }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      approveDeviceSyncPairingCode({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        token: DEVICE_TOKEN,
+        code: ' 2468 1357 ',
+      }),
+    ).resolves.toEqual({
+      status: 'approved',
+      displayName: 'FocusLink Windows',
+      expiresAt,
+    });
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      headers: {
+        authorization: `Bearer ${DEVICE_TOKEN}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ code: '24681357' }),
+    });
   });
 
   it('never sends an enrolled device credential to an untrusted pairing origin', async () => {

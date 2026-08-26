@@ -73,10 +73,12 @@ vi.mock('../electron/sync/deviceSyncService.js', () => ({
 }));
 
 import {
+  approveDeviceSyncPairingCode,
   createDeviceSyncPairingCode,
   loginDeviceSyncAccount,
   logoutDeviceSyncAccount,
   OFFICIAL_FOCUSLINK_ENDPOINT,
+  pollDeviceSyncPairingCode,
   redeemDeviceSyncPairingCode,
 } from '../electron/sync/deviceSyncAccountService';
 import { FOCUSLINK_SYNC_FAILOVER_ORIGIN } from '../shared/sync/identityProtocol';
@@ -334,6 +336,67 @@ describe('desktop owner account enrollment', () => {
       authorization: `Bearer ${harness.token}`,
     });
     expect(JSON.stringify(harness.logs)).not.toContain('24681357');
+  });
+
+  it('gives an unpaired desktop its own code and claims access after approval', async () => {
+    const expiresAt = Date.now() + 10 * 60_000;
+    const requestToken = `flpr_${'r'.repeat(43)}`;
+    const token = `fl2_account1_desktop2_${'q'.repeat(32)}`;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ code: '13572468', requestToken, expiresAt }))
+      .mockResolvedValueOnce(
+        Response.json({ status: 'pending', expiresAt, retryAfterMs: 1_500 }, { status: 202 }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          status: 'authenticated',
+          accessToken: token,
+          deviceId: 'device-desktop2',
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(createDeviceSyncPairingCode()).resolves.toEqual({ code: '13572468', expiresAt });
+    await expect(pollDeviceSyncPairingCode()).resolves.toEqual({
+      status: 'pending',
+      expiresAt,
+      retryAfterMs: 1_500,
+    });
+    await expect(pollDeviceSyncPairingCode()).resolves.toMatchObject({
+      status: 'authenticated',
+      result: { status: { signedIn: true }, syncError: null },
+    });
+    expect(harness.token).toBe(token);
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      `${FOCUSLINK_SYNC_FAILOVER_ORIGIN}/sync/v1/pair/requests`,
+      `${FOCUSLINK_SYNC_FAILOVER_ORIGIN}/sync/v1/pair/claim`,
+      `${FOCUSLINK_SYNC_FAILOVER_ORIGIN}/sync/v1/pair/claim`,
+    ]);
+    for (const call of fetchMock.mock.calls) {
+      expect((call[1] as RequestInit).headers).not.toHaveProperty('authorization');
+    }
+    expect(JSON.stringify(harness.logs)).not.toContain(requestToken);
+  });
+
+  it('approves a new device code only with this device credential', async () => {
+    harness.token = `fl2_account1_desktop1_${'z'.repeat(32)}`;
+    const expiresAt = Date.now() + 10 * 60_000;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ status: 'approved', displayName: 'FocusLink Android 平板', expiresAt }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(approveDeviceSyncPairingCode(' 2468 1357 ')).resolves.toEqual({
+      status: 'approved',
+      displayName: 'FocusLink Android 平板',
+      expiresAt,
+    });
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+      authorization: `Bearer ${harness.token}`,
+    });
   });
 
   it('redeems a numeric code, stores the device-bound credential, and starts initial sync', async () => {

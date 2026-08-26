@@ -10,6 +10,7 @@ import {
 } from '@shared/sync/identityProtocol';
 import {
   FOCUSLINK_PAIRING_CODE_PATTERN,
+  FOCUSLINK_PAIRING_REQUEST_TOKEN_PATTERN,
   normalizeFocusLinkPairingCode,
 } from '@shared/sync/pairingProtocol';
 import { readDeviceSyncJsonResponse } from '@shared/sync/httpTransport';
@@ -125,6 +126,188 @@ export async function createDeviceSyncPairingCode(input: {
     );
   }
   return { code: payload.code, expiresAt: Number(payload.expiresAt) };
+}
+
+export async function createDeviceSyncPairingRequest(input: {
+  endpoint: string;
+  device: DeviceSyncPairingDevice;
+  signal?: AbortSignal;
+}): Promise<{ code: string; requestToken: string; expiresAt: number }> {
+  const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
+  requireMobileCloudEndpoint(endpoint);
+  const device = requireCompletePairingDevice(input.device);
+  const response = await fetchPairingWithFailover(
+    endpoint,
+    '/sync/v1/pair/requests',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ device }),
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+    },
+    input.signal,
+    10_000,
+  );
+  const payload = await readDeviceSyncJsonResponse(response, 16 * 1024);
+  if (!response.ok) {
+    const code = pairingResponseErrorCode(payload);
+    throw new DeviceSyncPairingError(code, pairingErrorMessage(code), response.status);
+  }
+  if (
+    !isRecord(payload) ||
+    typeof payload.code !== 'string' ||
+    !FOCUSLINK_PAIRING_CODE_PATTERN.test(payload.code) ||
+    typeof payload.requestToken !== 'string' ||
+    !FOCUSLINK_PAIRING_REQUEST_TOKEN_PATTERN.test(payload.requestToken) ||
+    !validPairingExpiry(payload.expiresAt)
+  ) {
+    throw new DeviceSyncPairingError(
+      'invalid_pairing_response',
+      '配对服务响应无效',
+      response.status,
+    );
+  }
+  return {
+    code: payload.code,
+    requestToken: payload.requestToken,
+    expiresAt: Number(payload.expiresAt),
+  };
+}
+
+export async function approveDeviceSyncPairingCode(input: {
+  endpoint: string;
+  token: string;
+  code: string;
+  signal?: AbortSignal;
+}): Promise<{ status: 'approved'; displayName: string; expiresAt: number }> {
+  const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
+  requireMobileCloudEndpoint(endpoint, input.token);
+  if (!isFocusLinkDeviceAccessToken(input.token)) {
+    throw new DeviceSyncPairingError('authentication_failed', '只有已授权设备可以批准配对');
+  }
+  const code = normalizeFocusLinkPairingCode(input.code);
+  if (!FOCUSLINK_PAIRING_CODE_PATTERN.test(code)) {
+    throw new DeviceSyncPairingError('invalid_pairing_code', '请输入 8 位数字配对码');
+  }
+  const response = await fetchPairingWithFailover(
+    endpoint,
+    '/sync/v1/pair/approve',
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${input.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ code }),
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+    },
+    input.signal,
+    10_000,
+  );
+  const payload = await readDeviceSyncJsonResponse(response, 16 * 1024);
+  if (
+    !response.ok ||
+    !isRecord(payload) ||
+    payload.status !== 'approved' ||
+    !isNonEmptyText(payload.displayName, 100) ||
+    !validPairingExpiry(payload.expiresAt)
+  ) {
+    const errorCode = pairingResponseErrorCode(payload);
+    throw new DeviceSyncPairingError(errorCode, pairingErrorMessage(errorCode), response.status);
+  }
+  return {
+    status: 'approved',
+    displayName: payload.displayName,
+    expiresAt: Number(payload.expiresAt),
+  };
+}
+
+export async function claimDeviceSyncPairingRequest(input: {
+  endpoint: string;
+  requestToken: string;
+  device: DeviceSyncPairingDevice;
+  signal?: AbortSignal;
+}): Promise<
+  | { status: 'pending'; expiresAt: number; retryAfterMs: number }
+  | { status: 'authenticated'; accessToken: string; deviceId: string }
+> {
+  const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
+  requireMobileCloudEndpoint(endpoint);
+  if (!FOCUSLINK_PAIRING_REQUEST_TOKEN_PATTERN.test(input.requestToken)) {
+    throw new DeviceSyncPairingError('invalid_pair_request_token', '本机配对请求已失效');
+  }
+  const device = requireCompletePairingDevice(input.device);
+  const response = await fetchPairingWithFailover(
+    endpoint,
+    '/sync/v1/pair/claim',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ requestToken: input.requestToken, device }),
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+    },
+    input.signal,
+    10_000,
+  );
+  const payload = await readDeviceSyncJsonResponse(response, 16 * 1024);
+  if (response.status === 202) {
+    if (
+      !isRecord(payload) ||
+      payload.status !== 'pending' ||
+      !validPairingExpiry(payload.expiresAt) ||
+      !Number.isSafeInteger(payload.retryAfterMs)
+    ) {
+      throw new DeviceSyncPairingError(
+        'invalid_pairing_response',
+        '配对等待响应无效',
+        response.status,
+      );
+    }
+    return {
+      status: 'pending',
+      expiresAt: Number(payload.expiresAt),
+      retryAfterMs: Number(payload.retryAfterMs),
+    };
+  }
+  if (!response.ok) {
+    const code = pairingResponseErrorCode(payload);
+    throw new DeviceSyncPairingError(code, pairingErrorMessage(code), response.status);
+  }
+  if (
+    !isRecord(payload) ||
+    payload.status !== 'authenticated' ||
+    typeof payload.accessToken !== 'string' ||
+    !isFocusLinkDeviceAccessToken(payload.accessToken) ||
+    !isNonEmptyText(payload.deviceId, 200)
+  ) {
+    throw new DeviceSyncPairingError(
+      'invalid_pairing_response',
+      '配对领取响应无效',
+      response.status,
+    );
+  }
+  const tokenParts = /^fl2_[A-Za-z0-9-]{6,80}_([A-Za-z0-9-]{6,80})_/.exec(payload.accessToken);
+  if (!tokenParts || payload.deviceId !== `device-${tokenParts[1]}`) {
+    throw new DeviceSyncPairingError(
+      'invalid_pairing_response',
+      '配对领取响应无效',
+      response.status,
+    );
+  }
+  return {
+    status: 'authenticated',
+    accessToken: payload.accessToken,
+    deviceId: payload.deviceId,
+  };
 }
 
 export async function listDeviceSyncDevices(input: {
@@ -295,6 +478,39 @@ function pairingResponseErrorCode(payload: unknown): string {
   return isRecord(payload.error) && typeof payload.error.code === 'string'
     ? payload.error.code
     : 'pairing_failed';
+}
+
+function requireCompletePairingDevice(
+  device: DeviceSyncPairingDevice,
+): Required<
+  Pick<
+    DeviceSyncPairingDevice,
+    'installationId' | 'displayName' | 'platform' | 'deviceKind' | 'appVersion'
+  >
+> {
+  if (
+    !device.installationId ||
+    !/^[A-Za-z0-9._~-]{20,160}$/.test(device.installationId) ||
+    !device.displayName ||
+    !device.deviceKind
+  ) {
+    throw new DeviceSyncPairingError('invalid_pairing_device', '当前设备资料不完整');
+  }
+  return {
+    installationId: device.installationId,
+    displayName: device.displayName,
+    platform: device.platform,
+    deviceKind: device.deviceKind,
+    appVersion: device.appVersion,
+  };
+}
+
+function validPairingExpiry(value: unknown): boolean {
+  return (
+    Number.isSafeInteger(value) &&
+    Number(value) > Date.now() &&
+    Number(value) <= Date.now() + 15 * 60_000
+  );
 }
 
 async function fetchPairingWithFailover(

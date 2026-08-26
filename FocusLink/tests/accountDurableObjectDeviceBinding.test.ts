@@ -95,6 +95,19 @@ describe('numeric pairing authority storage contract', () => {
     );
     expect(shouldRetryPairCodeCollision(new Error('disk unavailable'), 0)).toBe(false);
   });
+
+  it('keeps a new-device code separate from its high-entropy claim capability', () => {
+    expect(authoritySource).toContain('CREATE TABLE IF NOT EXISTS v2_pair_requests');
+    expect(authoritySource).toContain('request_token_hmac TEXT NOT NULL UNIQUE');
+    expect(authoritySource).toContain('pairingRequestTokenHmacInput(requestToken)');
+    expect(authoritySource).toContain("await this.authorizeV2(request, 'sync:write')");
+    expect(authoritySource).toContain("status: 'pending'");
+    expect(authoritySource).toContain('focuslink-pair-request-secret-v1');
+    const insert = /INSERT INTO v2_pair_requests[\s\S]*?\n\s*\);/.exec(authoritySource);
+    expect(insert, 'pair request insert must remain inspectable').not.toBeNull();
+    expect(insert![0]).not.toContain('requestToken,');
+    expect(insert![0]).not.toContain('numericCode');
+  });
 });
 
 describe('device public id encoding', () => {

@@ -229,6 +229,16 @@ export interface DeviceSyncNumericPairingOffer {
   expiresAt: number;
 }
 
+export type DeviceSyncPairingPollResult =
+  | { status: 'pending'; expiresAt: number; retryAfterMs: number }
+  | { status: 'authenticated'; result: DeviceSyncAccountLoginResult };
+
+export interface DeviceSyncPairingApprovalResult {
+  status: 'approved';
+  displayName: string;
+  expiresAt: number;
+}
+
 export interface DeviceSyncManagedDevice {
   deviceId: string;
   devicePublicId: string;
@@ -508,6 +518,8 @@ export interface FocusLinkAPI {
     status(): Promise<DeviceSyncStatus>;
     login(): Promise<DeviceSyncAccountLoginResult>;
     createPairingCode(): Promise<DeviceSyncNumericPairingOffer>;
+    pollPairingCode(): Promise<DeviceSyncPairingPollResult>;
+    approvePairingCode(code: string): Promise<DeviceSyncPairingApprovalResult>;
     redeemPairingCode(code: string): Promise<DeviceSyncAccountLoginResult>;
     listDevices(): Promise<DeviceSyncManagedDevice[]>;
     revokeDevice(deviceId: string): Promise<{ deviceId: string; revokedAt: number }>;

@@ -440,6 +440,48 @@ describe('Worker canonical HTTP contract', () => {
     });
   });
 
+  it('exposes device-owned request, trusted approval and anonymous claim on the canonical edge', async () => {
+    const device = {
+      installationId: `android-${'i'.repeat(32)}`,
+      displayName: 'FocusLink test tablet',
+      platform: 'android',
+      deviceKind: 'tablet',
+      appVersion: '0.12.104',
+    };
+    const created = await SELF.fetch(`${CANONICAL}/sync/v1/pair/requests`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ device }),
+    });
+    expect(created.status).toBe(200);
+    const request = (await created.json()) as { code: string; requestToken: string };
+    expect(request.code).toBe('13572468');
+    expect(request.requestToken).toMatch(/^flpr_/);
+
+    const approved = await SELF.fetch(`${CANONICAL}/sync/v1/pair/approve`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${CALLER_DEVICE_TOKEN}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ code: request.code }),
+    });
+    expect(approved.status).toBe(200);
+    await expect(approved.json()).resolves.toMatchObject({ status: 'approved' });
+
+    const claimed = await SELF.fetch(`${CANONICAL}/sync/v1/pair/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ requestToken: request.requestToken, device }),
+    });
+    expect(claimed.status).toBe(200);
+    await expect(claimed.json()).resolves.toMatchObject({
+      status: 'authenticated',
+      deviceId: 'device-mobile01',
+      scopes: expect.arrayContaining(['devices:manage']),
+    });
+  });
+
   it('allows only the AS service capability to create a pair offer', async () => {
     const response = await SELF.fetch(`${CANONICAL}/sync/v1/pair/offers`, {
       method: 'POST',

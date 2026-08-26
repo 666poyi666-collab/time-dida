@@ -10,7 +10,13 @@ const DEVICE_TOKEN_PATTERN =
 const PAIRING_CODE_PATTERN = /^\d{8}$/;
 const DEVICE_ID_PATTERN = /^device-[A-Za-z0-9-]{6,194}$/;
 const PAIR_AUTHORITY_TOKEN_PATTERN = /^fla_[A-Za-z0-9_-]{43,160}$/;
-const DEVICE_SCOPES = new Set(['sync:read', 'sync:write', 'live:read', 'live:write']);
+const DEVICE_SCOPES = new Set([
+  'sync:read',
+  'sync:write',
+  'live:read',
+  'live:write',
+  'devices:manage',
+]);
 const MAX_INVENTORY_DEVICES = 1_000;
 const MAX_INVENTORY_SCOPES = 16;
 const INVENTORY_SCOPE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~-]*(?::[A-Za-z0-9][A-Za-z0-9._~-]*)+$/;
@@ -60,7 +66,9 @@ export async function handleCanonicalPairing(
     return withCors(request, env, pairError(400, 'unexpected_query'));
   }
   if (
-    url.pathname === '/sync/v1/pair/exchange' &&
+    ['/sync/v1/pair/exchange', '/sync/v1/pair/requests', '/sync/v1/pair/claim'].includes(
+      url.pathname,
+    ) &&
     (request.headers.has('authorization') ||
       request.headers.has('x-focuslink-service-credential') ||
       request.headers.has('x-focuslink-pair-authority'))
@@ -151,6 +159,79 @@ export async function handleCanonicalPairing(
       if (!isPairExchangeResponse(value)) {
         return pairError(502, 'invalid_pair_exchange_response');
       }
+    }
+    return withCors(request, env, response);
+  }
+
+  if (url.pathname === '/sync/v1/pair/requests' && request.method === 'POST') {
+    const rateLimit = await claimOfferRateLimit(request, env);
+    if (rateLimit) return withCors(request, env, rateLimit);
+    const body = await readJsonBody(request);
+    if ('response' in body) return withCors(request, env, body.response);
+    if (!isPairRequestRequest(body.value)) {
+      return withCors(request, env, pairError(400, 'invalid_pair_request'));
+    }
+    const response = await proxyPair(
+      focuslinkUpstreamUrl('/sync/v1/pair/requests'),
+      env.FOCUSLINK_UPSTREAM,
+      'POST',
+      body.value,
+      null,
+    );
+    if (response.ok && !isPairRequestResponse(await cloneJson(response))) {
+      return pairError(502, 'invalid_pair_request_response');
+    }
+    return withCors(request, env, response);
+  }
+
+  if (url.pathname === '/sync/v1/pair/approve' && request.method === 'POST') {
+    const deviceCredential = deviceOfferCredential(request);
+    if (
+      !deviceCredential ||
+      request.headers.has('x-focuslink-service-credential') ||
+      request.headers.has('x-focuslink-pair-authority')
+    ) {
+      return withCors(request, env, pairError(401, 'device_credential_required'));
+    }
+    const body = await readJsonBody(request);
+    if ('response' in body) return withCors(request, env, body.response);
+    if (!isPairApprovalRequest(body.value)) {
+      return withCors(request, env, pairError(400, 'invalid_pair_approval'));
+    }
+    const response = await proxyPair(
+      focuslinkUpstreamUrl('/sync/v1/pair/approve'),
+      env.FOCUSLINK_UPSTREAM,
+      'POST',
+      body.value,
+      null,
+      deviceCredential,
+    );
+    if (response.ok && !isPairApprovalResponse(await cloneJson(response))) {
+      return pairError(502, 'invalid_pair_approval_response');
+    }
+    return withCors(request, env, response);
+  }
+
+  if (url.pathname === '/sync/v1/pair/claim' && request.method === 'POST') {
+    const body = await readJsonBody(request);
+    if ('response' in body) return withCors(request, env, body.response);
+    if (!isPairClaimRequest(body.value)) {
+      return withCors(request, env, pairError(400, 'invalid_pair_claim'));
+    }
+    const rateLimit = await claimRateLimit(request, env, body.value.requestToken as string);
+    if (rateLimit) return withCors(request, env, rateLimit);
+    const response = await proxyPair(
+      focuslinkUpstreamUrl('/sync/v1/pair/claim'),
+      env.FOCUSLINK_UPSTREAM,
+      'POST',
+      body.value,
+      null,
+    );
+    if (
+      (response.ok || response.status === 202) &&
+      !isPairClaimResponse(await cloneJson(response))
+    ) {
+      return pairError(502, 'invalid_pair_claim_response');
     }
     return withCors(request, env, response);
   }
@@ -352,6 +433,82 @@ function isPairExchangeRequest(value: unknown): value is Record<string, unknown>
     typeof value.nonce === 'string' &&
     /^[A-Za-z0-9_-]{32,160}$/.test(value.nonce);
   return (numeric || legacy) && isDeviceMetadata(value.device, numeric);
+}
+
+function isPairRequestRequest(value: unknown): value is Record<string, unknown> {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['device']) &&
+    'device' in value &&
+    isDeviceMetadata(value.device, true)
+  );
+}
+
+function isPairApprovalRequest(value: unknown): value is Record<string, unknown> {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['code']) &&
+    typeof value.code === 'string' &&
+    PAIRING_CODE_PATTERN.test(value.code)
+  );
+}
+
+function isPairClaimRequest(value: unknown): value is Record<string, unknown> {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['requestToken', 'device']) &&
+    typeof value.requestToken === 'string' &&
+    /^flpr_[A-Za-z0-9_-]{43,160}$/.test(value.requestToken) &&
+    isDeviceMetadata(value.device, true)
+  );
+}
+
+function isPairRequestResponse(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['code', 'requestToken', 'expiresAt']) &&
+    typeof value.code === 'string' &&
+    PAIRING_CODE_PATTERN.test(value.code) &&
+    typeof value.requestToken === 'string' &&
+    /^flpr_[A-Za-z0-9_-]{43,160}$/.test(value.requestToken) &&
+    validPairTiming(value.expiresAt)
+  );
+}
+
+function isPairApprovalResponse(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['status', 'displayName', 'expiresAt']) &&
+    value.status === 'approved' &&
+    typeof value.displayName === 'string' &&
+    value.displayName.trim().length >= 1 &&
+    value.displayName.trim().length <= 100 &&
+    validPairTiming(value.expiresAt)
+  );
+}
+
+function isPairClaimResponse(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.status === 'pending') {
+    return (
+      hasOnlyKeys(value, ['status', 'expiresAt', 'retryAfterMs']) &&
+      validPairTiming(value.expiresAt) &&
+      Number.isSafeInteger(value.retryAfterMs) &&
+      Number(value.retryAfterMs) >= 500 &&
+      Number(value.retryAfterMs) <= 10_000
+    );
+  }
+  if (
+    value.status !== 'authenticated' ||
+    !hasOnlyKeys(value, ['status', 'deviceId', 'accessToken', 'scopes', 'expiresAt'])
+  )
+    return false;
+  return isPairExchangeResponse({
+    deviceId: value.deviceId,
+    accessToken: value.accessToken,
+    scopes: value.scopes,
+    expiresAt: value.expiresAt,
+  });
 }
 
 function isDeviceMetadata(value: unknown, numeric: boolean): boolean {
