@@ -15,6 +15,7 @@
 - 最终复验：根 `npm test` `120 files / 898 tests`、`npm audit --audit-level=high` 0 漏洞、typecheck/lint/format 全部通过；打包版 UI/mini/live fallback smoke 全部 exit 0。华为平板实机打开多端同步后成功生成 8 位本机码并显示 10 分钟倒计时，截图确认双向文案、输入框和键盘布局可用。
 - Windows 静默安装器 exit 0，卸载项 `FocusLink 0.12.104 / DisplayVersion=0.12.104`，已安装 EXE `FileVersion=0.12.104 / ProductVersion=0.12.104.0`，应用已重启；APK 备份 `.tmp/android-apk-backups/FocusLink-0.12.104-1304-debug.apk`，SHA256 `1F641CC7FB3BDC4E822EEEF301FA26264A645E8A0005EB7479D439500BF1661A`。
 - 兼容收口：旧“已授权设备生成码”路径也申请 `devices:manage`，与新设备本机码反向批准路径权限一致；定向 typecheck 与 64 项账户/移动/权限回归通过，仍归入 0.12.104。
+- 权限收口源码提交为 `9b6138c`；已有 `106dcbf` Windows/APK 候选随之废弃，0.12.104 将从新提交重新构建和覆盖安装，不复用旧哈希。
 
 ## 2026-08-25
 
