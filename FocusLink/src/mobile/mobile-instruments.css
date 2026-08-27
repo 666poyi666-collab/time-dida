@@ -1,0 +1,560 @@
+/* Mobile renders the same nine TimerDial instruments as desktop. Everything is scoped so
+ * the responsive shell keeps its own layout while the readout mechanics stay shared. */
+.mobile-timer-stage {
+  display: grid;
+  width: 100%;
+  min-height: 116px;
+  place-items: center;
+  container-type: inline-size;
+}
+
+.mobile-timer-stage .timer-dial,
+.appearance-timer-preview .timer-dial {
+  max-width: 100%;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  user-select: none;
+}
+
+.mobile-timer-stage .timer-dial.state-running,
+.appearance-timer-preview .timer-dial.state-running {
+  color: var(--focus);
+}
+
+.mobile-timer-stage .timer-dial.state-paused,
+.appearance-timer-preview .timer-dial.state-paused {
+  color: var(--pause);
+}
+
+.mobile-timer-stage .dial-standard,
+.mobile-timer-stage .dial-thin,
+.mobile-timer-stage .dial-segment,
+.mobile-timer-stage .dial-flip,
+.mobile-timer-stage .dial-pixel,
+.mobile-timer-stage .dial-draft {
+  font-size: clamp(52px, 20cqi, 104px);
+}
+
+.dial-standard {
+  display: inline-grid;
+  min-width: 4.8em;
+  grid-template-columns: auto 1fr auto;
+  align-items: end;
+  gap: 0.12em;
+  padding: 0.16em 0.2em 0.12em;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+  box-shadow: inset 0 1px rgb(var(--app-highlight) / 0.22);
+  font-family: var(--font-number);
+}
+
+.instrument-chrome-digits {
+  font-size: 0.82em;
+  font-weight: 560;
+  line-height: 0.86;
+}
+
+.instrument-chrome-label,
+.instrument-chrome-state {
+  align-self: end;
+  padding-bottom: 0.26em;
+  color: var(--muted);
+  font-family: var(--font-number);
+  font-size: 0.075em;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+
+.instrument-chrome-state {
+  color: currentColor;
+}
+
+.dial-thin {
+  font-family: var(--font-timer-thin);
+  font-weight: 400;
+}
+
+.dial-flip {
+  --flip-card-bg: var(--surface-2);
+  --flip-card-ink: var(--text);
+  --flip-card-line: var(--border-strong);
+  display: flex;
+  align-items: center;
+  gap: 0.04em;
+  font-family: var(--font-timer-flip);
+}
+
+.dial-flip.state-running .flip-card {
+  --flip-card-bg: var(--focus-soft);
+  --flip-card-ink: var(--focus);
+  --flip-card-line: rgb(var(--app-accent) / 0.38);
+}
+
+.dial-flip.state-paused .flip-card {
+  --flip-card-bg: var(--pause-soft);
+  --flip-card-ink: var(--pause);
+  --flip-card-line: rgb(var(--app-pause) / 0.38);
+}
+
+.flip-card {
+  position: relative;
+  display: inline-block;
+  width: 0.68em;
+  height: 1.02em;
+  margin: 0 0.015em;
+  border: 1px solid var(--flip-card-line);
+  border-radius: 0.06em;
+  background: var(--flip-card-bg);
+  color: var(--flip-card-ink);
+  perspective: 680px;
+}
+
+.flip-half {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 50%;
+  overflow: hidden;
+}
+
+.flip-top {
+  top: 0;
+  background:
+    linear-gradient(180deg, rgb(var(--app-highlight) / 0.18), transparent), var(--flip-card-bg);
+}
+
+.flip-bottom {
+  bottom: 0;
+  background:
+    linear-gradient(180deg, transparent, rgb(var(--app-scrim) / 0.12)), var(--flip-card-bg);
+}
+
+.flip-glyph {
+  position: absolute;
+  left: 0;
+  display: flex;
+  width: 100%;
+  height: 200%;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72em;
+  font-weight: 560;
+}
+
+.flip-top .flip-glyph {
+  top: 0;
+}
+.flip-bottom .flip-glyph {
+  top: -100%;
+}
+
+.flip-hinge {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: rgb(var(--app-grid) / 0.28);
+}
+
+.flip-animation {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+.flip-flap-top {
+  transform-origin: 50% 100%;
+  animation: mobile-flip-fold 170ms forwards;
+}
+.flip-flap-bottom {
+  transform: rotateX(90deg);
+  transform-origin: 50% 0;
+  animation: mobile-flip-unfold 190ms forwards;
+}
+.flip-colon {
+  margin: 0 0.06em;
+  opacity: 0.82;
+}
+
+@keyframes mobile-flip-fold {
+  to {
+    transform: rotateX(-90deg);
+  }
+}
+@keyframes mobile-flip-unfold {
+  to {
+    transform: rotateX(0);
+  }
+}
+
+.dial-pixel {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.pixel-digits {
+  display: block;
+  width: auto;
+  height: 0.76em;
+}
+.pix-on,
+.core-lit {
+  fill: currentColor;
+}
+.pix-off,
+.core-off {
+  fill: rgb(var(--app-ink));
+  opacity: 0.06;
+}
+.pixel-core {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+.pixel-core svg {
+  width: 0.48em;
+  height: 0.48em;
+}
+.pixel-core-caption,
+.pixel-spec {
+  color: var(--muted);
+  font: 600 9px/1 var(--font-number);
+}
+.pixel-spec {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  letter-spacing: 0.1em;
+}
+
+.dial-segment {
+  display: flex;
+  height: 0.82em;
+  align-items: center;
+  gap: 0.015em;
+}
+.segment-digit {
+  width: 0.48em;
+  height: 0.82em;
+}
+.segment-colon {
+  width: 0.16em;
+  height: 0.82em;
+  margin: 0 0.03em;
+}
+.segment-on,
+.segment-colon circle {
+  fill: currentColor;
+}
+.segment-off {
+  fill: rgb(var(--app-ink));
+  opacity: 0.07;
+}
+
+.dial-counter {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.04em;
+  padding: 0.16em 0.18em 0.3em;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font: 560 clamp(44px, 16cqi, 82px)/1 var(--font-number);
+}
+
+.counter-cell {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  width: 0.72em;
+  height: 1.04em;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.counter-strip {
+  display: block;
+  padding-top: 0.02em;
+  transition: transform 240ms var(--ease-step);
+}
+.counter-strip.no-anim {
+  transition: none;
+}
+.counter-strip > span {
+  display: block;
+  height: 1em;
+  text-align: center;
+}
+.counter-colon {
+  padding-bottom: 0.14em;
+}
+.counter-unit {
+  position: absolute;
+  right: 0.22em;
+  bottom: 0.08em;
+  color: var(--muted);
+  font-size: 0.075em;
+  letter-spacing: 0.12em;
+}
+
+.dial-analog {
+  display: inline-flex;
+}
+.analog-face {
+  position: relative;
+  display: grid;
+  width: clamp(150px, 48cqi, 230px);
+  aspect-ratio: 1;
+  place-items: center;
+}
+.analog-face svg {
+  width: 100%;
+  height: 100%;
+}
+.analog-tick {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+.analog-tick-major {
+  stroke: var(--muted);
+  stroke-width: 2;
+}
+.analog-hand-minute,
+.analog-hand-second {
+  transform-origin: 100px 100px;
+  transition: transform 130ms var(--ease-step);
+}
+.analog-hand-minute line {
+  stroke: rgb(var(--app-ink) / 0.72);
+  stroke-width: 4.6;
+}
+.analog-hand-second line {
+  stroke: currentColor;
+  stroke-width: 2.2;
+}
+.analog-hub {
+  fill: currentColor;
+}
+.analog-readout {
+  position: absolute;
+  bottom: 18%;
+  font: 600 clamp(17px, 5cqi, 25px)/1 var(--font-number);
+}
+
+.dial-vernier {
+  display: inline-grid;
+  width: min(100%, 520px);
+  justify-items: center;
+  gap: 14px;
+}
+.vernier-readout {
+  font: 560 clamp(48px, 18cqi, 94px)/1 var(--font-number);
+}
+.vernier-window {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 38px;
+  border-block: 1px solid var(--border);
+  background: rgb(var(--app-surface-2) / 0.7);
+}
+.vernier-strip {
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  display: flex;
+  align-items: flex-end;
+  transition: transform 130ms var(--ease-step);
+}
+.vernier-strip.no-anim {
+  transition: none;
+}
+.vernier-strip i {
+  position: relative;
+  display: block;
+  flex: 0 0 13px;
+  height: 100%;
+}
+.vernier-strip i::before {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  height: 9px;
+  background: var(--subtle);
+  content: '';
+}
+.vernier-strip .vt-major::before {
+  height: 15px;
+}
+.vernier-strip .vt-label::before {
+  height: 21px;
+  background: var(--text);
+}
+.vernier-strip .vt-label::after {
+  position: absolute;
+  bottom: 23px;
+  left: -7px;
+  color: var(--muted);
+  content: attr(data-sec);
+  font: 9px/1 var(--font-number);
+}
+.vernier-cursor {
+  position: absolute;
+  z-index: 2;
+  inset-block: 0;
+  left: 50%;
+  width: 2px;
+  background: currentColor;
+}
+
+.dial-draft {
+  --draft-stroke: rgb(var(--app-ink));
+  position: relative;
+  display: inline-grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 0.22em 0.3em 0.18em;
+  background:
+    repeating-linear-gradient(0deg, rgb(var(--app-grid) / 0.05) 0 1px, transparent 1px 18px),
+    repeating-linear-gradient(90deg, rgb(var(--app-grid) / 0.05) 0 1px, transparent 1px 18px);
+}
+.dial-draft.state-running {
+  --draft-stroke: rgb(var(--app-accent));
+}
+.dial-draft.state-paused {
+  --draft-stroke: rgb(var(--app-pause));
+}
+.draft-digits {
+  color: transparent;
+  font-family: var(--font-number);
+  font-weight: 600;
+  -webkit-text-stroke: 0.015em var(--draft-stroke);
+}
+.draft-dim {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font: 8px/1 var(--font-number);
+  letter-spacing: 0.08em;
+}
+.draft-dim i {
+  height: 1px;
+  background: var(--border-strong);
+}
+.draft-mark {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+}
+.draft-mark-tl {
+  top: 5px;
+  left: 5px;
+  border-top: 1px solid var(--muted);
+  border-left: 1px solid var(--muted);
+}
+.draft-mark-br {
+  right: 5px;
+  bottom: 5px;
+  border-right: 1px solid var(--muted);
+  border-bottom: 1px solid var(--muted);
+}
+
+.appearance-timer-preview {
+  display: grid;
+  min-height: 50px;
+  place-items: center;
+  overflow: hidden;
+  container-type: inline-size;
+  pointer-events: none;
+}
+
+.appearance-timer-preview .timer-dial {
+  transform: scale(0.54);
+}
+.appearance-timer-preview .dial-standard,
+.appearance-timer-preview .dial-thin,
+.appearance-timer-preview .dial-segment,
+.appearance-timer-preview .dial-flip,
+.appearance-timer-preview .dial-pixel,
+.appearance-timer-preview .dial-draft {
+  font-size: 52px;
+}
+.appearance-timer-preview .dial-counter {
+  font-size: 42px;
+}
+.appearance-timer-preview .analog-face {
+  width: 92px;
+}
+.appearance-timer-preview .vernier-readout {
+  font-size: 50px;
+}
+.appearance-timer-preview .vernier-window {
+  width: 180px;
+}
+.appearance-timer-preview .vernier-strip {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flip-flap-top,
+  .flip-flap-bottom,
+  .counter-strip,
+  .vernier-strip,
+  .analog-hand-minute,
+  .analog-hand-second {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  .mobile-timer-stage {
+    min-height: 68px;
+  }
+
+  .mobile-timer-stage .dial-standard,
+  .mobile-timer-stage .dial-thin,
+  .mobile-timer-stage .dial-segment,
+  .mobile-timer-stage .dial-flip,
+  .mobile-timer-stage .dial-pixel,
+  .mobile-timer-stage .dial-draft {
+    font-size: clamp(42px, 7vw, 60px);
+  }
+
+  .mobile-timer-stage .dial-counter {
+    font-size: clamp(36px, 6vw, 52px);
+  }
+
+  .mobile-timer-stage .analog-face {
+    width: 92px;
+  }
+
+  .mobile-timer-stage .dial-vernier {
+    gap: 5px;
+  }
+
+  .mobile-timer-stage .vernier-readout {
+    font-size: 48px;
+  }
+
+  .mobile-timer-stage .vernier-window {
+    height: 25px;
+  }
+
+  .mobile-timer-stage .pixel-core-caption,
+  .mobile-timer-stage .pixel-spec {
+    display: none;
+  }
+}

@@ -12,8 +12,14 @@ describe('mobile appearance', () => {
         theme: 'dark',
         focusColor: 'violet',
         fontProfile: 'smiley',
+        timerStyle: 'segment',
       }),
-    ).toEqual({ theme: 'dark', focusColor: 'violet', fontProfile: 'smiley' });
+    ).toEqual({
+      theme: 'dark',
+      focusColor: 'violet',
+      fontProfile: 'smiley',
+      timerStyle: 'segment',
+    });
     expect(
       normalizeMobileAppearance({ theme: 'invalid' as never, focusColor: 'teal' as never }),
     ).toEqual({ ...DEFAULT_MOBILE_APPEARANCE, focusColor: 'cobalt' });
@@ -39,6 +45,7 @@ describe('mobile appearance', () => {
       theme: 'system',
       focusColor: 'emerald',
       fontProfile: 'noto',
+      timerStyle: 'standard',
     };
     const none = watchMobileSystemTheme(apply, { ...theme, theme: 'light' });
     expect(query.addEventListener).not.toHaveBeenCalled();
@@ -65,6 +72,7 @@ describe('mobile appearance', () => {
       theme: 'system',
       focusColor: 'emerald',
       fontProfile: 'noto',
+      timerStyle: 'standard',
     };
     const dispose = watchMobileSystemTheme(vi.fn(), theme);
     expect(() => dispose()).not.toThrow();
@@ -77,6 +85,7 @@ describe('mobile appearance', () => {
       theme: 'dark',
       focusColor: 'amber',
       fontProfile: 'wenkai',
+      timerStyle: 'analog',
     };
     const classes = new Set<string>();
     const root = {
@@ -106,7 +115,9 @@ describe('mobile appearance', () => {
     expect(classes.has('dark')).toBe(true);
     expect(classes.has('focus-color-amber')).toBe(true);
     expect(classes.has('font-profile-wenkai')).toBe(true);
+    expect(classes.has('timer-style-analog')).toBe(true);
     expect(root.dataset.mobileTheme).toBe('dark');
+    expect(root.dataset.mobileTimerStyle).toBe('analog');
     vi.unstubAllGlobals();
   });
 });

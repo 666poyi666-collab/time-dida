@@ -94,10 +94,11 @@ app
       console.log(`[settings] ${label}: ${titles.join(' / ')}`);
     }
 
-    // 滴答清单的连接方式与同步去向必须同组，这正是重构要解决的拆分。
+    // 选择 FocusLink 本地任务时，滴答清单区块按产品边界隐藏；若用户显式选择外部来源，
+    // 连接方式与同步去向必须同组，这正是重构要解决的拆分。
     const connectionGroup = seenTitles.get('滴答清单 · 连接方式');
     const destinationGroup = seenTitles.get('滴答清单 · 同步去向');
-    if (!connectionGroup || connectionGroup !== destinationGroup) {
+    if ((connectionGroup || destinationGroup) && connectionGroup !== destinationGroup) {
       throw new Error(
         `Dida connection/destination split across groups: ${connectionGroup} vs ${destinationGroup}`,
       );
@@ -217,7 +218,12 @@ async function typeSearch(win: BrowserWindow, value: string): Promise<void> {
       window.HTMLInputElement.prototype, 'value',
     ).set;
     setter.call(input, ${JSON.stringify(value)});
-    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      inputType: 'insertText',
+      data: ${JSON.stringify(value)},
+    }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
     return true;
   })()`);
 }

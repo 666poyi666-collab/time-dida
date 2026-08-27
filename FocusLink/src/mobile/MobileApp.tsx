@@ -100,10 +100,8 @@ import {
   type MobileAppearance,
 } from './appearance';
 import {
-  approveDeviceSyncPairingCode,
   claimDeviceSyncPairingRequest,
   classifyMobileLiveRequestError,
-  createDeviceSyncPairingCode,
   createDeviceSyncPairingRequest,
   exchangeDeviceSyncPairingCode,
   listDeviceSyncDevices,
@@ -155,7 +153,11 @@ import {
   startVisibleTaskSnapshotRefresh,
 } from './taskSnapshotRefresh';
 import { isTabletFocusViewport } from './viewportPolicy';
-import { moveTaskSnapshotSubtree, updateTaskSnapshotProject } from './taskSnapshotMutations';
+import {
+  createEmptyTaskSnapshot,
+  moveTaskSnapshotSubtree,
+  updateTaskSnapshotProject,
+} from './taskSnapshotMutations';
 
 type PullState = 'idle' | 'pulling' | 'confirmed' | 'partial' | 'error';
 
@@ -470,8 +472,8 @@ export function MobileApp() {
       setConnectionEpoch((value) => value + 1);
       setCommandNotice(
         persistenceIssues.length > 0
-          ? '账号已登录，但本机资料持久化失败；当前会话继续同步并将在下次启动重试'
-          : '账号已登录，正在同步这台设备',
+          ? '设备已配对，但本机凭据持久化失败；当前会话继续同步并将在下次启动重试'
+          : '设备已配对，正在开始同步',
       );
       void refreshManagedDevices(next);
       return true;
@@ -528,26 +530,6 @@ export function MobileApp() {
       const code = normalizePairingCodeInput(inputValue);
       if (!/^\d{8}$/.test(code)) {
         setCommandNotice('请输入 8 位数字配对码');
-        return;
-      }
-      const connection = preferencesRef.current;
-      if (connection.token) {
-        setAccountBusy(true);
-        setCommandNotice('正在批准另一台设备…');
-        try {
-          const approved = await approveDeviceSyncPairingCode({
-            endpoint: connection.endpoint,
-            token: connection.token,
-            code,
-          });
-          if (preferencesRef.current.token !== connection.token) return;
-          setPairingCode('');
-          setCommandNotice(`已批准“${approved.displayName}”，对方会自动加入同步`);
-        } catch (error) {
-          setCommandNotice(errorMessage(error));
-        } finally {
-          setAccountBusy(false);
-        }
         return;
       }
       const operation = accountLifecycle.issue();
@@ -622,26 +604,19 @@ export function MobileApp() {
   }, []);
 
   const createPairingCode = useCallback(async () => {
-    const token = preferencesRef.current.token;
     const endpoint = preferencesRef.current.endpoint;
     setAccountBusy(true);
     setCommandNotice('正在生成本机配对码…');
     try {
-      const offer = token
-        ? await createDeviceSyncPairingCode({ endpoint, token })
-        : await createDeviceSyncPairingRequest({
-            endpoint: OFFICIAL_FOCUSLINK_ENDPOINT,
-            device: currentMobilePairingDevice(),
-          });
-      if (preferencesRef.current.token !== token || preferencesRef.current.endpoint !== endpoint) {
+      const offer = await createDeviceSyncPairingRequest({
+        endpoint: OFFICIAL_FOCUSLINK_ENDPOINT,
+        device: currentMobilePairingDevice(),
+      });
+      if (preferencesRef.current.endpoint !== endpoint) {
         return;
       }
       setPairingOffer(offer);
-      setCommandNotice(
-        token
-          ? '本机配对码已生成，可在新设备中输入'
-          : '本机配对码已生成，请在一台已授权设备中输入；本机会自动加入',
-      );
+      setCommandNotice('本机配对码已生成，请在另一台设备输入；两台会自动加入同步');
     } catch (error) {
       setCommandNotice(errorMessage(error));
     } finally {
@@ -661,7 +636,7 @@ export function MobileApp() {
 
   useEffect(() => {
     const requestToken = pairingOffer?.requestToken;
-    if (!requestToken || preferences.token || pairingOffer.expiresAt <= Date.now()) return;
+    if (!requestToken || pairingOffer.expiresAt <= Date.now()) return;
     const operation = accountLifecycle.issue();
     const controller = new AbortController();
     let disposed = false;
@@ -694,7 +669,7 @@ export function MobileApp() {
         if (applied) {
           setPairingOffer(null);
           setPairingCode('');
-          setCommandNotice('配对已批准，正在同步任务、实时状态和账本');
+          setCommandNotice('两台设备已配对，正在同步任务、实时状态和账本');
         }
       } catch (error) {
         if (disposed || !accountLifecycle.isCurrent(operation) || isAbortError(error)) return;
@@ -801,7 +776,7 @@ export function MobileApp() {
   );
 
   const refreshTasks = useCallback(
-    async (connection: MobileConnectionPreferences) => {
+    async (connection: MobileConnectionPreferences): Promise<TaskSnapshotResponse | null> => {
       const request = taskRequests.issue(mobileAccountConnectionKey(connection));
       try {
         const response = await fetchTaskSnapshot({
@@ -809,12 +784,12 @@ export function MobileApp() {
           token: connection.token,
           signal: request.signal,
         });
-        if (!request.isCurrent()) return;
+        if (!request.isCurrent()) return null;
         const reconciliation = reconcileTaskSnapshot(taskSnapshotRef.current, response);
-        if (reconciliation.freshness === 'stale') return;
+        if (reconciliation.freshness === 'stale') return taskSnapshotRef.current;
         if (reconciliation.freshness === 'inconsistent') {
           setCommandNotice('任务清单 revision 内容不一致，已保留本机较可信快照并继续重试');
-          return;
+          return null;
         }
         taskSnapshotRef.current = reconciliation.snapshot;
         setTaskSnapshot(reconciliation.snapshot);
@@ -824,11 +799,13 @@ export function MobileApp() {
             await writeCachedTaskSnapshot(reconciliation.snapshot, accountId);
           }
         });
+        return reconciliation.snapshot;
       } catch (error) {
-        if (!request.isCurrent() || isAbortError(error)) return;
+        if (!request.isCurrent() || isAbortError(error)) return null;
         setCommandNotice(
           (current) => current ?? `任务清单刷新失败：${errorMessage(error)}；继续使用本机缓存`,
         );
+        return null;
       } finally {
         request.finish();
       }
@@ -836,26 +813,34 @@ export function MobileApp() {
     [taskRequests],
   );
 
+  const requireLatestEditableTaskSnapshot = useCallback(async () => {
+    if (!preferences.endpoint || !preferences.token) {
+      throw new Error('请先完成设备配对');
+    }
+    const confirmed = await refreshTasks(preferences);
+    if (!confirmed) throw new Error('未能确认最新任务清单，请检查网络后重试');
+    if (confirmed.snapshot) return confirmed.snapshot;
+    if (confirmed.revision === 0) return createEmptyTaskSnapshot(Date.now());
+    throw new Error('任务清单状态异常，请刷新后重试');
+  }, [preferences, refreshTasks]);
+
   const createCloudTask = useCallback(
     async (title: string, projectId: string | null) => {
-      const current = taskSnapshotRef.current;
-      if (!current?.snapshot || !preferences.endpoint || !preferences.token) {
-        throw new Error('请先登录 FocusLink 账号并完成任务同步');
-      }
       const now = Date.now();
+      const snapshot = await requireLatestEditableTaskSnapshot();
       const response = await publishTaskSnapshot({
         endpoint: preferences.endpoint,
         token: preferences.token,
         deviceId,
         snapshot: {
           publishedAt: now,
-          projects: current.snapshot.projects,
+          projects: snapshot.projects,
           tasks: [
-            ...current.snapshot.tasks,
+            ...snapshot.tasks,
             {
               id: crypto.randomUUID(),
               source: 'local',
-              projectId,
+              projectId: projectId || FOCUSLINK_INBOX_PROJECT_ID,
               title,
               status: 'incomplete',
               priority: null,
@@ -878,16 +863,14 @@ export function MobileApp() {
       }
       setCommandNotice('任务已保存到 FocusLink 云端');
     },
-    [deviceId, preferences],
+    [deviceId, preferences, requireLatestEditableTaskSnapshot],
   );
 
   const createCloudProject = useCallback(
     async (name: string) => {
-      const current = taskSnapshotRef.current;
-      if (!current?.snapshot || !preferences.endpoint || !preferences.token) {
-        throw new Error('请先登录 FocusLink 账号并完成任务同步');
-      }
-      const projectCount = current.snapshot.projects.filter(
+      const now = Date.now();
+      const snapshot = await requireLatestEditableTaskSnapshot();
+      const projectCount = snapshot.projects.filter(
         (project) => !isFocusLinkInboxProject(project.id),
       ).length;
       const response = await publishTaskSnapshot({
@@ -895,10 +878,10 @@ export function MobileApp() {
         token: preferences.token,
         deviceId,
         snapshot: {
-          ...current.snapshot,
-          publishedAt: Date.now(),
+          ...snapshot,
+          publishedAt: now,
           projects: [
-            ...current.snapshot.projects,
+            ...snapshot.projects,
             {
               id: crypto.randomUUID(),
               source: 'local',
@@ -918,21 +901,20 @@ export function MobileApp() {
       }
       setCommandNotice('清单已保存到 FocusLink 云端');
     },
-    [deviceId, preferences],
+    [deviceId, preferences, requireLatestEditableTaskSnapshot],
   );
 
   const updateCloudProject = useCallback(
     async (project: SyncedTaskProject, input: { name?: string; color?: string | null }) => {
-      const current = taskSnapshotRef.current;
-      if (!current?.snapshot || !preferences.endpoint || !preferences.token) {
-        throw new Error('请先登录 FocusLink 账号并完成任务同步');
-      }
+      const snapshot = await requireLatestEditableTaskSnapshot();
+      const freshProject = snapshot.projects.find((candidate) => candidate.id === project.id);
+      if (!freshProject) throw new Error('FocusLink 清单不存在，请刷新后重试');
       const now = Date.now();
       const response = await publishTaskSnapshot({
         endpoint: preferences.endpoint,
         token: preferences.token,
         deviceId,
-        snapshot: updateTaskSnapshotProject(current.snapshot, project, input, now),
+        snapshot: updateTaskSnapshotProject(snapshot, freshProject, input, now),
       });
       taskSnapshotRef.current = response;
       setTaskSnapshot(response);
@@ -944,22 +926,21 @@ export function MobileApp() {
       }
       setCommandNotice('清单名称与颜色已同步');
     },
-    [deviceId, preferences],
+    [deviceId, preferences, requireLatestEditableTaskSnapshot],
   );
 
   const moveCloudTask = useCallback(
     async (task: SyncedTask, targetProjectId: string) => {
-      const current = taskSnapshotRef.current;
-      if (!current?.snapshot || !preferences.endpoint || !preferences.token) {
-        throw new Error('请先登录 FocusLink 账号并完成任务同步');
-      }
+      const snapshot = await requireLatestEditableTaskSnapshot();
+      const freshTask = snapshot.tasks.find((candidate) => candidate.id === task.id);
+      if (!freshTask) throw new Error('FocusLink 任务不存在，请刷新后重试');
       const projectId = targetProjectId || FOCUSLINK_INBOX_PROJECT_ID;
       const now = Date.now();
       const response = await publishTaskSnapshot({
         endpoint: preferences.endpoint,
         token: preferences.token,
         deviceId,
-        snapshot: moveTaskSnapshotSubtree(current.snapshot, task.id, projectId, now),
+        snapshot: moveTaskSnapshotSubtree(snapshot, freshTask.id, projectId, now),
       });
       taskSnapshotRef.current = response;
       setTaskSnapshot(response);
@@ -974,29 +955,28 @@ export function MobileApp() {
       )?.name;
       setCommandNotice(`任务已移到「${destination ?? '收件箱'}」`);
     },
-    [deviceId, preferences],
+    [deviceId, preferences, requireLatestEditableTaskSnapshot],
   );
 
   const toggleCloudTaskComplete = useCallback(
     async (task: SyncedTask) => {
-      const current = taskSnapshotRef.current;
-      if (!current?.snapshot || !preferences.endpoint || !preferences.token) {
-        throw new Error('请先登录 FocusLink 账号并完成任务同步');
-      }
+      const snapshot = await requireLatestEditableTaskSnapshot();
+      const freshTask = snapshot.tasks.find((candidate) => candidate.id === task.id);
+      if (!freshTask) throw new Error('FocusLink 任务不存在，请刷新后重试');
       const now = Date.now();
       const response = await publishTaskSnapshot({
         endpoint: preferences.endpoint,
         token: preferences.token,
         deviceId,
         snapshot: {
-          ...current.snapshot,
+          ...snapshot,
           publishedAt: now,
-          tasks: current.snapshot.tasks.map((item) =>
+          tasks: snapshot.tasks.map((item) =>
             item.id === task.id
               ? {
                   ...item,
-                  isCompleted: !item.isCompleted,
-                  status: item.isCompleted ? 'incomplete' : 'completed',
+                  isCompleted: !freshTask.isCompleted,
+                  status: freshTask.isCompleted ? 'incomplete' : 'completed',
                   updatedAt: now,
                 }
               : item,
@@ -1011,9 +991,9 @@ export function MobileApp() {
           writeCachedTaskSnapshot(response, accountId),
         );
       }
-      setCommandNotice(task.isCompleted ? '任务已恢复' : '任务已完成');
+      setCommandNotice(freshTask.isCompleted ? '任务已恢复' : '任务已完成');
     },
-    [deviceId, preferences],
+    [deviceId, preferences, requireLatestEditableTaskSnapshot],
   );
 
   const pullLedger = useCallback(
@@ -1334,10 +1314,22 @@ export function MobileApp() {
 
   useEffect(() => {
     if (!cacheReady || !online || !preferences.endpoint || !preferences.token) return;
-    return startVisibleTaskSnapshotRefresh(
+    const refreshVisibleTasks = () => {
+      if (document.visibilityState === 'visible') void refreshTasks(preferencesRef.current);
+    };
+    const stopInterval = startVisibleTaskSnapshotRefresh(
       () => void refreshTasks(preferencesRef.current),
       () => document.visibilityState === 'visible',
     );
+    document.addEventListener('visibilitychange', refreshVisibleTasks);
+    window.addEventListener('focus', refreshVisibleTasks);
+    window.addEventListener('pageshow', refreshVisibleTasks);
+    return () => {
+      stopInterval();
+      document.removeEventListener('visibilitychange', refreshVisibleTasks);
+      window.removeEventListener('focus', refreshVisibleTasks);
+      window.removeEventListener('pageshow', refreshVisibleTasks);
+    };
   }, [cacheReady, online, preferences.endpoint, preferences.token, refreshTasks]);
 
   useEffect(() => {
@@ -1613,11 +1605,6 @@ export function MobileApp() {
       const connection = preferencesRef.current;
       const sourceConnectionKey = mobileAccountConnectionKey(connection);
       const sourceNativeLease = nativeConnectionLeaseRef.current;
-      const title = (titleOverride ?? titleDraft).trim();
-      if (action === 'start' && !title) {
-        setCommandNotice('请先填写本次专注标题');
-        return;
-      }
       if (action !== 'start' && !snapshot.sessionId && !offlineRuntimeRef.current) {
         setCommandNotice('当前没有可控制的活动会话');
         return;
@@ -1625,6 +1612,8 @@ export function MobileApp() {
 
       const selectedTask =
         taskOverride ?? taskSnapshot?.snapshot?.tasks.find((task) => task.id === selectedTaskId);
+      const title =
+        (titleOverride ?? titleDraft).trim() || selectedTask?.title.trim() || '自由专注';
       const canStartOffline =
         action === 'start' && !offlineRuntimeRef.current && liveConnectionRef.current !== 'live';
       if (offlineRuntimeRef.current || canStartOffline) {
@@ -1765,7 +1754,7 @@ export function MobileApp() {
   const handleRetry = () => {
     if (!preferences.endpoint || !preferences.token) {
       setConfigOpen(true);
-      setCommandNotice('登录后即可自动同步');
+      setCommandNotice('完成设备配对后即可自动同步');
       return;
     }
     setConnectionEpoch((value) => value + 1);
@@ -1811,14 +1800,14 @@ export function MobileApp() {
 
   const handleForgetToken = async () => {
     if (offlineRuntimeRef.current || pendingUploadCount > 0) {
-      setCommandNotice('还有本机离线会话未补传，暂不能退出登录');
+      setCommandNotice('还有本机离线会话未补传，暂不能退出此设备同步');
       return;
     }
     const operation = accountLifecycle.invalidate();
     invalidateOwnerAccountBootstrap();
     setAccountLoginPolling(false);
     setAccountBusy(true);
-    setCommandNotice('正在从 Android 安全存储退出登录…');
+    setCommandNotice('正在从 Android 安全存储移除设备同步凭据…');
     ledgerGeneration.current += 1;
     liveGeneration.current += 1;
     taskRequests.invalidate();
@@ -1863,13 +1852,13 @@ export function MobileApp() {
       setConfigOpen(true);
       setCommandNotice(
         browserPersistenceFailed || accountStateIssues.length > 0
-          ? '已从 Android 安全存储退出；本机缓存清理未完全落盘，下次启动会继续隔离旧账号'
-          : '已退出登录；这台设备的历史缓存仍保留',
+          ? '设备同步凭据已移除；本机缓存清理未完全落盘，下次启动会继续隔离旧同步空间'
+          : '这台设备已退出同步；本机历史缓存仍保留',
       );
     } catch (error) {
       if (accountLifecycle.isCurrent(operation)) {
         setConnectionEpoch((value) => value + 1);
-        setCommandNotice(`退出登录失败，账号仍保持登录：${errorMessage(error)}`);
+        setCommandNotice(`退出设备同步失败，原同步连接仍保留：${errorMessage(error)}`);
       }
     } finally {
       if (accountLifecycle.isCurrent(operation)) setAccountBusy(false);
@@ -1992,6 +1981,7 @@ export function MobileApp() {
                 localOfflineMode={offlineRuntime !== null}
                 authorityMode={authorityMode}
                 allowOfflineStart={offlineRuntime === null && liveConnection !== 'live'}
+                timerStyle={appearance.timerStyle}
               />
             )}
             {activeView === 'tasks' && (
@@ -2060,7 +2050,6 @@ export function MobileApp() {
             pairingOffer={pairingOffer}
             devices={managedDevices}
             onClose={() => setConfigOpen(false)}
-            onLogin={() => void bootstrapOwnerAccount()}
             onPairingCodeChange={(value) => setPairingCode(normalizePairingCodeInput(value))}
             onPair={(value) => void redeemPairingCode(value)}
             onCreatePairingCode={() => void createPairingCode()}
@@ -2200,7 +2189,7 @@ function connectionTitle(state: LiveConnectionState): string {
   if (state === 'connecting') return '正在连接多端状态';
   if (state === 'offline') return '当前离线 · 本机专注可用';
   if (state === 'error') return '实时连接中断';
-  return '尚未登录 FocusLink';
+  return '尚未配对设备';
 }
 
 function isAbortError(error: unknown): boolean {
@@ -2213,7 +2202,7 @@ function errorMessage(error: unknown): string {
 }
 
 function syncV2ErrorMessage(code: SyncV2ClientErrorCode): string {
-  if (code === 'authentication_failed') return '登录凭据已失效，请重新登录';
+  if (code === 'authentication_failed') return '设备凭据已失效，请重新配对';
   if (code === 'authorization_failed') return '当前设备没有账本同步权限';
   if (code === 'network_error') return '暂时无法连接云端';
   if (code === 'timeout') return '云端连接超时';

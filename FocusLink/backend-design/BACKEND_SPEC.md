@@ -29,7 +29,7 @@
 - Bootstrap 固定为 `uninitialized → inventory-uploaded → manifest-received → base-established → v2-active`。generation 或 epoch 改变时保留 Outbox 并重新建立 base。
 - 设备 90 天未上线标 stale；tombstone 至少保留 180 天并等待全部活跃设备水位；graveyard 继续阻止旧副本复活。
 - 设备令牌使用 `fl2_` 路由格式；账号 DO 只保存 pepper HMAC、scope、过期和撤销状态，token 正文不落日志。
-- FocusLink 账号当前只接受管理员派发的唯一 subject `poyi-owner`。首台设备/账号恢复由 canonical identity gateway 验证 owner 后，使用独立 `fia_*` authority 登记；后续设备优先由任一已有合法 `fl2 + sync:write` 的可信设备生成 8 位短码。Account DO 按 `(accountId, installationId)` 的 HMAC 派生稳定 deviceId，并为 Windows、手机、平板、手表分别签发独立 `fl2`。客户端只能获得固定 sync/live read/write scope，不能自报 owner、devices:manage 或 backups:manage。
+- FocusLink 是单人本地产品，普通设备配对不经过 owner 登录。每台设备可匿名申请 8 位短码与本机 request token；任意另一台设备交换短码后获得独立 `fl2`，原设备随后用 request token 自动领取自己的 `fl2`，两台落入同一个固定同步空间。Account DO 按 `(accountId, installationId)` 的 HMAC 派生稳定 deviceId，并为 Windows、手机和平板分别签发独立凭据。Poyi owner/fia 路径只保留为后台维护兼容，不出现在正常客户端入口。
 - 新设备入口固定为 `POST /account/v1/device/bootstrap` 的两阶段合同。`start` 携带严格设备 registration；gateway 返回 `flowId`、只供该流程使用的高熵 `flb_*` poll token 和 canonical `/owner/*` HTTPS 登录 URL。客户端只打开一次系统浏览器，随后用 `poll` 的 `flowId + pollToken` 领取结果；poll token 必须短期、单次消费，日志和诊断只能输出脱敏状态。未完成 owner 登录时直接返回 `authenticated`、轮询中更换 flow/credential、非 canonical 登录 origin 或回退到 installationId 领取凭据均为安全失败。
 - endpoint、authority secret、owner subject 和配对兼容层都属于基础设施细节，不进入 renderer 表单。旧合法 `fl2` 原位迁移为已登录；退出只删除本机凭据，不删除账本。移动端必须把稳定 installationId 与 authority 分配的 deviceId 分开保存，重新登录不得制造幽灵设备。
 - 推送只传 needSync hint，HTTPS/cursor 始终是数据真相。当前厂商凭据缺失，状态为 `credential-missing`。
@@ -279,7 +279,7 @@ SHA-256 版本，避免两个 desktop store 实例互相覆盖。加密 material
 - 服务端对 cursor 之后同一实体的多次历史 revision 先折叠为最新状态，再按 change sequence、条数与响应字节预算分页；全新设备不得先导入旧 revision 再把同一批历史误判为本地冲突。
 - 当前桌面端不执行远端删除，也不自动覆盖已有会话；删除/编辑冲突需要后续显式清理与合并流程。
 - Electron 访问令牌只经 `safeStorage` 加密落盘，不进入 `AppSettings`、renderer 日志或多端 payload。
-- 回环测试后端可生成 2 分钟一次性配对 offer；生产保留可信设备 `/pair/offers` → 新设备 `/pair/exchange` 兼容路径，并新增新设备 `/pair/requests` → 可信设备 `/pair/approve` → 新设备 `/pair/claim` 的反向批准路径。两条路径都使用 8 位数字码和 10 分钟 TTL。反向路径的短码只能批准，不能领取凭据；高强度 request token 只留在申请设备，DO 对短码/token 分别保存域分离 HMAC。claim 未批准返回 202，批准后按 installation 稳定绑定独立 `fl2`，成功响应丢失可在请求 TTL 内幂等领取。public edge 用 client + 凭据摘要双键限流，日志不记录请求体、code、request token、nonce 或设备令牌。Android 领取后的令牌进入 Keystore，Electron 进入 safeStorage。
+- 回环测试后端可生成 2 分钟一次性配对 offer；生产普通流程为设备 A `/pair/requests` 生成 8 位码与本机 request token，设备 B `/pair/exchange` 输入该码并获得自己的 `fl2`，设备 A 的 `/pair/claim` 随后自动获得自己的 `fl2`。码有效 10 分钟；同一 installation 重复 exchange/claim 幂等返回同一凭据，其他 installation 重用已占用码才返回 410。DO 对短码/token 分别保存域分离 HMAC，public edge 不做配对次数限流，日志不记录请求体、code、request token、nonce 或设备令牌。旧 `/pair/offers` 与 `/pair/approve` 只作已安装客户端兼容。Android 凭据进入 Keystore，Electron 进入 safeStorage。
 - Electron 只有在首次 `GET /sync/v2/live` 成功并通过协议校验后才切换到实时事实源；握手失败时保持本机 idle/计时可用，并以 `2s → 4s → 8s … → 60s` 有界退避重连。已确认的 running/paused 实时会话断线时不得切回本机空闲状态或伪造云端确认。
 - 生成 completed bundle 时，旧版本遗留的暂停孤立引用只在传输副本中归一为 `segmentId: null`，原始 SQLite 行不被静默删除；诊断必须记录会话 ID 和孤立数量。
 
@@ -303,10 +303,10 @@ canonical adapter 与私有 authority 的路由表如下。`/v1/*`、`/v2/*` 和
 | `/sync/v2/live`                  | GET        | device token · `live:read`                                                                 | `/v1/live`（仅 DO 内部）         |
 | `/sync/v2/live/wait`             | GET        | device token · `live:read`                                                                 | `/v1/live/wait`（仅 DO 内部）    |
 | `/sync/v2/live/command`          | POST       | device token · `live:write`                                                                | `/v1/live/command`（仅 DO 内部） |
-| `/sync/v1/pair/offers`           | POST       | pair-service authority，或已有 `fl2` 由 DO 最终校验 `sync:write`；设备路径强限流           | `/v2/pair/offers`                |
-| `/sync/v1/pair/exchange`         | POST       | 8 位短码 + 完整 installation metadata，或兼容一次性高熵 nonce；不得要求已有 bearer         | `/v2/pair/exchange`              |
+| `/sync/v1/pair/offers`           | POST       | 旧客户端兼容：pair-service authority 或已有 `fl2 + sync:write`                            | `/v2/pair/offers`                |
+| `/sync/v1/pair/exchange`         | POST       | 8 位短码 + 完整 installation metadata；无 bearer、无次数限流、同 installation 幂等         | `/v2/pair/exchange`              |
 | `/sync/v1/pair/requests`         | POST       | 无 bearer；完整 installation metadata；返回短码与仅本机保存的高强度 request token          | `/v2/pair/requests`              |
-| `/sync/v1/pair/approve`          | POST       | 已授权 device token · `sync:write`；只提交 8 位短码                                       | `/v2/pair/approve`               |
+| `/sync/v1/pair/approve`          | POST       | 旧客户端兼容：已有 device token · `sync:write`                                            | `/v2/pair/approve`               |
 | `/sync/v1/pair/claim`            | POST       | 无 bearer；request token + 与申请完全一致的 installation metadata                          | `/v2/pair/claim`                 |
 | `/sync/v1/devices/register`      | POST       | 仅 identity gateway 的独立 `fia_*` + 精确 `poyi-owner`；公网客户端不得直连                 | `/v2/devices/register`           |
 | `/internal/mcp/v1/focus/summary` | GET        | 仅 MCP service binding credential；公网 OAuth 由 `foxlink-cloud-mcp` 校验 `focuslink:read` | 同名内部投影                     |
@@ -355,7 +355,7 @@ Cloudflare 外部协议 gate 是受限测试操作，不是部署入口：extern
 - 项目 V1 未单独携带 `updatedAt`；合并时以快照 `publishedAt` 与 SQLite `task_projects.updated_at` 比较，旧快照不得回退刚在本机修改的名称/颜色。
 - 快照只包含选择专注所需的任务 ID、来源、标题、项目、优先级、到期日、标签、父子关系和完成状态；不包含任务正文、原始 JSON、CLI/OAuth 凭据或第三方写入能力。Checklist 子项在传输时展平并保留 `parentId`。
 - 云端按账号保留最后一份完整快照，内容相同的同设备重放不增加 revision。Web/PWA/Android 使用 `GET /sync/v2/tasks` 读取并写入 IndexedDB；PC 关闭或任务服务暂时不可达时继续使用最后一次缓存。
-- 任务快照 GET/POST 必须 `Cache-Control: no-store`；`publishedAt` 只是客户端排序提示，Account DO 与 loopback 必须只接受 `publishedAt <= serverTime + 5 分钟`，超限统一返回 HTTP `422` / `task_snapshot_timestamp_too_far_ahead`。已保存且超出该窗口的旧快照是 legacy far-future 状态，下一份合法快照可替换它；正常 register 保持相同 source/payload 幂等、较旧 timestamp 为 `409 stale_task_snapshot`、同 timestamp 异文为 `409 task_snapshot_conflict`。移动端前台每 15 秒自动拉取并在恢复可见、登录或连接 epoch 变化时立即拉取。revision 只能前进：低 revision 响应不得覆盖缓存；同 revision 若 source/payload 不同视为 authority 不一致并保留当前快照。桌面端仅在当前 connection scope/generation 内收到上述 422 时，至多一次 GET 可信 `serverTime`、重戳原 payload 后重试一次；成功回读同一 source device/payload 或 stale 才可清除 durable pending，conflict、第二次 422、GET/解析/重试失败或连接变化均必须保留 pending，不能递归重试。
+- 任务快照 GET/POST 必须 `Cache-Control: no-store`；`publishedAt` 只是客户端排序提示，Account DO 与 loopback 必须只接受 `publishedAt <= serverTime + 5 分钟`，超限统一返回 HTTP `422` / `task_snapshot_timestamp_too_far_ahead`。已保存且超出该窗口的旧快照是 legacy far-future 状态，下一份合法快照可替换它；正常 register 保持相同 source/payload 幂等、较旧 timestamp 为 `409 stale_task_snapshot`、同 timestamp 异文为 `409 task_snapshot_conflict`。移动端前台每 5 秒自动拉取，并在恢复可见、窗口聚焦、pageshow、登录或连接 epoch 变化时立即拉取。revision 只能前进：低 revision 响应不得覆盖缓存；同 revision 若 source/payload 不同视为 authority 不一致并保留当前快照。移动端首次创建前必须确认最新 GET；`revision=0/snapshot=null` 才能建立稳定 `local-inbox` 首写，禁止空快照覆盖已有 register。桌面端强制 refresh 在当前 connection scope/generation 内等待 pending snapshot 发布尝试；成功回读同一 source device/payload 或 stale 才可清除 durable pending，conflict、第二次 422、GET/解析/重试失败或连接变化均必须保留 pending，不能递归重试。
 - 移动端开始实时会话时可以携带快照中的任务上下文，也可以不关联任务自由开始。任务上下文最终进入 completed bundle，PC 拉回后仍由桌面端执行 dida/TomaToDo 副作用。
 - 移动端不直连滴答，只读写同一 FocusLink 账号任务快照；任务创建、完成、清单改色/重命名与任务移动均是完整快照 mutation，成功回读后才更新 IndexedDB 缓存。
 

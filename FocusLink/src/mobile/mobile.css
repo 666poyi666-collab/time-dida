@@ -14,6 +14,7 @@
   --border: rgb(var(--app-border));
   --border-strong: rgb(var(--app-border-strong));
   --focus: rgb(var(--app-accent));
+  --focus-strong: rgb(var(--app-accent-active));
   --focus-soft: rgb(var(--app-accent-soft));
   --pause: rgb(var(--app-pause));
   --pause-soft: rgb(var(--app-pause-soft));
@@ -238,9 +239,76 @@ code {
   font-size: 9px;
 }
 
+.appearance-font-preview {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-family: var(--font-ui);
+}
+
+.appearance-font-preview span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.appearance-font-preview strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: clamp(17px, 4vw, 22px);
+  font-weight: 560;
+}
+
+.appearance-timer-group > p {
+  margin: -2px 0 2px;
+  color: var(--subtle);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.appearance-timer-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.appearance-timer-choice {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  padding: 9px 7px 7px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  text-align: left;
+}
+
+.appearance-timer-choice > span {
+  font-size: 10px;
+  font-weight: 680;
+}
+
+.appearance-timer-choice.is-selected {
+  border-color: var(--focus);
+  background: var(--focus-soft);
+  color: var(--text);
+  box-shadow: 0 0 0 2px rgb(var(--app-accent) / 0.14);
+}
+
 @media (max-width: 420px) {
   .appearance-color-choices {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .appearance-timer-choices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

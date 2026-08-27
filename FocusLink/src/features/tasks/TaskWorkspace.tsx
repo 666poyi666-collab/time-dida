@@ -1245,7 +1245,15 @@ function ProjectEditor({
               type="button"
               className={candidate === color ? 'selected' : ''}
               style={{ '--project-color': candidate } as CSSProperties}
-              onClick={() => setColor(candidate)}
+              onClick={() => {
+                if (candidate === color || saving) return;
+                setColor(candidate);
+                setSaving(true);
+                void onSave({ name: name.trim() || project.name, color: candidate }).finally(() =>
+                  setSaving(false),
+                );
+              }}
+              disabled={saving}
               aria-label={`选择颜色 ${candidate}`}
               aria-pressed={candidate === color}
             />

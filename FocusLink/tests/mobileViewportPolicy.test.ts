@@ -100,6 +100,7 @@ function renderActiveConsole(width: number, height: number): string {
       localOfflineMode: false,
       authorityMode: 'cloud-live',
       allowOfflineStart: false,
+      timerStyle: 'standard',
     }),
   );
 }

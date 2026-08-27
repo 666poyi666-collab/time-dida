@@ -285,11 +285,15 @@ export function registerIpc(
     return task;
   });
   ipcMain.handle('tasks:complete', async (_e, task: Task) => {
-    return setTaskCompleted(task, true);
+    const completed = await setTaskCompleted(task, true);
+    await refreshTaskWorkspace({ force: true });
+    return completed;
   });
-  ipcMain.handle('tasks:set-completed', (_e, task: Task, completed: boolean) =>
-    setTaskCompleted(task, completed),
-  );
+  ipcMain.handle('tasks:set-completed', async (_e, task: Task, completed: boolean) => {
+    const changed = await setTaskCompleted(task, completed);
+    await refreshTaskWorkspace({ force: true });
+    return changed;
+  });
   ipcMain.handle('tasks:refresh', (_e, options?: TaskWorkspaceRefreshOptions) =>
     refreshTaskWorkspace(options),
   );

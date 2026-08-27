@@ -65,11 +65,11 @@ npm run smoke:live-fallback -- <本次构建的 win-unpacked\FocusLink.exe>
 
 ## FL-SYNC-003：HTTP 401/403 或“令牌无效”
 
-服务可达但鉴权或设备绑定失败。普通用户只需确认各设备登录同一 FocusLink 管理员账号；产品 UI 不再要求服务地址、token 或配对码。已有设备升级后若失去登录态，先核对安全存储中的旧 `fl2` 是否仍可被识别，禁止清数据；新设备登录失败时运行 `npm run probe:account-bootstrap`，`not-deployed` 表示 canonical gateway 尚未上线，不能误报为账号密码错误。切换账号后客户端只清理旧连接的本机 cursor/实时缓存，不删除 SQLite 会话。
+服务可达但设备凭据失效。普通用户无需管理员账号：打开两台设备的“多端同步”，任一台输入另一台显示的 8 位本机码即可重新建立独立设备凭据。已有设备升级后若旧 `fl2` 仍有效则原位使用；失效时不要清 SQLite 或本机任务。切换同步凭据只清理旧连接的本机 cursor/实时缓存，不删除会话。
 
-若 probe 返回 `deployed-login-required`，当前页面要求的不是账号密码，而是 43 位一次性管理员授权码。历史事实：2026-08-24 生产页只有 `Poyi OAuth / Owner sign in / One-time code`，没有说明其与 8 位配对码的区别。当前事实：2026-08-26 `poyi-oauth-as` 版本 `a6137e93-0e49-463b-ad91-3b80bc2ead52` 已把该入口改为 `授权第一台设备 · FocusLink` 中文页，并明确已有授权设备时应关闭网页、回到 FocusLink 输入其 8 位本机配对码。身份服务仍没有普通注册、找回密码或自助取 43 位管理员码入口；完全没有授权设备且没有管理员授权码时，反复点击授权不会成功。这应报告为首台设备身份供应未闭环，不能归类成 transport outage，也不能通过清缓存、删除数据库、展示 token 或内置固定验证码规避。FocusLink 本机任务和计时仍应可用。
+历史事实：2026-08-24 的 legacy bootstrap 会打开 43 位管理员码网页；2026-08-26 页面曾完成中文化。当前产品事实：普通 FocusLink 配对已经退出该 bootstrap 流程，客户端只使用 8 位设备码。若旧日志仍含 `deployed-login-required`，将其记录为旧客户端/后台维护路径，不要引导用户输入管理员码，也不要清缓存或数据库。
 
-若手机任务页长期停在旧 revision：先确认 canonical `GET /sync/v2/tasks` 响应含 `Cache-Control: no-store`，再比较 PC 发布日志的 revision/source/payload 确认与手机回读。移动端可见态应在 15 秒内拉新；低 revision 不覆盖本机缓存，同 revision 异文会报告 authority 不一致。PC 的 pending task snapshot 只有服务端原样回读后才清除，因此 pending 未清说明发布链仍未确认，不要手工伪造 revision。
+若手机任务页长期停在旧 revision：先确认 canonical `GET /sync/v2/tasks` 响应含 `Cache-Control: no-store`，再比较 PC 发布日志的 revision/source/payload 确认与手机回读。v0.12.104 当前候选中，移动端持续可见时应在 5 秒内拉新，回到前台、窗口重新聚焦或 pageshow 会立即刷新；低 revision 不覆盖本机缓存，同 revision 异文会报告 authority 不一致。PC 的创建/改色/移动/完成/恢复在 renderer 返回前会等待本次 pending task snapshot 发布尝试，pending 只有服务端原样回读后才清除；pending 未清说明发布链仍未确认，不要手工伪造 revision。
 
 v0.12.71 起，Electron 从 `fl2` token 解析与 authority 一致的 `deviceId`，live command 和任务快照不再发送 legacy 本机 UUID。若空闲状态下仍收到 401/403，“开始专注”会退回本地计时并在 `liveFocus` 日志写入 `credential-rejected`；已经进行中的云端会话不会降级。任务快照日志应显示具体 HTTP 状态/消息，不应只出现 `[object Object]`。
 
@@ -180,13 +180,13 @@ v0.12.80 在小米 `D68P65855TPBHYWS` 与华为 `f8630574` 上反复失败。两
 
 专注云文件按一次性批次消费，后一次上传可能覆盖手机尚未取走的前一批。多条记录必须同批上传；真实设备验证时严格按“停止手机应用 → 上传一个完整批次 → 启动手机应用 → 读取下载数量”执行，避免后台提前消费后再误读为 0 条。
 
-## FL-SYNC-010：8 位设备配对码无效、过期或尝试过多
+## FL-SYNC-010：8 位设备配对码无效或过期
 
-可信设备生成的数字码只在 10 分钟内、单次有效。新设备输入时只移除空格/换行，不改写其他字符；非 8 位数字在本机直接拒绝。authority 对不存在、已使用和已过期统一返回 `pairing_expired`，这是防枚举设计，不能据此判断某个码是否曾经存在。
+数字码在 10 分钟内有效。输入时只移除空格/换行，不改写其他字符；非 8 位数字在本机直接拒绝。同一 installation 重复提交同一码会幂等返回同一凭据，不应显示“已使用”；不存在、过期或已被另一 installation 占用才返回 `pairing_expired`。
 
-- `pair_rate_limited`：同一客户端或同一凭据哈希尝试过多，遵守 `Retry-After`，不要连续重试或换设备枚举。
-- `pairing_binding_mismatch`：offer 已绑定另一 installation metadata；保留当前设备数据，回可信设备重新生成。
-- 401/403 / `scope_denied`：生成端不是有效的已登录写设备；先确认该设备自己的任务/实时同步凭据仍有效，不要把管理员 token、pair authority 或服务凭据复制进 UI。
+- 当前配对入口不做次数限流；若旧客户端仍显示 `pair_rate_limited`，刷新本机码并升级客户端，服务端不要求等待 `Retry-After`。
+- `pairing_binding_mismatch`：该码已被另一 installation 占用；保留当前设备数据，在任意设备刷新一个新码。
+- 401/403 / `scope_denied`：旧 offer/approve 兼容路径的凭据已失效；改用任意设备生成的新本机码直接交换，不复制管理员 token、pair authority 或服务凭据。
 - 成功兑换后仍没有任务/实时/账本：分别读取 task revision、live connection 和 completed-ledger 状态。兑换成功只证明设备凭据已登记；三条链路必须各自形成确认，不得用其中一条冒充全部同步完成。
 
 排查时严禁记录 8 位明码、Bearer token 或完整 installationId。服务端只允许 HMAC/哈希 key；若日志出现原始 code，视为安全回归并停止发布。

@@ -6,7 +6,6 @@ import {
   FOCUSLINK_CANONICAL_SYNC_ORIGIN,
   focusLinkSyncEndpointCandidates,
   FOCUSLINK_DEVICE_REGISTRATION_PROTOCOL_VERSION,
-  FOCUSLINK_PAIRED_DEVICE_SCOPES,
   isFocusLinkDeviceAccessToken,
   type FocusLinkDeviceRegistrationRequest,
 } from '@shared/sync/identityProtocol';
@@ -112,23 +111,10 @@ export function loginDeviceSyncAccount(): Promise<DeviceSyncAccountLoginResult> 
 }
 
 export async function createDeviceSyncPairingCode(): Promise<DeviceSyncNumericPairingOffer> {
-  const token = getDeviceSyncToken();
-  const signedIn = isFocusLinkDeviceAccessToken(token ?? '');
   const registration = pairingDeviceRequest();
-  const response = signedIn
-    ? await requestPairing('/sync/v1/pair/offers', {
-        headers: { authorization: `Bearer ${token}` },
-        body: {
-          displayName: 'FocusLink 新设备',
-          scopes: [...FOCUSLINK_PAIRED_DEVICE_SCOPES],
-        },
-      })
-    : await requestPairing('/sync/v1/pair/requests', {
-        body: { device: registration },
-      });
-  if (signedIn && getDeviceSyncToken() !== token) {
-    throw new Error('账号连接已变化，请重新生成配对码');
-  }
+  const response = await requestPairing('/sync/v1/pair/requests', {
+    body: { device: registration },
+  });
   if (
     !isRecord(response) ||
     typeof response.code !== 'string' ||
@@ -139,26 +125,24 @@ export async function createDeviceSyncPairingCode(): Promise<DeviceSyncNumericPa
   ) {
     throw new Error('配对服务响应无效');
   }
-  if (!signedIn) {
-    if (
-      typeof response.requestToken !== 'string' ||
-      !FOCUSLINK_PAIRING_REQUEST_TOKEN_PATTERN.test(response.requestToken)
-    ) {
-      throw new Error('配对服务响应无效');
-    }
-    pendingLocalPairRequest = {
-      requestToken: response.requestToken,
-      expiresAt: Number(response.expiresAt),
-    };
+  if (
+    typeof response.requestToken !== 'string' ||
+    !FOCUSLINK_PAIRING_REQUEST_TOKEN_PATTERN.test(response.requestToken)
+  ) {
+    throw new Error('配对服务响应无效');
   }
-  logger.info(
-    'deviceSyncAccount',
-    signedIn ? 'trusted device pairing code created' : 'local device pairing request created',
-    {
-      expiresAt: Number(response.expiresAt),
-    },
-  );
-  return { code: response.code, expiresAt: Number(response.expiresAt) };
+  pendingLocalPairRequest = {
+    requestToken: response.requestToken,
+    expiresAt: Number(response.expiresAt),
+  };
+  logger.info('deviceSyncAccount', 'local device pairing request created', {
+    expiresAt: Number(response.expiresAt),
+  });
+  return {
+    code: response.code,
+    requestToken: response.requestToken,
+    expiresAt: Number(response.expiresAt),
+  };
 }
 
 export function pollDeviceSyncPairingCode(): Promise<DeviceSyncPairingPollResult> {
@@ -171,13 +155,13 @@ export function pollDeviceSyncPairingCode(): Promise<DeviceSyncPairingPollResult
 }
 
 async function pollDeviceSyncPairingCodeInternal(): Promise<DeviceSyncPairingPollResult> {
-  if (getDeviceSyncAccountIdentity().signedIn) {
+  const pending = pendingLocalPairRequest;
+  if (!pending && getDeviceSyncAccountIdentity().signedIn) {
     return {
       status: 'authenticated',
       result: { status: getDeviceSyncStatus(), sync: null, syncError: null },
     };
   }
-  const pending = pendingLocalPairRequest;
   if (!pending || pending.expiresAt <= Date.now()) {
     pendingLocalPairRequest = null;
     throw new Error('本机配对码已过期，请重新生成');
@@ -231,7 +215,7 @@ export async function approveDeviceSyncPairingCode(
 ): Promise<DeviceSyncPairingApprovalResult> {
   const token = getDeviceSyncToken();
   if (!token || !isFocusLinkDeviceAccessToken(token)) {
-    throw new Error('只有已授权设备可以批准另一台设备');
+    throw new Error('当前设备还没有加入同步');
   }
   const code = normalizeFocusLinkPairingCode(codeInput);
   if (!FOCUSLINK_PAIRING_CODE_PATTERN.test(code)) throw new Error('请输入 8 位数字配对码');
@@ -399,9 +383,6 @@ async function redeemDeviceSyncPairingCodeInternal(
   signal: AbortSignal,
 ): Promise<DeviceSyncAccountLoginResult> {
   assertCurrentLogin(generation, signal);
-  if (getDeviceSyncAccountIdentity().signedIn) {
-    throw new Error('这台设备已经加入多端同步');
-  }
   const code = normalizeFocusLinkPairingCode(codeInput);
   if (!FOCUSLINK_PAIRING_CODE_PATTERN.test(code)) {
     throw new Error('请输入 8 位数字配对码');
@@ -618,7 +599,7 @@ function pairingErrorMessage(value: unknown, status: number): string {
           : ''
     : '';
   if (code === 'pairing_expired') return '配对码已过期或已使用';
-  if (code === 'pair_rate_limited') return '尝试次数过多，请稍后再试';
+  if (code === 'pair_rate_limited') return '配对服务暂时忙，请直接重试';
   if (code === 'scope_denied' || status === 401 || status === 403)
     return '当前设备没有生成配对码的权限';
   return `配对服务返回 HTTP ${status}`;

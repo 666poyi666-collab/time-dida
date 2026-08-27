@@ -105,10 +105,6 @@ export async function handleCanonicalPairing(
         authorityToken === env.FOCUSLINK_PAIR_SERVICE_CREDENTIAL)
     )
       return pairError(503, 'pair_authority_not_configured');
-    if (!ownerAuthorized) {
-      const rateLimit = await claimOfferRateLimit(request, env);
-      if (rateLimit) return rateLimit;
-    }
     const body = await readJsonBody(request);
     if ('response' in body) return withCors(request, env, body.response);
     if (!isPairOfferRequest(body.value)) {
@@ -136,12 +132,6 @@ export async function handleCanonicalPairing(
     if (!isPairExchangeRequest(body.value)) {
       return withCors(request, env, pairError(400, 'invalid_pair_exchange'));
     }
-    const rateLimit = await claimRateLimit(
-      request,
-      env,
-      (typeof body.value.code === 'string' ? body.value.code : body.value.nonce) as string,
-    );
-    if (rateLimit) return withCors(request, env, rateLimit);
     const response = await proxyPair(
       focuslinkUpstreamUrl('/sync/v1/pair/exchange'),
       env.FOCUSLINK_UPSTREAM,
@@ -164,8 +154,6 @@ export async function handleCanonicalPairing(
   }
 
   if (url.pathname === '/sync/v1/pair/requests' && request.method === 'POST') {
-    const rateLimit = await claimOfferRateLimit(request, env);
-    if (rateLimit) return withCors(request, env, rateLimit);
     const body = await readJsonBody(request);
     if ('response' in body) return withCors(request, env, body.response);
     if (!isPairRequestRequest(body.value)) {
@@ -218,8 +206,6 @@ export async function handleCanonicalPairing(
     if (!isPairClaimRequest(body.value)) {
       return withCors(request, env, pairError(400, 'invalid_pair_claim'));
     }
-    const rateLimit = await claimRateLimit(request, env, body.value.requestToken as string);
-    if (rateLimit) return withCors(request, env, rateLimit);
     const response = await proxyPair(
       focuslinkUpstreamUrl('/sync/v1/pair/claim'),
       env.FOCUSLINK_UPSTREAM,
@@ -351,20 +337,6 @@ function deviceOfferCredential(request: Request): string | null {
     authorization,
   );
   return match?.[1] ?? null;
-}
-
-async function claimOfferRateLimit(request: Request, env: PairingEnv): Promise<Response | null> {
-  if (!env.PAIR_RATE_LIMITER) return pairError(503, 'pair_rate_limiter_not_configured');
-  const clientKey = request.headers.get('cf-connecting-ip') ?? 'unknown-client';
-  try {
-    const result = await env.PAIR_RATE_LIMITER.limit({ key: `offer-device:${clientKey}` });
-    if (result.success) return null;
-    const response = pairError(429, 'pair_rate_limited');
-    response.headers.set('retry-after', '60');
-    return response;
-  } catch {
-    return pairError(503, 'pair_rate_limiter_unavailable');
-  }
 }
 
 async function readJsonBody(
@@ -546,43 +518,12 @@ function isDeviceMetadata(value: unknown, numeric: boolean): boolean {
   );
 }
 
-async function claimRateLimit(
-  request: Request,
-  env: PairingEnv,
-  nonce: string,
-): Promise<Response | null> {
-  if (!env.PAIR_RATE_LIMITER) return pairError(503, 'pair_rate_limiter_not_configured');
-  const clientKey = request.headers.get('cf-connecting-ip') ?? 'unknown-client';
-  try {
-    const credentialHash = await sha256Base64Url(`focuslink-pair-rate-v1\0${nonce}`);
-    const [client, nonceResult] = await Promise.all([
-      env.PAIR_RATE_LIMITER.limit({ key: `client:${clientKey}` }),
-      env.PAIR_RATE_LIMITER.limit({ key: `credential:${credentialHash}` }),
-    ]);
-    if (client.success && nonceResult.success) return null;
-    const response = pairError(429, 'pair_rate_limited');
-    response.headers.set('retry-after', '60');
-    return response;
-  } catch {
-    return pairError(503, 'pair_rate_limiter_unavailable');
-  }
-}
-
 function validPairTiming(value: unknown): boolean {
   return (
     Number.isSafeInteger(value) &&
     Number(value) > Date.now() &&
     Number(value) <= Date.now() + 15 * 60 * 1_000
   );
-}
-
-async function sha256Base64Url(value: string): Promise<string> {
-  const digest = new Uint8Array(
-    await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)),
-  );
-  let binary = '';
-  for (const byte of digest) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
 }
 
 function isPairExchangeResponse(value: unknown): boolean {

@@ -104,7 +104,6 @@ export function runtimeControlAvailability(input: {
   snapshot: LiveFocusSnapshotLike;
   connection: LiveConnectionState;
   pending: boolean;
-  title: string;
   localSession?: boolean;
   allowOfflineStart?: boolean;
 }): RuntimeControlAvailability {
@@ -112,7 +111,6 @@ export function runtimeControlAvailability(input: {
   return {
     start:
       !input.pending &&
-      input.title.trim().length > 0 &&
       ((input.snapshot.state === 'idle' && input.connection === 'live') ||
         input.allowOfflineStart === true),
     pause: ready && input.snapshot.state === 'running',
@@ -160,8 +158,8 @@ export function liveConnectionCopy(
     });
   }
   return withNotice({
-    title: '尚未登录 FocusLink',
-    detail: '登录账号后启用多端控制与自动同步',
+    title: '尚未配对设备',
+    detail: '输入任一已配对设备的 8 位码，即可启用多端控制与自动同步',
   });
 }
 

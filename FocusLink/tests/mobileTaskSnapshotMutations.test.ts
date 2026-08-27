@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TaskSnapshotPayload } from '../shared/sync/taskSnapshotProtocol';
 import {
+  createEmptyTaskSnapshot,
   moveTaskSnapshotSubtree,
   updateTaskSnapshotProject,
 } from '../src/mobile/taskSnapshotMutations';
@@ -20,6 +21,14 @@ const snapshot: TaskSnapshotPayload = {
 };
 
 describe('mobile task snapshot mutations', () => {
+  it('creates the canonical inbox so a newly paired device can create its first task', () => {
+    expect(createEmptyTaskSnapshot(15)).toEqual({
+      publishedAt: 15,
+      projects: [{ id: 'local-inbox', source: 'local', name: '收件箱', color: '#16899f' }],
+      tasks: [],
+    });
+  });
+
   it('updates one regular list without mutating another list', () => {
     const next = updateTaskSnapshotProject(
       snapshot,

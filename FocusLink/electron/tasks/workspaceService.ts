@@ -35,6 +35,20 @@ export async function setTaskCompleted(task: Task, completed: boolean): Promise<
   };
 }
 
+async function publishTaskWorkspace(
+  projects: Parameters<typeof publishDeviceTaskSnapshot>[0],
+  tasks: Parameters<typeof publishDeviceTaskSnapshot>[1],
+  refreshedAt: number,
+  waitForConfirmation: boolean,
+): Promise<void> {
+  const publication = publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+  if (waitForConfirmation) {
+    await publication;
+  } else {
+    void publication;
+  }
+}
+
 export async function refreshTaskWorkspace(
   options: TaskWorkspaceRefreshOptions = {},
 ): Promise<IpcResult<TaskWorkspaceRefreshData>> {
@@ -69,7 +83,7 @@ export async function refreshTaskWorkspace(
           refreshedAt,
         },
       } satisfies IpcResult<TaskWorkspaceRefreshData>;
-      void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+      await publishTaskWorkspace(projects, tasks, refreshedAt, options.force === true);
       return result;
     }
 
@@ -83,7 +97,7 @@ export async function refreshTaskWorkspace(
       );
       if (typeof LocalTaskProvider.importExternal !== 'function') {
         const refreshedAt = Date.now();
-        void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+        await publishTaskWorkspace(projects, tasks, refreshedAt, options.force === true);
         return {
           ok: true,
           data: { provider: 'dida-cli', projects, tasks, refreshedAt },
@@ -94,7 +108,7 @@ export async function refreshTaskWorkspace(
       const importedLocalTasks = LocalTaskProvider.list();
       if (localProjects.length === 0 && importedLocalTasks.length === 0) {
         const refreshedAt = Date.now();
-        void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+        await publishTaskWorkspace(projects, tasks, refreshedAt, options.force === true);
         return { ok: true, data: { provider: 'dida-cli', projects, tasks, refreshedAt } };
       }
       const refreshedAt = Date.now();
@@ -107,7 +121,12 @@ export async function refreshTaskWorkspace(
           refreshedAt,
         },
       } satisfies IpcResult<TaskWorkspaceRefreshData>;
-      void publishDeviceTaskSnapshot(localProjects, importedLocalTasks, refreshedAt);
+      await publishTaskWorkspace(
+        localProjects,
+        importedLocalTasks,
+        refreshedAt,
+        options.force === true,
+      );
       return result;
     }
 
@@ -126,7 +145,7 @@ export async function refreshTaskWorkspace(
     );
     if (typeof LocalTaskProvider.importExternal !== 'function') {
       const refreshedAt = Date.now();
-      void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+      await publishTaskWorkspace(projects, tasks, refreshedAt, options.force === true);
       return {
         ok: true,
         data: { provider: 'ticktick-oauth', projects, tasks, refreshedAt },
@@ -137,7 +156,7 @@ export async function refreshTaskWorkspace(
     const importedLocalTasks = LocalTaskProvider.list();
     if (localProjects.length === 0 && importedLocalTasks.length === 0) {
       const refreshedAt = Date.now();
-      void publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
+      await publishTaskWorkspace(projects, tasks, refreshedAt, options.force === true);
       return { ok: true, data: { provider: 'ticktick-oauth', projects, tasks, refreshedAt } };
     }
     const refreshedAt = Date.now();
@@ -150,7 +169,12 @@ export async function refreshTaskWorkspace(
         refreshedAt,
       },
     } satisfies IpcResult<TaskWorkspaceRefreshData>;
-    void publishDeviceTaskSnapshot(localProjects, importedLocalTasks, refreshedAt);
+    await publishTaskWorkspace(
+      localProjects,
+      importedLocalTasks,
+      refreshedAt,
+      options.force === true,
+    );
     return result;
   } catch (error) {
     return {

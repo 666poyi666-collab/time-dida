@@ -34,10 +34,11 @@ const authoritySource = fs.readFileSync(
 );
 
 describe('numeric pairing authority storage contract', () => {
-  it('stores only a domain-separated HMAC and consumes offers once', () => {
+  it('stores only a domain-separated HMAC and keeps same-device retries idempotent', () => {
     expect(authoritySource).toContain("'code_hmac'");
     expect(authoritySource).toContain('pairingCodeHmacInput(numericCode)');
-    expect(authoritySource).toContain('UPDATE v2_pair_offers SET used_at = ?');
+    expect(authoritySource).toContain('UPDATE v2_pair_offers SET used_at = COALESCE(used_at, ?)');
+    expect(authoritySource).toContain('focuslink-pair-offer-secret-v2');
     expect(authoritySource).toContain("await this.authorizeV2(request, 'sync:write')");
     const insert = /INSERT INTO v2_pair_offers[\s\S]*?\n\s*\);/.exec(authoritySource);
     expect(insert, 'pair offer insert must remain inspectable').not.toBeNull();

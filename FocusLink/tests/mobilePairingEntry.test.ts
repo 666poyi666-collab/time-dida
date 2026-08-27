@@ -61,7 +61,6 @@ describe('mobile owner account entry', () => {
         pairingOffer: null,
         devices: [],
         onClose: () => undefined,
-        onLogin: () => undefined,
         onPairingCodeChange: () => undefined,
         onPair: () => undefined,
         onCreatePairingCode: () => undefined,
@@ -73,12 +72,12 @@ describe('mobile owner account entry', () => {
 
     expect(mobile).toContain('const [configOpen, setConfigOpen] = useState(false);');
     expect(mobile).toContain('onClose={() => setConfigOpen(false)}');
-    expect(markup).toContain('aria-label="关闭账号设置，返回本机模式"');
+    expect(markup).toContain('aria-label="关闭设备同步，返回本机模式"');
     expect(markup).toContain('每台设备都有自己的配对码');
-    expect(markup).toContain('输入另一台已授权设备的本机配对码');
+    expect(markup).toContain('输入另一台设备显示的本机配对码');
     expect(markup).toContain('显示本机配对码');
-    expect(markup).toContain('批准后本机会自动加入');
-    expect(markup).toContain('首次设备授权');
+    expect(markup).toContain('输入一次就会把两台设备连到同一同步空间');
+    expect(markup).not.toContain('首次设备授权');
     expect(markup).toContain('暂不配对，继续本机使用');
     expect(markup).not.toContain('这台设备已加入云同步');
     expect(sheet).toContain('onMouseDown={onClose}');
@@ -96,7 +95,6 @@ describe('mobile owner account entry', () => {
         pairingOffer: { code: '87654321', expiresAt: Date.now() + 600_000 },
         devices: [],
         onClose: () => undefined,
-        onLogin: () => undefined,
         onPairingCodeChange: () => undefined,
         onPair: () => undefined,
         onCreatePairingCode: () => undefined,
@@ -107,8 +105,8 @@ describe('mobile owner account entry', () => {
     );
     expect(markup).toContain('8765 4321');
     expect(markup).toContain('本机配对码');
-    expect(markup).toContain('输入新设备显示的本机配对码');
-    expect(markup).toContain('批准设备');
+    expect(markup).toContain('输入另一台设备显示的本机配对码');
+    expect(markup).toContain('加入同步');
     expect(markup).not.toContain('accessToken');
   });
 
@@ -137,7 +135,6 @@ describe('mobile owner account entry', () => {
           },
         ],
         onClose: () => undefined,
-        onLogin: () => undefined,
         onPairingCodeChange: () => undefined,
         onPair: () => undefined,
         onCreatePairingCode: () => undefined,

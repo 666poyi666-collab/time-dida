@@ -11,13 +11,6 @@
   --app-subtle: 120 132 137;
   --app-border: 220 226 227;
   --app-border-strong: 190 201 203;
-  --app-accent: 24 126 151;
-  --app-accent-hover: 17 104 125;
-  --app-accent-active: 12 83 99;
-  --app-accent-fg: 255 255 255;
-  --app-accent-soft: 226 243 246;
-  --app-success: 52 124 86;
-  --app-success-soft: 231 243 235;
   --app-pause: 211 102 55;
   --app-pause-soft: 251 237 228;
   --app-warning: 164 112 42;
@@ -479,8 +472,6 @@ html.dark {
   --app-border-strong: 84 98 99;
   --app-accent: 83 185 202;
   --app-accent-fg: 14 32 35;
-  --app-accent-soft: 28 67 73;
-  --app-success: 100 189 130;
   --app-pause: 232 137 94;
   --app-pause-soft: 75 45 34;
 }

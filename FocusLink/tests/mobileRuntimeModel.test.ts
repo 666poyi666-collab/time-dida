@@ -61,29 +61,33 @@ describe('mobile live runtime model', () => {
 
   it('locks all mutating controls unless the live connection is confirmed', () => {
     const snapshot = liveSnapshot('running');
-    expect(
-      runtimeControlAvailability({ snapshot, connection: 'offline', pending: false, title: '' }),
-    ).toEqual({ start: false, pause: false, resume: false, finish: false });
-    expect(
-      runtimeControlAvailability({ snapshot, connection: 'live', pending: false, title: '' }),
-    ).toEqual({ start: false, pause: true, resume: false, finish: true });
-    expect(
-      runtimeControlAvailability({ snapshot, connection: 'live', pending: true, title: '' }),
-    ).toEqual({ start: false, pause: false, resume: false, finish: false });
+    expect(runtimeControlAvailability({ snapshot, connection: 'offline', pending: false })).toEqual(
+      { start: false, pause: false, resume: false, finish: false },
+    );
+    expect(runtimeControlAvailability({ snapshot, connection: 'live', pending: false })).toEqual({
+      start: false,
+      pause: true,
+      resume: false,
+      finish: true,
+    });
+    expect(runtimeControlAvailability({ snapshot, connection: 'live', pending: true })).toEqual({
+      start: false,
+      pause: false,
+      resume: false,
+      finish: false,
+    });
   });
 
-  it('requires a non-empty title before starting', () => {
+  it('allows a free focus start without a title or selected task', () => {
     const snapshot = idleLiveFocusSnapshot();
-    expect(
-      runtimeControlAvailability({ snapshot, connection: 'live', pending: false, title: '  ' })
-        .start,
-    ).toBe(false);
+    expect(runtimeControlAvailability({ snapshot, connection: 'live', pending: false }).start).toBe(
+      true,
+    );
     expect(
       runtimeControlAvailability({
         snapshot,
         connection: 'live',
         pending: false,
-        title: '整理错题',
       }).start,
     ).toBe(true);
   });
@@ -95,7 +99,6 @@ describe('mobile live runtime model', () => {
         snapshot: liveSnapshot('running'),
         connection: 'offline',
         pending: false,
-        title: '离线复习',
         allowOfflineStart: true,
       }).start,
     ).toBe(true);
@@ -104,7 +107,6 @@ describe('mobile live runtime model', () => {
         snapshot: idle,
         connection: 'offline',
         pending: false,
-        title: '离线复习',
         allowOfflineStart: true,
       }).start,
     ).toBe(true);
@@ -113,7 +115,6 @@ describe('mobile live runtime model', () => {
         snapshot: liveSnapshot('running'),
         connection: 'offline',
         pending: false,
-        title: '',
         localSession: true,
       }),
     ).toEqual({ start: false, pause: true, resume: false, finish: true });

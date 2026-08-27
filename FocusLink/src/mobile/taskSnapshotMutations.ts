@@ -1,9 +1,25 @@
 import type { SyncedTaskProject, TaskSnapshotPayload } from '@shared/sync/taskSnapshotProtocol';
 import {
+  defaultTaskProjectColor,
   FOCUSLINK_INBOX_PROJECT_ID,
   isFocusLinkInboxProject,
   normalizeTaskProjectColor,
 } from '@shared/taskProjectPolicy';
+
+export function createEmptyTaskSnapshot(publishedAt: number): TaskSnapshotPayload {
+  return {
+    publishedAt,
+    projects: [
+      {
+        id: FOCUSLINK_INBOX_PROJECT_ID,
+        source: 'local',
+        name: '收件箱',
+        color: defaultTaskProjectColor(0),
+      },
+    ],
+    tasks: [],
+  };
+}
 
 export function updateTaskSnapshotProject(
   snapshot: TaskSnapshotPayload,

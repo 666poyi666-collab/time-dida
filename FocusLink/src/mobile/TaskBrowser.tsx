@@ -75,6 +75,7 @@ export function TaskBrowser({
   const [projectDraft, setProjectDraft] = useState('');
   const [projectComposerOpen, setProjectComposerOpen] = useState(false);
   const [movingTask, setMovingTask] = useState(false);
+  const [mutationNotice, setMutationNotice] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(() => new Set());
@@ -105,6 +106,31 @@ export function TaskBrowser({
     setDetailOpen(true);
     onSelect(task);
   };
+  const mutationError = (action: string, error: unknown) => {
+    const detail = error instanceof Error ? error.message : String(error);
+    setMutationNotice(`${action}失败：${detail}`);
+  };
+  const updateProjectWithNotice = onUpdateProject
+    ? async (project: SyncedTaskProject, input: { name?: string; color?: string | null }) => {
+        setMutationNotice(null);
+        try {
+          await onUpdateProject(project, input);
+        } catch (error) {
+          mutationError('保存清单', error);
+          throw error;
+        }
+      }
+    : undefined;
+  const toggleCompleteWithNotice = onToggleComplete
+    ? async (task: SyncedTask) => {
+        setMutationNotice(null);
+        try {
+          await onToggleComplete(task);
+        } catch (error) {
+          mutationError(task.isCompleted ? '恢复任务' : '完成任务', error);
+        }
+      }
+    : undefined;
 
   const toggleGroup = (key: string) => {
     setExpandedGroups((current) => {
@@ -152,6 +178,8 @@ export function TaskBrowser({
                 : projectFilter,
             )
               .then(() => setDraft(''))
+              .then(() => setMutationNotice(null))
+              .catch((error) => mutationError('创建任务', error))
               .finally(() => setCreating(false));
           }}
         >
@@ -233,6 +261,8 @@ export function TaskBrowser({
                 setCreating(true);
                 void onCreateProject(name)
                   .then(() => setProjectDraft(''))
+                  .then(() => setMutationNotice(null))
+                  .catch((error) => mutationError('创建清单', error))
                   .finally(() => setCreating(false));
               }}
             >
@@ -255,7 +285,7 @@ export function TaskBrowser({
                     key={project.id}
                     project={project}
                     fallbackColor={defaultTaskProjectColor(index + 1)}
-                    onSave={onUpdateProject}
+                    onSave={updateProjectWithNotice}
                   />
                 ))}
             </div>
@@ -267,6 +297,11 @@ export function TaskBrowser({
         <span>本地任务 · rev {revision}</span>
         <span>{publishedAt ? `最近同步 ${formatSnapshotTime(publishedAt)}` : '仅保存在本机'}</span>
       </div>
+      {mutationNotice && (
+        <p className="task-mutation-notice" role="status" aria-live="polite">
+          {mutationNotice}
+        </p>
+      )}
 
       {taskForest.length === 0 ? (
         <div className="task-empty">
@@ -274,7 +309,7 @@ export function TaskBrowser({
           <strong>{tasks.length === 0 ? '还没有 FocusLink 任务' : '没有符合条件的待办'}</strong>
           <p>
             {tasks.length === 0
-              ? '先在这里创建任务；登录后会自动同步到其他 FocusLink 设备。'
+              ? '先在这里创建任务；设备配对后会自动同步到电脑、手机和平板。'
               : '调整搜索词或清单筛选。'}
           </p>
         </div>
@@ -284,7 +319,7 @@ export function TaskBrowser({
           projects={projects}
           canStart={canStart}
           onStart={onStart}
-          onToggleComplete={onToggleComplete}
+          onToggleComplete={toggleCompleteWithNotice}
         />
       ) : (
         <div className="task-browser-workspace">
@@ -330,7 +365,7 @@ export function TaskBrowser({
                           onToggle={toggleTask}
                           onSelect={selectTask}
                           onStart={onStart}
-                          onToggleComplete={onToggleComplete}
+                          onToggleComplete={toggleCompleteWithNotice}
                         />
                       ))}
                     </div>
@@ -367,9 +402,10 @@ export function TaskBrowser({
                       disabled={movingTask}
                       onChange={(event) => {
                         setMovingTask(true);
-                        void onMoveTask(selectedTask, event.target.value).finally(() =>
-                          setMovingTask(false),
-                        );
+                        setMutationNotice(null);
+                        void onMoveTask(selectedTask, event.target.value)
+                          .catch((error) => mutationError('移动任务', error))
+                          .finally(() => setMovingTask(false));
                       }}
                     >
                       <option value={FOCUSLINK_INBOX_PROJECT_ID}>收件箱</option>
@@ -437,7 +473,12 @@ function MobileProjectEditor({
           event.preventDefault();
           if (!onSave || !name.trim() || saving) return;
           setSaving(true);
-          void onSave(project, { name: name.trim(), color }).finally(() => setSaving(false));
+          void onSave(project, { name: name.trim(), color })
+            .catch(() => {
+              setName(project.name);
+              setColor(project.color ?? fallbackColor);
+            })
+            .finally(() => setSaving(false));
         }}
       >
         <input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} />
@@ -448,7 +489,18 @@ function MobileProjectEditor({
               type="button"
               className={candidate === color ? 'selected' : ''}
               style={{ '--project-color': candidate } as CSSProperties}
-              onClick={() => setColor(candidate)}
+              onClick={() => {
+                if (!onSave || candidate === color || saving) return;
+                setColor(candidate);
+                setSaving(true);
+                void onSave(project, {
+                  name: name.trim() || project.name,
+                  color: candidate,
+                })
+                  .catch(() => setColor(project.color ?? fallbackColor))
+                  .finally(() => setSaving(false));
+              }}
+              disabled={!onSave || saving}
               aria-label={`选择颜色 ${candidate}`}
               aria-pressed={candidate === color}
             />

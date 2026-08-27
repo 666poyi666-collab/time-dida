@@ -9,24 +9,24 @@ import {
 afterEach(() => vi.useRealTimers());
 
 describe('mobile task snapshot foreground cadence', () => {
-  it('refreshes every 15 seconds only while visible and stops cleanly', async () => {
+  it('refreshes every 5 seconds only while visible and stops cleanly', async () => {
     vi.useFakeTimers();
     let visible = true;
     const refresh = vi.fn();
     const stop = startVisibleTaskSnapshotRefresh(refresh, () => visible);
 
-    expect(TASK_SNAPSHOT_REFRESH_INTERVAL_MS).toBe(15_000);
-    await vi.advanceTimersByTimeAsync(14_999);
+    expect(TASK_SNAPSHOT_REFRESH_INTERVAL_MS).toBe(5_000);
+    await vi.advanceTimersByTimeAsync(4_999);
     expect(refresh).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(refresh).toHaveBeenCalledTimes(1);
 
     visible = false;
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(refresh).toHaveBeenCalledTimes(1);
 
     visible = true;
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(refresh).toHaveBeenCalledTimes(2);
     stop();
     await vi.advanceTimersByTimeAsync(30_000);

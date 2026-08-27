@@ -278,24 +278,59 @@ describe('canonical one-time device pairing', () => {
     expect(response.status).toBe(502);
   });
 
-  it('rate-limits brute-force and replay attempts before the authority', async () => {
-    const upstream = binding(async () => Response.json({ error: 'must_not_run' }));
+  it('does not rate-limit personal pairing attempts', async () => {
+    const requestToken = `flpr_${'r'.repeat(43)}`;
+    const expiresAt = Date.now() + 10 * 60 * 1_000;
+    const upstream = binding(async (request) => {
+      const path = new URL(request.url).pathname;
+      if (path === '/sync/v1/pair/requests') {
+        return Response.json({ code: '12345678', requestToken, expiresAt });
+      }
+      if (path === '/sync/v1/pair/claim') {
+        return Response.json(
+          { status: 'pending', expiresAt, retryAfterMs: 1_500 },
+          { status: 202 },
+        );
+      }
+      return Response.json({
+        deviceId: 'device-reader01',
+        accessToken: READER_TOKEN,
+        scopes: ['sync:read', 'sync:write'],
+        expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1_000,
+      });
+    });
     const env = pairEnv(upstream);
     env.PAIR_RATE_LIMITER = {
       limit: vi.fn(async () => ({ success: false })),
     };
-    const response = await handleCanonicalPairing(
+    const exchange = await handleCanonicalPairing(
       pairRequest('/sync/v1/pair/exchange', claim()),
       env,
       false,
     );
-    expect(response.status).toBe(429);
-    expect(response.headers.get('retry-after')).toBe('60');
-    expect(upstream.fetch).not.toHaveBeenCalled();
-    const rateKeys = vi.mocked(env.PAIR_RATE_LIMITER!.limit).mock.calls.map(([input]) => input.key);
-    expect(rateKeys.some((key) => key.startsWith('client:'))).toBe(true);
-    expect(rateKeys.some((key) => key.startsWith('credential:'))).toBe(true);
-    expect(rateKeys.join('\n')).not.toContain(NONCE);
+    expect(exchange.status).toBe(200);
+    const device = {
+      installationId: `web-${'i'.repeat(32)}`,
+      displayName: 'FocusLink Web',
+      platform: 'web',
+      deviceKind: 'phone',
+      appVersion: '0.12.104',
+    };
+    expect(
+      (await handleCanonicalPairing(pairRequest('/sync/v1/pair/requests', { device }), env, false))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await handleCanonicalPairing(
+          pairRequest('/sync/v1/pair/claim', { requestToken, device }),
+          env,
+          false,
+        )
+      ).status,
+    ).toBe(202);
+    expect(env.PAIR_RATE_LIMITER.limit).not.toHaveBeenCalled();
+    expect(upstream.fetch).toHaveBeenCalledTimes(3);
   });
 
   it('delegates trusted-device scope checks and rejects excessive scopes or credential reuse', async () => {

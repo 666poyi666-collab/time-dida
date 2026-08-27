@@ -5,6 +5,15 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(path.resolve(__dirname, '../src/styles/temporal-foundation.css'), 'utf8');
+const desktopOverlay = readFileSync(
+  path.resolve(__dirname, '../src/styles/focuslink-2.css'),
+  'utf8',
+);
+const mobileOverlay = readFileSync(
+  path.resolve(__dirname, '../src/mobile/focuslink-2-mobile.css'),
+  'utf8',
+);
+const mobileFoundation = readFileSync(path.resolve(__dirname, '../src/mobile/mobile.css'), 'utf8');
 
 function blockOf(selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -46,6 +55,16 @@ describe('专注/暂停颜色语义 token 契约', () => {
   it('亮色 emerald/amber 的专注语义使用可读 deep 值', () => {
     expect(valueOf(blockOf('.focus-color-emerald'), '--app-success')).toBe('11 122 85');
     expect(valueOf(blockOf('.focus-color-amber'), '--app-success')).toBe('139 85 14');
+  });
+
+  it('最终桌面和移动表现层不得把用户选择的强调色重新写死为青绿色', () => {
+    const desktopRoot = /:root\s*\{([\s\S]*?)\n\}/.exec(desktopOverlay)?.[1] ?? '';
+    expect(desktopRoot).not.toMatch(/--app-(?:accent|success)(?:-[\w-]+)?\s*:/);
+    expect(desktopOverlay).toContain('--app-accent: 83 185 202;');
+    expect(mobileOverlay).not.toMatch(/--focus(?:-strong|-soft)?\s*:/);
+    expect(mobileFoundation).toContain('--focus: rgb(var(--app-accent));');
+    expect(mobileFoundation).toContain('--focus-strong: rgb(var(--app-accent-active));');
+    expect(mobileFoundation).toContain('--focus-soft: rgb(var(--app-accent-soft));');
   });
 });
 

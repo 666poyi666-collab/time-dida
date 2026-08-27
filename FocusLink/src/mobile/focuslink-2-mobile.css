@@ -11,9 +11,6 @@
   --subtle: #929b96;
   --border: #e0e5e1;
   --border-strong: #c8d0ca;
-  --focus: #137d72;
-  --focus-strong: #0b6259;
-  --focus-soft: #e1f1ed;
   --pause: #d46b3d;
   --pause-soft: #f9e9df;
   --warning: #9d6c28;
@@ -512,6 +509,17 @@ body {
   padding: 0 3px 8px;
   color: var(--subtle);
   font-size: 9px;
+}
+
+.task-mutation-notice {
+  margin: -2px 0 10px;
+  padding: 10px 12px;
+  border: 1px solid rgb(var(--app-danger) / 0.28);
+  border-radius: 10px;
+  background: rgb(var(--app-danger) / 0.07);
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.55;
 }
 
 .task-browser-workspace {
@@ -1391,9 +1399,6 @@ body {
   --subtle: #88968f;
   --border: #34413b;
   --border-strong: #506159;
-  --focus: #69c8b9;
-  --focus-strong: #8addd0;
-  --focus-soft: #203e38;
   --pause: #ef9d71;
   --pause-soft: #54352a;
   --mobile-shadow: 0 20px 60px rgb(0 0 0 / 0.22);

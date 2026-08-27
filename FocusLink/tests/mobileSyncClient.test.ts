@@ -397,7 +397,7 @@ describe('mobile sync client request recovery', () => {
       code: 'authentication_failed',
       retryable: false,
       status: 401,
-      message: '登录凭据已失效，请重新登录',
+      message: '设备凭据已失效，请重新配对',
     });
   });
 

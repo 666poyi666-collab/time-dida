@@ -334,6 +334,19 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
     expect(forwarded[0].url).toContain('/v2/sync');
   });
 
+  it('keeps the v2 prefix when forwarding a device-token revoke route', async () => {
+    const forwarded: ForwardedCall[] = [];
+    const response = await call(
+      '/sync/v2/devices/device-reader01/revoke',
+      { method: 'POST', authorization: `Bearer ${VALID_DEVICE_TOKEN}` },
+      makeEnv(forwarded),
+    );
+    expect(response.status).toBe(200);
+    expect(forwarded).toHaveLength(1);
+    expect(new URL(forwarded[0].url).pathname).toBe('/v2/devices/device-reader01/revoke');
+    expect(forwarded[0].forwardedAuthorization).toBe(`Bearer ${VALID_DEVICE_TOKEN}`);
+  });
+
   it('keeps live control available on the canonical route while legacy /v1/live stays retired', async () => {
     const forwarded: ForwardedCall[] = [];
     const env = makeEnv(forwarded);

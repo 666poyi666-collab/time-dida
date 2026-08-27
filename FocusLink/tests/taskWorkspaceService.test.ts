@@ -123,6 +123,24 @@ describe('task workspace service', () => {
     );
   });
 
+  it('waits for the task snapshot confirmation on explicit mutations and forced refreshes', async () => {
+    let release!: (value: boolean) => void;
+    const confirmation = new Promise<boolean>((resolve) => {
+      release = resolve;
+    });
+    serviceState.publishTaskSnapshot.mockImplementationOnce(() => confirmation);
+    let settled = false;
+    const refresh = refreshTaskWorkspace({ force: true }).then((result) => {
+      settled = true;
+      return result;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(serviceState.publishTaskSnapshot).toHaveBeenCalledOnce();
+    expect(settled).toBe(false);
+    release(true);
+    await expect(refresh).resolves.toMatchObject({ ok: true });
+  });
+
   it('returns an explicit CLI detection failure instead of an empty task list', async () => {
     serviceState.taskSource = 'ticktick-cli';
     serviceState.cliFound = false;

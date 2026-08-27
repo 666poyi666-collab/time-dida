@@ -33,6 +33,7 @@ function useReducedMotionPreference(): boolean {
   const [reduced, setReduced] = useState(
     () =>
       typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches,
   );
   useEffect(() => {

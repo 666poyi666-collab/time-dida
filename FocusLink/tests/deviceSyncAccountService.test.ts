@@ -322,19 +322,24 @@ describe('desktop owner account enrollment', () => {
     await expect(loginDeviceSyncAccount()).rejects.toThrow('账号登录网关尚未部署');
   });
 
-  it('creates an 8-digit offer from an enrolled device without logging the code', async () => {
+  it('creates a direct request code from an enrolled device without logging the code', async () => {
     harness.token = `fl2_account1_desktop1_${'z'.repeat(32)}`;
     const expiresAt = Date.now() + 10 * 60_000;
-    const fetchMock = vi.fn().mockResolvedValue(Response.json({ code: '24681357', expiresAt }));
+    const requestToken = `flpr_${'r'.repeat(43)}`;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(Response.json({ code: '24681357', requestToken, expiresAt }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(createDeviceSyncPairingCode()).resolves.toEqual({ code: '24681357', expiresAt });
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      `${FOCUSLINK_SYNC_FAILOVER_ORIGIN}/sync/v1/pair/offers`,
-    );
-    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
-      authorization: `Bearer ${harness.token}`,
+    await expect(createDeviceSyncPairingCode()).resolves.toEqual({
+      code: '24681357',
+      requestToken,
+      expiresAt,
     });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `${FOCUSLINK_SYNC_FAILOVER_ORIGIN}/sync/v1/pair/requests`,
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).not.toHaveProperty('authorization');
     expect(JSON.stringify(harness.logs)).not.toContain('24681357');
   });
 
@@ -357,7 +362,11 @@ describe('desktop owner account enrollment', () => {
       );
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(createDeviceSyncPairingCode()).resolves.toEqual({ code: '13572468', expiresAt });
+    await expect(createDeviceSyncPairingCode()).resolves.toEqual({
+      code: '13572468',
+      requestToken,
+      expiresAt,
+    });
     await expect(pollDeviceSyncPairingCode()).resolves.toEqual({
       status: 'pending',
       expiresAt,
@@ -377,6 +386,42 @@ describe('desktop owner account enrollment', () => {
       expect((call[1] as RequestInit).headers).not.toHaveProperty('authorization');
     }
     expect(JSON.stringify(harness.logs)).not.toContain(requestToken);
+  });
+
+  it('lets an already paired desktop use the same request and claim flow for its own code', async () => {
+    harness.token = `fl2_account1_desktop1_${'z'.repeat(32)}`;
+    const expiresAt = Date.now() + 10 * 60_000;
+    const requestToken = `flpr_${'s'.repeat(43)}`;
+    const replacement = `fl2_account1_desktop1_${'t'.repeat(32)}`;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ code: '86421357', requestToken, expiresAt }))
+      .mockResolvedValueOnce(
+        Response.json({
+          status: 'authenticated',
+          accessToken: replacement,
+          deviceId: 'device-desktop1',
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(createDeviceSyncPairingCode()).resolves.toMatchObject({
+      code: '86421357',
+      requestToken,
+    });
+    await expect(pollDeviceSyncPairingCode()).resolves.toMatchObject({
+      status: 'authenticated',
+      result: { status: { signedIn: true } },
+    });
+    expect(harness.token).toBe(replacement);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/sync/v1/pair/requests');
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('/sync/v1/pair/claim');
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).not.toHaveProperty(
+      'authorization',
+    );
+    expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).not.toHaveProperty(
+      'authorization',
+    );
   });
 
   it('approves a new device code only with this device credential', async () => {

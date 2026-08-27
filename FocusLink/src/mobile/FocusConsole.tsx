@@ -16,6 +16,8 @@ import type { MobileAuthorityMode } from './cache';
 import { MobileConfirmDialog } from './MobileConfirmDialog';
 import { MobileTemporalRibbon } from './MobileTemporalRibbon';
 import { focusDeviceLabel, isTabletFocusViewport } from './viewportPolicy';
+import { TimerDial } from '../features/focus/TimerDial';
+import type { MobileAppearance } from './appearance';
 
 export type MobileFocusCommand = 'start' | 'pause' | 'resume' | 'finish';
 
@@ -49,6 +51,7 @@ export interface FocusConsoleProps {
   localOfflineMode: boolean;
   authorityMode: MobileAuthorityMode;
   allowOfflineStart: boolean;
+  timerStyle: MobileAppearance['timerStyle'];
 }
 
 export function FocusConsole({
@@ -73,6 +76,7 @@ export function FocusConsole({
   localOfflineMode,
   authorityMode,
   allowOfflineStart,
+  timerStyle,
 }: FocusConsoleProps) {
   const [now, setNow] = useState(() => Date.now());
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
@@ -111,7 +115,6 @@ export function FocusConsole({
     snapshot: current,
     connection,
     pending: pendingCommand !== null,
-    title: titleDraft,
     localSession: localOfflineMode,
     allowOfflineStart,
   });
@@ -165,7 +168,14 @@ export function FocusConsole({
                   ? '有效专注'
                   : '准备开始'}
             </span>
-            <strong>{formatClockDuration(durations.primaryElapsedMs)}</strong>
+            <div className="mobile-timer-stage">
+              <TimerDial
+                ms={durations.primaryElapsedMs}
+                state={current.state}
+                style={timerStyle}
+                coreRatio={Math.min(1, durations.activeElapsedMs / (25 * 60_000))}
+              />
+            </div>
             <small>
               {localOfflineMode
                 ? '本机计时 · 结束后安全保存'
@@ -218,7 +228,7 @@ export function FocusConsole({
                 <small>
                   {tasks.length > 0
                     ? `${tasks.length} 个本机任务可选`
-                    : '先去「任务」创建待办；登录只用于多端同步'}
+                    : '先去「任务」创建待办；配对只用于多端同步'}
                 </small>
               </div>
               <label className="focus-title-field" htmlFor="focus-title">
@@ -234,7 +244,7 @@ export function FocusConsole({
                   disabled={pendingCommand !== null}
                   aria-describedby="focus-title-help"
                 />
-                <small id="focus-title-help">可选任务，也可直接填写标题自由开始。</small>
+                <small id="focus-title-help">标题可留空；直接开始时会记为“自由专注”。</small>
               </label>
             </div>
           )}
@@ -411,7 +421,7 @@ export function FocusConsole({
 
           <div className="desktop-delivery-note">
             <strong>FocusLink 负责多端同步</strong>
-            <p>任务、专注状态与结束账本都归入同一个 FocusLink 账号。</p>
+            <p>配对后的设备共享任务、清单颜色、专注状态与结束账本。</p>
           </div>
 
           {commandNotice && (

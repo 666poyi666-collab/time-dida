@@ -187,7 +187,7 @@ export async function approveDeviceSyncPairingCode(input: {
   const endpoint = normalizeDeviceSyncEndpoint(input.endpoint);
   requireMobileCloudEndpoint(endpoint, input.token);
   if (!isFocusLinkDeviceAccessToken(input.token)) {
-    throw new DeviceSyncPairingError('authentication_failed', '只有已授权设备可以批准配对');
+    throw new DeviceSyncPairingError('authentication_failed', '当前设备还没有加入同步');
   }
   const code = normalizeFocusLinkPairingCode(input.code);
   if (!FOCUSLINK_PAIRING_CODE_PATTERN.test(code)) {
@@ -564,7 +564,7 @@ function pairingErrorMessage(code: string): string {
     case 'pairing_binding_mismatch':
       return '配对码与当前设备不匹配';
     case 'pair_rate_limited':
-      return '尝试次数过多，请稍后再试';
+      return '配对服务暂时忙，请直接重试';
     case 'pairing_disabled_pending_e2e':
       return '配对服务暂不可用，请稍后再试';
     default:
@@ -763,13 +763,13 @@ async function liveFocusFetch(
   } catch {
     throw new MobileLiveRequestError(
       'configuration_error',
-      '移动端只允许连接 HTTPS 云端同步服务，请重新登录',
+      '移动端只允许连接 FocusLink 官方 HTTPS 云端同步服务，请重新配对',
       false,
     );
   }
   const token = input.token.trim();
   if (!token) {
-    throw new MobileLiveRequestError('configuration_error', '请先登录 FocusLink 账号', false);
+    throw new MobileLiveRequestError('configuration_error', '请先完成设备配对', false);
   }
 
   let lastTransportError: unknown = null;
@@ -799,7 +799,7 @@ async function liveFocusFetch(
         if (response.status === 401 || response.status === 403) {
           throw new MobileLiveRequestError(
             response.status === 401 ? 'authentication_failed' : 'authorization_failed',
-            response.status === 401 ? '登录凭据已失效，请重新登录' : '当前设备没有实时控制权限',
+            response.status === 401 ? '设备凭据已失效，请重新配对' : '当前设备没有实时控制权限',
             false,
             response.status,
           );

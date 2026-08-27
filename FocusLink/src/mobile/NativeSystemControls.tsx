@@ -238,7 +238,7 @@ export function NativeSystemControls() {
       <div className="native-system-health" aria-live="polite">
         <span className="is-ok">{systemSurfaceLabel(status)}</span>
         <span className={status?.nativeConnectionConfigured ? 'is-ok' : 'is-warning'}>
-          {status?.nativeConnectionConfigured ? '后台同步凭据已安全保存' : '登录后启用后台同步'}
+          {status?.nativeConnectionConfigured ? '后台同步凭据已安全保存' : '配对后启用后台同步'}
         </span>
         <span className={status?.batteryOptimizationExempt ? 'is-ok' : 'is-warning'}>
           {status?.batteryOptimizationExempt ? '省电限制已豁免' : '仍受系统省电限制'}
@@ -365,7 +365,7 @@ export function TerminalLedgerRepairControl({
 export function nativeCloudPollErrorCopy(code: string | undefined): string {
   if (code === 'network_error') return '暂时无法连接云端';
   if (code === 'timeout') return '云端连接超时';
-  if (code === 'authentication_failed') return '登录凭据已失效，请重新登录';
+  if (code === 'authentication_failed') return '设备凭据已失效，请重新配对';
   if (code === 'authorization_failed') return '当前设备没有云端同步权限';
   if (code === 'contract_error') return '云端响应异常';
   if (code === 'revision_conflict' || code === 'revision_rollback') return '云端状态存在版本差异';

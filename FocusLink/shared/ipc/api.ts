@@ -227,6 +227,8 @@ export interface DeviceSyncPairingOffer {
 export interface DeviceSyncNumericPairingOffer {
   code: string;
   expiresAt: number;
+  /** Present for the direct request/claim flow; kept out of normal UI. */
+  requestToken?: string;
 }
 
 export type DeviceSyncPairingPollResult =

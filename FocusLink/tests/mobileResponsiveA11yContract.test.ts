@@ -255,7 +255,7 @@ describe('mobile responsive and accessibility review contract', () => {
     expect(connectionSheet).toContain('role="dialog"');
     expect(connectionSheet).toContain('aria-modal="true"');
     expect(connectionSheet).toContain('aria-labelledby="connection-title"');
-    expect(connectionSheet).toContain("'关闭账号设置，返回本机模式'");
+    expect(connectionSheet).toContain("'关闭设备同步，返回本机模式'");
     expect(connectionSheet).toContain('aria-label={authenticated');
   });
 });

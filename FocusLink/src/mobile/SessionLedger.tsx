@@ -266,14 +266,14 @@ function EmptyLedger({ configured, scopeLabel }: { configured: boolean; scopeLab
           ? `${scopeLabel}没有已结束会话`
           : configured
             ? '云端还没有已结束会话'
-            : '登录后查看多端会话'}
+            : '配对后查看多端会话'}
       </strong>
       <p>
         {scopeLabel
           ? '可切换统计范围或选择其他日期；缓存中的其他会话不会被删除。'
           : configured
             ? '结束一场专注后，完成账本会自动收敛到这里；断网时仍可查看本机缓存。'
-            : '登录 FocusLink 账号后，实时控制和已结束账本会在设备间自动同步。'}
+            : '设备互相输入 8 位码完成配对后，实时控制和已结束账本会自动同步。'}
       </p>
     </div>
   );

@@ -1897,6 +1897,15 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       devicePublicId = randomDevicePublicId();
       numericCode = randomPairingCode();
       const codeHmac = await hmacHex(pepper, pairingCodeHmacInput(numericCode));
+      if (
+        this.sql
+          .exec<{ request_id: string }>(
+            'SELECT request_id FROM v2_pair_requests WHERE code_hmac = ?',
+            codeHmac,
+          )
+          .toArray()[0]
+      )
+        continue;
       try {
         this.sql.exec(
           `INSERT INTO v2_pair_offers(
@@ -1963,6 +1972,23 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       throw new ProtocolError(400, 'invalid_pairing_code', 'invalid pairing code');
     }
 
+    // FocusLink is a personal product. A device that has just shown its own
+    // code may be joined directly by another local device; the first device
+    // claims its request token immediately afterwards. This deliberately
+    // removes the former owner-code bootstrap from the normal pairing flow.
+    if (code !== null) {
+      const request = this.sql
+        .exec<PairRequestRow>(
+          `SELECT request_id, account_public_id, code_hmac, request_token_hmac,
+             installation_id, display_name, platform, device_kind, app_version,
+             expires_at, credential_expires_at, approved_at, approved_by_device_id, claimed_at
+           FROM v2_pair_requests WHERE code_hmac = ?`,
+          lookup.value,
+        )
+        .toArray()[0];
+      if (request) return this.exchangePairRequestDirect(accountId, request, metadata);
+    }
+
     this.ensureRegistrationSchema();
     const accountPublicId = publicId(accountId);
     const installationHmac =
@@ -1972,7 +1998,10 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     const derivedDevicePublicId = installationHmac?.slice(0, 24) ?? null;
     let devicePublicId = derivedDevicePublicId ?? '';
     let deviceId = '';
-    const secret = randomToken(48);
+    const secret =
+      code !== null
+        ? await hmacHex(pepper, `focuslink-pair-offer-secret-v2:${code}:${metadata.installationId}`)
+        : randomToken(48);
     const secretHmac = await hmacHex(pepper, secret);
     const expiresAt = Date.now() + 365 * DAY_MS;
     let scopes: string[] = [...FOCUSLINK_PAIRED_DEVICE_SCOPES];
@@ -1987,7 +2016,11 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
           lookup.value,
         )
         .toArray()[0];
-      assertPairOfferClaimAvailable(offer, now, accountPublicId);
+      if (code === null) {
+        assertPairOfferClaimAvailable(offer, now, accountPublicId);
+      } else {
+        assertNumericPairOfferClaimAvailable(offer, now, accountPublicId, metadata);
+      }
       // Legacy offers predate numeric installation binding and already carry
       // their public device id. Do not rotate it during a compatibility claim.
       devicePublicId = derivedDevicePublicId ?? offer.device_public_id;
@@ -2026,7 +2059,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         }
       }
       this.sql.exec(
-        `UPDATE v2_pair_offers SET used_at = ? WHERE nonce = ? AND used_at IS NULL`,
+        `UPDATE v2_pair_offers SET used_at = COALESCE(used_at, ?) WHERE nonce = ?`,
         now,
         offer.nonce,
       );
@@ -2084,11 +2117,117 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     };
   }
 
+  /** Pair a second local device directly from the first device's short code. */
+  private async exchangePairRequestDirect(
+    accountId: string,
+    request: PairRequestRow,
+    metadata: PairDeviceMetadata,
+  ): Promise<{ deviceId: string; accessToken: string; scopes: string[]; expiresAt: number }> {
+    const pepper = this.env.FOCUSLINK_DEVICE_PEPPER;
+    if (!pepper)
+      throw new ProtocolError(503, 'credential_missing', 'device pepper is not configured');
+    const now = Date.now();
+    assertPairRequestAvailable(request, now);
+    const accountPublicId = publicId(accountId);
+    if (request.account_public_id !== accountPublicId) {
+      throw new ProtocolError(410, 'pairing_expired', 'pair request is unavailable');
+    }
+
+    this.ensureRegistrationSchema();
+    const installationHmac = await registeredDeviceInstallationHmac(
+      pepper,
+      accountId,
+      metadata.installationId,
+    );
+    const devicePublicId = installationHmac.slice(0, 24);
+    const deviceId = `device-${devicePublicId}`;
+    if (request.approved_at !== null && request.approved_by_device_id !== deviceId) {
+      throw new ProtocolError(410, 'pairing_expired', 'pair request was already used');
+    }
+    const secret = await hmacHex(
+      pepper,
+      `focuslink-pair-request-peer-secret-v1:${request.request_id}:${metadata.installationId}`,
+    );
+    const secretHmac = await hmacHex(pepper, secret);
+    const scopes = [...FOCUSLINK_PAIRED_DEVICE_SCOPES];
+    const scopesJson = JSON.stringify(scopes);
+    this.ctx.storage.transactionSync(() => {
+      const current = this.sql
+        .exec<PairRequestRow>(
+          `SELECT request_id, account_public_id, code_hmac, request_token_hmac,
+             installation_id, display_name, platform, device_kind, app_version,
+             expires_at, credential_expires_at, approved_at, approved_by_device_id, claimed_at
+           FROM v2_pair_requests WHERE request_id = ?`,
+          request.request_id,
+        )
+        .toArray()[0];
+      assertPairRequestAvailable(current, now);
+      if (current.approved_at !== null && current.approved_by_device_id !== deviceId) {
+        throw new ProtocolError(410, 'pairing_expired', 'pair request was already used');
+      }
+      this.sql.exec(
+        `UPDATE v2_pair_requests
+         SET approved_at = ?, approved_by_device_id = ?
+         WHERE request_id = ? AND approved_at IS NULL`,
+        now,
+        deviceId,
+        current.request_id,
+      );
+      this.sql.exec(
+        `INSERT INTO v2_devices(device_id, device_public_id, account_public_id, display_name,
+         scopes_json, secret_hmac, pepper_version, expires_at, last_seen_at, stale, revoked_at)
+         VALUES (?, ?, ?, ?, ?, ?, 2, ?, ?, 0, NULL)
+         ON CONFLICT(device_id) DO UPDATE SET
+           device_public_id=excluded.device_public_id,
+           account_public_id=excluded.account_public_id,
+           display_name=excluded.display_name,
+           scopes_json=excluded.scopes_json,
+           secret_hmac=excluded.secret_hmac,
+           pepper_version=2,
+           expires_at=excluded.expires_at,
+           last_seen_at=excluded.last_seen_at,
+           stale=0,
+           revoked_at=NULL`,
+        deviceId,
+        devicePublicId,
+        accountPublicId,
+        metadata.displayName,
+        scopesJson,
+        secretHmac,
+        current.credential_expires_at,
+        now,
+      );
+      this.sql.exec(
+        `INSERT INTO v2_device_registrations(device_id, installation_hmac, platform, device_kind,
+         app_version, registered_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(device_id) DO UPDATE SET
+           installation_hmac=excluded.installation_hmac,
+           platform=excluded.platform,
+           device_kind=excluded.device_kind,
+           app_version=excluded.app_version,
+           updated_at=excluded.updated_at`,
+        deviceId,
+        installationHmac,
+        metadata.platform,
+        metadata.deviceKind,
+        metadata.appVersion,
+        now,
+        now,
+      );
+    });
+    return {
+      deviceId,
+      accessToken: `fl2_${accountPublicId}_${devicePublicId}_${secret}`,
+      scopes,
+      expiresAt: request.credential_expires_at,
+    };
+  }
+
   /**
    * Create the code shown by a device that has not joined the account yet.
-   * The short code can only be approved by an enrolled write-capable device;
-   * the high-entropy request token remains on the requesting device and is
-   * required to claim the resulting credential.
+   * A second local device can exchange the short code directly; the high-
+   * entropy request token remains on this requesting device for its own claim.
    */
   private async createPairRequest(
     accountId: string,
@@ -2117,6 +2256,12 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         hmacHex(pepper, pairingCodeHmacInput(code)),
         hmacHex(pepper, pairingRequestTokenHmacInput(requestToken)),
       ]);
+      if (
+        this.sql
+          .exec<{ nonce: string }>('SELECT nonce FROM v2_pair_offers WHERE code_hmac = ?', codeHmac)
+          .toArray()[0]
+      )
+        continue;
       try {
         this.sql.exec(
           `INSERT INTO v2_pair_requests(
@@ -3938,6 +4083,22 @@ export function assertPairOfferClaimAvailable(
     (offer.account_public_id !== null && offer.account_public_id !== accountPublicId)
   ) {
     throw new ProtocolError(410, 'pairing_expired', 'pair offer expired or already used');
+  }
+}
+
+function assertNumericPairOfferClaimAvailable(
+  offer: PairOfferRow | undefined,
+  now: number,
+  accountPublicId: string,
+  metadata: PairDeviceMetadata,
+): asserts offer is PairOfferRow {
+  if (
+    !offer ||
+    offer.expires_at <= now ||
+    (offer.account_public_id !== null && offer.account_public_id !== accountPublicId) ||
+    (offer.used_at !== null && !pairMetadataMatches(offer, metadata))
+  ) {
+    throw new ProtocolError(410, 'pairing_expired', 'pair offer expired or used elsewhere');
   }
 }
 

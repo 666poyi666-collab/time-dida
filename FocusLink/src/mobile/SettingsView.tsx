@@ -2,11 +2,14 @@ import { Cloud, Database, SlidersHorizontal, UserRound } from 'lucide-react';
 import { APP_COMMIT, APP_VERSION } from '@shared/version';
 import type { LiveConnectionState } from './runtimeModel';
 import { NativeSystemControls } from './NativeSystemControls';
+import { TimerDial } from '../features/focus/TimerDial';
 import {
   FOCUS_COLORS,
   FONT_PROFILES,
+  TIMER_STYLES,
   MOBILE_FOCUS_LABELS,
   MOBILE_FONT_LABELS,
+  MOBILE_TIMER_LABELS,
   MOBILE_THEME_LABELS,
   type MobileAppearance,
 } from './appearance';
@@ -38,12 +41,12 @@ export function SettingsView({
     <section className="settings-view view-surface" aria-labelledby="settings-view-title">
       <header className="view-heading">
         <div>
-          <p className="eyebrow">DEVICE & CLOUD</p>
-          <h2 id="settings-view-title">账号与系统</h2>
+          <p className="eyebrow">DEVICE SYNC & APPEARANCE</p>
+          <h2 id="settings-view-title">同步与外观</h2>
         </div>
         <button className="settings-edit-button" type="button" onClick={onOpenAccount}>
           <UserRound aria-hidden="true" />
-          <span>{authenticated ? '管理账号' : '登录账号'}</span>
+          <span>{authenticated ? '管理设备' : '配对设备'}</span>
         </button>
       </header>
 
@@ -56,8 +59,8 @@ export function SettingsView({
         />
         <StatusLine
           icon={UserRound}
-          label="FocusLink 账号"
-          value={authenticated ? (accountLabel ?? '已登录') : '未登录'}
+          label="设备同步"
+          value={authenticated ? (accountLabel ?? '已配对') : '未配对'}
           tone={authenticated ? 'ok' : 'warning'}
         />
         <StatusLine
@@ -133,6 +136,39 @@ export function SettingsView({
             ))}
           </select>
         </label>
+        <div
+          className={`appearance-font-preview font-profile-${appearance.fontProfile}`}
+          aria-live="polite"
+        >
+          <span>{MOBILE_FONT_LABELS[appearance.fontProfile]}</span>
+          <strong>时间正在发生 · 清醒专注 12:48</strong>
+        </div>
+
+        <div className="appearance-choice-group appearance-timer-group">
+          <span>计时仪表</span>
+          <p>和电脑端使用同一组九种时间仪器；选择后立即应用到专注页。</p>
+          <div className="appearance-timer-choices" role="group" aria-label="移动端计时仪表">
+            {TIMER_STYLES.map((style) => (
+              <button
+                key={style}
+                type="button"
+                className={`appearance-timer-choice ${appearance.timerStyle === style ? 'is-selected' : ''}`}
+                aria-pressed={appearance.timerStyle === style}
+                onClick={() => onAppearanceChange({ ...appearance, timerStyle: style })}
+              >
+                <span>{MOBILE_TIMER_LABELS[style]}</span>
+                <div className="appearance-timer-preview" aria-hidden="true">
+                  <TimerDial
+                    ms={25 * 60_000 + 16_000}
+                    state="running"
+                    style={style}
+                    coreRatio={0.62}
+                  />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
 
       <NativeSystemControls />
@@ -154,7 +190,10 @@ export function SettingsView({
 
       <div className="capability-boundary">
         <strong>桌面端专属操作</strong>
-        <p>FocusLink 任务与专注记录由账号云端负责同步；外部导入与投递只在桌面端设置中管理。</p>
+        <p>
+          设备互相输入 8 位码后同步 FocusLink
+          任务、清单颜色与专注记录；外部导入与投递只在桌面端设置中管理。
+        </p>
       </div>
     </section>
   );
@@ -185,5 +224,5 @@ function connectionLabel(connection: LiveConnectionState): string {
   if (connection === 'connecting') return '连接中';
   if (connection === 'offline') return '设备离线';
   if (connection === 'error') return '需要重试';
-  return '未登录';
+  return '未配对';
 }

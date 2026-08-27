@@ -6,7 +6,8 @@ export const TASK_SNAPSHOT_PATH = '/sync/v2/tasks' as const;
 export const TASK_SNAPSHOT_MAX_BODY_BYTES = 512 * 1024;
 export const TASK_SNAPSHOT_MAX_TASKS = 5_000;
 export const TASK_SNAPSHOT_MAX_PROJECTS = 500;
-export const TASK_SNAPSHOT_REFRESH_INTERVAL_MS = 15_000;
+/** Keep list/color/move changes perceptibly cross-device without a dedicated task websocket. */
+export const TASK_SNAPSHOT_REFRESH_INTERVAL_MS = 5_000;
 /** Server accepts small client clock drift but never lets one future value freeze the register. */
 export const TASK_SNAPSHOT_MAX_FUTURE_SKEW_MS = 5 * 60 * 1_000;
 const MAX_TEXT_LENGTH = 1_000;
