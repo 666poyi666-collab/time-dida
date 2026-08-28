@@ -12,6 +12,7 @@
 - **最终自动门禁**：format/typecheck/lint、根 Vitest `120 files / 903 tests`、cross-device `6 files / 59 tests`、Cloudflare 两阶段 task/live/cursor 持久化门禁通过；桌面设置截图、packaged UI、固定两态 mini、live fallback、移动五视口明暗四页面均通过。Windows 包内构建身份回读 `0.12.104 / 6defd1b`。
 - **最终安装矩阵**：Windows 静默覆盖后卸载项与安装 EXE 回读 `0.12.104`，安装进程已重启；Huawei DBY-W09 覆盖安装成功并回读 `0.12.104/1304`；Xiaomi `192.168.1.5:5555` 已在线，但旧 `0.12.87/1287` 正式包签名与本地 debug APK 不同，`adb install -r` 返回 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，未卸载、未清数据，故三端同版门禁仍为 BLOCKED。
 - **最终资产**：installer SHA256 `B719C453480499BDD9041C8074FF6F3ABC2C6E40C86FAF6D00C838522C6E42FD`；portable `D345532C0B3403F9104858119614FEE90D8586802F4A14332593C8CB0B9E6263`；APK 备份 `09B6001CC9E124ED15B4BE2A271EC704ED0A52FF160F65E14EEA327605F4CBBF`。发布目录已收敛四文件，`.git/lfs/tmp` 构建前后均为 0 B；未创建 tag 或 GitHub Release。
+- **小米补充安装**：小米从旧地址 `192.168.1.5` 漂移到 mDNS 地址 `192.168.1.4:5555`；重连后确认型号 `22041216C`。正式包 `app.focuslink.mobile` 因历史签名差异仍不能覆盖 `0.12.87/1287`，未卸载、未清数据；为完成实际安装，在不碰正式包的前提下用同一源码临时 applicationId 构建并安装并行包 `app.focuslink.mobile.v012104`，成功回读 `0.12.104/1304` 并启动。临时 Gradle 改动已恢复，正式 APK 输出已恢复并校验为 `app.focuslink.mobile`。
 
 ## 2026-08-26 · v0.12.104 每台设备本机码与反向批准
 
@@ -34,10 +35,10 @@
 - **最终源码身份**：无登录直连、无配对次数限流、同 installation 幂等和设备撤销修正提交为 `d22962c`；旧 `8db91bf` 二进制废弃，0.12.104 从新身份重新构建，不增加版本号。
 - **Bug-03（移动端“自由专注”被标题校验锁死）**：用户实测移动端无法不选任务单独开始。根因是 `runtimeControlAvailability` 和 `MobileApp.handleCommand` 同时要求标题非空，和界面“自由专注”承诺互相冲突。开始条件现只检查会话/连接权威与 pending，空标题稳定落为“自由专注”；在线与本机离线两条开始路径共用同一标题规则。
 - **Bug-04（移动端没有计时仪表状态）**：移动外观模型只有 theme/focusColor/fontProfile，专注页固定渲染普通 `<strong>` 读数，因此字体虽已打包但缺少可见预览，九种 PC 仪表也根本无法选择。移动端现持久化 `timerStyle`，直接复用桌面 `TimerDial` 的九种真实结构，在设置页提供 3×3 实时预览并在专注页渲染；915×412 横屏增加紧凑几何，防止主操作与底部导航重叠。
-- **Bug-05（清单颜色/完成/移动写回没有等待确认）**：PC 任务 mutation 调用 `refreshTaskWorkspace({force:true})`，但服务仍用 `void publishDeviceTaskSnapshot` 火并忘；完成/恢复任务甚至没有触发 refresh。结果是 UI 先说“已保存”，快照可能尚未发出或失败，移动端还要等 15 秒才看见变化。强制刷新现等待 pending snapshot 写回尝试结束，创建/改色/移动/完成/恢复都走同一发布链；移动端前台 cadence 收紧到 5 秒，回到前台/窗口聚焦/pageshow 立即刷新。
+- **Bug-05（清单颜色/完成/移动写回没有等待确认）**：PC 任务 mutation 调用 `refreshTaskWorkspace({force:true})`，但服务仍用 `void publishDeviceTaskSnapshot` 火并忘；完成/恢复任务甚至没有触发 refresh。结果是 UI 先说“已保存”，快照可能尚未发出或失败。强制刷新现等待 pending snapshot 写回尝试结束，创建/改色/移动/完成/恢复都走同一发布链；移动端前台 cadence 收紧到 5 秒，回到前台/窗口聚焦/pageshow 立即刷新。
 - **清单首写与颜色反馈**：新配对空间的 task snapshot 可为 `revision=0/snapshot=null`，旧移动代码因此拒绝创建第一条任务或清单。现按需建立只含稳定 `local-inbox` 的首写 payload；PC 与移动端清单色板轻触即提交当前名称与颜色，不再要求用户额外猜测“还要点保存”。
 - **配对叙事收口**：普通三端 UI 改用“配对设备 / 设备同步 / 退出此设备同步”，不再把正常 8 位码路径称为账号登录、设备授权或批准；同 installation 有效期内重试文案明确可重试。内部 account/credential 名称只保留在实现层。
-- **本轮自动证据（进行中）**：类型检查通过；定向移动/任务/同步测试 `8 files / 50 tests` 通过；完整移动 360/412/640/760/915×412 明暗四页面通过，无外层溢出、离屏控件或小于 44px 目标，全部本地字体装载成功。全量测试与最终打包/实装矩阵继续在同一 0.12.104 候选回填，不新增版本号。
+- **本轮自动证据（已完成）**：类型检查通过；定向移动/任务/同步测试 `8 files / 50 tests` 通过；完整移动 360/412/640/760/915×412 明暗四页面通过，无外层溢出、离屏控件或小于 44px 目标，全部本地字体装载成功。全量、打包和安装矩阵已在本节后续回填，不新增版本号。
 
 ## 2026-08-25 · v0.12.103 配对超时与本机配对码
 

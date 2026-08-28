@@ -6,7 +6,7 @@
 >
 > 发布类型：本地候选，未创建 GitHub Release
 >
-> 验证状态：直接互配、三端 UI、任务快照、Windows 构建、华为安装通过；小米因历史签名不一致未覆盖安装
+> 验证状态：直接互配、三端 UI、任务快照、Windows 构建、华为安装通过；小米正式包因历史签名不一致未覆盖，但同版并行包已安装启动
 
 ## 主要变化
 
@@ -22,7 +22,7 @@
 
 - format/typecheck/lint、根 Vitest `120 files / 903 tests`、跨设备 `59 tests`、Cloudflare 本地真实配对闭环均通过。
 - 桌面 packaged UI、固定两态 mini、live fallback smoke 通过；移动 360/412/640/760/915 横竖屏明暗门禁通过。
-- Windows 静默覆盖回读 `0.12.104`，安装 EXE `FileVersion=0.12.104`；华为平板回读 `0.12.104/1304`。小米因历史包签名不同而保留 `0.12.87/1287`，未清数据。
+- Windows 静默覆盖回读 `0.12.104`，安装 EXE `FileVersion=0.12.104`；华为平板回读 `0.12.104/1304`。小米正式包保留 `0.12.87/1287` 未清数据；并行包 `app.focuslink.mobile.v012104` 已回读 `0.12.104/1304` 并启动。
 - 公网新路由的 credential-boundary 与无次数限流回归通过；本地真实 Durable Object 已验证两台无登录设备直连、幂等重试和任务/live/账本读取。
 - 生产环境两个无登录临时设备直连成功，双方任务 revision 33、live revision 101、账本接口 200；exchange/claim 重试幂等。
 - 设备删除 canonical 路由已实修并复验：8 台临时 smoke 设备全部撤销成功，撤销后凭据均返回 401。
