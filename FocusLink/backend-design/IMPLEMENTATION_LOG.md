@@ -14,6 +14,7 @@
 - **最终资产**：installer SHA256 `B719C453480499BDD9041C8074FF6F3ABC2C6E40C86FAF6D00C838522C6E42FD`；portable `D345532C0B3403F9104858119614FEE90D8586802F4A14332593C8CB0B9E6263`；APK 备份 `09B6001CC9E124ED15B4BE2A271EC704ED0A52FF160F65E14EEA327605F4CBBF`。发布目录已收敛四文件，`.git/lfs/tmp` 构建前后均为 0 B；未创建 tag 或 GitHub Release。
 - **小米补充安装**：小米从旧地址 `192.168.1.5` 漂移到 mDNS 地址 `192.168.1.4:5555`；重连后确认型号 `22041216C`。正式包 `app.focuslink.mobile` 因历史签名差异仍不能覆盖 `0.12.87/1287`，未卸载、未清数据；为完成实际安装，在不碰正式包的前提下用同一源码临时 applicationId 构建并安装并行包 `app.focuslink.mobile.v012104`，成功回读 `0.12.104/1304` 并启动。临时 Gradle 改动已恢复，正式 APK 输出已恢复并校验为 `app.focuslink.mobile`。
 - **设备列表降噪**：用户指出 roster 中混有无效和测试设备。PC 与移动端现共用纯展示策略：当前设备常驻，正常其他设备折叠，test/smoke/protocol/staging/临时/验收命名、久未同步或已撤销设备统一折叠到“无效与测试设备”。不自动执行撤销，展开后保留逐台确认删除；新增纯函数和 SSR 合同测试。
+- **设备列表候选安装**：全量 Vitest `121 files / 905 tests`、PC 设置截图、移动五视口明暗、packaged UI/mini/live fallback 与 Android build/unit/lint 通过；包内身份 `0.12.104 / 90686c8`。Windows 已覆盖并由 startup verifier 回读该身份；小米 `192.168.1.4:5555` 并行包已覆盖回读 `0.12.104/1304`、进程在前台。华为 `192.168.1.7:5555` 本轮 ADB offline，保留此前 `0.12.104/1304`，因此该子修订三端再次覆盖门禁为 BLOCKED，不冒充完成。
 
 ## 2026-08-26 · v0.12.104 每台设备本机码与反向批准
 

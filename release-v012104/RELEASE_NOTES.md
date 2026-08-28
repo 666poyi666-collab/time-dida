@@ -2,7 +2,7 @@
 
 > 发布日期：2026-08-28
 >
-> 对应提交：`6defd1b`（功能提交：`dc92a65`）
+> 对应提交：`90686c8`（设备列表降噪功能提交：`bf98e8c`，移动功能提交：`dc92a65`）
 >
 > 发布类型：本地候选，未创建 GitHub Release
 >
@@ -17,16 +17,17 @@
 - 正常配对入口只保留 8 位本机码，不再打开管理员授权网页。
 - 移动端可不填标题直接开始“自由专注”，并与 PC 共用九种计时仪表、字体和强调色；设置页提供实时预览。
 - 修复任务/清单首次写入竞态、PC 清单颜色级联覆盖和跨端任务快照确认；移动端任务写入失败显示明确状态并自动刷新。
+- 已配对设备按“当前设备 / 其他设备 / 无效与测试设备”分层；测试、staging、smoke、久未同步和已撤销设备默认折叠，不再铺满页面。
 
 ## 验证
 
 - format/typecheck/lint、根 Vitest `120 files / 903 tests`、跨设备 `59 tests`、Cloudflare 本地真实配对闭环均通过。
 - 桌面 packaged UI、固定两态 mini、live fallback smoke 通过；移动 360/412/640/760/915 横竖屏明暗门禁通过。
-- Windows 静默覆盖回读 `0.12.104`，安装 EXE `FileVersion=0.12.104`；华为平板回读 `0.12.104/1304`。小米正式包保留 `0.12.87/1287` 未清数据；并行包 `app.focuslink.mobile.v012104` 已回读 `0.12.104/1304` 并启动。
+- Windows 静默覆盖回读 `0.12.104 / 90686c8`；小米正式包保留 `0.12.87/1287` 未清数据，并行包 `app.focuslink.mobile.v012104` 已覆盖回读 `0.12.104/1304` 并在前台运行。华为本轮地址离线，仍保留此前已安装的 `0.12.104/1304`，设备列表降噪子修订未能再次覆盖。
 - 公网新路由的 credential-boundary 与无次数限流回归通过；本地真实 Durable Object 已验证两台无登录设备直连、幂等重试和任务/live/账本读取。
 - 生产环境两个无登录临时设备直连成功，双方任务 revision 33、live revision 101、账本接口 200；exchange/claim 重试幂等。
 - 设备删除 canonical 路由已实修并复验：8 台临时 smoke 设备全部撤销成功，撤销后凭据均返回 401。
-- Android `assembleDebug`、单元测试与 lint 通过；APK `versionName=0.12.104/versionCode=1304`，备份 SHA256：`09B6001CC9E124ED15B4BE2A271EC704ED0A52FF160F65E14EEA327605F4CBBF`。
+- Android `assembleDebug`、单元测试与 lint 通过；正式 APK `versionName=0.12.104/versionCode=1304`，备份 SHA256：`FA0DDE78B76F908C1388B3BE7C83E1D03C21513645C3DA7C975FAB98DD1B7D01`。
 
 ## 已知限制
 
@@ -34,5 +35,5 @@
 
 ## 下载与校验
 
-| `FocusLink-0.12.104-x64.exe` | `B719C453480499BDD9041C8074FF6F3ABC2C6E40C86FAF6D00C838522C6E42FD` |
-| `FocusLink-0.12.104-x64-portable.exe` | `D345532C0B3403F9104858119614FEE90D8586802F4A14332593C8CB0B9E6263` |
+| `FocusLink-0.12.104-x64.exe` | `068D2D084AC2CB9E54861D40421B506294B0A2091BD2FA0B041A037179E31EF3` |
+| `FocusLink-0.12.104-x64-portable.exe` | `D9BA18338960C77F9A4A42C8F9BD9FDA67D0A0576D6B81B55D07A5D505EB9619` |
