@@ -110,7 +110,7 @@ describe('mobile owner account entry', () => {
     expect(markup).not.toContain('accessToken');
   });
 
-  it('renders the paired-device roster with an explicit revoke action', () => {
+  it('keeps current, regular and invalid/test devices in separate roster levels', () => {
     const markup = renderToStaticMarkup(
       createElement(ConnectionSheet, {
         authenticated: true,
@@ -119,7 +119,21 @@ describe('mobile owner account entry', () => {
         notice: null,
         pairingCode: '',
         pairingOffer: null,
+        currentDeviceId: 'device-current01',
         devices: [
+          {
+            deviceId: 'device-current01',
+            devicePublicId: 'current01',
+            displayName: '当前小米',
+            platform: 'android',
+            deviceKind: 'phone',
+            appVersion: '0.12.104',
+            expiresAt: Date.now() + 60_000,
+            revokedAt: null,
+            lastSeenAt: Date.now(),
+            stale: false,
+            registeredAt: Date.now(),
+          },
           {
             deviceId: 'device-tablet01',
             devicePublicId: 'tablet01',
@@ -127,6 +141,19 @@ describe('mobile owner account entry', () => {
             platform: 'android',
             deviceKind: 'tablet',
             appVersion: '0.12.102',
+            expiresAt: Date.now() + 60_000,
+            revokedAt: null,
+            lastSeenAt: Date.now(),
+            stale: false,
+            registeredAt: Date.now(),
+          },
+          {
+            deviceId: 'device-smoke01',
+            devicePublicId: 'smoke01',
+            displayName: 'FocusLink protocol smoke device',
+            platform: 'web',
+            deviceKind: 'desktop',
+            appVersion: 'protocol-test',
             expiresAt: Date.now() + 60_000,
             revokedAt: null,
             lastSeenAt: Date.now(),
@@ -144,6 +171,9 @@ describe('mobile owner account entry', () => {
       }),
     );
     expect(markup).toContain('已配对设备');
+    expect(markup).toContain('当前设备 · 正在同步');
+    expect(markup).toContain('其他设备');
+    expect(markup).toContain('无效与测试设备');
     expect(markup).toContain('FocusLink 平板');
     expect(markup).toContain('删除设备');
   });

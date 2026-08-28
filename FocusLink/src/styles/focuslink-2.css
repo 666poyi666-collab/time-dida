@@ -1189,13 +1189,52 @@ html.dark {
 }
 
 .settings-device-roster-heading,
-.settings-device-row {
+.settings-device-row,
+.settings-device-more > summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   min-height: 48px;
   border-bottom: 1px solid rgb(var(--app-border));
+}
+
+.settings-device-more > summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-inline: 4px;
+  border-bottom: 1px solid rgb(var(--app-border));
+  color: rgb(var(--app-muted));
+  cursor: pointer;
+  font-size: 10px;
+  list-style: none;
+}
+
+.settings-device-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-device-more > summary svg {
+  transition: transform 160ms ease;
+}
+
+.settings-device-more > summary > span:first-child {
+  margin-right: auto;
+}
+
+.settings-device-more[open] > summary svg {
+  transform: rotate(180deg);
+}
+
+.settings-device-more.is-inactive > summary {
+  color: rgb(var(--app-subtle));
+}
+
+.settings-device-more > div {
+  padding-left: 12px;
 }
 
 .settings-device-roster-heading strong {
@@ -1221,6 +1260,31 @@ html.dark {
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.settings-device-row.is-current {
+  background: rgb(var(--app-accent-soft) / 0.42);
+}
+
+.settings-device-remove {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid rgb(var(--app-border-strong));
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: rgb(var(--app-muted));
+  font-size: 10px;
+}
+
+.settings-device-remove:hover,
+.settings-device-remove:focus-visible {
+  border-color: rgb(var(--app-danger));
+  color: rgb(var(--app-danger));
 }
 
 @media (min-width: 1500px) {

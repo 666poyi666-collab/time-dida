@@ -1015,6 +1015,55 @@ body {
   border-top: 1px solid var(--border);
 }
 
+.account-device-roster-heading,
+.account-device-more > summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.account-device-roster-heading strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.account-device-more > summary {
+  padding-inline: 2px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.account-device-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.account-device-more > summary svg {
+  width: 15px;
+  height: 15px;
+  transition: transform 160ms ease;
+}
+
+.account-device-more > summary > span:first-child {
+  margin-right: auto;
+}
+
+.account-device-more[open] > summary svg {
+  transform: rotate(180deg);
+}
+
+.account-device-more.is-inactive > summary {
+  color: var(--subtle);
+}
+
+.account-device-more > div {
+  padding-left: 10px;
+}
+
 .account-device-row {
   display: flex;
   min-height: 52px;
@@ -1044,13 +1093,39 @@ body {
 }
 
 .account-device-row button {
+  display: grid;
+  width: 40px;
   min-height: 40px;
-  padding: 0 10px;
+  flex: 0 0 40px;
+  padding: 0;
+  place-items: center;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
+  background: transparent;
   color: var(--muted);
+}
+
+.account-device-row button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.account-device-current {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--focus-soft);
+  color: var(--focus-strong) !important;
   font-size: 10px;
-  white-space: nowrap;
+  font-weight: 700;
+}
+
+.account-device-row button span {
+  display: none;
+}
+
+.account-device-row.is-current {
+  padding-inline: 10px;
+  background: var(--focus-soft);
 }
 
 .account-sheet .primary-button {

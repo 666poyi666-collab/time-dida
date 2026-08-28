@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
+import { ChevronDown, Trash2 } from 'lucide-react';
 import { normalizeFocusLinkPairingCode } from '@shared/sync/pairingProtocol';
 import type { DeviceSyncManagedDevice } from '@shared/ipc/api';
+import {
+  groupManagedDevices,
+  managedDeviceKindLabel,
+  managedDeviceStateLabel,
+} from '@shared/deviceRosterPolicy';
 
 export interface ConnectionSheetProps {
   authenticated: boolean;
@@ -11,6 +17,7 @@ export interface ConnectionSheetProps {
   pairingCode: string;
   pairingOffer: { code: string; expiresAt: number; requestToken?: string } | null;
   devices: DeviceSyncManagedDevice[];
+  currentDeviceId?: string;
   onClose: () => void;
   onPairingCodeChange: (value: string) => void;
   onPair: (value?: string) => void;
@@ -28,6 +35,7 @@ export function ConnectionSheet({
   pairingCode,
   pairingOffer,
   devices,
+  currentDeviceId,
   onClose,
   onPairingCodeChange,
   onPair,
@@ -243,26 +251,12 @@ export function ConnectionSheet({
           <>
             {pairingEntry}
             {devices.length > 0 && (
-              <div className="account-device-roster" aria-label="已配对设备">
-                {devices.map((device) => (
-                  <div className="account-device-row" key={device.deviceId}>
-                    <div>
-                      <strong>{device.displayName}</strong>
-                      <span>{device.stale ? '久未同步' : '最近在线'}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`删除“${device.displayName}”？`))
-                          onRevokeDevice(device.deviceId);
-                      }}
-                      disabled={busy}
-                    >
-                      删除设备
-                    </button>
-                  </div>
-                ))}
-              </div>
+              <MobileDeviceRoster
+                devices={devices}
+                currentDeviceId={currentDeviceId}
+                busy={busy}
+                onRevokeDevice={onRevokeDevice}
+              />
             )}
             <div className="sheet-secondary-actions account-sheet-actions">
               <button type="button" onClick={onCreatePairingCode} disabled={busy}>
@@ -284,5 +278,76 @@ export function ConnectionSheet({
         )}
       </motion.section>
     </motion.div>
+  );
+}
+
+function MobileDeviceRoster({
+  devices,
+  currentDeviceId,
+  busy,
+  onRevokeDevice,
+}: {
+  devices: DeviceSyncManagedDevice[];
+  currentDeviceId?: string;
+  busy: boolean;
+  onRevokeDevice: (deviceId: string) => void;
+}) {
+  const groups = groupManagedDevices(devices, currentDeviceId);
+  const renderRow = (device: DeviceSyncManagedDevice, isCurrent = false) => (
+    <div className={`account-device-row ${isCurrent ? 'is-current' : ''}`} key={device.deviceId}>
+      <div>
+        <strong>{device.displayName}</strong>
+        <span>
+          {isCurrent
+            ? '当前设备 · 正在同步'
+            : `${managedDeviceKindLabel(device.deviceKind)} · ${managedDeviceStateLabel(device)}`}
+        </span>
+      </div>
+      {isCurrent ? (
+        <span className="account-device-current">当前</span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm(`删除“${device.displayName}”？`)) onRevokeDevice(device.deviceId);
+          }}
+          disabled={busy}
+          aria-label={`删除 ${device.displayName}`}
+          title="删除设备"
+        >
+          <Trash2 aria-hidden="true" />
+          <span className="sr-only">删除设备</span>
+        </button>
+      )}
+    </div>
+  );
+  return (
+    <section className="account-device-roster" aria-label="已配对设备">
+      <header className="account-device-roster-heading">
+        <strong>已配对设备</strong>
+        <span>{devices.length} 台</span>
+      </header>
+      {groups.current ? renderRow(groups.current, true) : null}
+      {groups.regular.length > 0 && (
+        <details className="account-device-more">
+          <summary>
+            <span>其他设备</span>
+            <span>{groups.regular.length} 台</span>
+            <ChevronDown aria-hidden="true" />
+          </summary>
+          <div>{groups.regular.map((device) => renderRow(device))}</div>
+        </details>
+      )}
+      {groups.inactiveOrTest.length > 0 && (
+        <details className="account-device-more is-inactive">
+          <summary>
+            <span>无效与测试设备</span>
+            <span>{groups.inactiveOrTest.length} 台</span>
+            <ChevronDown aria-hidden="true" />
+          </summary>
+          <div>{groups.inactiveOrTest.map((device) => renderRow(device))}</div>
+        </details>
+      )}
+    </section>
   );
 }

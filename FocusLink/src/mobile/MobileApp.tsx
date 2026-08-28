@@ -2049,6 +2049,7 @@ export function MobileApp() {
             pairingCode={pairingCode}
             pairingOffer={pairingOffer}
             devices={managedDevices}
+            currentDeviceId={deviceId}
             onClose={() => setConfigOpen(false)}
             onPairingCodeChange={(value) => setPairingCode(normalizePairingCodeInput(value))}
             onPair={(value) => void redeemPairingCode(value)}

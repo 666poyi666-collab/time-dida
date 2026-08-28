@@ -16,6 +16,11 @@ import type {
 import { APP_VERSION } from '@shared/version';
 import { normalizeFocusLinkPairingCode } from '@shared/sync/pairingProtocol';
 import { resolveFontProfile, resolveTimerStyle } from '@shared/theme';
+import {
+  groupManagedDevices,
+  managedDeviceKindLabel,
+  managedDeviceStateLabel,
+} from '@shared/deviceRosterPolicy';
 import { motion } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
 import { TimerDial } from '../focus/TimerDial';
@@ -1567,37 +1572,12 @@ export function SettingsPanel() {
             </button>
           </div>
           {deviceSyncStatus?.signedIn && managedDevices.length > 0 && (
-            <div className="settings-device-roster" aria-label="已配对设备">
-              <div className="settings-device-roster-heading">
-                <strong>已配对设备</strong>
-                <span>{managedDevices.length} 台</span>
-              </div>
-              {managedDevices.map((device) => (
-                <div className="settings-device-row" key={device.deviceId}>
-                  <div>
-                    <strong>{device.displayName}</strong>
-                    <span>
-                      {device.deviceId === deviceSyncStatus.deviceId
-                        ? '此设备'
-                        : (device.deviceKind ?? '设备')}
-                      {device.stale ? ' · 久未同步' : ' · 最近在线'}
-                    </span>
-                  </div>
-                  {device.deviceId === deviceSyncStatus.deviceId ? (
-                    <span className="settings-status-badge tone-success">当前</span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn-outline text-[11px]"
-                      onClick={() => void handleRevokeDevice(device)}
-                      disabled={deviceSyncSaving}
-                    >
-                      删除设备
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
+            <DesktopDeviceRoster
+              devices={managedDevices}
+              currentDeviceId={deviceSyncStatus.deviceId}
+              busy={deviceSyncSaving}
+              onRevoke={handleRevokeDevice}
+            />
           )}
           <div
             className={`settings-status-strip ${
@@ -2054,6 +2034,76 @@ export function SettingsPanel() {
         </div>
       </div>
     </div>
+  );
+}
+
+function DesktopDeviceRoster({
+  devices,
+  currentDeviceId,
+  busy,
+  onRevoke,
+}: {
+  devices: DeviceSyncManagedDevice[];
+  currentDeviceId: string;
+  busy: boolean;
+  onRevoke: (device: DeviceSyncManagedDevice) => Promise<void>;
+}) {
+  const groups = groupManagedDevices(devices, currentDeviceId);
+  const renderRow = (device: DeviceSyncManagedDevice, isCurrent = false) => (
+    <div className={`settings-device-row ${isCurrent ? 'is-current' : ''}`} key={device.deviceId}>
+      <div>
+        <strong>{device.displayName}</strong>
+        <span>
+          {isCurrent
+            ? '当前设备 · 正在同步'
+            : `${managedDeviceKindLabel(device.deviceKind)} · ${managedDeviceStateLabel(device)}`}
+        </span>
+      </div>
+      {isCurrent ? (
+        <span className="settings-status-badge tone-success">当前</span>
+      ) : (
+        <button
+          type="button"
+          className="settings-device-remove"
+          onClick={() => void onRevoke(device)}
+          disabled={busy}
+          aria-label={`删除 ${device.displayName}`}
+          title="删除设备"
+        >
+          <Icon.Trash size="sm" />
+          <span>删除</span>
+        </button>
+      )}
+    </div>
+  );
+  return (
+    <section className="settings-device-roster" aria-label="已配对设备">
+      <header className="settings-device-roster-heading">
+        <strong>已配对设备</strong>
+        <span>{devices.length} 台</span>
+      </header>
+      {groups.current ? renderRow(groups.current, true) : null}
+      {groups.regular.length > 0 && (
+        <details className="settings-device-more">
+          <summary>
+            <span>其他设备</span>
+            <span>{groups.regular.length} 台</span>
+            <Icon.ChevronDown size="xs" />
+          </summary>
+          <div>{groups.regular.map((device) => renderRow(device))}</div>
+        </details>
+      )}
+      {groups.inactiveOrTest.length > 0 && (
+        <details className="settings-device-more is-inactive">
+          <summary>
+            <span>无效与测试设备</span>
+            <span>{groups.inactiveOrTest.length} 台</span>
+            <Icon.ChevronDown size="xs" />
+          </summary>
+          <div>{groups.inactiveOrTest.map((device) => renderRow(device))}</div>
+        </details>
+      )}
+    </section>
   );
 }
 
