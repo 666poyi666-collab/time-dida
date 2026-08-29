@@ -10,7 +10,7 @@
 - 以干净源码提交 `0e031fd`、Node `22.22.2` 重建 `0.12.104`：installer/portable 只读校验哈希分别为 `E8B35A8B958784879D994AB4E6BD353A1DE6C6AA12A8812E873F647709A5CE9F` / `63FC4211E90573F91833BFE9006A14B61BF9EE41D9C03D36CEECA731AD51F0D8`，发布目录四文件且 LFS tmp 0。
 - Windows `/S` 覆盖安装回读 `0.12.104` 与 `0.12.104.0`，应用重启且 SQLite/credential 保留；华为 `192.168.1.7:5555` 正式包回读 `0.12.104/1304`，隔离 native instrumentation `4+1` 通过；小米 `192.168.1.5:5555` 正式包因历史签名不一致被拒，未卸载/清数据，按既有策略安装并启动 `app.focuslink.mobile.v012104` 回读 `0.12.104/1304`，旧 `192.168.1.4:5555` offline。
 - Cloudflare private/public/OAuth 实际部署版本分别为 `8b19926e-b7f4-46f7-90cc-4b2d96065770`、`b961c9d3-f9da-4079-b135-c8088fb06eb4`、`2b1f9e76-76ce-4af2-811a-b1d8048a0b71`；远端 `probe-remote` 19/19 通过。生产 MCP 任务写入未做成功闭环：浏览器无授权态、未提供 OAuth access token，`verify-pc-off` 报缺少/无效 `FOCUSLINK_MCP_ACCESS_TOKEN`；未创建生产临时数据，无需清理。新候选 unpacked/portable UI smoke 均出现非稳定状态收敛失败，已在实施日志明确为阻断，不能冒充通过。
-- 新增纯函数、MCP service binding/scope、canonical route、IPC 失败反馈与移动/桌面清单安全删除回归。根 typecheck、Vitest `122 files / 915 tests`，cloud/mcp typecheck/test:typecheck/测试 `113` 项通过；生产部署、真实任务清理和三设备本批次安装留待后续门禁，不以本地测试冒充。
+- 新增纯函数、MCP service binding/scope、canonical route、IPC 失败反馈与移动/桌面清单安全删除回归。根 typecheck、Vitest `122 files / 915 tests`，cloud/mcp typecheck/test:typecheck/测试 `113` 项通过；生产 Worker/OAuth 已部署并完成匿名 probe，三端安装已实测；仅生产 MCP 任务清理闭环待 OAuth 授权，不以本地测试冒充。
 
 ## 2026-08-28
 
