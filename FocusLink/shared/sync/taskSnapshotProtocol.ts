@@ -1,8 +1,15 @@
 import type { Project, Task, TaskSource } from '../types';
 import { fingerprintDeviceSyncValue } from './deviceProtocol';
+import { normalizeTaskProjectColor } from '../taskProjectPolicy';
 
 export const TASK_SNAPSHOT_PROTOCOL_VERSION = 1 as const;
 export const TASK_SNAPSHOT_PATH = '/sync/v2/tasks' as const;
+/**
+ * A narrow mutation endpoint layered beside the legacy whole-snapshot register.
+ * Old clients continue to GET/POST `/sync/v2/tasks`; clients that understand this
+ * contract can perform an atomic CAS mutation without inventing another task store.
+ */
+export const TASK_SNAPSHOT_MUTATION_PATH = '/sync/v2/tasks/mutate' as const;
 export const TASK_SNAPSHOT_MAX_BODY_BYTES = 512 * 1024;
 export const TASK_SNAPSHOT_MAX_TASKS = 5_000;
 export const TASK_SNAPSHOT_MAX_PROJECTS = 500;
@@ -51,6 +58,110 @@ export interface TaskSnapshotResponse {
   sourceDeviceId: string | null;
   snapshot: TaskSnapshotPayload | null;
   serverTime: number;
+}
+
+export type TaskSnapshotMutationKind =
+  | 'create_project'
+  | 'update_project'
+  | 'delete_project'
+  | 'create_task'
+  | 'update_task'
+  | 'set_task_completed'
+  | 'delete_task'
+  | 'move_task';
+
+export interface CreateTaskProjectMutation {
+  kind: 'create_project';
+  projectId?: string;
+  name: string;
+  color?: string | null;
+}
+
+export interface UpdateTaskProjectMutation {
+  kind: 'update_project';
+  projectId: string;
+  name?: string;
+  color?: string | null;
+}
+
+export interface DeleteTaskProjectMutation {
+  kind: 'delete_project';
+  projectId: string;
+}
+
+export interface CreateTaskMutation {
+  kind: 'create_task';
+  taskId?: string;
+  projectId?: string | null;
+  parentId?: string | null;
+  title: string;
+  priority?: number | null;
+  dueDate?: number | null;
+  tags?: string[];
+}
+
+export interface UpdateTaskMutation {
+  kind: 'update_task';
+  taskId: string;
+  title?: string;
+  projectId?: string | null;
+  parentId?: string | null;
+  priority?: number | null;
+  dueDate?: number | null;
+  tags?: string[];
+}
+
+export interface SetTaskCompletedMutation {
+  kind: 'set_task_completed';
+  taskId: string;
+  completed: boolean;
+}
+
+export interface DeleteTaskMutation {
+  kind: 'delete_task';
+  taskId: string;
+}
+
+export interface MoveTaskMutation {
+  kind: 'move_task';
+  taskId: string;
+  projectId: string | null;
+}
+
+export type TaskSnapshotMutation =
+  | CreateTaskProjectMutation
+  | UpdateTaskProjectMutation
+  | DeleteTaskProjectMutation
+  | CreateTaskMutation
+  | UpdateTaskMutation
+  | SetTaskCompletedMutation
+  | DeleteTaskMutation
+  | MoveTaskMutation;
+
+export interface TaskSnapshotMutationRequest {
+  protocolVersion: typeof TASK_SNAPSHOT_PROTOCOL_VERSION;
+  operationId: string;
+  expectedRevision: number;
+  /** Device id for normal clients, or a fixed redacted service label for MCP. */
+  deviceId: string;
+  mutation: TaskSnapshotMutation;
+}
+
+export interface TaskSnapshotMutationResult {
+  kind: TaskSnapshotMutationKind;
+  entityId: string;
+  taskCount?: number;
+  movedTaskCount?: number;
+  deletedTaskCount?: number;
+  projectId?: string | null;
+  /** Project removal always moves tasks to the inbox; task deletion is permanent. */
+  safety: 'moved_to_inbox' | 'permanent_subtree_delete' | 'updated';
+}
+
+export interface TaskSnapshotMutationResponse extends TaskSnapshotResponse {
+  operationId: string;
+  status: 'applied' | 'duplicate';
+  result: TaskSnapshotMutationResult;
 }
 
 export type TaskSnapshotFreshness = 'advance' | 'refresh' | 'stale' | 'inconsistent';
@@ -205,6 +316,408 @@ export function parseTaskSnapshotResponse(value: unknown): TaskSnapshotResponse 
   return value as unknown as TaskSnapshotResponse;
 }
 
+export function validateTaskSnapshotMutationRequest(
+  value: unknown,
+): value is TaskSnapshotMutationRequest {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'protocolVersion',
+      'operationId',
+      'expectedRevision',
+      'deviceId',
+      'mutation',
+    ]) ||
+    value.protocolVersion !== TASK_SNAPSHOT_PROTOCOL_VERSION ||
+    !isOperationId(value.operationId) ||
+    !isRevision(value.expectedRevision) ||
+    !isId(value.deviceId) ||
+    !validateTaskSnapshotMutation(value.mutation)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function parseTaskSnapshotMutationResponse(
+  value: unknown,
+): TaskSnapshotMutationResponse | null {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'protocolVersion',
+      'revision',
+      'sourceDeviceId',
+      'snapshot',
+      'serverTime',
+      'operationId',
+      'status',
+      'result',
+    ]) ||
+    value.protocolVersion !== TASK_SNAPSHOT_PROTOCOL_VERSION ||
+    !isRevision(value.revision) ||
+    !(value.sourceDeviceId === null || isId(value.sourceDeviceId)) ||
+    !(value.snapshot === null || validateTaskSnapshotPayload(value.snapshot)) ||
+    !isTimestamp(value.serverTime) ||
+    !isOperationId(value.operationId) ||
+    (value.status !== 'applied' && value.status !== 'duplicate') ||
+    !validateTaskSnapshotMutationResult(value.result)
+  ) {
+    return null;
+  }
+  return value as unknown as TaskSnapshotMutationResponse;
+}
+
+/**
+ * Apply one validated mutation to a task snapshot.  The function is deliberately pure so the
+ * browser, Electron and Account DO all share the same parent/project/delete semantics.
+ * `idFactory` is injectable for deterministic tests and server-side ID generation.
+ */
+export function applyTaskSnapshotMutation(
+  source: TaskSnapshotPayload,
+  mutation: TaskSnapshotMutation,
+  publishedAt: number,
+  idFactory: () => string = () => globalThis.crypto.randomUUID(),
+): { snapshot: TaskSnapshotPayload; result: TaskSnapshotMutationResult } {
+  if (!isTimestamp(publishedAt)) throw new Error('任务快照时间无效');
+  const snapshot: TaskSnapshotPayload = {
+    publishedAt,
+    projects: source.projects.map((project) => ({ ...project })),
+    tasks: source.tasks.map((task) => ({ ...task, tags: [...task.tags] })),
+  };
+  const findTask = (taskId: string) => snapshot.tasks.find((task) => task.id === taskId);
+  const findProject = (projectId: string) =>
+    snapshot.projects.find((project) => project.id === projectId);
+  if (!findProject('local-inbox')) {
+    // Older v1 snapshots may have represented inbox tasks with projectId=null and omitted the
+    // synthetic project.  Materialize it before a mutation so new tasks and safe list deletion
+    // always have a stable destination without rewriting any existing task identity.
+    snapshot.projects.unshift({
+      id: 'local-inbox',
+      source: 'local',
+      name: '收件箱',
+      color: '#16899f',
+    });
+  }
+  const ensureLocalProject = (projectId: string | null | undefined): string => {
+    const resolved = projectId || 'local-inbox';
+    const project = findProject(resolved);
+    if (!project || project.source !== 'local') throw new Error('目标清单不存在');
+    return resolved;
+  };
+  const ensureLocalTask = (taskId: string) => {
+    const task = findTask(taskId);
+    if (!task || task.source !== 'local') throw new Error('FocusLink 任务不存在');
+    return task;
+  };
+  const validateParent = (taskId: string, parentId: string | null, projectId: string) => {
+    if (parentId === null) return;
+    if (parentId === taskId) throw new Error('任务不能成为自己的父任务');
+    const parent = ensureLocalTask(parentId);
+    if (parent.projectId !== projectId) throw new Error('父任务必须属于同一清单');
+    const seen = new Set<string>([taskId]);
+    let cursor: string | null = parent.id;
+    while (cursor) {
+      if (seen.has(cursor)) throw new Error('任务父子关系不能形成循环');
+      seen.add(cursor);
+      cursor = findTask(cursor)?.parentId ?? null;
+    }
+  };
+  const markUpdated = (task: SyncedTask): SyncedTask => ({
+    ...task,
+    updatedAt: publishedAt,
+  });
+  const collectSubtree = (rootId: string): Set<string> => {
+    const subtree = new Set([rootId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const candidate of snapshot.tasks) {
+        if (candidate.parentId && subtree.has(candidate.parentId) && !subtree.has(candidate.id)) {
+          subtree.add(candidate.id);
+          changed = true;
+        }
+      }
+    }
+    return subtree;
+  };
+
+  switch (mutation.kind) {
+    case 'create_project': {
+      const id = mutation.projectId ?? idFactory();
+      if (!isId(id) || findProject(id)) throw new Error('清单标识已存在');
+      const name = mutation.name.trim();
+      if (!name) throw new Error('清单名称不能为空');
+      snapshot.projects.push({
+        id,
+        source: 'local',
+        name,
+        color: normalizeTaskProjectColor(mutation.color),
+      });
+      return {
+        snapshot,
+        result: { kind: mutation.kind, entityId: id, safety: 'updated' },
+      };
+    }
+    case 'update_project': {
+      const project = findProject(mutation.projectId);
+      if (!project || project.source !== 'local') throw new Error('FocusLink 清单不存在');
+      if (mutation.projectId === 'local-inbox' && mutation.name !== undefined) {
+        if (mutation.name.trim() !== project.name) throw new Error('收件箱不能重命名');
+      }
+      const name = mutation.name === undefined ? project.name : mutation.name.trim();
+      if (!name) throw new Error('清单名称不能为空');
+      project.name = name;
+      if (mutation.color !== undefined) project.color = normalizeTaskProjectColor(mutation.color);
+      return {
+        snapshot,
+        result: { kind: mutation.kind, entityId: project.id, safety: 'updated' },
+      };
+    }
+    case 'delete_project': {
+      if (mutation.projectId === 'local-inbox') throw new Error('收件箱不可删除');
+      const project = findProject(mutation.projectId);
+      if (!project || project.source !== 'local') throw new Error('FocusLink 清单不存在');
+      const affected = snapshot.tasks.filter((task) => task.projectId === project.id);
+      for (const task of affected) {
+        task.projectId = 'local-inbox';
+        task.updatedAt = publishedAt;
+      }
+      snapshot.projects = snapshot.projects.filter((candidate) => candidate.id !== project.id);
+      return {
+        snapshot,
+        result: {
+          kind: mutation.kind,
+          entityId: project.id,
+          movedTaskCount: affected.length,
+          projectId: 'local-inbox',
+          safety: 'moved_to_inbox',
+        },
+      };
+    }
+    case 'create_task': {
+      const title = mutation.title.trim();
+      if (!title) throw new Error('任务标题不能为空');
+      const projectId = ensureLocalProject(mutation.projectId);
+      const parentId = mutation.parentId ?? null;
+      const id = mutation.taskId ?? idFactory();
+      if (!isId(id) || findTask(id)) throw new Error('任务标识已存在');
+      validateParent(id, parentId, projectId);
+      snapshot.tasks.push({
+        id,
+        source: 'local',
+        projectId,
+        title,
+        status: 'incomplete',
+        priority: mutation.priority ?? null,
+        dueDate: mutation.dueDate ?? null,
+        tags: [...(mutation.tags ?? [])],
+        parentId,
+        isCompleted: false,
+        updatedAt: publishedAt,
+      });
+      return {
+        snapshot,
+        result: { kind: mutation.kind, entityId: id, projectId, safety: 'updated' },
+      };
+    }
+    case 'update_task': {
+      const task = ensureLocalTask(mutation.taskId);
+      const previousProjectId = task.projectId;
+      const projectId =
+        mutation.projectId === undefined
+          ? ensureLocalProject(task.projectId)
+          : ensureLocalProject(mutation.projectId);
+      const parentId =
+        mutation.parentId === undefined ? (task.parentId ?? null) : mutation.parentId;
+      validateParent(task.id, parentId, projectId);
+      if (mutation.title !== undefined) {
+        const title = mutation.title.trim();
+        if (!title) throw new Error('任务标题不能为空');
+        task.title = title;
+      }
+      if (mutation.priority !== undefined) task.priority = mutation.priority;
+      if (mutation.dueDate !== undefined) task.dueDate = mutation.dueDate;
+      if (mutation.tags !== undefined) task.tags = [...mutation.tags];
+      task.projectId = projectId;
+      task.parentId = parentId;
+      Object.assign(task, markUpdated(task));
+      let taskCount: number | undefined;
+      if (projectId !== previousProjectId) {
+        // A project move must not leave descendants in a different list.
+        const subtree = collectSubtree(task.id);
+        for (const candidate of snapshot.tasks) {
+          if (subtree.has(candidate.id))
+            Object.assign(candidate, markUpdated({ ...candidate, projectId }));
+        }
+        taskCount = subtree.size;
+      }
+      return {
+        snapshot,
+        result: {
+          kind: mutation.kind,
+          entityId: task.id,
+          projectId,
+          ...(taskCount === undefined ? {} : { taskCount }),
+          safety: 'updated',
+        },
+      };
+    }
+    case 'set_task_completed': {
+      const task = ensureLocalTask(mutation.taskId);
+      task.isCompleted = mutation.completed;
+      task.status = mutation.completed ? 'completed' : 'incomplete';
+      Object.assign(task, markUpdated(task));
+      return {
+        snapshot,
+        result: { kind: mutation.kind, entityId: task.id, safety: 'updated' },
+      };
+    }
+    case 'delete_task': {
+      ensureLocalTask(mutation.taskId);
+      const deleting = collectSubtree(mutation.taskId);
+      snapshot.tasks = snapshot.tasks.filter((task) => !deleting.has(task.id));
+      return {
+        snapshot,
+        result: {
+          kind: mutation.kind,
+          entityId: mutation.taskId,
+          deletedTaskCount: deleting.size,
+          safety: 'permanent_subtree_delete',
+        },
+      };
+    }
+    case 'move_task': {
+      const task = ensureLocalTask(mutation.taskId);
+      const projectId = ensureLocalProject(mutation.projectId);
+      const moving = collectSubtree(task.id);
+      for (const candidate of snapshot.tasks) {
+        if (moving.has(candidate.id)) {
+          candidate.projectId = projectId;
+          if (candidate.id === task.id) candidate.parentId = null;
+          Object.assign(candidate, markUpdated(candidate));
+        }
+      }
+      return {
+        snapshot,
+        result: {
+          kind: mutation.kind,
+          entityId: task.id,
+          taskCount: moving.size,
+          projectId,
+          safety: 'updated',
+        },
+      };
+    }
+  }
+}
+
+function validateTaskSnapshotMutation(value: unknown): value is TaskSnapshotMutation {
+  if (!isRecord(value) || typeof value.kind !== 'string') return false;
+  switch (value.kind) {
+    case 'create_project':
+      return (
+        hasOnlyKeys(value, ['kind', 'projectId', 'name', 'color']) &&
+        (value.projectId === undefined || isId(value.projectId)) &&
+        isName(value.name) &&
+        (value.color === undefined || value.color === null || isText(value.color))
+      );
+    case 'update_project':
+      return (
+        hasOnlyKeys(value, ['kind', 'projectId', 'name', 'color']) &&
+        isId(value.projectId) &&
+        (value.name === undefined || isName(value.name)) &&
+        (value.color === undefined || value.color === null || isText(value.color)) &&
+        (value.name !== undefined || value.color !== undefined)
+      );
+    case 'delete_project':
+      return hasOnlyKeys(value, ['kind', 'projectId']) && isId(value.projectId);
+    case 'create_task':
+      return (
+        hasOnlyKeys(value, [
+          'kind',
+          'taskId',
+          'projectId',
+          'parentId',
+          'title',
+          'priority',
+          'dueDate',
+          'tags',
+        ]) &&
+        (value.taskId === undefined || isId(value.taskId)) &&
+        isOptionalNullableId(value.projectId) &&
+        isOptionalNullableId(value.parentId) &&
+        isName(value.title) &&
+        (value.priority === undefined || value.priority === null || isPriority(value.priority)) &&
+        (value.dueDate === undefined || value.dueDate === null || isTimestamp(value.dueDate)) &&
+        (value.tags === undefined || isTags(value.tags))
+      );
+    case 'update_task':
+      return (
+        hasOnlyKeys(value, [
+          'kind',
+          'taskId',
+          'title',
+          'projectId',
+          'parentId',
+          'priority',
+          'dueDate',
+          'tags',
+        ]) &&
+        isId(value.taskId) &&
+        (value.title === undefined || isName(value.title)) &&
+        isOptionalNullableId(value.projectId) &&
+        isOptionalNullableId(value.parentId) &&
+        (value.priority === undefined || value.priority === null || isPriority(value.priority)) &&
+        (value.dueDate === undefined || value.dueDate === null || isTimestamp(value.dueDate)) &&
+        (value.tags === undefined || isTags(value.tags)) &&
+        ['title', 'projectId', 'parentId', 'priority', 'dueDate', 'tags'].some(
+          (key) => key in value,
+        )
+      );
+    case 'set_task_completed':
+      return (
+        hasOnlyKeys(value, ['kind', 'taskId', 'completed']) &&
+        isId(value.taskId) &&
+        typeof value.completed === 'boolean'
+      );
+    case 'delete_task':
+      return hasOnlyKeys(value, ['kind', 'taskId']) && isId(value.taskId);
+    case 'move_task':
+      return (
+        hasOnlyKeys(value, ['kind', 'taskId', 'projectId']) &&
+        isId(value.taskId) &&
+        isNullableId(value.projectId)
+      );
+    default:
+      return false;
+  }
+}
+
+function validateTaskSnapshotMutationResult(value: unknown): value is TaskSnapshotMutationResult {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, [
+      'kind',
+      'entityId',
+      'taskCount',
+      'movedTaskCount',
+      'deletedTaskCount',
+      'projectId',
+      'safety',
+    ]) &&
+    typeof value.kind === 'string' &&
+    isId(value.entityId) &&
+    (value.taskCount === undefined || isRevision(value.taskCount)) &&
+    (value.movedTaskCount === undefined || isRevision(value.movedTaskCount)) &&
+    (value.deletedTaskCount === undefined || isRevision(value.deletedTaskCount)) &&
+    (value.projectId === undefined || value.projectId === null || isId(value.projectId)) &&
+    (value.safety === 'moved_to_inbox' ||
+      value.safety === 'permanent_subtree_delete' ||
+      value.safety === 'updated')
+  );
+}
+
 /**
  * Task snapshots are a server-owned monotonic register. A slow or cached response may refresh
  * timing metadata, but it must never replace a newer local revision. Equal revisions must carry
@@ -256,6 +769,39 @@ function isId(value: unknown): value is string {
 
 function isNullableId(value: unknown): value is string | null {
   return value === null || isId(value);
+}
+
+function isOptionalNullableId(value: unknown): value is string | null | undefined {
+  return value === undefined || value === null || isId(value);
+}
+
+function isOperationId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length >= 8 &&
+    value.length <= 200 &&
+    /^[A-Za-z0-9._:-]+$/.test(value)
+  );
+}
+
+function isRevision(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+function isName(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= MAX_TEXT_LENGTH;
+}
+
+function isPriority(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= 5;
+}
+
+function isTags(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= 50 &&
+    value.every((tag) => typeof tag === 'string' && tag.trim().length > 0 && tag.length <= 100)
+  );
 }
 
 function isSource(value: unknown): value is TaskSource {

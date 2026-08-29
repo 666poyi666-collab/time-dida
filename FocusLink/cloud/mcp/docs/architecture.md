@@ -36,14 +36,15 @@ D1 的 `feed_state` 与 `feed_entities` 只是 derived projection：
 | Surface | Credential | Never accepted as |
 | --- | --- | --- |
 | `/sync/v2/status`, `/sync/v2/exchange`, `/sync/v2/tasks`, `/sync/v2/live*` | business-owned `fl2` device token | MCP OAuth token |
-| `/mcp` | RS256 OAuth access token, `focuslink:read` | `fl2`, ACCESS_KEY, RS client secret |
+| `/mcp` reads | RS256 OAuth access token, `focuslink:read` | `fl2`, ACCESS_KEY, RS client secret |
+| `/mcp` task writes | RS256 OAuth access token, `focuslink:read focuslink:write` | `fl2`, ACCESS_KEY, RS client secret |
 | feed projection | dedicated `sync:read` paired secret | exchange caller or MCP token |
 | pair offer | OAuth AS owner session + CSRF, then two distinct service-binding credentials | public OAuth/device/root token |
 | introspection | RFC6749 `client_secret_basic` RS client | access/device token |
 
-OAuth verifier requires `RS256`, `typ=at+jwt`, unique `kid`, RSA ≥2048, exact issuer, single exact aud/resource, `sub=poyi-owner`, `token_use=access_token`, `client_id`, jti, max 300-second TTL and only `focuslink:read`. Every MCP request performs authenticated introspection; network/5xx/wrong Basic/revoked all fail closed.
+OAuth verifier requires `RS256`, `typ=at+jwt`, unique `kid`, RSA ≥2048, exact issuer, single exact aud/resource, `sub=poyi-owner`, `token_use=access_token`, `client_id`, jti, max 300-second TTL and only `focuslink:read` plus optional `focuslink:write`. Every MCP request performs authenticated introspection; network/5xx/wrong Basic/revoked all fail closed. A task write request must carry both scopes.
 
-Every MCP tool declares `focuslink:read` through its per-tool OAuth `securitySchemes` metadata and is annotated read-only/non-destructive. The MCP 2026-07-28 handler is stateless: each request is independently authenticated, and a missing or expired token returns the protected-resource HTTP `WWW-Authenticate` challenge. Legacy stateless clients remain supported, but no MCP session ID is created or trusted.
+Read tools declare `focuslink:read`; task write tools declare `focuslink:read focuslink:write` through per-tool OAuth `securitySchemes` metadata and carry idempotent/CAS annotations. Task reads and writes call the same Account DO `task_state` register; no D1 task copy is created. The MCP 2026-07-28 handler is stateless: each request is independently authenticated, and a missing or expired token returns the protected-resource HTTP `WWW-Authenticate` challenge. Legacy stateless clients remain supported, but no MCP session ID is created or trusted.
 
 ## Pairing
 

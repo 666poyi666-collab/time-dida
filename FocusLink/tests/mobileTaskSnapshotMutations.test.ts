@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TaskSnapshotPayload } from '../shared/sync/taskSnapshotProtocol';
 import {
   createEmptyTaskSnapshot,
+  deleteTaskSnapshotProject,
   moveTaskSnapshotSubtree,
   updateTaskSnapshotProject,
 } from '../src/mobile/taskSnapshotMutations';
@@ -47,6 +48,17 @@ describe('mobile task snapshot mutations', () => {
     expect(next.tasks.map((task) => task.projectId)).toEqual(['life', 'life', 'life']);
     expect(next.tasks.map((task) => task.parentId)).toEqual([null, 'parent', 'child']);
     expect(next.tasks.every((task) => task.updatedAt === 30)).toBe(true);
+  });
+
+  it('deletes a regular list without deleting its parent/child tasks', () => {
+    const next = deleteTaskSnapshotProject(snapshot, snapshot.projects[1], 35);
+    expect(next.movedTaskCount).toBe(3);
+    expect(next.snapshot.projects.map((project) => project.id)).toEqual(['local-inbox', 'life']);
+    expect(next.snapshot.tasks.every((task) => task.projectId === 'local-inbox')).toBe(true);
+    expect(next.snapshot.tasks.map((task) => task.parentId)).toEqual([null, 'parent', 'child']);
+    expect(() => deleteTaskSnapshotProject(snapshot, snapshot.projects[0], 35)).toThrow(
+      '收件箱不可删除',
+    );
   });
 
   it('detaches a moved child subtree and rejects unknown targets', () => {

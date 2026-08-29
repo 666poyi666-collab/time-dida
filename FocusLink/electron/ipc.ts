@@ -279,6 +279,55 @@ export function registerIpc(
       return project;
     },
   );
+  ipcMain.handle('tasks:delete-project', async (_e, projectId: string) => {
+    const deletion = LocalTaskProvider.deleteProject(projectId);
+    try {
+      const refreshed = await refreshTaskWorkspace({ force: true, skipCloudSnapshotMerge: true });
+      if (!refreshed.ok) throw new Error(refreshed.error);
+    } catch (error) {
+      // The local transaction is reversible until the authority confirms the new snapshot.
+      // Keep the failure visible to the caller and restore the exact previous rows.
+      try {
+        LocalTaskProvider.rollbackProjectDeletion(deletion);
+      } catch (rollbackError) {
+        logger.error('ipc', 'task project deletion rollback failed', {
+          projectId,
+          error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+        });
+      }
+      // The first publish attempt may have left the deleted snapshot in the durable pending
+      // slot.  Replace that slot with the restored local register so a later background retry
+      // cannot delete the list after the UI has reported a rollback.
+      try {
+        const restored = await refreshTaskWorkspace({
+          force: true,
+          skipCloudSnapshotMerge: true,
+        });
+        if (!restored.ok) {
+          logger.warn('ipc', 'task project deletion rollback snapshot remains pending', {
+            projectId,
+            error: restored.error,
+          });
+        }
+      } catch (restorePublishError) {
+        logger.warn('ipc', 'task project deletion rollback snapshot failed', {
+          projectId,
+          error:
+            restorePublishError instanceof Error
+              ? restorePublishError.message
+              : String(restorePublishError),
+        });
+      }
+      throw new Error(
+        `删除清单未获得同步确认，已尝试回滚本地任务：${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    return {
+      projectId: deletion.project.id,
+      movedTaskCount: deletion.movedTaskCount,
+      safety: 'moved_to_inbox' as const,
+    };
+  });
   ipcMain.handle('tasks:move', async (_e, taskId: string, projectId?: string | null) => {
     const task = LocalTaskProvider.moveTask(taskId, projectId);
     await refreshTaskWorkspace({ force: true });

@@ -207,6 +207,83 @@ export default defineConfig({
                 },
               });
             }
+            if (url.pathname === "/internal/mcp/v1/tasks") {
+              if (
+                request.headers.get("x-focuslink-mcp-service") !==
+                "mcp-service-secret-0123456789abcdefghijklmnopqrstuvwxyz"
+              ) {
+                return Response.json(
+                  { error: "unauthenticated" },
+                  { status: 401 },
+                );
+              }
+              const now = Date.now();
+              const taskSnapshot = {
+                protocolVersion: 1,
+                revision: 7,
+                sourceDeviceId: "device-pc",
+                serverTime: now,
+                snapshot: {
+                  publishedAt: now,
+                  projects: [
+                    {
+                      id: "local-inbox",
+                      source: "local",
+                      name: "收件箱",
+                      color: "#16899f",
+                    },
+                    {
+                      id: "study",
+                      source: "local",
+                      name: "学习",
+                      color: "#2f6fed",
+                    },
+                  ],
+                  tasks: [
+                    {
+                      id: "mcp-parent",
+                      source: "local",
+                      projectId: "study",
+                      title: "MCP 父任务",
+                      status: "incomplete",
+                      priority: 3,
+                      dueDate: null,
+                      tags: ["验收"],
+                      parentId: null,
+                      isCompleted: false,
+                      updatedAt: now,
+                    },
+                  ],
+                },
+              };
+              if (request.method === "GET") return Response.json(taskSnapshot);
+              const body = (await request.json()) as {
+                operationId: string;
+                mutation: {
+                  kind: string;
+                  taskId?: string;
+                  projectId?: string | null;
+                };
+              };
+              return Response.json({
+                ...taskSnapshot,
+                operationId: body.operationId,
+                status: "applied",
+                result: {
+                  kind: body.mutation.kind,
+                  entityId:
+                    body.mutation.taskId ?? body.mutation.projectId ?? "new-task",
+                  projectId: body.mutation.projectId ?? "study",
+                  safety:
+                    body.mutation.kind === "delete_project"
+                      ? "moved_to_inbox"
+                      : "updated",
+                  ...(body.mutation.kind === "delete_project"
+                    ? { movedTaskCount: 1 }
+                    : {}),
+                },
+              });
+            }
             if (url.pathname === "/sync/v2/status") {
               return Response.json({
                 protocolVersion: 2,

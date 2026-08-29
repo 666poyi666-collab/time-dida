@@ -80,6 +80,7 @@ export function TaskWorkspace() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<number | null>(null);
   const [mutatingTaskIds, setMutatingTaskIds] = useState<Set<string>>(new Set());
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [completionGraceIds, setCompletionGraceIds] = useState<Set<string>>(new Set());
   const [undoCompletion, setUndoCompletion] = useState<UndoCompletion | null>(null);
   const [visibleLimit, setVisibleLimit] = useState(TASK_PAGE_SIZE);
@@ -354,6 +355,35 @@ export function TaskWorkspace() {
     }
   };
 
+  const deleteLocalProject = async (project: Project) => {
+    if (
+      project.source !== 'local' ||
+      isFocusLinkInboxProject(project.id) ||
+      deletingProjectId === project.id
+    )
+      return;
+    if (
+      !window.confirm(
+        `确定删除清单「${project.name}」吗？清单中的任务和子任务会安全移到收件箱，不会被删除。`,
+      )
+    ) {
+      return;
+    }
+    setDeletingProjectId(project.id);
+    try {
+      const result = await window.focuslink.tasks.deleteProject(project.id);
+      if (selectedProject === project.id || selectedProject === project.externalId) {
+        setSelectedProject('');
+      }
+      await refresh(filter === 'completed', true, completedDays, true);
+      addToast(`清单已删除，${result.movedTaskCount} 项任务已移到收件箱`, 'success');
+    } catch (error) {
+      addToast(`删除清单失败：${toErrorMessage(error)}`, 'error');
+    } finally {
+      setDeletingProjectId((current) => (current === project.id ? null : current));
+    }
+  };
+
   const moveLocalTask = async (task: Task, projectId: string) => {
     if (mutatingTaskIds.has(task.id) || task.projectId === projectId) return;
     setMutatingTaskIds((current) => new Set(current).add(task.id));
@@ -517,12 +547,17 @@ export function TaskWorkspace() {
                 count={countProjectTasks(tasks, project.id, filter)}
                 onClick={() => setSelectedProject(project.externalId || project.id)}
                 onEdit={
-                  isFocusLinkInboxProject(project.id)
+                  project.source !== 'local' || isFocusLinkInboxProject(project.id)
                     ? undefined
                     : () =>
                         setEditingProjectId((current) =>
                           current === project.id ? null : project.id,
                         )
+                }
+                onDelete={
+                  project.source !== 'local' || isFocusLinkInboxProject(project.id)
+                    ? undefined
+                    : () => void deleteLocalProject(project)
                 }
                 onDropTask={(taskId) => {
                   const task = findTaskById(tasks, taskId);
@@ -1159,6 +1194,7 @@ function ProjectButton({
   count,
   onClick,
   onEdit,
+  onDelete,
   onDropTask,
 }: {
   active: boolean;
@@ -1167,6 +1203,7 @@ function ProjectButton({
   count: number;
   onClick: () => void;
   onEdit?: () => void;
+  onDelete?: () => void;
   onDropTask?: (taskId: string) => void;
 }) {
   return (
@@ -1202,6 +1239,17 @@ function ProjectButton({
           title="名称与颜色"
         >
           <Icon.Pencil size="xs" />
+        </button>
+      )}
+      {onDelete && (
+        <button
+          type="button"
+          className="task-project-delete"
+          onClick={onDelete}
+          aria-label={`删除清单 ${label}`}
+          title="删除清单（任务移到收件箱）"
+        >
+          <Icon.Trash size="xs" />
         </button>
       )}
     </div>

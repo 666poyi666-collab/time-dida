@@ -191,6 +191,26 @@ v0.12.80 在小米 `D68P65855TPBHYWS` 与华为 `f8630574` 上反复失败。两
 
 排查时严禁记录 8 位明码、Bearer token 或完整 installationId。服务端只允许 HMAC/哈希 key；若日志出现原始 code，视为安全回归并停止发布。
 
+## FL-SYNC-011：任务/清单 mutation 冲突、未确认或“清单删除后又出现”
+
+### 含义
+
+FocusLink 自有任务是 Account DO `task_state` 的完整快照寄存器。PC、手机、平板和云端 MCP 都必须先读取当前 `revision`；MCP 的每次写入还携带稳定 `operationId` 和 `expectedRevision`。旧 revision 返回 `409 task_revision_conflict`，不会覆盖其他设备的新任务。相同 operation 重放返回 `duplicate`，只表示原次操作已确认，不代表再次执行。
+
+清单删除和任务删除不是同一语义：普通清单删除始终将其中所有任务/子任务迁入固定 `local-inbox`；只有显式“删除任务”才永久删除目标子树。收件箱不可删除。PC 在本地 SQLite 中先用事务迁移任务并删除清单，再发布完整快照；发布失败或未获服务端原样回读时会恢复原清单/归属并显示错误。移动端只在服务端回读确认后替换内存与 IndexedDB 快照。
+
+### 处理步骤
+
+1. 先记录当前页面显示的 revision、动作、时间和安全错误码；不要重复点击，也不要清空 SQLite、IndexedDB、凭据或云端任务。
+2. `task_revision_conflict`：重新读取 `GET /sync/v2/tasks`，确认新的清单/任务树后，用新的 revision 重新提交一次新的 operationId。原 operationId 只能以同一正文重放，不能拿来覆盖新 revision。
+3. `task_snapshot_conflict`、`task_snapshot_timestamp_too_far_ahead` 或任务发布未确认：保持本地 pending/失败提示，检查 endpoint 的 `no-store` 响应和最近发布日志；不要手工伪造 revision。桌面 timestamp 422 只允许一次可信 GET + 一次以服务端时间重戳 POST，第二次失败继续保留 pending。
+4. 若清单删除后刷新又出现，确认删除路径使用了 `skipCloudSnapshotMerge`，并读取服务端 revision 是否已经前进；旧快照不得在本地删除事务之前重新合并。若本地回滚失败，保留清单 ID、任务数量和结构化错误，先停止继续写入再恢复备份。
+5. MCP 只接受 `focuslink:read focuslink:write` OAuth scope。只读 token 的写调用应得到 `403 insufficient_scope`；服务端错误只展示稳定 code，不输出任务标题、标签、凭据或上游响应正文。
+
+### 验证
+
+纯函数/Account DO/Worker/MCP 回归应覆盖清单安全迁移、收件箱保护、父子子树、截止时间/优先级/标签、完成/恢复、永久任务删除、同 operation 重放、operationId 复用拒绝、旧 revision 冲突和跨账号隔离。使用 `npm test -- tests/taskSnapshotMutation.test.ts`、`npm run test:cross-device` 与 `cloud/mcp` 的 typecheck/test；生产临时数据只有在明确授权部署验收时创建并在同一轮完整清理。
+
 ## 日志位置与收集方式
 
 Windows 日志在 `%APPDATA%\focuslink\logs\focuslink-YYYY-MM-DD.log`。只提供包含错误编号/时间、endpoint（可打码）和 HTTP 状态的片段；不要提供 `focuslink-device-sync-credential.json`、访问令牌或整个 SQLite 文件。

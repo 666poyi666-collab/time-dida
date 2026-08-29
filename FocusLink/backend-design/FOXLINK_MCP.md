@@ -10,6 +10,14 @@ ChatGPT -> foxlink-tunnel -> 127.0.0.1:8770/mcp
 Foxlink 不向 PersonalMcpGateway 注册工具。MCP 进程只调用 Electron 回环 API，不直接打开
 SQLite；计时状态转换和账本读取仍由 Electron 主进程负责。
 
+FocusLink 的公网 `foxlink-cloud-mcp` 是另一条明确隔离的 Cloudflare MCP 入口：它通过专属
+service binding 调用同一 Account DO 的 `task_state`，不使用本地 Foxlink 服务或 D1 另存任务。
+该入口提供 `focuslink_list_projects`、`focuslink_list_tasks`、`focuslink_get_task` 以及清单/任务
+创建、更新、完成、恢复、删除、移动工具。每次写入都需要 `operationId` + `expectedRevision`，
+Account DO 以同一事务执行 CAS 与幂等重放；清单删除只把任务迁入收件箱，任务删除才永久删除
+子树，响应只返回 revision、稳定 ID 和计数等脱敏确认。MCP 2026-07-28 discovery 保持不变，
+写工具需要 `focuslink:read focuslink:write`。
+
 ## 契约
 
 - MCP：`127.0.0.1:8770/mcp`；健康、就绪、指标为 `/healthz`、`/readyz`、`/metrics`。

@@ -7,9 +7,12 @@ import {
   searchTaskCache,
   listLocalTaskProjects,
   upsertLocalTaskProject,
+  deleteLocalTaskProjectAndMoveTasks,
+  restoreLocalTaskProjectDeletion,
+  removeStaleLocalTaskSnapshotRows,
 } from '../db/index.js';
 import { logger } from '../logger.js';
-import type { Project, Task, TaskCache, TaskSource } from '@shared/types';
+import type { LocalTaskProject, Project, Task, TaskCache, TaskSource } from '@shared/types';
 import type { SyncedTask, SyncedTaskProject } from '@shared/sync/taskSnapshotProtocol';
 import {
   defaultTaskProjectColor,
@@ -19,6 +22,14 @@ import {
 } from '@shared/taskProjectPolicy';
 
 const LOCAL_PROJECT_ID = FOCUSLINK_INBOX_PROJECT_ID;
+
+export interface LocalTaskProjectDeletion {
+  project: Project;
+  previousProject: LocalTaskProject;
+  movedTaskCount: number;
+  /** Kept only for a publication-failure rollback; never returned to renderer/MCP. */
+  previousTasks: TaskCache[];
+}
 
 function ensureInbox(): void {
   if (typeof listLocalTaskProjects !== 'function' || typeof upsertLocalTaskProject !== 'function') {
@@ -94,6 +105,49 @@ export const LocalTaskProvider = {
     upsertLocalTaskProject({ ...project, name, color, updatedAt });
     logger.info('tasks:local', `updated local project: ${projectId}`);
     return { id: project.id, source: 'local', externalId: project.id, name, color };
+  },
+  deleteProject(projectId: string): LocalTaskProjectDeletion {
+    ensureInbox();
+    if (isFocusLinkInboxProject(projectId)) throw new Error('收件箱不可删除');
+    const project = listLocalTaskProjects().find((candidate) => candidate.id === projectId);
+    if (!project) throw new Error('FocusLink 清单不存在');
+    const previousTasks = listTaskCache('local').filter((task) => task.projectId === projectId);
+    const now = Date.now();
+    if (typeof deleteLocalTaskProjectAndMoveTasks === 'function') {
+      deleteLocalTaskProjectAndMoveTasks(projectId, LOCAL_PROJECT_ID, now);
+    } else {
+      // Keep lightweight provider unit tests and older embedded builds usable while the
+      // production SQLite path remains atomic through the function above.
+      upsertTaskCaches(
+        previousTasks.map((task) => ({ ...task, projectId: LOCAL_PROJECT_ID, updatedAt: now })),
+      );
+      // The old mock/database cannot delete rows; real databases always take the atomic path.
+    }
+    logger.info('tasks:local', `deleted local project and moved tasks to inbox: ${projectId}`, {
+      movedTaskCount: previousTasks.length,
+    });
+    return {
+      project: {
+        id: project.id,
+        source: 'local',
+        externalId: project.id,
+        name: project.name,
+        color: project.color,
+      },
+      previousProject: project,
+      movedTaskCount: previousTasks.length,
+      previousTasks,
+    };
+  },
+  rollbackProjectDeletion(deletion: LocalTaskProjectDeletion): void {
+    if (typeof restoreLocalTaskProjectDeletion === 'function') {
+      restoreLocalTaskProjectDeletion(deletion.previousProject, deletion.previousTasks);
+      return;
+    }
+    upsertLocalTaskProject({
+      ...deletion.previousProject,
+    });
+    upsertTaskCaches(deletion.previousTasks);
   },
   create(title: string, _projectId?: string): Task {
     const normalizedTitle = title.trim();
@@ -220,6 +274,17 @@ export const LocalTaskProvider = {
         updatedAt: cloudPublishedAt || now,
       });
     });
+    // A task snapshot is a complete register, so absence is meaningful.  Only remove rows
+    // that were not edited after the authority's publication hint; a local newer edit remains
+    // eligible to be republished by the next desktop refresh.
+    if (cloudPublishedAt > 0 && typeof removeStaleLocalTaskSnapshotRows === 'function') {
+      removeStaleLocalTaskSnapshotRows(
+        projects.filter((project) => project.source === 'local').map((project) => project.id),
+        tasks.filter((task) => task.source === 'local').map((task) => task.id),
+        LOCAL_PROJECT_ID,
+        cloudPublishedAt,
+      );
+    }
     const current = new Map(listTaskCache('local').map((task) => [task.id, task]));
     let changed = 0;
     for (const task of tasks) {

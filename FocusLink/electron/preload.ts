@@ -58,6 +58,7 @@ const api = {
       ipcRenderer.invoke('tasks:create-project', name, color),
     updateProject: (projectId: string, input: { name?: string; color?: string | null }) =>
       ipcRenderer.invoke('tasks:update-project', projectId, input),
+    deleteProject: (projectId: string) => ipcRenderer.invoke('tasks:delete-project', projectId),
     moveTask: (taskId: string, projectId?: string | null) =>
       ipcRenderer.invoke('tasks:move', taskId, projectId),
     complete: (task: Task) => ipcRenderer.invoke('tasks:complete', task),

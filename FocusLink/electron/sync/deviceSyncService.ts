@@ -438,6 +438,17 @@ export async function publishDeviceTaskSnapshot(
   return flushPendingTaskSnapshot(connection);
 }
 
+/**
+ * A false publication result is only a user-visible mutation failure when the user has opted
+ * into device sync and a protected credential exists.  Local-only FocusLink task workspaces are
+ * intentionally allowed to remain usable offline and therefore do not treat the absent token as
+ * a failed cloud write.
+ */
+export function isDeviceTaskSnapshotSyncConfigured(): boolean {
+  const settings = getSettings().deviceSync;
+  return Boolean(settings?.enabled && hasDeviceSyncToken());
+}
+
 async function flushPendingTaskSnapshot(
   requestedConnection?: DeviceSyncRuntimeConnection,
 ): Promise<boolean> {

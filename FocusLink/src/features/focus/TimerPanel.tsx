@@ -335,7 +335,13 @@ export function TimerPanel() {
     if (!immersive || immersiveLeaving) return;
     setImmersiveLeaving(true);
     try {
-      await window.focuslink.window.setFullScreen(false);
+      // A portable build can leave the native full-screen IPC promise pending while the
+      // renderer is already usable. Never let that native acknowledgement strand the body
+      // overlay forever; the bounded fallback still gives the OS a chance to exit cleanly.
+      await Promise.race([
+        window.focuslink.window.setFullScreen(false),
+        new Promise<void>((resolve) => window.setTimeout(resolve, 250)),
+      ]);
     } catch {
       // The operating system may already have left fullscreen.
     }

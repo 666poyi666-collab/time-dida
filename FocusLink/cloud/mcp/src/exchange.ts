@@ -161,6 +161,13 @@ function canonicalRoute(pathname: string): CanonicalRoute | null {
         maxBodyBytes: MAX_TASK_BODY_BYTES,
         tooLargeCode: 'task_body_too_large',
       };
+    case '/sync/v2/tasks/mutate':
+      return {
+        methods: ['POST'],
+        query: 'none',
+        maxBodyBytes: MAX_TASK_BODY_BYTES,
+        tooLargeCode: 'task_mutation_body_too_large',
+      };
     case '/sync/v2/live':
       return {
         methods: ['GET'],

@@ -3,7 +3,11 @@ import type { IpcResult, TaskWorkspaceRefreshData } from '@shared/ipc/api';
 import { ticktickAdapter } from '../integrations/ticktick/oauthAdapter.js';
 import { detectCli, ticktickCliProvider } from './cliProvider.js';
 import { LocalTaskProvider } from './localProvider.js';
-import { publishDeviceTaskSnapshot, readDeviceTaskSnapshot } from '../sync/deviceSyncService.js';
+import {
+  isDeviceTaskSnapshotSyncConfigured,
+  publishDeviceTaskSnapshot,
+  readDeviceTaskSnapshot,
+} from '../sync/deviceSyncService.js';
 import { getSettings } from '../settingsStore.js';
 
 export async function setTaskCompleted(task: Task, completed: boolean): Promise<Task> {
@@ -43,7 +47,10 @@ async function publishTaskWorkspace(
 ): Promise<void> {
   const publication = publishDeviceTaskSnapshot(projects, tasks, refreshedAt);
   if (waitForConfirmation) {
-    await publication;
+    const confirmed = await publication;
+    if (!confirmed && isDeviceTaskSnapshotSyncConfigured()) {
+      throw new Error('任务快照未获得云端确认，已保留本地变更并等待重试');
+    }
   } else {
     void publication;
   }
@@ -56,13 +63,15 @@ export async function refreshTaskWorkspace(
   const normalizedOptions = { ...options, projectId: selectedProjectId };
   let providerLabel = 'FocusLink 任务库';
   try {
-    const cloud = await readDeviceTaskSnapshot();
-    if (cloud?.snapshot) {
-      LocalTaskProvider.mergeCloudSnapshot(
-        cloud.snapshot.projects,
-        cloud.snapshot.tasks,
-        cloud.snapshot.publishedAt,
-      );
+    if (!options.skipCloudSnapshotMerge) {
+      const cloud = await readDeviceTaskSnapshot();
+      if (cloud?.snapshot) {
+        LocalTaskProvider.mergeCloudSnapshot(
+          cloud.snapshot.projects,
+          cloud.snapshot.tasks,
+          cloud.snapshot.publishedAt,
+        );
+      }
     }
     const localTasks = LocalTaskProvider.list();
     const taskSource = getSettings().taskSource;

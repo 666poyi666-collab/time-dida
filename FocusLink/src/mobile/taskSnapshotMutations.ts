@@ -50,6 +50,42 @@ export function updateTaskSnapshotProject(
   };
 }
 
+/** Delete a user list while preserving every task/subtask in the canonical inbox. */
+export function deleteTaskSnapshotProject(
+  snapshot: TaskSnapshotPayload,
+  project: SyncedTaskProject,
+  publishedAt: number,
+): { snapshot: TaskSnapshotPayload; movedTaskCount: number } {
+  if (project.source !== 'local') throw new Error('只能删除 FocusLink 清单');
+  if (isFocusLinkInboxProject(project.id)) throw new Error('收件箱不可删除');
+  if (!snapshot.projects.some((candidate) => candidate.id === project.id)) {
+    throw new Error('FocusLink 清单不存在');
+  }
+  const movedTaskCount = snapshot.tasks.filter((task) => task.projectId === project.id).length;
+  const projects = snapshot.projects.filter((candidate) => candidate.id !== project.id);
+  if (!projects.some((candidate) => isFocusLinkInboxProject(candidate.id))) {
+    projects.unshift({
+      id: FOCUSLINK_INBOX_PROJECT_ID,
+      source: 'local',
+      name: '收件箱',
+      color: normalizeTaskProjectColor(null),
+    });
+  }
+  return {
+    movedTaskCount,
+    snapshot: {
+      ...snapshot,
+      publishedAt,
+      projects,
+      tasks: snapshot.tasks.map((task) =>
+        task.projectId === project.id
+          ? { ...task, projectId: FOCUSLINK_INBOX_PROJECT_ID, updatedAt: publishedAt }
+          : task,
+      ),
+    },
+  };
+}
+
 export function moveTaskSnapshotSubtree(
   snapshot: TaskSnapshotPayload,
   taskId: string,

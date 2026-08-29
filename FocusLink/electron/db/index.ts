@@ -148,6 +148,84 @@ export function listLocalTaskProjects(): LocalTaskProject[] {
   return rows;
 }
 
+/**
+ * Delete a user list without deleting its work.  The reassignment and list removal are one
+ * SQLite transaction so a crash cannot strand tasks with a foreign project id.
+ */
+export function deleteLocalTaskProjectAndMoveTasks(
+  projectId: string,
+  inboxProjectId: string,
+  updatedAt: number,
+): number {
+  const database = getDb();
+  const remove = database.transaction(() => {
+    const moved = database
+      .prepare(
+        `UPDATE tasks_cache SET project_id = ?, updated_at = ?
+         WHERE source = 'local' AND project_id = ?`,
+      )
+      .run(inboxProjectId, updatedAt, projectId).changes;
+    database.prepare('DELETE FROM task_projects WHERE id = ?').run(projectId);
+    return moved;
+  });
+  return remove();
+}
+
+/** Restore a list deletion after an unconfirmed snapshot publication. */
+export function restoreLocalTaskProjectDeletion(
+  project: LocalTaskProject,
+  tasks: readonly TaskCache[],
+): void {
+  const database = getDb();
+  const restore = database.transaction(() => {
+    database
+      .prepare(
+        `INSERT INTO task_projects (id, name, color, sort_order, created_at, updated_at)
+         VALUES (@id, @name, @color, @sortOrder, @createdAt, @updatedAt)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color,
+         sort_order=excluded.sort_order, updated_at=excluded.updated_at`,
+      )
+      .run(project);
+    const statement = database.prepare(UPSERT_TASK_CACHE_SQL);
+    for (const task of tasks) statement.run({ ...task, parentId: task.parentId ?? null });
+  });
+  restore();
+}
+
+/** Reconcile remote task deletions without touching newer local edits. */
+export function removeStaleLocalTaskSnapshotRows(
+  projectIds: readonly string[],
+  taskIds: readonly string[],
+  inboxProjectId: string,
+  publishedAt: number,
+): void {
+  const database = getDb();
+  const reconcile = database.transaction(() => {
+    const staleProjects = database
+      .prepare(
+        `SELECT id FROM task_projects
+         WHERE id <> ? AND updated_at <= ?${projectIds.length ? ` AND id NOT IN (${projectIds.map(() => '?').join(',')})` : ''}`,
+      )
+      .all(inboxProjectId, publishedAt, ...projectIds) as Array<{ id: string }>;
+    for (const project of staleProjects) {
+      database
+        .prepare(
+          `UPDATE tasks_cache SET project_id = ?, updated_at = ?
+           WHERE source = 'local' AND project_id = ? AND updated_at <= ?`,
+        )
+        .run(inboxProjectId, publishedAt, project.id, publishedAt);
+      database.prepare('DELETE FROM task_projects WHERE id = ?').run(project.id);
+    }
+    database
+      .prepare(
+        `DELETE FROM tasks_cache
+         WHERE source = 'local' AND updated_at <= ?${taskIds.length ? ` AND id NOT IN (${taskIds.map(() => '?').join(',')})` : ''}`,
+      )
+      .run(publishedAt, ...taskIds);
+  });
+  reconcile();
+}
+
 // ============ Session ============
 
 export function insertSession(session: FocusSession): void {

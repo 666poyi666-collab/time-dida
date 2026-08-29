@@ -121,6 +121,8 @@ Authority observation 本地合同必须覆盖：默认公网入口拒绝、name
 
 公网移动端验收必须在 Windows FocusLink 进程停止时，分别由小米手机和华为平板完成开始、暂停、继续、结束，并在 Cloudflare 中各形成一份含 2 个 segment、1 个 pause 的独立账本。随后 Windows 启动并执行同步，两份会话在 SQLite 中各出现一次；再次同步不得增加副本。旧 Node cursor 切到 Cloudflare 时，客户端必须根据结构化 `invalid_cursor` 清空当前连接的缓存并从空 cursor 重建，不得依赖人工清数据。
 
+云端 MCP 第一方任务门禁还必须在同一 Account DO 任务快照上验证：读工具能列出清单/任务并保留 `parentId`、截止时间、优先级和标签；写工具（清单创建/更新/删除，任务创建/更新/完成/恢复/删除/移动）必须带 `operationId` 与 `expectedRevision`。同 operation 正文重放只能返回 `duplicate`，复用 operationId、旧 revision 或跨清单父子关系必须拒绝且不推进快照；清单删除只迁入 `local-inbox`，任务删除才永久删除子树。OAuth 只读 token 的写调用必须 403，确认响应不得包含任务正文或凭据。该门禁使用 `TASK_SNAPSHOT_MUTATION_PATH` 的 Cloudflare adapter/Account DO，不把本地 JSON 或 D1 projection 当作任务权威。
+
 Android 门禁限定 `:app:`，只测试最终可交付 APK；不要让 Gradle 根任务选择器额外构建 Capacitor
 生成库中没有产品测试源码的 instrumentation APK。
 

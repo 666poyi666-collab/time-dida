@@ -3,8 +3,9 @@
  *
  * FocusLink's Cloudflare Durable Object v2 change feed is the sole authority.
  * This Worker owns a read-only paired-device credential, synchronizes that feed
- * on every MCP read, and materializes a restart-safe D1 projection. It never
- * accepts Windows snapshots and never exposes FocusLink live/write routes.
+ * on every MCP read, and materializes a restart-safe D1 projection. First-party task
+ * management goes through the Account DO task snapshot authority; this adapter never
+ * creates a parallel task database.
  */
 import { createMcpHandler } from 'agents/mcp/server';
 import { McpServer } from '@modelcontextprotocol/server';
@@ -36,6 +37,15 @@ import { handleCanonicalPairing } from './pairing';
 import { fetchFocusMcpRecords, type FocusMcpRecords } from './focus-records';
 import { fetchFocusMcpProjection } from './focus-summary';
 import { readProjection, type ProjectionResult } from './projection';
+import {
+  getFocusLinkTask,
+  listFocusLinkProjects,
+  listFocusLinkTasks,
+  makeTaskMutationRequest,
+  mutateFocusLinkTasks,
+  redactMutationConfirmation,
+  type TaskAuthorityError,
+} from './tasks';
 
 export interface Env extends FeedEnv, McpOAuthEnv, BootstrapEnv {
   FOCUSLINK_FEED_SYNC: DurableObjectNamespace;
@@ -80,6 +90,9 @@ interface ReadContext {
 }
 
 const OAUTH_READ_SECURITY_SCHEMES = [{ type: 'oauth2', scopes: ['focuslink:read'] }] as const;
+const OAUTH_TASK_WRITE_SECURITY_SCHEMES = [
+  { type: 'oauth2', scopes: ['focuslink:read', 'focuslink:write'] },
+] as const;
 
 const READ_ONLY_TOOL_ANNOTATIONS = {
   readOnlyHint: true,
@@ -94,6 +107,37 @@ const OAUTH_READ_TOOL_META = {
   securitySchemes: OAUTH_READ_SECURITY_SCHEMES,
 } as const;
 
+const OAUTH_TASK_WRITE_TOOL_META = {
+  // A write-capable MCP session still needs the read scope for initialize and for the
+  // post-mutation refresh/reconciliation contract.  The edge enforces both scopes for
+  // task mutations; keeping the pair here makes clients request the complete capability.
+  securitySchemes: OAUTH_TASK_WRITE_SECURITY_SCHEMES,
+} as const;
+
+const TASK_READ_TOOL_ANNOTATIONS = READ_ONLY_TOOL_ANNOTATIONS;
+const TASK_WRITE_TOOL_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+const TASK_DELETE_TOOL_ANNOTATIONS = {
+  ...TASK_WRITE_TOOL_ANNOTATIONS,
+  destructiveHint: true,
+} as const;
+
+const TASK_WRITE_TOOL_NAMES = new Set([
+  'focuslink_create_project',
+  'focuslink_update_project',
+  'focuslink_delete_project',
+  'focuslink_create_task',
+  'focuslink_update_task',
+  'focuslink_complete_task',
+  'focuslink_restore_task',
+  'focuslink_delete_task',
+  'focuslink_move_task',
+]);
+
 function text(payload: unknown) {
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(payload, null, 2) }],
@@ -105,7 +149,7 @@ function createFoxlinkMcpServer(env: Env): McpServer {
     { name: PROJECT.name, version: PROJECT.version },
     {
       instructions:
-        'FocusLink 云端 MCP 只暴露经过批准的专注与任务投影。不要请求凭据、设备标识、备注、标签或本地诊断；写入和设备控制不属于此端点。',
+        'FocusLink 云端 MCP 读取专注与自有任务，并通过 Account DO 管理任务。所有写工具必须携带 operationId 与 expectedRevision；清单删除会把任务迁入收件箱，任务删除会永久删除目标子树。不要请求凭据、设备标识或本地诊断。',
     },
   );
   const getStatus = async () => focusStatusResponse(env);
@@ -114,6 +158,57 @@ function createFoxlinkMcpServer(env: Env): McpServer {
   const getTaskSummary = async ({ from, to, limit }: { from: number; to: number; limit: number }) =>
     text(await fetchFocusMcpProjection(env, { from, to, limit }));
   const getSyncOverview = async () => focusSyncOverviewResponse(env);
+  const listProjects = async () => text(await listFocusLinkProjects(env));
+  const listTasks = async ({
+    projectId,
+    includeCompleted,
+    query,
+    limit,
+  }: {
+    projectId?: string | null;
+    includeCompleted: boolean;
+    query?: string;
+    limit: number;
+  }) => text(await listFocusLinkTasks(env, { projectId, includeCompleted, query, limit }));
+  const getTask = async ({ taskId }: { taskId: string }) =>
+    text(await getFocusLinkTask(env, taskId));
+  const mutate = async (
+    operationId: string,
+    expectedRevision: number,
+    mutation: Parameters<typeof makeTaskMutationRequest>[2],
+  ) => {
+    try {
+      const response = await mutateFocusLinkTasks(
+        env,
+        makeTaskMutationRequest(operationId, expectedRevision, mutation),
+      );
+      return text(redactMutationConfirmation(response));
+    } catch (error) {
+      // Never pass upstream body/title/content into an MCP error. Stable codes are enough for
+      // the caller to refresh and retry a revision conflict or surface a safe failure.
+      const code =
+        error && typeof error === 'object' && 'code' in error
+          ? String((error as TaskAuthorityError).code)
+          : 'task_mutation_failed';
+      throw new Error(code);
+    }
+  };
+
+  const mutationFields = {
+    operationId: z
+      .string()
+      .min(8)
+      .max(200)
+      .regex(/^[A-Za-z0-9._:-]+$/),
+    expectedRevision: z.number().int().nonnegative(),
+  };
+  const taskId = z.string().min(1).max(200);
+  const projectId = z.string().min(1).max(200);
+  const nullableProjectId = projectId.nullable();
+  const taskTitle = z.string().min(1).max(1_000);
+  const taskPriority = z.number().int().min(0).max(5).nullable().optional();
+  const taskDueDate = z.number().int().nonnegative().nullable().optional();
+  const taskTags = z.array(z.string().min(1).max(100)).max(50).optional();
 
   server.registerTool(
     'focuslink_get_status',
@@ -206,6 +301,223 @@ function createFoxlinkMcpServer(env: Env): McpServer {
       _meta: OAUTH_READ_TOOL_META,
     },
     getSyncOverview,
+  );
+
+  // First-party task tools intentionally sit beside the historical focus projection tools.
+  // They all use the same Account DO task_state register: reads never use D1 and writes are
+  // CAS + operation-id based, so a stale MCP client cannot overwrite a newer PC/mobile snapshot.
+  server.registerTool(
+    'focuslink_list_projects',
+    {
+      description: '读取 FocusLink 自有任务清单（包含不可删除的收件箱）。',
+      inputSchema: {},
+      annotations: TASK_READ_TOOL_ANNOTATIONS,
+      _meta: OAUTH_READ_TOOL_META,
+    },
+    listProjects,
+  );
+  server.registerTool(
+    'focuslink_list_tasks',
+    {
+      description: '读取 FocusLink 自有任务，支持清单、完成状态、标题或标签筛选。',
+      inputSchema: {
+        projectId: nullableProjectId.optional(),
+        includeCompleted: z.boolean().default(false),
+        query: z.string().max(200).optional(),
+        limit: z.number().int().min(1).max(500).default(100),
+      },
+      annotations: TASK_READ_TOOL_ANNOTATIONS,
+      _meta: OAUTH_READ_TOOL_META,
+    },
+    listTasks,
+  );
+  server.registerTool(
+    'focuslink_get_task',
+    {
+      description: '按稳定任务 ID 读取一个 FocusLink 自有任务及其父子字段。',
+      inputSchema: { taskId },
+      annotations: TASK_READ_TOOL_ANNOTATIONS,
+      _meta: OAUTH_READ_TOOL_META,
+    },
+    getTask,
+  );
+
+  server.registerTool(
+    'focuslink_create_project',
+    {
+      description: '创建 FocusLink 自有任务清单；operationId 与 expectedRevision 必须来自调用方。',
+      inputSchema: {
+        ...mutationFields,
+        name: z.string().min(1).max(1_000),
+        color: z.string().max(100).nullable().optional(),
+      },
+      annotations: TASK_WRITE_TOOL_ANNOTATIONS,
+      _meta: OAUTH_TASK_WRITE_TOOL_META,
+    },
+    ({ operationId, expectedRevision, name, color }) =>
+      mutate(operationId, expectedRevision, { kind: 'create_project', name, color }),
+  );
+  server.registerTool(
+    'focuslink_update_project',
+    {
+      description: '更新 FocusLink 自有任务清单名称或颜色；收件箱不能重命名。',
+      inputSchema: {
+        ...mutationFields,
+        projectId,
+        name: z.string().min(1).max(1_000).optional(),
+        color: z.string().max(100).nullable().optional(),
+      },
+      annotations: TASK_WRITE_TOOL_ANNOTATIONS,
+      _meta: OAUTH_TASK_WRITE_TOOL_META,
+    },
+    ({ operationId, expectedRevision, projectId: id, name, color }) =>
+      mutate(operationId, expectedRevision, {
+        kind: 'update_project',
+        projectId: id,
+        ...(name === undefined ? {} : { name }),
+        ...(color === undefined ? {} : { color }),
+      }),
+  );
+  server.registerTool(
+    'focuslink_delete_project',
+    {
+      description: '删除 FocusLink 清单；清单中的任务和子任务会安全迁入收件箱，不会被删除。',
+      inputSchema: { ...mutationFields, projectId },
+      annotations: TASK_DELETE_TOOL_ANNOTATIONS,
+      _meta: OAUTH_TASK_WRITE_TOOL_META,
+    },
+    ({ operationId, expectedRevision, projectId: id }) =>
+      mutate(operationId, expectedRevision, { kind: 'delete_project', projectId: id }),
+  );
+  server.registerTool(
+    'focuslink_create_task',
+    {
+      description: '创建 FocusLink 自有任务，可指定清单、父任务、截止时间、优先级和标签。',
+      inputSchema: {
+        ...mutationFields,
+        taskId: taskId.optional(),
+        projectId: nullableProjectId.optional(),
+        parentId: nullableProjectId.optional(),
+        title: taskTitle,
+        priority: taskPriority,
+        dueDate: taskDueDate,
+        tags: taskTags,
+      },
+      annotations: TASK_WRITE_TOOL_ANNOTATIONS,
+      _meta: OAUTH_TASK_WRITE_TOOL_META,
+    },
+    ({
+      operationId,
+      expectedRevision,
+      taskId: id,
+      projectId: target,
+      parentId,
+      title,
+      priority,
+      dueDate,
+      tags,
+    }) =>
+      mutate(operationId, expectedRevision, {
+        kind: 'create_task',
+        ...(id === undefined ? {} : { taskId: id }),
+        ...(target === undefined ? {} : { projectId: target }),
+        ...(parentId === undefined ? {} : { parentId }),
+        title,
+        ...(priority === undefined ? {} : { priority }),
+        ...(dueDate === undefined ? {} : { dueDate }),
+        ...(tags === undefined ? {} : { tags }),
+      }),
+  );
+  server.registerTool(
+    'focuslink_update_task',
+    {
+      description: '更新 FocusLink 任务的标题、清单、父任务、截止时间、优先级或标签。',
+      inputSchema: {
+        ...mutationFields,
+        taskId,
+        title: taskTitle.optional(),
+        projectId: nullableProjectId.optional(),
+        parentId: nullableProjectId.optional(),
+        priority: taskPriority,
+        dueDate: taskDueDate,
+        tags: taskTags,
+      },
+      annotations: TASK_WRITE_TOOL_ANNOTATIONS,
+      _meta: OAUTH_TASK_WRITE_TOOL_META,
+    },
+    ({
+      operationId,
+      expectedRevision,
+      taskId: id,
+      title,
+      projectId: target,
+      parentId,
+      priority,
+      dueDate,
+      tags,
+    }) =>
+      mutate(operationId, expectedRevision, {
+        kind: 'update_task',
+        taskId: id,
+        ...(title === undefined ? {} : { title }),
+        ...(target === undefined ? {} : { projectId: target }),
+        ...(parentId === undefined ? {} : { parentId }),
+        ...(priority === undefined ? {} : { priority }),
+        ...(dueDate === undefined ? {} : { dueDate }),
+        ...(tags === undefined ? {} : { tags }),
+      }),
+  );
+  server.registerTool(
+    'focuslink_complete_task',
+    {
+      description: '完成一个 FocusLink 自有任务。',
+      inputSchema: { ...mutationFields, taskId },
+      annotations: TASK_WRITE_TOOL_ANNOTATIONS,
+      _meta: OAUTH_TASK_WRITE_TOOL_META,
+    },
+    ({ operationId, expectedRevision, taskId: id }) =>
+      mutate(operationId, expectedRevision, {
+        kind: 'set_task_completed',
+        taskId: id,
+        completed: true,
+      }),
+  );
+  server.registerTool(
+    'focuslink_restore_task',
+    {
+      description: '恢复一个已完成的 FocusLink 自有任务。',
+      inputSchema: { ...mutationFields, taskId },
+      annotations: TASK_WRITE_TOOL_ANNOTATIONS,
+      _meta: OAUTH_TASK_WRITE_TOOL_META,
+    },
+    ({ operationId, expectedRevision, taskId: id }) =>
+      mutate(operationId, expectedRevision, {
+        kind: 'set_task_completed',
+        taskId: id,
+        completed: false,
+      }),
+  );
+  server.registerTool(
+    'focuslink_delete_task',
+    {
+      description: '永久删除 FocusLink 任务及其全部子任务；请确认后再调用。',
+      inputSchema: { ...mutationFields, taskId },
+      annotations: TASK_DELETE_TOOL_ANNOTATIONS,
+      _meta: OAUTH_TASK_WRITE_TOOL_META,
+    },
+    ({ operationId, expectedRevision, taskId: id }) =>
+      mutate(operationId, expectedRevision, { kind: 'delete_task', taskId: id }),
+  );
+  server.registerTool(
+    'focuslink_move_task',
+    {
+      description: '移动 FocusLink 任务及其子树到目标清单；目标为 null 时进入收件箱。',
+      inputSchema: { ...mutationFields, taskId, projectId: nullableProjectId },
+      annotations: TASK_WRITE_TOOL_ANNOTATIONS,
+      _meta: OAUTH_TASK_WRITE_TOOL_META,
+    },
+    ({ operationId, expectedRevision, taskId: id, projectId: target }) =>
+      mutate(operationId, expectedRevision, { kind: 'move_task', taskId: id, projectId: target }),
   );
   return server;
 }
@@ -749,9 +1061,9 @@ async function protectedResourceMetadata(env: Env): Promise<Response> {
     resource: oauth.audience,
     authorization_servers: [oauth.issuer],
     jwks_uri: oauth.jwksUrl,
-    scopes_supported: ['focuslink:read'],
+    scopes_supported: ['focuslink:read', 'focuslink:write'],
     bearer_methods_supported: ['header'],
-    resource_name: 'FocusLink authoritative read-only MCP',
+    resource_name: 'FocusLink authoritative MCP',
   });
 }
 
@@ -822,7 +1134,14 @@ async function requiredMcpScopes(request: Request): Promise<string[]> {
         params && typeof params === 'object' && !Array.isArray(params)
           ? (params as Record<string, unknown>).name
           : null;
-      required.add(name === 'focuslink_create_pair_offer' ? 'oob:pair-admin' : 'focuslink:read');
+      if (name === 'focuslink_create_pair_offer') {
+        required.add('oob:pair-admin');
+      } else if (typeof name === 'string' && TASK_WRITE_TOOL_NAMES.has(name)) {
+        required.add('focuslink:read');
+        required.add('focuslink:write');
+      } else {
+        required.add('focuslink:read');
+      }
     } else if (
       rpc.method === 'resources/read' ||
       rpc.method === 'resources/list' ||

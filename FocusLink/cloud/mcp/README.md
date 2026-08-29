@@ -10,13 +10,14 @@ FocusLink 的唯一公开 canonical cloud origin。数据权威仍是内部 Focu
 
 - `/sync/v2/status`、`/sync/v2/exchange`：携带业务自有 `fl2` device credential，经 service binding 读取/写入 Account DO；opId/revision/deviceId 原样交给 DO 判定，D1 不接写入。旧 `/sync/v1/status|exchange` 固定返回 410。
 - `/sync/v2/tasks`、`/sync/v2/live`、`/sync/v2/live/wait`、`/sync/v2/live/command`：同一公网 origin 上的任务与实时专注面，经私有 Worker 转发到同一个 Account DO。
-- `/mcp`：只接受统一 AS 签发、实时 introspection 为 active 的 `focuslink:read` RS256 access token。
+- `/mcp`：只接受统一 AS 签发、实时 introspection 为 active 的 RS256 access token；读取需要 `focuslink:read`，自有任务写入需要同时具备 `focuslink:read focuslink:write`。
 - MCP read 先经专属 `sync:read` paired device 拉完整 v2 feed，再读取 D1 derived projection。
 - `focuslink_get_task_summary` 经专属 service binding 读取 Account DO 的最小明文投影，只包含专注次数、任务、时长、最近记录和 freshness；不返回备注、标签、deviceId 或凭据。
+- FocusLink 自有任务工具 `focuslink_list_projects`、`focuslink_list_tasks`、`focuslink_get_task` 读取同一 `task_state` 快照；`focuslink_create_project`/`update_project`/`delete_project` 与 `focuslink_create_task`/`update_task`/`complete_task`/`restore_task`/`delete_task`/`move_task` 通过 Account DO 的 CAS mutation 管理任务。写入均携带 `operationId`、`expectedRevision`，相同正文重放返回 `duplicate`，旧 revision 返回冲突；截止时间（Unix ms）、优先级、标签、父子 `parentId` 都在快照中保留。清单删除只迁入收件箱，任务删除才永久删除子树，确认响应不带任务正文。
 - `/sync/v1/pair/offers`：仅 OOB/internal admin capability；OAuth token 与普通 device token 均拒绝。
 - `/sync/v1/pair/exchange`：匿名高熵一次性 nonce + device metadata，受双键 rate limit 保护。
 - `/sync/push` 与旧 `/<ACCESS_KEY>/mcp`：永久 `410 Gone`。
-- `/v1/*`、live、tasks、command、device write/admin 不由本 MCP 暴露。
+- `/v1/*`、live、command、device write/admin 不由本 MCP 暴露；任务 mutation 仅作为 `/sync/v2/tasks/mutate` 的 canonical adapter 路径由 MCP 内部 service binding 调用 Account DO。
 
 ## 本地门禁
 

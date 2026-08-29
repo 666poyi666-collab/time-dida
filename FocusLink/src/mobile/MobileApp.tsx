@@ -155,6 +155,7 @@ import {
 import { isTabletFocusViewport } from './viewportPolicy';
 import {
   createEmptyTaskSnapshot,
+  deleteTaskSnapshotProject,
   moveTaskSnapshotSubtree,
   updateTaskSnapshotProject,
 } from './taskSnapshotMutations';
@@ -925,6 +926,32 @@ export function MobileApp() {
         );
       }
       setCommandNotice('清单名称与颜色已同步');
+    },
+    [deviceId, preferences, requireLatestEditableTaskSnapshot],
+  );
+
+  const deleteCloudProject = useCallback(
+    async (project: SyncedTaskProject) => {
+      const snapshot = await requireLatestEditableTaskSnapshot();
+      const freshProject = snapshot.projects.find((candidate) => candidate.id === project.id);
+      if (!freshProject) throw new Error('FocusLink 清单不存在，请刷新后重试');
+      const now = Date.now();
+      const next = deleteTaskSnapshotProject(snapshot, freshProject, now);
+      const response = await publishTaskSnapshot({
+        endpoint: preferences.endpoint,
+        token: preferences.token,
+        deviceId,
+        snapshot: next.snapshot,
+      });
+      taskSnapshotRef.current = response;
+      setTaskSnapshot(response);
+      const accountId = mobileAccountId(preferences);
+      if (accountId) {
+        await enqueueMutation(cacheMutationQueue, () =>
+          writeCachedTaskSnapshot(response, accountId),
+        );
+      }
+      setCommandNotice(`清单已删除，${next.movedTaskCount} 项任务已移到收件箱`);
     },
     [deviceId, preferences, requireLatestEditableTaskSnapshot],
   );
@@ -2009,6 +2036,7 @@ export function MobileApp() {
                 onCreate={createCloudTask}
                 onCreateProject={createCloudProject}
                 onUpdateProject={updateCloudProject}
+                onDeleteProject={deleteCloudProject}
                 onMoveTask={moveCloudTask}
                 onToggleComplete={toggleCloudTaskComplete}
               />

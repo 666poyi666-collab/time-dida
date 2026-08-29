@@ -34,6 +34,28 @@ vi.mock('../electron/db/index.js', () => ({
     if (index >= 0) localState.projects[index] = project;
     else localState.projects.push(project);
   }),
+  deleteLocalTaskProjectAndMoveTasks: vi.fn(
+    (projectId: string, inboxProjectId: string, updatedAt: number) => {
+      const moved = localState.tasks.filter((task) => task.projectId === projectId);
+      for (const task of moved) {
+        const index = localState.tasks.findIndex((item) => item.id === task.id);
+        localState.tasks[index] = { ...task, projectId: inboxProjectId, updatedAt };
+      }
+      localState.projects = localState.projects.filter((project) => project.id !== projectId);
+      return moved.length;
+    },
+  ),
+  restoreLocalTaskProjectDeletion: vi.fn(
+    (project: (typeof localState.projects)[number], tasks: readonly TaskCache[]) => {
+      localState.projects.push(project);
+      for (const task of tasks) {
+        const index = localState.tasks.findIndex((item) => item.id === task.id);
+        if (index >= 0) localState.tasks[index] = task;
+        else localState.tasks.push(task);
+      }
+    },
+  ),
+  removeStaleLocalTaskSnapshotRows: vi.fn(),
 }));
 
 vi.mock('../electron/logger.js', () => ({
@@ -124,6 +146,31 @@ describe('local task completion mutations', () => {
     expect(() => LocalTaskProvider.updateProject('local-inbox', { name: '其他名称' })).toThrow(
       /系统清单/,
     );
+  });
+
+  it('does not delete a list and moves its complete task subtree to the inbox', () => {
+    const project = LocalTaskProvider.createProject('待整理');
+    const parent = LocalTaskProvider.create('父任务', project.id);
+    localState.tasks.push({
+      ...localState.tasks[0],
+      id: 'child-task',
+      externalId: 'child-task',
+      parentId: parent.id,
+      projectId: project.id,
+      title: '子任务',
+    });
+
+    const deletion = LocalTaskProvider.deleteProject(project.id);
+    expect(deletion.movedTaskCount).toBe(2);
+    expect(localState.projects.some((candidate) => candidate.id === project.id)).toBe(false);
+    expect(localState.tasks.every((task) => task.projectId === 'local-inbox')).toBe(true);
+    expect(() => LocalTaskProvider.deleteProject('local-inbox')).toThrow('收件箱不可删除');
+
+    LocalTaskProvider.rollbackProjectDeletion(deletion);
+    expect(LocalTaskProvider.listProjects().some((candidate) => candidate.id === project.id)).toBe(
+      true,
+    );
+    expect(localState.tasks.filter((task) => task.projectId === project.id)).toHaveLength(2);
   });
 
   it('does not let a stale cloud snapshot overwrite a newly edited local list color', () => {

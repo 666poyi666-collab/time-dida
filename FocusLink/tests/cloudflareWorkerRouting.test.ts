@@ -369,6 +369,7 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
     for (const path of [
       '/internal/mcp/v1/focus/summary?limit=10',
       '/internal/mcp/v1/focus/records?limit=10',
+      '/internal/mcp/v1/tasks',
     ]) {
       const denied = await call(path);
       expect(denied.status).toBe(401);

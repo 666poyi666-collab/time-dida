@@ -2,6 +2,7 @@ import { SELF, env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 
 import { syncAuthoritativeFeed } from '../src/feed-sync';
+import { clearOAuthCachesForTest } from '../src/oauth';
 import { FakeFocusLinkFeed, ledgerChange, metadataChange } from './helpers/focuslink-feed';
 import { createOAuthFixture } from './helpers/oauth';
 
@@ -80,9 +81,9 @@ describe('Worker canonical HTTP contract', () => {
       resource: `${CANONICAL}/mcp`,
       authorization_servers: [env.OAUTH_ISSUER],
       jwks_uri: env.OAUTH_JWKS_URL,
-      scopes_supported: ['focuslink:read'],
+      scopes_supported: ['focuslink:read', 'focuslink:write'],
       bearer_methods_supported: ['header'],
-      resource_name: 'FocusLink authoritative read-only MCP',
+      resource_name: 'FocusLink authoritative MCP',
     });
   });
 
@@ -252,17 +253,39 @@ describe('Worker canonical HTTP contract', () => {
         'foxlink_get_today_summary',
         'foxlink_list_sessions',
         'foxlink_get_sync_overview',
+        'focuslink_list_projects',
+        'focuslink_list_tasks',
+        'focuslink_get_task',
+        'focuslink_create_project',
+        'focuslink_update_project',
+        'focuslink_delete_project',
+        'focuslink_create_task',
+        'focuslink_update_task',
+        'focuslink_complete_task',
+        'focuslink_restore_task',
+        'focuslink_delete_task',
+        'focuslink_move_task',
       ]),
     );
     for (const tool of tools) {
+      const write =
+        tool.name?.startsWith('focuslink_') &&
+        /^(?:focuslink_(?:create|update|delete)_project|focuslink_(?:create|update|complete|restore|delete|move)_task)$/.test(
+          tool.name ?? '',
+        );
       expect(tool.annotations).toEqual({
-        readOnlyHint: true,
-        destructiveHint: false,
+        readOnlyHint: write ? false : true,
+        destructiveHint: write && /delete/.test(tool.name ?? '') ? true : false,
         idempotentHint: true,
         openWorldHint: false,
       });
       expect(tool._meta).toMatchObject({
-        securitySchemes: [{ type: 'oauth2', scopes: ['focuslink:read'] }],
+        securitySchemes: [
+          {
+            type: 'oauth2',
+            scopes: write ? ['focuslink:read', 'focuslink:write'] : ['focuslink:read'],
+          },
+        ],
       });
     }
 
@@ -332,6 +355,75 @@ describe('Worker canonical HTTP contract', () => {
     expect(await response.json()).toEqual({
       error: 'pair_offer_requires_oob_admin',
     });
+  });
+
+  it('requires focuslink:write for task mutations and returns a redacted confirmation', async () => {
+    const readOnly = await createOAuthFixture({ scope: 'focuslink:read' });
+    readOnly.install();
+    const readOnlySession = await initializeMcp(readOnly.token);
+    const denied = await mcpPost(
+      {
+        jsonrpc: '2.0',
+        id: 30,
+        method: 'tools/call',
+        params: {
+          name: 'focuslink_create_task',
+          arguments: {
+            operationId: 'mcp-create-0001',
+            expectedRevision: 7,
+            title: '不可写入',
+          },
+        },
+      },
+      readOnly.token,
+      readOnlySession,
+    );
+    expect(denied.status).toBe(403);
+    expect(denied.headers.get('www-authenticate')).toContain(
+      'scope="focuslink:read focuslink:write"',
+    );
+
+    clearOAuthCachesForTest();
+    const writable = await createOAuthFixture({ scope: 'focuslink:read focuslink:write' });
+    writable.install();
+    const sessionId = await initializeMcp(writable.token);
+    const projects = await callTool(writable.token, sessionId, 'focuslink_list_projects');
+    expect(projects).toMatchObject({
+      authority: 'focuslink-account-do',
+      revision: 7,
+      projects: [
+        expect.objectContaining({ id: 'local-inbox' }),
+        expect.objectContaining({ id: 'study' }),
+      ],
+    });
+    const tasks = await callTool(writable.token, sessionId, 'focuslink_list_tasks', {
+      includeCompleted: false,
+      query: 'MCP',
+      limit: 10,
+    });
+    expect(tasks).toMatchObject({
+      authority: 'focuslink-account-do',
+      revision: 7,
+      tasks: [expect.objectContaining({ id: 'mcp-parent', parentId: null, tags: ['验收'] })],
+    });
+    const created = await callTool(writable.token, sessionId, 'focuslink_create_task', {
+      operationId: 'mcp-create-0001',
+      expectedRevision: 7,
+      projectId: 'study',
+      parentId: 'mcp-parent',
+      title: 'MCP 子任务',
+      priority: 5,
+      dueDate: 1_720_000_100_000,
+      tags: ['本周'],
+    });
+    expect(created).toMatchObject({
+      authority: 'focuslink-account-do',
+      confirmed: true,
+      operationId: 'mcp-create-0001',
+      status: 'applied',
+      result: { kind: 'create_task', safety: 'updated' },
+    });
+    expect(JSON.stringify(created)).not.toContain('MCP 子任务');
   });
 
   it('rejects the non-canonical focuslink:pair OAuth scope', async () => {

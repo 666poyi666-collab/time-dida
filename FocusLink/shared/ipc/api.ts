@@ -27,6 +27,12 @@ export interface TaskWorkspaceRefreshData {
   refreshedAt: number;
 }
 
+export interface TaskProjectDeleteResult {
+  projectId: string;
+  movedTaskCount: number;
+  safety: 'moved_to_inbox';
+}
+
 export interface CliExecRecord {
   command: string;
   cwd: string;
@@ -445,6 +451,7 @@ export interface FocusLinkAPI {
       projectId: string,
       input: { name?: string; color?: string | null },
     ): Promise<Project>;
+    deleteProject(projectId: string): Promise<TaskProjectDeleteResult>;
     moveTask(taskId: string, projectId?: string | null): Promise<Task>;
     complete(task: Task): Promise<Task>;
     setCompleted(task: Task, completed: boolean): Promise<Task>;

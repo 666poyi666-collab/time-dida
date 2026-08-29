@@ -14,6 +14,8 @@ const serviceState = vi.hoisted(() => ({
   oauthTasks: [] as Task[],
   oauthSetCompleted: vi.fn(),
   publishTaskSnapshot: vi.fn(async () => true),
+  taskSyncConfigured: false,
+  readTaskSnapshot: vi.fn(async () => null),
 }));
 
 vi.mock('../electron/settingsStore.js', () => ({
@@ -63,7 +65,8 @@ vi.mock('../electron/integrations/ticktick/oauthAdapter.js', () => ({
 
 vi.mock('../electron/sync/deviceSyncService.js', () => ({
   publishDeviceTaskSnapshot: serviceState.publishTaskSnapshot,
-  readDeviceTaskSnapshot: vi.fn(async () => null),
+  readDeviceTaskSnapshot: serviceState.readTaskSnapshot,
+  isDeviceTaskSnapshotSyncConfigured: vi.fn(() => serviceState.taskSyncConfigured),
 }));
 
 import { refreshTaskWorkspace, setTaskCompleted } from '../electron/tasks/workspaceService';
@@ -99,6 +102,8 @@ beforeEach(() => {
   serviceState.oauthTasks = [];
   serviceState.oauthSetCompleted.mockReset();
   serviceState.publishTaskSnapshot.mockClear();
+  serviceState.taskSyncConfigured = false;
+  serviceState.readTaskSnapshot.mockClear();
 });
 
 describe('task workspace service', () => {
@@ -139,6 +144,24 @@ describe('task workspace service', () => {
     expect(settled).toBe(false);
     release(true);
     await expect(refresh).resolves.toMatchObject({ ok: true });
+  });
+
+  it('does not merge the stale cloud register before an atomic local list deletion', async () => {
+    await expect(
+      refreshTaskWorkspace({ force: true, skipCloudSnapshotMerge: true }),
+    ).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(serviceState.readTaskSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('turns a configured but unconfirmed snapshot write into a visible refresh failure', async () => {
+    serviceState.taskSyncConfigured = true;
+    serviceState.publishTaskSnapshot.mockResolvedValueOnce(false);
+    await expect(refreshTaskWorkspace({ force: true })).resolves.toEqual({
+      ok: false,
+      error: 'FocusLink 任务库 刷新失败：任务快照未获得云端确认，已保留本地变更并等待重试',
+    });
   });
 
   it('returns an explicit CLI detection failure instead of an empty task list', async () => {

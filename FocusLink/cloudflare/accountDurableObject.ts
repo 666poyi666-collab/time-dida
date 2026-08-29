@@ -47,9 +47,15 @@ import {
 } from '../shared/sync/liveFocusProtocol';
 import {
   TASK_SNAPSHOT_PROTOCOL_VERSION,
+  TASK_SNAPSHOT_MAX_FUTURE_SKEW_MS,
+  applyTaskSnapshotMutation,
   isTaskSnapshotPublishedAtWithinFutureSkew,
+  parseTaskSnapshotMutationResponse,
+  validateTaskSnapshotMutationRequest,
   validateTaskSnapshotPublishRequest,
   type TaskSnapshotPayload,
+  type TaskSnapshotMutationRequest,
+  type TaskSnapshotMutationResponse,
   type TaskSnapshotPublishRequest,
   type TaskSnapshotResponse,
 } from '../shared/sync/taskSnapshotProtocol';
@@ -191,6 +197,11 @@ interface TaskRow extends Record<string, SqlStorageValue> {
   source_device_id: string | null;
   fingerprint: string | null;
   snapshot_json: string | null;
+}
+
+interface TaskOperationRow extends Record<string, SqlStorageValue> {
+  fingerprint: string;
+  response_json: string;
 }
 
 interface LiveRow extends Record<string, SqlStorageValue> {
@@ -418,6 +429,28 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
             : this.focusMcpProjection(url),
         );
       }
+      if (url.pathname === '/internal/mcp/v1/tasks') {
+        if (request.method !== 'GET' && request.method !== 'POST') {
+          throw new ProtocolError(405, 'method_not_allowed', 'GET or POST required');
+        }
+        if (
+          !this.env.FOCUSLINK_MCP_SERVICE_TOKEN ||
+          request.headers.get('x-focuslink-mcp-service') !== this.env.FOCUSLINK_MCP_SERVICE_TOKEN
+        ) {
+          throw new ProtocolError(
+            401,
+            'internal_service_unauthenticated',
+            'cloud MCP service credential required',
+          );
+        }
+        rejectUnexpectedQuery(url);
+        if (request.method === 'GET') return json(this.getTaskSnapshot());
+        const body = await readJson(request, 512 * 1024);
+        if (!validateTaskSnapshotMutationRequest(body)) {
+          throw new ProtocolError(400, 'invalid_task_mutation', 'invalid task mutation');
+        }
+        return json(this.applyTaskSnapshotMutation(body));
+      }
 
       if (url.pathname === '/v1/sync' && request.method === 'POST') {
         const body = parseSyncRequest(await readJson(request, DEVICE_SYNC_MAX_BODY_BYTES));
@@ -603,6 +636,16 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         assertV2DeviceBinding(identity, body.deviceId);
         return json(this.publishTaskSnapshot(body));
       }
+      if (url.pathname === '/v1/tasks/mutate' && request.method === 'POST') {
+        rejectUnexpectedQuery(url);
+        const body = await readJson(request, 512 * 1024);
+        if (!validateTaskSnapshotMutationRequest(body)) {
+          throw new ProtocolError(400, 'invalid_task_mutation', 'invalid task mutation');
+        }
+        const identity = await this.authorizeV2(request, 'sync:write');
+        assertV2DeviceBinding(identity, body.deviceId);
+        return json(this.applyTaskSnapshotMutation(body));
+      }
       if (url.pathname === '/v1/live' && request.method === 'GET') {
         await this.authorizeV2(request, 'live:read');
         rejectUnexpectedQuery(url);
@@ -645,7 +688,10 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     } catch {
       metaAvailable = false;
     }
-    if (current?.value === '1') return;
+    if (current?.value === '1') {
+      this.ensureTaskMutationSchema();
+      return;
+    }
     if (current && current.value !== '1') {
       throw new Error('account schema version is invalid');
     }
@@ -658,6 +704,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         .toArray()[0];
       if (legacyReady?.value === '2') {
         this.sql.exec("INSERT INTO meta(key, value) VALUES ('account_schema_version', '1')");
+        this.ensureTaskMutationSchema();
         return;
       }
     }
@@ -698,6 +745,14 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         fingerprint TEXT,
         snapshot_json TEXT
       );
+      CREATE TABLE IF NOT EXISTS task_operations (
+        operation_id TEXT PRIMARY KEY,
+        fingerprint TEXT NOT NULL,
+        response_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_operations_created_at
+        ON task_operations(created_at);
       CREATE TABLE IF NOT EXISTS live_state (
         singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
         revision INTEGER NOT NULL,
@@ -848,10 +903,25 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       INSERT OR IGNORE INTO live_state(singleton, revision) VALUES (1, 0);
     `);
     this.migrateAuthorityObservationSchema();
+    this.ensureTaskMutationSchema();
     this.sql.exec(`
       INSERT INTO meta(key, value)
       VALUES ('account_schema_version', '1')
       ON CONFLICT(key) DO UPDATE SET value=excluded.value;
+    `);
+  }
+
+  /** Additive migration for task mutation idempotency on accounts created before this contract. */
+  private ensureTaskMutationSchema(): void {
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS task_operations (
+        operation_id TEXT PRIMARY KEY,
+        fingerprint TEXT NOT NULL,
+        response_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_operations_created_at
+        ON task_operations(created_at);
     `);
   }
 
@@ -3126,6 +3196,115 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       );
     });
     return this.getTaskSnapshot();
+  }
+
+  /**
+   * Apply one first-party task mutation against the same task_state register used by device
+   * snapshots.  The operation ledger and register update share one DO transaction: an expected
+   * revision can never be bypassed, and a replay returns the original redacted confirmation.
+   */
+  private applyTaskSnapshotMutation(
+    request: TaskSnapshotMutationRequest,
+  ): TaskSnapshotMutationResponse {
+    const serverTime = Date.now();
+    const fingerprint = fingerprintDeviceSyncValue({
+      expectedRevision: request.expectedRevision,
+      deviceId: request.deviceId,
+      mutation: request.mutation,
+    });
+    return this.ctx.storage.transactionSync(() => {
+      const previous = this.sql
+        .exec<TaskOperationRow>(
+          'SELECT fingerprint, response_json FROM task_operations WHERE operation_id = ?',
+          request.operationId,
+        )
+        .toArray()[0];
+      if (previous) {
+        if (previous.fingerprint !== fingerprint) {
+          throw new ProtocolError(
+            409,
+            'task_operation_id_reused',
+            'task operation id is already bound to another mutation',
+          );
+        }
+        const stored = parseTaskSnapshotMutationResponse(JSON.parse(previous.response_json));
+        if (!stored) {
+          throw new ProtocolError(
+            500,
+            'task_operation_history_corrupt',
+            'task operation history is corrupt',
+          );
+        }
+        return { ...stored, status: 'duplicate' as const, serverTime };
+      }
+
+      const row = this.sql
+        .exec<TaskRow>(
+          'SELECT revision, source_device_id, fingerprint, snapshot_json FROM task_state WHERE singleton = 1',
+        )
+        .one();
+      if (row.revision !== request.expectedRevision) {
+        throw new ProtocolError(
+          409,
+          'task_revision_conflict',
+          `task snapshot revision conflict; current revision is ${row.revision}`,
+        );
+      }
+      if (row.revision >= Number.MAX_SAFE_INTEGER) {
+        throw new ProtocolError(500, 'task_revision_exhausted', 'task snapshot revision exhausted');
+      }
+      const currentSnapshot = row.snapshot_json
+        ? (JSON.parse(row.snapshot_json) as TaskSnapshotPayload)
+        : {
+            publishedAt: serverTime,
+            projects: [
+              {
+                id: 'local-inbox',
+                source: 'local' as const,
+                name: '收件箱',
+                color: '#16899f',
+              },
+            ],
+            tasks: [],
+          };
+      const currentPublishedAt =
+        currentSnapshot.publishedAt > serverTime + TASK_SNAPSHOT_MAX_FUTURE_SKEW_MS
+          ? serverTime
+          : Math.min(
+              serverTime + TASK_SNAPSHOT_MAX_FUTURE_SKEW_MS,
+              Math.max(serverTime, currentSnapshot.publishedAt + 1),
+            );
+      const applied = applyTaskSnapshotMutation(
+        currentSnapshot,
+        request.mutation,
+        currentPublishedAt,
+      );
+      const response: TaskSnapshotMutationResponse = {
+        protocolVersion: TASK_SNAPSHOT_PROTOCOL_VERSION,
+        operationId: request.operationId,
+        status: 'applied',
+        revision: row.revision + 1,
+        sourceDeviceId: request.deviceId,
+        snapshot: applied.snapshot,
+        serverTime,
+        result: applied.result,
+      };
+      this.sql.exec(
+        'UPDATE task_state SET revision = ?, source_device_id = ?, fingerprint = ?, snapshot_json = ? WHERE singleton = 1',
+        response.revision,
+        request.deviceId,
+        fingerprintDeviceSyncValue(applied.snapshot),
+        JSON.stringify(applied.snapshot),
+      );
+      this.sql.exec(
+        'INSERT INTO task_operations(operation_id, fingerprint, response_json, created_at) VALUES (?, ?, ?, ?)',
+        request.operationId,
+        fingerprint,
+        JSON.stringify(response),
+        serverTime,
+      );
+      return response;
+    });
   }
 
   private getLiveSnapshot(): LiveFocusSnapshotResponse {

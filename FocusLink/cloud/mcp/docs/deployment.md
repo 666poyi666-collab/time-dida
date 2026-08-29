@@ -19,7 +19,7 @@ Non-secret OAuth config is pinned in `wrangler.jsonc`: issuer, audience, JWKS, i
 ## Mandatory order
 
 1. **Completed containment only:** old direct Worker public routes/custom domain were disabled; keep the recorded status/size evidence and do not restore them for testing.
-2. Deploy/fix the private upstream Worker/DO canonical `/sync/v2/*` routes and `/internal/mcp/v1/focus/summary`; bind the authenticated token device to every request/mutation deviceId, and prove fake=401, read-only write=403, spoof=403, revoked/expired/cross-account rejected. Its `workers_dev` must be false and it must have no public/custom route.
+2. Deploy/fix the private upstream Worker/DO canonical `/sync/v2/*` routes and `/internal/mcp/v1/focus/{summary,records}` plus `/internal/mcp/v1/tasks`; task reads/writes must use the same Account DO `task_state`, with `operationId`/`expectedRevision` CAS and no D1 task source. Bind the authenticated token device to every request/mutation deviceId, and prove fake=401, read-only task write=403, spoof=403, stale revision=409, operation replay=duplicate, revoked/expired/cross-account rejected. Its `workers_dev` must be false and it must have no public/custom route.
 3. Deploy unified OAuth AS; prove metadata/JWKS/introspection and valid/expired/wrong-aud/wrong-scope/revoked matrix.
 4. Provision projection and the two hop-specific pairing service credentials through the controlled owner channel. Never pass them as command-line arguments or print them.
 5. Apply `migrations/0002_authoritative_feed.sql` remotely.

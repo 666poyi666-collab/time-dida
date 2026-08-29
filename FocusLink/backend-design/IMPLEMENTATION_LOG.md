@@ -1,5 +1,18 @@
 # FocusLink 实施日志
 
+## 2026-08-29 · v0.12.104 自有任务清单删除与云端 MCP 任务管理
+
+- **清单删除安全语义**：PC 与移动端普通 FocusLink 清单现在都提供删除入口并二次确认；收件箱固定不可删除。删除清单只在 SQLite/快照中把全部任务及子树迁入 `local-inbox`，不静默丢失任务；只有显式任务删除才永久删除子树。PC 本地迁移与清单删除使用同一 SQLite 事务，删除发布前跳过旧云快照合并，发布未获确认时恢复原清单和任务归属；移动端仅在服务端回读成功后更新内存与 IndexedDB，失败保留旧树并显示错误。
+- **云端 MCP 任务面**：`foxlink-cloud-mcp` 新增 `focuslink_list_projects`、`focuslink_list_tasks`、`focuslink_get_task`，以及清单创建/更新/删除、任务创建/更新/完成/恢复/删除/移动工具。任务字段包含清单、`parentId`、截止时间（Unix ms）、优先级和标签；清单删除返回 `moved_to_inbox`，任务删除返回 `permanent_subtree_delete`。所有写工具要求 `operationId` + `expectedRevision`，Account DO 在同一 `task_state`/`task_operations` 持久化事务中执行 CAS 与重放，冲突不覆盖，成功只返回稳定 ID、revision、计数等脱敏确认。
+- **协议与权限**：新增 canonical `/sync/v2/tasks/mutate` 到 Account DO `/v1/tasks/mutate` 的转发；旧 `/sync/v2/tasks` 完整快照读写与旧客户端保持兼容。MCP 2026-07-28 discovery 保持，读写 token 额外允许 `focuslink:write`，写调用要求 `focuslink:read focuslink:write`；MCP D1 投影不保存任务。
+- **Cloudflare 配置**：独立 `cloud/mcp/wrangler.jsonc` 的 compatibility date 从历史 `2025-03-10` 对齐到项目门禁 `2026-07-25`，仅是兼容运行时配置修正，不改变 task snapshot 协议版本或 MCP discovery 目标。
+- **Portable immersive 修复**：packaged portable smoke 曾因 native `setFullScreen(false)` Promise 长时间不返回而使 body immersive overlay 无法卸载；`TimerPanel` 现在以 250 ms 有界 fallback 后继续 360 ms 卸载过渡，native 正常确认仍优先。修复后须从新干净源码重建并重跑 installer/portable UI smoke，未重跑前不宣称 portable UI 通过。
+- **最终候选打包**：在干净源码提交 `0e031fd`、Node `22.22.2` 下 `npm run dist` 成功，包内身份 `0.12.104 / 0e031fd`；`release-v012104/` 已收敛为 installer、portable、`SHA256SUMS.txt`、`RELEASE_NOTES.md` 四文件。installer SHA256 `E8B35A8B958784879D994AB4E6BD353A1DE6C6AA12A8812E873F647709A5CE9F`，portable `63FC4211E90573F91833BFE9006A14B61BF9EE41D9C03D36CEECA731AD51F0D8`；`.git/lfs/tmp` 构建前后 0 文件/0 B。
+- **packaged smoke 证据**：unpacked `smoke:live-fallback` 与旧版已通过的 UI/mini smoke 保留；`verify-startup` 对新 portable 回读版本、commit、shell、rail、console、pause token 全通过。新候选 `smoke:ui` 在 unpacked 一次设置 toggle、一次 flip/history delete 检查出现 flaky 断言；portable 在 immersive 后/暂停状态未在脚本 4 秒窗口内收敛，均记录为本轮 UI smoke 未通过，不能冒充完整 packaged UI 验收。
+- **Windows/Android 安装矩阵**：Windows installer `/S` exit 0，卸载注册项和已安装 `FocusLink.exe` 回读 `0.12.104 / 0.12.104.0`，应用已重启，SQLite 与设备凭据保留。Huawei DBY-W09（`192.168.1.7:5555`）正式包 `app.focuslink.mobile` 覆盖安装并回读 `versionName=0.12.104/versionCode=1304`；隔离 instrumentation terminal lifecycle `4/4`、应用上下文 `1/1` 通过，仅卸载 `.test` 包。Xiaomi xaga `22041216C`（`192.168.1.5:5555`）正式包覆盖返回 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，未卸载/清数据；按既有并行包策略安装 `app.focuslink.mobile.v012104`，回读 `0.12.104/1304` 并启动。旧地址 `192.168.1.4:5555` 保持 offline，不作为当前 Xiaomi serial。
+- **公网验收状态**：`focuslink-sync` 已部署 `8b19926e-b7f4-46f7-90cc-4b2d96065770`，`foxlink-mcp` 已部署 `b961c9d3-f9da-4079-b135-c8088fb06eb4`，Poyi OAuth scope migration `0006_focuslink_task_write_scope.sql` 已远端应用，OAuth Worker `2b1f9e76-76ce-4af2-811a-b1d8048a0b71` 已部署；health/ready/protected metadata 与 `probe-remote` 19/19 通过。生产 MCP 任务/子任务闭环仍 BLOCKED：没有可用 OAuth access token 或浏览器授权态，`verify-pc-off` 明确返回 `FOCUSLINK_MCP_ACCESS_TOKEN is missing or invalid`；本机加密 device credential 无法在隔离 Electron 进程解密，未创建生产临时数据，故不存在待清理的生产任务。
+- **验证**：根 typecheck、全量 Vitest `122 files / 915 tests` 通过；`cloud/mcp` typecheck、test:typecheck 与全量 MCP 回归 `113 tests` 通过。新增纯函数父子/日期/优先级/标签/安全删除、MCP binding/CAS scope、canonical route、IPC refresh failure 和 UI wiring 回归。生产 Worker/MCP 部署、真实临时任务闭环和本批次三设备新包安装尚未在本条目宣称完成，须按发布门禁继续回填。
+
 ## 2026-08-28 · v0.12.104 移动端功能与直接互配收口
 
 - **Luna Max 独立复核**：确认移动端自由专注、仪表入口、任务首写和 PC/移动颜色级联存在真实缺口；复核服务第一次返回 503，第二次成功完成只读审计，未直接改动源码。

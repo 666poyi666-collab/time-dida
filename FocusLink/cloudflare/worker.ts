@@ -19,6 +19,7 @@ const CANONICAL_AUTHORITY_ROUTES = new Map([
   ['/sync/v2/status', '/v2/sync/epoch'],
   ['/sync/v2/exchange', '/v2/sync'],
   ['/sync/v2/tasks', '/v1/tasks'],
+  ['/sync/v2/tasks/mutate', '/v1/tasks/mutate'],
   ['/sync/v2/live', '/v1/live'],
   ['/sync/v2/live/wait', '/v1/live/wait'],
   ['/sync/v2/live/command', '/v1/live/command'],
@@ -111,10 +112,20 @@ export default {
     }
     if (
       url.pathname === '/internal/mcp/v1/focus/summary' ||
-      url.pathname === '/internal/mcp/v1/focus/records'
+      url.pathname === '/internal/mcp/v1/focus/records' ||
+      url.pathname === '/internal/mcp/v1/tasks'
     ) {
-      if (request.method !== 'GET') {
-        return errorJson(405, 'method_not_allowed', 'GET required');
+      if (
+        (url.pathname === '/internal/mcp/v1/tasks' &&
+          request.method !== 'GET' &&
+          request.method !== 'POST') ||
+        (url.pathname !== '/internal/mcp/v1/tasks' && request.method !== 'GET')
+      ) {
+        return errorJson(
+          405,
+          'method_not_allowed',
+          url.pathname === '/internal/mcp/v1/tasks' ? 'GET or POST required' : 'GET required',
+        );
       }
       if (
         !env.FOCUSLINK_ACCOUNT_ID ||
@@ -128,7 +139,13 @@ export default {
       const headers = new Headers();
       headers.set('x-focuslink-account', env.FOCUSLINK_ACCOUNT_ID);
       headers.set('x-focuslink-mcp-service', env.FOCUSLINK_MCP_SERVICE_TOKEN);
-      return stub.fetch(new Request(request.url, { method: 'GET', headers }));
+      return stub.fetch(
+        new Request(request.url, {
+          method: request.method,
+          headers,
+          body: request.method === 'GET' ? undefined : request.body,
+        }),
+      );
     }
     if (isRetiredPublicRoute(url.pathname)) {
       return errorJson(410, 'legacy_route_retired', 'use /sync/v2/exchange or /sync/v2/status');

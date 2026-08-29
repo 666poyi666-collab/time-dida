@@ -270,6 +270,15 @@ describe('device credential negative cases', () => {
 });
 
 describe('Account DO request boundaries', () => {
+  it('keeps first-party task mutations on the task snapshot authority with durable CAS history', () => {
+    expect(authoritySource).toContain("url.pathname === '/internal/mcp/v1/tasks'");
+    expect(authoritySource).toContain("url.pathname === '/v1/tasks/mutate'");
+    expect(authoritySource).toContain('CREATE TABLE IF NOT EXISTS task_operations');
+    expect(authoritySource).toContain('task snapshot revision conflict');
+    expect(authoritySource).toContain('task_operation_id_reused');
+    expect(authoritySource).toContain('transactionSync');
+  });
+
   it('rejects an oversized body from content-length before JSON parsing', async () => {
     const request = new Request('https://focuslink.internal/v2/sync', {
       method: 'POST',

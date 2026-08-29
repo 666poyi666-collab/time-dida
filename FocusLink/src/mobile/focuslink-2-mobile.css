@@ -1764,6 +1764,15 @@ body {
   font-weight: 700;
 }
 
+.mobile-project-editor .project-delete-button {
+  min-height: 44px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .task-selection-project {
   display: grid;
   gap: 6px;

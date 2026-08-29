@@ -15,8 +15,10 @@ describe('FocusLink list ownership UI', () => {
     expect(workspace).toContain('TASK_PROJECT_COLOR_PALETTE.map');
     expect(workspace).toContain('application/x-focuslink-task');
     expect(workspace).toContain('window.focuslink.tasks.moveTask(task.id, projectId)');
+    expect(workspace).toContain('window.focuslink.tasks.deleteProject(project.id)');
     expect(preload).toContain("ipcRenderer.invoke('tasks:update-project'");
     expect(preload).toContain("ipcRenderer.invoke('tasks:move'");
+    expect(preload).toContain("ipcRenderer.invoke('tasks:delete-project'");
   });
 
   it('renders one inbox identity and a mobile move control for local tasks', () => {
@@ -56,5 +58,15 @@ describe('FocusLink list ownership UI', () => {
     expect(markup.match(/<option value="local-inbox"/g)).toHaveLength(1);
     expect(markup).toContain('所属清单');
     expect(markup).toContain('<option value="study">学习</option>');
+  });
+
+  it('exposes a safe regular-list deletion control but never renders one for the inbox', () => {
+    const browser = fs.readFileSync(
+      new URL('../src/mobile/TaskBrowser.tsx', import.meta.url),
+      'utf8',
+    );
+    expect(browser).toContain('onDeleteProject?:');
+    expect(browser).toContain('isFocusLinkInboxProject(project.id)');
+    expect(browser).toContain('删除清单（任务移到收件箱）');
   });
 });

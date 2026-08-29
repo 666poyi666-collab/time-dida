@@ -314,7 +314,10 @@ export async function verifyAccessToken(
   )
     throw new Error('invalid_token');
   const scopes = new Set(claims.scope.split(/\s+/).filter(Boolean));
-  const allowedScopes = new Set(['focuslink:read']);
+  // Task mutations are deliberately a separate capability.  The MCP edge still requires
+  // focuslink:read for the session and for every write call, but a token may additionally carry
+  // focuslink:write.  No other product scope is accepted at this resource server.
+  const allowedScopes = new Set(['focuslink:read', 'focuslink:write']);
   if (
     scopes.size === 0 ||
     [...scopes].some((scope) => !allowedScopes.has(scope)) ||
@@ -452,7 +455,7 @@ export function oauthChallenge(
 ): Response {
   const errorDescription =
     error === 'insufficient_scope'
-      ? 'The focuslink:read OAuth scope is required'
+      ? 'The requested FocusLink OAuth scope is required'
       : 'A valid FocusLink OAuth access token is required';
   const fields = [
     'Bearer realm="foxlink-cloud-mcp"',

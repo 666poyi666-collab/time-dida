@@ -231,6 +231,20 @@ describe('canonical /sync/v2 adapter', () => {
     expect(
       (
         await handleCanonicalSync(
+          request('/sync/v2/tasks/mutate', 'POST', TOKEN, {
+            protocolVersion: 1,
+            operationId: 'mcp-op-1234',
+            expectedRevision: 2,
+            deviceId: 'mcp-service',
+            mutation: { kind: 'set_task_completed', taskId: 'task-1', completed: true },
+          }),
+          env,
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await handleCanonicalSync(
           request('/sync/v2/live/wait?afterRevision=3&waitMs=1000', 'GET', TOKEN),
           env,
         )
@@ -252,11 +266,12 @@ describe('canonical /sync/v2 adapter', () => {
     expect(seen.map((item) => item.path)).toEqual([
       '/sync/v2/tasks',
       '/sync/v2/tasks',
+      '/sync/v2/tasks/mutate',
       '/sync/v2/live/wait',
       '/sync/v2/live/command',
     ]);
-    expect(seen[2]?.search).toBe('?afterRevision=3&waitMs=1000');
-    expect(seen[3]?.body).toMatchObject({ deviceId: 'device-reader01' });
+    expect(seen[3]?.search).toBe('?afterRevision=3&waitMs=1000');
+    expect(seen[4]?.body).toMatchObject({ deviceId: 'device-reader01' });
     expect(
       (await handleCanonicalSync(request('/sync/v2/live/command', 'GET', TOKEN), env)).status,
     ).toBe(405);
@@ -392,6 +407,16 @@ describe('canonical /sync/v2 adapter', () => {
     expect(oversizedCommand.status).toBe(413);
     expect(await oversizedCommand.json()).toMatchObject({
       error: { code: 'live_command_body_too_large' },
+    });
+    const oversizedMutation = await handleCanonicalSync(
+      request('/sync/v2/tasks/mutate', 'POST', TOKEN, {
+        value: 'x'.repeat(512 * 1024),
+      }),
+      env,
+    );
+    expect(oversizedMutation.status).toBe(413);
+    expect(await oversizedMutation.json()).toMatchObject({
+      error: { code: 'task_mutation_body_too_large' },
     });
     expect(upstream.fetch).not.toHaveBeenCalled();
   });

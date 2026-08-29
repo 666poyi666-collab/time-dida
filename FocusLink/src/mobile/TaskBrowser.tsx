@@ -48,6 +48,7 @@ interface TaskBrowserProps {
     project: SyncedTaskProject,
     input: { name?: string; color?: string | null },
   ) => Promise<void>;
+  onDeleteProject?: (project: SyncedTaskProject) => Promise<void>;
   onMoveTask?: (task: SyncedTask, projectId: string) => Promise<void>;
   onToggleComplete?: (task: SyncedTask) => Promise<void>;
 }
@@ -64,6 +65,7 @@ export function TaskBrowser({
   onCreate,
   onCreateProject,
   onUpdateProject,
+  onDeleteProject,
   onMoveTask,
   onToggleComplete,
 }: TaskBrowserProps) {
@@ -117,6 +119,25 @@ export function TaskBrowser({
           await onUpdateProject(project, input);
         } catch (error) {
           mutationError('保存清单', error);
+          throw error;
+        }
+      }
+    : undefined;
+  const deleteProjectWithNotice = onDeleteProject
+    ? async (project: SyncedTaskProject) => {
+        if (isFocusLinkInboxProject(project.id)) return;
+        if (
+          !window.confirm(
+            `确定删除清单「${project.name}」吗？其中的任务和子任务会移到收件箱，不会被删除。`,
+          )
+        ) {
+          return;
+        }
+        setMutationNotice(null);
+        try {
+          await onDeleteProject(project);
+        } catch (error) {
+          mutationError('删除清单', error);
           throw error;
         }
       }
@@ -286,6 +307,7 @@ export function TaskBrowser({
                     project={project}
                     fallbackColor={defaultTaskProjectColor(index + 1)}
                     onSave={updateProjectWithNotice}
+                    onDelete={deleteProjectWithNotice}
                   />
                 ))}
             </div>
@@ -445,6 +467,7 @@ function MobileProjectEditor({
   project,
   fallbackColor,
   onSave,
+  onDelete,
 }: {
   project: SyncedTaskProject;
   fallbackColor: string;
@@ -452,6 +475,7 @@ function MobileProjectEditor({
     project: SyncedTaskProject,
     input: { name?: string; color?: string | null },
   ) => Promise<void>;
+  onDelete?: (project: SyncedTaskProject) => Promise<void>;
 }) {
   const [name, setName] = useState(project.name);
   const [color, setColor] = useState(project.color ?? fallbackColor);
@@ -509,6 +533,23 @@ function MobileProjectEditor({
         <button type="submit" disabled={!onSave || !name.trim() || saving}>
           {saving ? '保存中' : '保存清单'}
         </button>
+        {onDelete && (
+          <button
+            type="button"
+            className="project-delete-button"
+            disabled={saving}
+            onClick={() => {
+              if (saving) return;
+              setSaving(true);
+              void onDelete(project)
+                .catch(() => undefined)
+                .finally(() => setSaving(false));
+            }}
+            aria-label={`删除清单 ${project.name}`}
+          >
+            删除清单（任务移到收件箱）
+          </button>
+        )}
       </form>
     </details>
   );

@@ -660,7 +660,7 @@ html.dark {
 /* v0.12.99 · list ownership, color and move controls ---------------------- */
 .task-project-entry {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 30px;
+  grid-template-columns: minmax(0, 1fr) 30px 30px;
   align-items: center;
   border-radius: var(--radius-sm);
 }
@@ -713,8 +713,16 @@ html.dark {
 }
 
 .task-project-entry:hover .task-project-edit,
-.task-project-edit:focus-visible {
+.task-project-edit:focus-visible,
+.task-project-entry:hover .task-project-delete,
+.task-project-delete:focus-visible {
   color: rgb(var(--app-accent));
+}
+
+.task-project-delete {
+  width: 28px;
+  height: 28px;
+  color: rgb(var(--app-subtle));
 }
 
 .task-project-editor {

@@ -189,6 +189,8 @@ export interface TaskWorkspaceRefreshOptions {
   completedDays?: number;
   /** 跳过活动任务短缓存；仅用于用户明确触发的手动刷新。 */
   force?: boolean;
+  /** Internal atomic local mutation path; do not merge the pre-mutation cloud register first. */
+  skipCloudSnapshotMerge?: boolean;
 }
 
 export interface Project {
@@ -503,6 +505,11 @@ export interface TimerIPC {
 export interface TaskIPC {
   'tasks:complete': (task: Task) => Promise<Task>;
   'tasks:set-completed': (task: Task, completed: boolean) => Promise<Task>;
+  'tasks:delete-project': (projectId: string) => Promise<{
+    projectId: string;
+    movedTaskCount: number;
+    safety: 'moved_to_inbox';
+  }>;
   'tasks:refresh': (options?: TaskWorkspaceRefreshOptions) => Promise<
     | {
         ok: true;

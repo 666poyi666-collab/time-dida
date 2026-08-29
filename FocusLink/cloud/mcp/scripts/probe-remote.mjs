@@ -42,8 +42,9 @@ const cases = [
       body.authorization_servers.length === 1 &&
       body.authorization_servers[0] === issuer &&
       Array.isArray(body?.scopes_supported) &&
-      body.scopes_supported.length === 1 &&
-      body.scopes_supported[0] === "focuslink:read",
+      body.scopes_supported.length === 2 &&
+      body.scopes_supported.includes("focuslink:read") &&
+      body.scopes_supported.includes("focuslink:write"),
   },
   {
     name: "mcp-requires-oauth",
