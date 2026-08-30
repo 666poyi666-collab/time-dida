@@ -9,6 +9,7 @@
 - Sol 独立审计补齐 MCP 9 个写 handler 到 authority mutation 的逐入口验证，并扩展 CLI 的清单/任务 list/get/update/filter、redirect、超大/非法响应和完整帮助门禁；公网部署状态文档改为实际版本 `3592ccde…`，认证态仍保持 partial。
 - 同步设置截图新增实时/离线历史设备、陈旧/撤销设备、2 条可上传 + 223 条过期番茄记录和桥接失败夹具。新增父子几何断言后真实发现 360px 手机六种仪表预览裁切；改为容器居中与中心缩放后，标准仪表由右侧超出 65.5px 收敛为左右各 0.9px，360/412/640/760/915×412 明暗门禁全部通过。合并复验为根 `127 files / 987 tests`、MCP `11 files / 117 tests`，format/typecheck/lint 与 MCP source/test typecheck 全绿。
 - 新 portable 首次 startup 因自解压冷启动超过旧 15 秒窗口而超时，UI smoke 首轮因 Framer Motion 过渡期间 `querySelector` 读到旧“暂停”按钮而在真实 `paused` 状态误失败。startup 等待扩到 60 秒并精确清理隔离 PID 树，UI smoke 改读最新主按钮并输出并存节点诊断；同一包重跑 startup 与完整 UI 均通过，原失败事实保留。
+- 系统 Node 已变成 24.19.0，不符合项目 22.x 门禁；从 Node 官方发布站下载并校验 SHA256 的 22.22.2 仅用于项目临时构建，最终干净包身份为 `0.12.105 / edf0915`。Windows `/S` 与安装日志、华为正式包 CDP、华为 4+13 隔离合同、小米并行包均完成回读；正式 APK hash `83344053…442A`，installer/portable 为 `55EB71F7…43F4` / `B5714CF4…628D`。
 - 最终只读审查补掉三个边界：账号切换期间旧 connection 请求禁止提交；CLI 的 200 响应体断流按同 operationId 重试；共享循环时间拒绝小数与 JS Date 上限外值。对应定向测试 41 项通过。
 - 最终 source-only 源码 `e6dde4b` 已完成 installer/portable/APK 构建与三端安装；private/public Worker 更新、远端 19/19、packaged smoke、Windows 数据保留和番茄真实状态回读均通过。portable smoke 额外等待 native viewport 恢复并保留失败 DOM。ChatGPT 插件刷新仍保留为需用户确认的唯一外部动作。
 - 继续沿用未闭合的 `0.12.105/1305` 候选，不为番茄/平板验收补修增加版本号。华为平板恢复在线并安装同版；隔离 9/9、解锁后 PiP 1/1 通过。
