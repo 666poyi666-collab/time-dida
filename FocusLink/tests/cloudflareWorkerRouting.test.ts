@@ -31,6 +31,7 @@ interface ForwardedCall {
   enrollmentAuthority: string | null;
   ownerSubject: string | null;
   account: string | null;
+  contentType: string | null;
 }
 
 function makeEnv(forwarded: ForwardedCall[]): WorkerEnv {
@@ -46,6 +47,7 @@ function makeEnv(forwarded: ForwardedCall[]): WorkerEnv {
         enrollmentAuthority: request.headers.get('x-focuslink-enrollment-authority'),
         ownerSubject: request.headers.get('x-focuslink-owner-subject'),
         account: request.headers.get('x-focuslink-account'),
+        contentType: request.headers.get('content-type'),
       });
       const ready = new URL(request.url).pathname === '/internal/readyz';
       return new Response(
@@ -87,6 +89,8 @@ function call(
     pairAuthority,
     identityAuthority,
     ownerSubject,
+    body,
+    contentType,
   }: {
     method?: string;
     authorization?: string;
@@ -95,6 +99,8 @@ function call(
     pairAuthority?: string;
     identityAuthority?: string;
     ownerSubject?: string;
+    body?: string;
+    contentType?: string;
   } = {},
   env: WorkerEnv = makeEnv([]),
 ): Promise<Response> {
@@ -105,7 +111,12 @@ function call(
   if (pairAuthority) headers.set('x-focuslink-pair-authority', pairAuthority);
   if (identityAuthority) headers.set('x-focuslink-identity-authority', identityAuthority);
   if (ownerSubject) headers.set('x-focuslink-owner-subject', ownerSubject);
-  const request = new Request(`https://foxlink-cloud-mcp.example${path}`, { method, headers });
+  if (contentType) headers.set('content-type', contentType);
+  const request = new Request(`https://foxlink-cloud-mcp.example${path}`, {
+    method,
+    headers,
+    body,
+  });
   return worker.fetch(request, env);
 }
 
@@ -391,6 +402,26 @@ describe('FocusLink private authority routing behind foxlink-cloud-mcp', () => {
       });
       expect(forwarded[0]!.url).toContain(path);
     }
+
+    const forwarded: ForwardedCall[] = [];
+    const env = makeEnv(forwarded);
+    const mutation = await call(
+      '/internal/mcp/v1/tasks',
+      {
+        method: 'POST',
+        mcpService: 'mcp-service-token-which-is-not-a-device-token',
+        contentType: 'application/json',
+        body: '{}',
+      },
+      env,
+    );
+    expect(mutation.status).toBe(200);
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0]).toMatchObject({
+      mcpService: 'mcp-service-token-which-is-not-a-device-token',
+      account: 'account-public',
+      contentType: 'application/json; charset=utf-8',
+    });
   });
 
   it('reports ready only after the Account DO storage probe succeeds', async () => {

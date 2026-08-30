@@ -11,6 +11,7 @@
 - 新 portable 首次 startup 因自解压冷启动超过旧 15 秒窗口而超时，UI smoke 首轮因 Framer Motion 过渡期间 `querySelector` 读到旧“暂停”按钮而在真实 `paused` 状态误失败。startup 等待扩到 60 秒并精确清理隔离 PID 树，UI smoke 改读最新主按钮并输出并存节点诊断；同一包重跑 startup 与完整 UI 均通过，原失败事实保留。
 - 系统 Node 已变成 24.19.0，不符合项目 22.x 门禁；从 Node 官方发布站下载并校验 SHA256 的 22.22.2 仅用于项目临时构建，最终干净包身份为 `0.12.105 / edf0915`。Windows `/S` 与安装日志、华为正式包 CDP、华为 4+13 隔离合同、小米并行包均完成回读；正式 APK hash `83344053…442A`，installer/portable 为 `55EB71F7…43F4` / `B5714CF4…628D`。
 - ChatGPT FocusLink OAuth 已修复旧 DCR scope 快照并成功连接，读工具回读生产 revision 78；写入在 ChatGPT 与独立短期 PKCE 客户端都被 authority 4xx 拒绝且零残留，重部署当前私有 Worker 后仍复现。为继续诊断，public MCP 将常见 400/403/404/405 拆成稳定脱敏错误码，其余 4xx 仅携带 HTTP 状态，仍不读取或透传上游正文、任务内容。
+- 精确码确认写入失败为 HTTP 415：private Worker 将 MCP POST 转发到 Account DO 时漏掉 `Content-Type`，而 Account DO 明确要求 JSON。转发层现补回 `application/json; charset=utf-8`，并以 `ArrayBuffer` 转发可信内部正文，避免 ReadableStream duplex 差异；路由合同已覆盖。这也是此前 MCP 读取全绿但所有任务写入同时失败的根因。
 - 最终只读审查补掉三个边界：账号切换期间旧 connection 请求禁止提交；CLI 的 200 响应体断流按同 operationId 重试；共享循环时间拒绝小数与 JS Date 上限外值。对应定向测试 41 项通过。
 - 最终 source-only 源码 `e6dde4b` 已完成 installer/portable/APK 构建与三端安装；private/public Worker 更新、远端 19/19、packaged smoke、Windows 数据保留和番茄真实状态回读均通过。portable smoke 额外等待 native viewport 恢复并保留失败 DOM。ChatGPT 插件刷新仍保留为需用户确认的唯一外部动作。
 - 继续沿用未闭合的 `0.12.105/1305` 候选，不为番茄/平板验收补修增加版本号。华为平板恢复在线并安装同版；隔离 9/9、解锁后 PiP 1/1 通过。

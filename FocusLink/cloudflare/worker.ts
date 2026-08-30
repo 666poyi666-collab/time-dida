@@ -139,11 +139,15 @@ export default {
       const headers = new Headers();
       headers.set('x-focuslink-account', env.FOCUSLINK_ACCOUNT_ID);
       headers.set('x-focuslink-mcp-service', env.FOCUSLINK_MCP_SERVICE_TOKEN);
+      const body = request.method === 'GET' ? undefined : await request.arrayBuffer();
+      if (request.method === 'POST') {
+        headers.set('content-type', 'application/json; charset=utf-8');
+      }
       return stub.fetch(
         new Request(request.url, {
           method: request.method,
           headers,
-          body: request.method === 'GET' ? undefined : request.body,
+          body,
         }),
       );
     }
