@@ -8,10 +8,15 @@
 //   - 滴答清单的「怎么连」和「同步什么」必须落在同一个分组里；
 //   - 搜索必须能跨分组命中标题里没有的词；
 //   - 最小窗口下不产生横向溢出。
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type {
+  DeviceSyncManagedDevice,
+  DeviceSyncStatus,
+  TomatodoBridgeStatus,
+} from '../../shared/ipc/api';
 import { configureIsolatedUserData } from './isolatedUserData';
 import { initDatabase, closeDatabase } from '../../electron/db/index.js';
 import { TimerManager } from '../../electron/timer/manager.js';
@@ -24,6 +29,93 @@ const projectRoot = path.resolve(__dirname, '..', '..');
 const outputDir = path.resolve(projectRoot, 'test-data', 'settings-screenshots');
 
 const TAB_LABELS = ['外观', '专注', '快捷键', '连接与同步', '跨设备', '系统'] as const;
+const FIXTURE_NOW = Date.now();
+let deviceFixtureMode: 'live' | 'offline-history' = 'live';
+
+const LIVE_DEVICE_STATUS: DeviceSyncStatus = {
+  signedIn: true,
+  accountId: 'account-settings-fixture',
+  accountLabel: '设置截图同步空间',
+  enabled: true,
+  endpoint: 'https://focuslink.invalid',
+  autoSync: true,
+  liveControlEnabled: true,
+  liveConnected: true,
+  liveRevision: 42,
+  liveState: 'running',
+  configured: true,
+  tokenConfigured: true,
+  deviceId: 'device-settings-desktop',
+  cursor: 'settings-fixture-cursor',
+  running: false,
+  lastSyncAt: FIXTURE_NOW - 2 * 60_000,
+  lastError: null,
+  unresolvedConflicts: 0,
+};
+
+const MANAGED_DEVICE_FIXTURES: DeviceSyncManagedDevice[] = [
+  {
+    deviceId: 'device-settings-desktop',
+    devicePublicId: 'desktop-current',
+    displayName: '当前电脑',
+    platform: 'windows',
+    deviceKind: 'desktop',
+    appVersion: '0.12.105',
+    expiresAt: FIXTURE_NOW + 30 * 24 * 60 * 60_000,
+    revokedAt: null,
+    lastSeenAt: FIXTURE_NOW - 60_000,
+    stale: false,
+    registeredAt: FIXTURE_NOW - 30 * 24 * 60 * 60_000,
+  },
+  {
+    deviceId: 'device-settings-phone',
+    devicePublicId: 'phone-recent',
+    displayName: '已配对手机',
+    platform: 'android',
+    deviceKind: 'phone',
+    appVersion: '0.12.105',
+    expiresAt: FIXTURE_NOW + 30 * 24 * 60 * 60_000,
+    revokedAt: null,
+    lastSeenAt: FIXTURE_NOW - 6 * 60_000,
+    stale: false,
+    registeredAt: FIXTURE_NOW - 20 * 24 * 60 * 60_000,
+  },
+  {
+    deviceId: 'device-settings-tablet-stale',
+    devicePublicId: 'tablet-stale',
+    displayName: '久未同步平板',
+    platform: 'android',
+    deviceKind: 'tablet',
+    appVersion: '0.12.104',
+    expiresAt: FIXTURE_NOW + 30 * 24 * 60 * 60_000,
+    revokedAt: null,
+    lastSeenAt: FIXTURE_NOW - 91 * 24 * 60 * 60_000,
+    stale: true,
+    registeredAt: FIXTURE_NOW - 180 * 24 * 60 * 60_000,
+  },
+  {
+    deviceId: 'device-settings-revoked',
+    devicePublicId: 'desktop-revoked',
+    displayName: '已撤销测试电脑',
+    platform: 'windows',
+    deviceKind: 'desktop',
+    appVersion: '0.12.103-test',
+    expiresAt: null,
+    revokedAt: FIXTURE_NOW - 24 * 60 * 60_000,
+    lastSeenAt: FIXTURE_NOW - 8 * 24 * 60 * 60_000,
+    stale: false,
+    registeredAt: FIXTURE_NOW - 120 * 24 * 60 * 60_000,
+  },
+];
+
+const TOMATODO_BRIDGE_ERROR_FIXTURE: TomatodoBridgeStatus = {
+  state: 'launch-failed',
+  connected: false,
+  running: false,
+  installed: true,
+  launched: true,
+  error: 'settings-screenshot-private-upstream-error',
+};
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -57,6 +149,7 @@ app
     });
 
     registerIpc(timer, mainWindow, () => undefined);
+    installSettingsScreenshotFixtures();
     mainWindow.loadFile(path.join(projectRoot, 'dist', 'index.html'));
     await waitForDidFinishLoad(mainWindow);
     mainWindow.show();
@@ -90,6 +183,19 @@ app
         }
         seenTitles.set(title, label);
       }
+      if (label === '外观') await assertDesktopAppearancePreviews(mainWindow);
+      if (label === '跨设备') {
+        await openDeviceRosterGroups(mainWindow);
+        await assertSettingsText(mainWindow, [
+          '当前实时连接',
+          '已确认',
+          '最后成功同步',
+          '实时连接已确认',
+          '最近活动 6 分钟前',
+          '久未同步',
+          '已失效',
+        ]);
+      }
       await captureMain(`settings-${String(index)}-${label}`, mainWindow);
       console.log(`[settings] ${label}: ${titles.join(' / ')}`);
     }
@@ -111,7 +217,34 @@ app
     if (tomatodoFacts.join('|') !== expectedTomatodoFacts.join('|')) {
       throw new Error(`Unexpected TomaToDo status facts: ${JSON.stringify(tomatodoFacts)}`);
     }
+    await assertSettingsText(mainWindow, [
+      '2 条可上传',
+      '223 条过期历史已停止重试',
+      '最近连接失败',
+      '保留本机',
+      '连接并上传',
+    ]);
     await captureMain('settings-integrations-tomatodo', mainWindow);
+
+    deviceFixtureMode = 'offline-history';
+    await clickTab(mainWindow, 4);
+    await sleep(120);
+    await clickSettingsButton(mainWindow, '刷新状态');
+    await sleep(220);
+    await openDeviceRosterGroups(mainWindow);
+    await assertSettingsText(mainWindow, [
+      '当前未在线',
+      '待刷新',
+      '最后成功同步',
+      '最近一次同步尝试未完成',
+      '当前连接待确认',
+      '久未同步',
+      '已失效',
+    ]);
+    await captureMain('settings-devices-offline-history', mainWindow);
+    await scrollSettingsToBottom(mainWindow);
+    await captureMain('settings-devices-roster-history', mainWindow);
+    await scrollSettingsToTop(mainWindow);
 
     // 选择 FocusLink 本地任务时，滴答清单区块按产品边界隐藏；若用户显式选择外部来源，
     // 连接方式与同步去向必须同组，这正是重构要解决的拆分。
@@ -218,6 +351,17 @@ async function clickTab(win: BrowserWindow, index: number): Promise<void> {
   );
 }
 
+async function clickSettingsButton(win: BrowserWindow, label: string): Promise<void> {
+  const clicked = await win.webContents.executeJavaScript(`(() => {
+    const button = [...document.querySelectorAll('.settings-page button')]
+      .find((candidate) => candidate.textContent?.trim() === ${JSON.stringify(label)});
+    if (!(button instanceof HTMLButtonElement)) return false;
+    button.click();
+    return true;
+  })()`);
+  if (clicked !== true) throw new Error(`Settings button not found: ${label}`);
+}
+
 async function sectionTitles(win: BrowserWindow): Promise<string[]> {
   return win.webContents.executeJavaScript(`
     [...document.querySelectorAll('.settings-section-heading h3')].map((h) => {
@@ -226,6 +370,105 @@ async function sectionTitles(win: BrowserWindow): Promise<string[]> {
       return clone.textContent.trim();
     })
   `);
+}
+
+function installSettingsScreenshotFixtures(): void {
+  const replaceHandler = (channel: string, handler: () => unknown) => {
+    ipcMain.removeHandler(channel);
+    ipcMain.handle(channel, handler);
+  };
+
+  replaceHandler('device-sync:status', () =>
+    deviceFixtureMode === 'live'
+      ? LIVE_DEVICE_STATUS
+      : {
+          ...LIVE_DEVICE_STATUS,
+          liveConnected: false,
+          liveState: 'disconnected',
+          lastSyncAt: FIXTURE_NOW - 2 * 60 * 60_000,
+          lastError: 'network_error',
+        },
+  );
+  replaceHandler('device-sync:list-devices', () => MANAGED_DEVICE_FIXTURES);
+  replaceHandler('device-sync:create-pairing-code', () => ({
+    code: '10510510',
+    expiresAt: FIXTURE_NOW + 10 * 60_000,
+  }));
+  replaceHandler('tomatodo:pending-summary', () => ({
+    total: 225,
+    uploadable: 2,
+    expired: 223,
+  }));
+  replaceHandler('tomatodo:bridge-status', () => TOMATODO_BRIDGE_ERROR_FIXTURE);
+}
+
+async function openDeviceRosterGroups(win: BrowserWindow): Promise<void> {
+  await win.webContents.executeJavaScript(`
+    [...document.querySelectorAll('.settings-device-more')].forEach((details) => {
+      details.open = true;
+    });
+  `);
+  await sleep(80);
+}
+
+async function scrollSettingsToBottom(win: BrowserWindow): Promise<void> {
+  await win.webContents.executeJavaScript(`(() => {
+    const scroll = document.querySelector('.settings-scroll');
+    if (!(scroll instanceof HTMLElement)) return false;
+    scroll.scrollTop = scroll.scrollHeight;
+    return true;
+  })()`);
+  await sleep(120);
+}
+
+async function scrollSettingsToTop(win: BrowserWindow): Promise<void> {
+  await win.webContents.executeJavaScript(`(() => {
+    const scroll = document.querySelector('.settings-scroll');
+    if (!(scroll instanceof HTMLElement)) return false;
+    scroll.scrollTop = 0;
+    return true;
+  })()`);
+  await sleep(80);
+}
+
+async function assertSettingsText(win: BrowserWindow, expected: readonly string[]): Promise<void> {
+  const text: string = await win.webContents.executeJavaScript(
+    `document.querySelector('.settings-page')?.textContent ?? ''`,
+  );
+  const missing = expected.filter((value) => !text.includes(value));
+  if (missing.length > 0) {
+    throw new Error(`Settings fixture text missing: ${JSON.stringify(missing)}`);
+  }
+}
+
+async function assertDesktopAppearancePreviews(win: BrowserWindow): Promise<void> {
+  const result: { fontCount: number; timerCount: number; violations: string[] } = await win
+    .webContents.executeJavaScript(`(() => {
+      const tolerance = 1;
+      const contains = (outer, inner) =>
+        inner.left >= outer.left - tolerance && inner.right <= outer.right + tolerance &&
+        inner.top >= outer.top - tolerance && inner.bottom <= outer.bottom + tolerance;
+      const violations = [];
+      const fonts = [...document.querySelectorAll('.font-profile-choice')];
+      const timers = [...document.querySelectorAll('.instrument-choice')];
+      for (const choice of fonts) {
+        const sample = choice.querySelector('.fp-sample');
+        if (!sample || !contains(choice.getBoundingClientRect(), sample.getBoundingClientRect())) {
+          violations.push('font:' + (choice.textContent?.trim().slice(0, 30) || 'missing'));
+        }
+      }
+      for (const choice of timers) {
+        const preview = choice.querySelector('.ic-preview');
+        const dial = preview?.querySelector(':scope > .timer-dial');
+        if (!preview || !dial || !contains(preview.getBoundingClientRect(), dial.getBoundingClientRect())) {
+          violations.push('timer:' + (choice.querySelector('.ic-name')?.textContent?.trim() || 'missing'));
+        }
+      }
+      return { fontCount: fonts.length, timerCount: timers.length, violations };
+    })()`);
+  if (result.fontCount !== 8 || result.timerCount !== 9 || result.violations.length > 0) {
+    throw new Error(`Desktop appearance preview bounds failed: ${JSON.stringify(result)}`);
+  }
 }
 
 /** 通过原生 setter 派发 input 事件，让 React 的受控输入真正收到变更。 */

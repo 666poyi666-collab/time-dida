@@ -493,15 +493,17 @@
 }
 
 .appearance-timer-preview {
-  display: grid;
+  display: flex;
   min-height: 50px;
-  place-items: center;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
   container-type: inline-size;
   pointer-events: none;
 }
 
 .appearance-timer-preview .timer-dial {
+  transform-origin: center;
   transform: scale(0.54);
 }
 .appearance-timer-preview .dial-standard,
@@ -526,6 +528,12 @@
 }
 .appearance-timer-preview .vernier-strip {
   display: none;
+}
+
+@media (max-width: 380px) {
+  .appearance-timer-preview .dial-standard {
+    transform: scale(0.5);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -595,6 +603,6 @@
   }
 
   html[data-device-tier='tablet'] body .appearance-timer-preview .dial-standard {
-    transform-origin: left center;
+    transform-origin: center;
   }
 }

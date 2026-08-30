@@ -451,6 +451,89 @@ describe('Worker canonical HTTP contract', () => {
     expect(JSON.stringify(created)).not.toContain('MCP 子任务');
   });
 
+  it('maps every task write tool to the intended authority mutation', async () => {
+    clearOAuthCachesForTest();
+    const writable = await createOAuthFixture({ scope: 'focuslink:read focuslink:write' });
+    writable.install();
+    const sessionId = await initializeMcp(writable.token);
+    const cases = [
+      {
+        name: 'focuslink_create_project',
+        operationId: 'mcp-handler-project-create',
+        args: { name: '新清单', color: '#16899f' },
+        kind: 'create_project',
+      },
+      {
+        name: 'focuslink_update_project',
+        operationId: 'mcp-handler-project-update',
+        args: { projectId: 'study', name: '学习更新' },
+        kind: 'update_project',
+      },
+      {
+        name: 'focuslink_delete_project',
+        operationId: 'mcp-handler-project-delete',
+        args: { projectId: 'study' },
+        kind: 'delete_project',
+      },
+      {
+        name: 'focuslink_create_task',
+        operationId: 'mcp-handler-task-create',
+        args: { title: '新任务', projectId: 'study', parentId: 'mcp-parent' },
+        kind: 'create_task',
+      },
+      {
+        name: 'focuslink_update_task',
+        operationId: 'mcp-handler-task-update',
+        args: { taskId: 'mcp-parent', title: '任务更新', priority: 4 },
+        kind: 'update_task',
+      },
+      {
+        name: 'focuslink_complete_task',
+        operationId: 'mcp-handler-task-complete',
+        args: { taskId: 'mcp-parent' },
+        kind: 'set_task_completed',
+      },
+      {
+        name: 'focuslink_restore_task',
+        operationId: 'mcp-handler-task-restore',
+        args: { taskId: 'mcp-parent' },
+        kind: 'set_task_completed',
+      },
+      {
+        name: 'focuslink_delete_task',
+        operationId: 'mcp-handler-task-delete',
+        args: { taskId: 'mcp-parent' },
+        kind: 'delete_task',
+      },
+      {
+        name: 'focuslink_move_task',
+        operationId: 'mcp-handler-task-move',
+        args: { taskId: 'mcp-parent', projectId: null },
+        kind: 'move_task',
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const confirmation = await callTool<Record<string, unknown>>(
+        writable.token,
+        sessionId,
+        testCase.name,
+        {
+          operationId: testCase.operationId,
+          expectedRevision: 7,
+          ...testCase.args,
+        },
+      );
+      expect(confirmation).toMatchObject({
+        authority: 'focuslink-account-do',
+        confirmed: true,
+        operationId: testCase.operationId,
+        status: 'applied',
+        result: { kind: testCase.kind },
+      });
+    }
+  });
+
   it('rejects invalid task dates and caller-owned recurrence progress at the MCP schema', async () => {
     const writable = await createOAuthFixture({ scope: 'focuslink:read focuslink:write' });
     writable.install();

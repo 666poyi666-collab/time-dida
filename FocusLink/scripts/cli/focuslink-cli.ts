@@ -614,11 +614,24 @@ function helpText() {
 
 命令：
   time [--timezone Asia/Shanghai]
-  projects list|get|create|update|delete
-  tasks list|get|create|update|move|complete|restore|delete
+  projects list
+  projects get --project-id <id>
+  projects create --name <name> [--color <color>]
+  projects update --project-id <id> [--name <name>] [--color <color>|--clear-color]
+  projects delete --project-id <id>
+  tasks list [--project-id <id|inbox>] [--include-completed] [--query <text>]
+             [--priority 0..5] [--start-from <ISO|ms>] [--start-to <ISO|ms>]
+             [--due-from <ISO|ms>] [--due-to <ISO|ms>] [--tag <name>] [--limit N]
+  tasks get --task-id <id>
+  tasks create --title <title> [任务字段]
+  tasks update --task-id <id> [任务字段|清空字段]
+  tasks move --task-id <id> --project-id <id|inbox>
+  tasks complete|restore|delete --task-id <id>
 
-任务字段：--title --project-id --parent-id --priority 0..5 --start <ISO|ms> --due <ISO|ms>
-          --tag <name> --frequency daily|weekly|monthly|yearly --interval N
+任务字段：--task-id <id> --title <title> --project-id <id|inbox> --parent-id <id|none>
+          --priority 0..5 --start <ISO|ms> --due <ISO|ms> --tag <name>
+清空字段：--clear-priority --clear-start --clear-due --clear-tags --clear-recurrence
+循环字段：--frequency daily|weekly|monthly|yearly --interval N --timezone <IANA>
           --weekdays 1,3,5 --month-days 1,15 --repeat-end <ISO|ms> --repeat-count N
           --rollover from_schedule|from_completion
 写入控制：--operation-id <stable-id> --expected-revision <revision>

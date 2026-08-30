@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const viewportScreenshotSource = fs.readFileSync(
+  path.join(projectRoot, 'scripts', 'regression', 'mobile-viewport-screenshot.ts'),
+  'utf8',
+);
 
 function compactCss(file: string): string {
   return fs
@@ -132,7 +136,13 @@ describe('phone, tablet and watch responsive style contract', () => {
       /\.appearance-timer-preview \.dial-standard,[\s\S]*?\.appearance-timer-preview \.dial-draft\s*\{[^}]*transform:\s*scale\(0\.58\)/,
     );
     expect(instruments).toMatch(
-      /\.appearance-timer-preview \.dial-standard\s*\{[^}]*transform-origin:\s*left center/,
+      /\.appearance-timer-preview \.dial-standard\s*\{[^}]*transform-origin:\s*center/,
+    );
+    expect(instruments).toMatch(
+      /\.appearance-timer-preview\s*\{[^}]*display:\s*flex[^}]*align-items:\s*center[^}]*justify-content:\s*center/,
+    );
+    expect(instruments).toMatch(
+      /@media \(max-width:\s*380px\)[\s\S]*?\.appearance-timer-preview \.dial-standard\s*\{[^}]*transform:\s*scale\(0\.5\)/,
     );
   });
 
@@ -144,5 +154,15 @@ describe('phone, tablet and watch responsive style contract', () => {
     expect(mobile).toMatch(
       /\.settings-status-line\s*\{[^}]*min-height:\s*104px[^}]*grid-template-columns:\s*20px minmax\(0,\s*1fr\)/,
     );
+  });
+
+  it('checks every mobile font and all nine timer previews against their parent bounds', () => {
+    expect(viewportScreenshotSource).toContain('assertMobileAppearancePreviews');
+    expect(viewportScreenshotSource).toContain('Object.keys(FONT_PROFILE_EXPECTATIONS)');
+    expect(viewportScreenshotSource).toContain('.appearance-font-preview');
+    expect(viewportScreenshotSource).toContain('.appearance-timer-preview');
+    expect(viewportScreenshotSource).toContain('timerResult.count === 9');
+    expect(viewportScreenshotSource).toContain('inner.right > outer.right + tolerance');
+    expect(viewportScreenshotSource).toContain('inner.bottom > outer.bottom + tolerance');
   });
 });

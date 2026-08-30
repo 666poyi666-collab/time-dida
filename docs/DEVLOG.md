@@ -5,7 +5,9 @@
 - 华为平板与 Windows 通过真实 8 位本机码完成 exchange/claim；任务快照、实时开始/暂停/继续/结束和 `2 segments + 1 pause` 已结束账本分别验收，所有临时清单、任务与会话均按精确 ID 清理。
 - 修复移动端后台 5 秒刷新取消前台任务操作的问题：同账号任务/账本请求复用在途 Promise，账号切换继续强制失效。平板新增待办/已完成分段与恢复入口，真机在后台刷新并发下首击完成/恢复均成功。
 - 设置页状态改为当前实时、账本新鲜度、任务 revision 和本机会话四项事实；番茄 To-do 的可上传队列与 223 条过期历史分开。平板字体/九仪表预览扩容并修正标准、制图预览裁切。
-- ChatGPT Web 已发现现有 FocusLink 插件仍停留在 2026-07-28 的只读工具/scope；正式 MCP URL 正确，刷新与 `focuslink:write` OAuth 仍等待用户在动作时确认，未标记完成。
+- ChatGPT Web 的 FocusLink 插件定义已刷新，页面现已列出当前时间、清单/任务读写和 `focuslink:write`；现有连接仍需在“重新连接”中完成 OAuth 扩权，生产临时任务尚未创建，未标记完整 E2E。
+- Sol 独立审计补齐 MCP 9 个写 handler 到 authority mutation 的逐入口验证，并扩展 CLI 的清单/任务 list/get/update/filter、redirect、超大/非法响应和完整帮助门禁；公网部署状态文档改为实际版本 `3592ccde…`，认证态仍保持 partial。
+- 同步设置截图新增实时/离线历史设备、陈旧/撤销设备、2 条可上传 + 223 条过期番茄记录和桥接失败夹具。新增父子几何断言后真实发现 360px 手机六种仪表预览裁切；改为容器居中与中心缩放后，标准仪表由右侧超出 65.5px 收敛为左右各 0.9px，360/412/640/760/915×412 明暗门禁全部通过。合并复验为根 `127 files / 987 tests`、MCP `11 files / 117 tests`，format/typecheck/lint 与 MCP source/test typecheck 全绿。
 - 最终只读审查补掉三个边界：账号切换期间旧 connection 请求禁止提交；CLI 的 200 响应体断流按同 operationId 重试；共享循环时间拒绝小数与 JS Date 上限外值。对应定向测试 41 项通过。
 - 最终 source-only 源码 `e6dde4b` 已完成 installer/portable/APK 构建与三端安装；private/public Worker 更新、远端 19/19、packaged smoke、Windows 数据保留和番茄真实状态回读均通过。portable smoke 额外等待 native viewport 恢复并保留失败 DOM。ChatGPT 插件刷新仍保留为需用户确认的唯一外部动作。
 - 继续沿用未闭合的 `0.12.105/1305` 候选，不为番茄/平板验收补修增加版本号。华为平板恢复在线并安装同版；隔离 9/9、解锁后 PiP 1/1 通过。

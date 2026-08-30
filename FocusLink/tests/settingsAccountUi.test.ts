@@ -12,6 +12,10 @@ const presentationSource = fs.readFileSync(
   path.join(process.cwd(), 'src', 'features', 'settings', 'deviceSyncStatusPresentation.ts'),
   'utf8',
 );
+const screenshotSource = fs.readFileSync(
+  path.join(process.cwd(), 'scripts', 'regression', 'settings-screenshot.ts'),
+  'utf8',
+);
 
 describe('desktop FocusLink account settings', () => {
   it('keeps service internals out of the normal settings surface', () => {
@@ -89,6 +93,18 @@ describe('desktop FocusLink account settings', () => {
     expect(source).toContain('上传确认不能代替手机投递确认');
     expect(source).toContain('检查状态');
     expect(source).not.toContain("return tomatodoBridge.error || '连接失败，可重新尝试'");
+  });
+
+  it('screenshots deterministic mixed sync states and checks preview clipping', () => {
+    expect(screenshotSource).toContain("deviceFixtureMode: 'live' | 'offline-history'");
+    expect(screenshotSource).toContain("lastError: 'network_error'");
+    expect(screenshotSource).toContain("state: 'launch-failed'");
+    expect(screenshotSource).toContain('uploadable: 2');
+    expect(screenshotSource).toContain('expired: 223');
+    expect(screenshotSource).toContain("captureMain('settings-devices-offline-history'");
+    expect(screenshotSource).toContain("captureMain('settings-devices-roster-history'");
+    expect(screenshotSource).toContain('assertDesktopAppearancePreviews');
+    expect(screenshotSource).toContain('result.fontCount !== 8 || result.timerCount !== 9');
   });
 
   it('does not expose retired endpoint, token or pairing writes through renderer IPC', () => {

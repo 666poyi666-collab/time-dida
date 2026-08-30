@@ -224,6 +224,9 @@ async function validateViewport(
         metrics.smallestInteractiveTarget >= 43.95,
         `${viewport.id}/${view} target below 44px`,
       );
+      if (view === '设置') {
+        await assertMobileAppearancePreviews(win, viewport.id, theme);
+      }
       if (view === '统计') {
         const dayMap = await readDayMapMetrics(win);
         assert(dayMap.tickCount === 25, `${viewport.id} day map does not expose 25 hour marks`);
@@ -721,6 +724,109 @@ async function readViewMetrics(
             Math.round(rect.width * 10) / 10 + 'x' + Math.round(rect.height * 10) / 10;
         }),
     };
+  })()`);
+}
+
+async function assertMobileAppearancePreviews(
+  win: BrowserWindow,
+  viewportId: string,
+  theme: (typeof MOBILE_THEMES)[number],
+): Promise<void> {
+  const profiles = Object.keys(FONT_PROFILE_EXPECTATIONS);
+  for (const profile of profiles) {
+    const changed = await win.webContents.executeJavaScript(`(() => {
+      const select = document.querySelector('.appearance-font-controls select');
+      if (!(select instanceof HTMLSelectElement)) return false;
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+      setter?.call(select, ${JSON.stringify(profile)});
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    })()`);
+    assert(changed === true, `${viewportId}/${theme} missing interface font selector`);
+    await sleep(40);
+    const fontResult: { className: string; violations: string[] } = await win.webContents
+      .executeJavaScript(`(() => {
+        const tolerance = 1;
+        const preview = document.querySelector('.appearance-font-preview');
+        if (!preview) return { className: '', violations: ['preview:missing'] };
+        const outer = preview.getBoundingClientRect();
+        const violations = [...preview.children]
+          .filter((child) => {
+            const inner = child.getBoundingClientRect();
+            return inner.left < outer.left - tolerance || inner.right > outer.right + tolerance ||
+              inner.top < outer.top - tolerance || inner.bottom > outer.bottom + tolerance;
+          })
+          .map((child) => child.tagName.toLowerCase() + ':' + child.textContent?.trim().slice(0, 24));
+        return { className: preview.className, violations };
+      })()`);
+    assert(
+      fontResult.className.includes(`font-profile-${profile}`) &&
+        fontResult.violations.length === 0,
+      `${viewportId}/${theme}/${profile} font preview clipped ${JSON.stringify(fontResult)}`,
+    );
+  }
+
+  const timerResult: {
+    count: number;
+    violations: string[];
+    bounds: Array<{
+      name: string;
+      child: [number, number];
+      parent: [number, number];
+      edges: [number, number, number, number];
+    }>;
+  } = await win.webContents.executeJavaScript(`(() => {
+      const tolerance = 1;
+      const choices = [...document.querySelectorAll('.appearance-timer-choice')];
+      const violations = [];
+      const bounds = [];
+      for (const choice of choices) {
+        const preview = choice.querySelector('.appearance-timer-preview');
+        const dial = preview?.querySelector(':scope > .timer-dial');
+        if (!preview || !dial) {
+          violations.push((choice.textContent?.trim() || 'timer') + ':missing');
+          continue;
+        }
+        const outer = preview.getBoundingClientRect();
+        const inner = dial.getBoundingClientRect();
+        const name = choice.querySelector(':scope > span')?.textContent?.trim() || 'timer';
+        const edges = [
+          inner.left - outer.left,
+          outer.right - inner.right,
+          inner.top - outer.top,
+          outer.bottom - inner.bottom,
+        ].map((value) => Math.round(value * 10) / 10);
+        bounds.push({
+          name,
+          child: [Math.round(inner.width * 10) / 10, Math.round(inner.height * 10) / 10],
+          parent: [Math.round(outer.width * 10) / 10, Math.round(outer.height * 10) / 10],
+          edges,
+        });
+        if (inner.left < outer.left - tolerance || inner.right > outer.right + tolerance ||
+            inner.top < outer.top - tolerance || inner.bottom > outer.bottom + tolerance) {
+          violations.push(name +
+            ':' + Math.round(inner.width * 10) / 10 + 'x' + Math.round(inner.height * 10) / 10 +
+            ' in ' + Math.round(outer.width * 10) / 10 + 'x' + Math.round(outer.height * 10) / 10 +
+            ' edges ' + edges.join(','));
+        }
+      }
+      return { count: choices.length, violations, bounds };
+    })()`);
+  assert(
+    timerResult.count === 9 && timerResult.violations.length === 0,
+    `${viewportId}/${theme} timer previews clipped ${JSON.stringify(timerResult)}`,
+  );
+  if (theme === 'light' && (viewportId === 'phone-360' || viewportId === 'tablet-640-portrait')) {
+    console.log(
+      `[mobile] ${viewportId}/${theme}/appearance-preview-bounds ${JSON.stringify(timerResult.bounds)}`,
+    );
+  }
+  await win.webContents.executeJavaScript(`(() => {
+    const select = document.querySelector('.appearance-font-controls select');
+    if (!(select instanceof HTMLSelectElement)) return;
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+    setter?.call(select, 'noto');
+    select.dispatchEvent(new Event('change', { bubbles: true }));
   })()`);
 }
 
