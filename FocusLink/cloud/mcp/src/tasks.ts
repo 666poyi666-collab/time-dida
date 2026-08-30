@@ -276,8 +276,12 @@ async function parseJsonResponse(response: Response, byteLimit: number): Promise
 
 function taskAuthorityErrorCode(status: number): string {
   if (status === 401) return 'task_authority_service_rejected';
+  if (status === 400) return 'task_mutation_request_invalid';
+  if (status === 403) return 'task_mutation_forbidden';
+  if (status === 404) return 'task_authority_route_missing';
+  if (status === 405) return 'task_authority_method_not_allowed';
   if (status === 409) return 'task_revision_conflict';
   if (status === 422) return 'task_mutation_invalid';
-  if (status >= 400 && status < 500) return 'task_mutation_rejected';
+  if (status >= 400 && status < 500) return `task_mutation_rejected_http_${status}`;
   return 'focuslink_authority_unavailable';
 }

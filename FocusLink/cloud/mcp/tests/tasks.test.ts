@@ -244,8 +244,16 @@ describe('FocusLink MCP task authority adapter', () => {
       confirmed: true,
     });
     for (const [status, code] of [
+      [400, 'task_mutation_request_invalid'],
       [401, 'task_authority_service_rejected'],
+      [403, 'task_mutation_forbidden'],
+      [404, 'task_authority_route_missing'],
+      [405, 'task_authority_method_not_allowed'],
       [409, 'task_revision_conflict'],
+      [410, 'task_mutation_rejected_http_410'],
+      [415, 'task_mutation_rejected_http_415'],
+      [422, 'task_mutation_invalid'],
+      [429, 'task_mutation_rejected_http_429'],
     ] as const) {
       await expect(
         fetchFocusLinkTaskSnapshot(
