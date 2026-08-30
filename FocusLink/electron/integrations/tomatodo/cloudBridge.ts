@@ -8,7 +8,10 @@ import path from 'node:path';
 import WebSocket from 'ws';
 
 import { logger } from '../../logger.js';
-import type { TomatodoPCRecord } from '../../../shared/tomatodoPolicy.js';
+import {
+  TOMATODO_CLOUD_UPLOAD_WINDOW_MS,
+  type TomatodoPCRecord,
+} from '../../../shared/tomatodoPolicy.js';
 import type { TomatodoSubject } from '@shared/types';
 
 interface CdpTarget {
@@ -392,7 +395,7 @@ export async function writeTomatodoRecordsThroughBridge(
           });
         }
 
-        var cloudCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        var cloudCutoff = Date.now() - ${TOMATODO_CLOUD_UPLOAD_WINDOW_MS};
         for (var cloudCandidate of prepared) {
           if (cloudCandidate.record && !cloudCandidate.result.uploadConfirmed &&
               Number(cloudCandidate.record.createDate || 0) < cloudCutoff) {
@@ -573,7 +576,7 @@ export async function updateTomatodoSubjectThroughBridge(
         try {
           if (!api.cloudSyncGetStatus || !api.cloudSyncUploadRecord) {
             cloudError = 'tomatodo_cloud_api_unavailable';
-          } else if (Number(record.createDate || 0) < Date.now() - 7 * 24 * 60 * 60 * 1000) {
+          } else if (Number(record.createDate || 0) < Date.now() - ${TOMATODO_CLOUD_UPLOAD_WINDOW_MS}) {
             cloudError = 'tomatodo_record_outside_seven_day_window';
           } else {
             var status = await api.cloudSyncGetStatus();

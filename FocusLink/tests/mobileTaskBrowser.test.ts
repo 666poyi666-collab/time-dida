@@ -41,6 +41,17 @@ describe('mobile task browser model', () => {
     ]);
   });
 
+  it('returns completed tasks only when the completed view is selected', () => {
+    expect(filterSyncedTasks(tasks, '', ALL_PROJECTS, 'completed').map((task) => task.id)).toEqual([
+      'done',
+    ]);
+    expect(
+      flattenForest(filterSyncedTaskForest(tasks, '', ALL_PROJECTS, 'completed')).map(
+        (task) => task.id,
+      ),
+    ).toEqual(['done']);
+  });
+
   it('searches title and tags without case sensitivity', () => {
     expect(filterSyncedTasks(tasks, 'ENGLISH', ALL_PROJECTS).map((task) => task.id)).toEqual([
       'english',
@@ -326,6 +337,25 @@ describe('mobile task browser model', () => {
     expect(markup).toContain('收件箱');
     expect(markup).not.toContain('整理化学错题');
     expect(markup).not.toContain('预约体检');
+  });
+
+  it('renders a compact open/completed status control with stable counts', () => {
+    const markup = renderToStaticMarkup(
+      createElement(TaskBrowser, {
+        tasks,
+        projects,
+        publishedAt: null,
+        revision: 1,
+        selectedTaskId: '',
+        canStart: true,
+        onSelect: () => undefined,
+        onStart: () => undefined,
+      }),
+    );
+
+    expect(markup).toContain('aria-label="任务状态"');
+    expect(markup).toContain('<span>待办</span><strong>3</strong>');
+    expect(markup).toContain('<span>已完成</span><strong>1</strong>');
   });
 });
 

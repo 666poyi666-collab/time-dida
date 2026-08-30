@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { DEVICE_SYNC_MAX_TIMESTAMP_MS } from '../../shared/sync/deviceProtocol';
 import {
   TASK_SNAPSHOT_MUTATION_PATH,
   TASK_SNAPSHOT_PATH,
@@ -39,7 +40,10 @@ type FetchLike = typeof fetch;
 type FlagValue = string | true | string[];
 
 class FocusLinkCliError extends Error {
-  constructor(readonly code: string) {
+  constructor(
+    readonly code: string,
+    readonly details: Record<string, unknown> = {},
+  ) {
     super(code);
     this.name = 'FocusLinkCliError';
   }
@@ -69,16 +73,30 @@ class FocusLinkTaskClient {
     operationId: string,
     expectedRevision: number,
   ): Promise<TaskSnapshotMutationResponse> {
-    const response = await this.request(TASK_SNAPSHOT_MUTATION_PATH, 'POST', {
+    const body = {
       protocolVersion: 1,
       operationId,
       expectedRevision,
       deviceId: this.deviceId,
       mutation,
-    });
-    const parsed = parseTaskSnapshotMutationResponse(await responseJson(response));
-    if (!parsed) throw new FocusLinkCliError('task_authority_protocol_error');
-    return parsed;
+    };
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await this.request(TASK_SNAPSHOT_MUTATION_PATH, 'POST', body);
+        const parsed = parseTaskSnapshotMutationResponse(await responseJson(response));
+        if (!parsed) throw new FocusLinkCliError('task_authority_protocol_error');
+        return parsed;
+      } catch (error) {
+        if (
+          attempt === 1 ||
+          !(error instanceof FocusLinkCliError) ||
+          !isRetryableMutationError(error.code)
+        ) {
+          throw error;
+        }
+      }
+    }
+    throw new FocusLinkCliError('task_authority_unavailable');
   }
 
   private async request(pathname: string, method: 'GET' | 'POST', body?: unknown) {
@@ -148,7 +166,8 @@ export async function runFocusLinkCli(
     throw new FocusLinkCliError('unknown_command');
   } catch (error) {
     const code = error instanceof FocusLinkCliError ? error.code : 'focuslink_cli_failed';
-    io.stderr(JSON.stringify({ ok: false, error: code }));
+    const details = error instanceof FocusLinkCliError ? error.details : {};
+    io.stderr(JSON.stringify({ ok: false, error: code, ...details }));
     return 1;
   }
 }
@@ -271,7 +290,7 @@ async function runTaskCommand(
 
 function taskMetadata(flags: ReadonlyMap<string, FlagValue>, allowClear: boolean) {
   const metadata: Record<string, unknown> = {};
-  const priority = integerFlag(flags, 'priority');
+  const priority = priorityFlag(flags);
   if (priority !== null) metadata.priority = priority;
   else if (allowClear && flags.has('clear-priority')) metadata.priority = null;
   const startDate = dateFlag(flags, 'start');
@@ -307,7 +326,7 @@ function recurrenceFromFlags(flags: ReadonlyMap<string, FlagValue>): TaskRecurre
 function filterTasks(tasks: readonly SyncedTask[], flags: ReadonlyMap<string, FlagValue>) {
   const query = stringFlag(flags, 'query')?.toLocaleLowerCase();
   const projectId = stringFlag(flags, 'project-id');
-  const priority = integerFlag(flags, 'priority');
+  const priority = priorityFlag(flags);
   const dueFrom = dateFlag(flags, 'due-from');
   const dueTo = dateFlag(flags, 'due-to');
   const startFrom = dateFlag(flags, 'start-from');
@@ -338,8 +357,13 @@ async function writeMutation(
   flags: ReadonlyMap<string, FlagValue>,
 ) {
   const expectedRevision = integerFlag(flags, 'expected-revision') ?? observedRevision;
-  const operationId = stringFlag(flags, 'operation-id') ?? `cli:${crypto.randomUUID()}`;
-  return client.mutate(mutation, operationId, expectedRevision);
+  const operationId = operationIdFlag(flags) ?? `cli:${crypto.randomUUID()}`;
+  try {
+    return await client.mutate(mutation, operationId, expectedRevision);
+  } catch (error) {
+    const code = error instanceof FocusLinkCliError ? error.code : 'task_mutation_failed';
+    throw new FocusLinkCliError(code, { operationId, expectedRevision });
+  }
 }
 
 function confirmation(response: TaskSnapshotMutationResponse) {
@@ -351,6 +375,15 @@ function confirmation(response: TaskSnapshotMutationResponse) {
     result: response.result,
     confirmed: true,
   };
+}
+
+function isRetryableMutationError(code: string): boolean {
+  return (
+    code === 'task_authority_unavailable' ||
+    code === 'focuslink_authority_unavailable' ||
+    code === 'authoritative_upstream_unreachable' ||
+    code === 'authoritative_upstream_timeout'
+  );
 }
 
 function createClient(environment: FocusLinkCliEnvironment, fetchImpl: FetchLike) {
@@ -398,7 +431,13 @@ function validateEndpoint(input: string): URL {
 }
 
 async function responseJson(response: Response): Promise<unknown> {
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  let body: ArrayBuffer;
+  try {
+    body = await response.arrayBuffer();
+  } catch {
+    throw new FocusLinkCliError('task_authority_unavailable');
+  }
+  const bytes = new Uint8Array(body);
   if (bytes.byteLength > MAX_RESPONSE_BYTES)
     throw new FocusLinkCliError('task_authority_response_too_large');
   try {
@@ -417,6 +456,14 @@ async function responseErrorCode(response: Response): Promise<string> {
       /^[a-z0-9_:-]{1,100}$/.test(value.error)
     ) {
       return value.error;
+    }
+    if (
+      isRecord(value) &&
+      isRecord(value.error) &&
+      typeof value.error.code === 'string' &&
+      /^[a-z0-9_:-]{1,100}$/.test(value.error.code)
+    ) {
+      return value.error.code;
     }
   } catch {
     // Fall through to a status-only error; response bodies are never echoed.
@@ -475,12 +522,29 @@ function integerFlag(flags: ReadonlyMap<string, FlagValue>, name: string): numbe
   return value;
 }
 
+function priorityFlag(flags: ReadonlyMap<string, FlagValue>): number | null {
+  const value = integerFlag(flags, 'priority');
+  if (value !== null && value > 5) throw new FocusLinkCliError('invalid_priority');
+  return value;
+}
+
+function operationIdFlag(flags: ReadonlyMap<string, FlagValue>): string | undefined {
+  const value = stringFlag(flags, 'operation-id');
+  if (
+    value !== undefined &&
+    (value.length < 8 || value.length > 200 || !/^[A-Za-z0-9._:-]+$/.test(value))
+  ) {
+    throw new FocusLinkCliError('invalid_operation_id');
+  }
+  return value;
+}
+
 function dateFlag(flags: ReadonlyMap<string, FlagValue>, name: string): number | undefined {
   const raw = stringFlag(flags, name);
   if (raw === undefined) return undefined;
   const numeric = Number(raw);
   const value = Number.isFinite(numeric) ? numeric : Date.parse(raw);
-  if (!Number.isFinite(value) || value < 0) {
+  if (!Number.isSafeInteger(value) || value < 0 || value > DEVICE_SYNC_MAX_TIMESTAMP_MS) {
     throw new FocusLinkCliError(`invalid_${name.replaceAll('-', '_')}`);
   }
   return value;
@@ -557,7 +621,8 @@ function helpText() {
           --tag <name> --frequency daily|weekly|monthly|yearly --interval N
           --weekdays 1,3,5 --month-days 1,15 --repeat-end <ISO|ms> --repeat-count N
           --rollover from_schedule|from_completion
-写入控制：--operation-id <stable-id> --expected-revision <revision>`;
+写入控制：--operation-id <stable-id> --expected-revision <revision>
+临时网络失败会用同一 operationId 重试一次；最终失败 JSON 会返回可复用的 operationId/revision。`;
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : '';

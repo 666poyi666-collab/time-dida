@@ -9,6 +9,7 @@ import {
   Play,
   Palette,
   Plus,
+  RotateCcw,
   Search,
   Target,
 } from 'lucide-react';
@@ -26,10 +27,12 @@ import {
   countSyncedTaskTree,
   findSyncedTaskPath,
   filterSyncedTaskForest,
+  filterSyncedTasks,
   groupSyncedTaskForest,
   NO_PROJECT,
   projectNameForTask,
   type TaskProjectFilter,
+  type TaskStatusFilter,
   type SyncedTaskTreeNode,
 } from './taskBrowserModel';
 
@@ -71,6 +74,7 @@ export function TaskBrowser({
 }: TaskBrowserProps) {
   const [query, setQuery] = useState('');
   const [projectFilter, setProjectFilter] = useState<TaskProjectFilter>(ALL_PROJECTS);
+  const [statusFilter, setStatusFilter] = useState<TaskStatusFilter>('open');
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
   const [draft, setDraft] = useState('');
   const [creating, setCreating] = useState(false);
@@ -83,10 +87,15 @@ export function TaskBrowser({
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(() => new Set());
   const groupRegionPrefix = useId();
   const taskForest = useMemo(
-    () => filterSyncedTaskForest(tasks, query, projectFilter),
-    [projectFilter, query, tasks],
+    () => filterSyncedTaskForest(tasks, query, projectFilter, statusFilter),
+    [projectFilter, query, statusFilter, tasks],
   );
   const totalOpen = useMemo(() => tasks.filter((task) => !task.isCompleted).length, [tasks]);
+  const totalCompleted = useMemo(() => tasks.filter((task) => task.isCompleted).length, [tasks]);
+  const boardTasks = useMemo(
+    () => filterSyncedTasks(tasks, query, projectFilter, statusFilter),
+    [projectFilter, query, statusFilter, tasks],
+  );
   const groups = useMemo(() => groupSyncedTaskForest(taskForest, projects), [projects, taskForest]);
   const forceGroupsOpen = query.trim().length > 0 || projectFilter !== ALL_PROJECTS;
   const allTaskForest = useMemo(() => buildSyncedTaskForest(tasks), [tasks]);
@@ -104,6 +113,10 @@ export function TaskBrowser({
       ?.slice(0, -1)
       .map((task) => task.title)
       .filter(Boolean) ?? [];
+  const selectStatusFilter = (next: TaskStatusFilter) => {
+    setStatusFilter(next);
+    setDetailOpen(false);
+  };
   const selectTask = (task: SyncedTask) => {
     setDetailOpen(true);
     onSelect(task);
@@ -185,6 +198,26 @@ export function TaskBrowser({
       </header>
 
       <div className="task-toolbar">
+        <div className="task-status-switch" role="group" aria-label="任务状态">
+          <button
+            type="button"
+            className={statusFilter === 'open' ? 'is-active' : ''}
+            aria-pressed={statusFilter === 'open'}
+            onClick={() => selectStatusFilter('open')}
+          >
+            <span>待办</span>
+            <strong>{totalOpen}</strong>
+          </button>
+          <button
+            type="button"
+            className={statusFilter === 'completed' ? 'is-active' : ''}
+            aria-pressed={statusFilter === 'completed'}
+            onClick={() => selectStatusFilter('completed')}
+          >
+            <span>已完成</span>
+            <strong>{totalCompleted}</strong>
+          </button>
+        </div>
         <form
           className="task-mobile-create"
           onSubmit={(event) => {
@@ -199,6 +232,7 @@ export function TaskBrowser({
                 : projectFilter,
             )
               .then(() => setDraft(''))
+              .then(() => setStatusFilter('open'))
               .then(() => setMutationNotice(null))
               .catch((error) => mutationError('创建任务', error))
               .finally(() => setCreating(false));
@@ -328,16 +362,24 @@ export function TaskBrowser({
       {taskForest.length === 0 ? (
         <div className="task-empty">
           <Target aria-hidden="true" />
-          <strong>{tasks.length === 0 ? '还没有 FocusLink 任务' : '没有符合条件的待办'}</strong>
+          <strong>
+            {tasks.length === 0
+              ? '还没有 FocusLink 任务'
+              : statusFilter === 'completed'
+                ? '没有符合条件的已完成任务'
+                : '没有符合条件的待办'}
+          </strong>
           <p>
             {tasks.length === 0
               ? '先在这里创建任务；设备配对后会自动同步到电脑、手机和平板。'
-              : '调整搜索词或清单筛选。'}
+              : statusFilter === 'completed'
+                ? '完成后的任务会保留在这里，可随时恢复为待办。'
+                : '调整搜索词或清单筛选。'}
           </p>
         </div>
       ) : viewMode === 'board' ? (
         <TaskBoard
-          tasks={tasks}
+          tasks={boardTasks}
           projects={projects}
           canStart={canStart}
           onStart={onStart}
@@ -448,10 +490,12 @@ export function TaskBrowser({
                     ))}
                   </div>
                 )}
-                <button type="button" onClick={() => onStart(selectedTask)} disabled={!canStart}>
-                  <Play aria-hidden="true" />
-                  关联并开始专注
-                </button>
+                {!selectedTask.isCompleted && (
+                  <button type="button" onClick={() => onStart(selectedTask)} disabled={!canStart}>
+                    <Play aria-hidden="true" />
+                    关联并开始专注
+                  </button>
+                )}
               </>
             ) : (
               <p>选择一个任务后，这里会显示完整路径和开始操作。</p>
@@ -568,19 +612,18 @@ function TaskBoard({
   onStart: (task: SyncedTask) => void;
   onToggleComplete?: (task: SyncedTask) => Promise<void>;
 }) {
-  const openTasks = tasks.filter((task) => !task.isCompleted);
   const columns = [
     {
       key: 'inbox',
       label: '收件箱',
-      tasks: openTasks.filter((task) => !task.projectId || isFocusLinkInboxProject(task.projectId)),
+      tasks: tasks.filter((task) => !task.projectId || isFocusLinkInboxProject(task.projectId)),
     },
     ...projects
       .filter((project) => !isFocusLinkInboxProject(project.id))
       .map((project) => ({
         key: project.id,
         label: project.name,
-        tasks: openTasks.filter((task) => task.projectId === project.id),
+        tasks: tasks.filter((task) => task.projectId === project.id),
       })),
   ].filter((column) => column.tasks.length > 0);
   return (
@@ -593,15 +636,18 @@ function TaskBoard({
           </header>
           <div className="task-board-cards">
             {column.tasks.map((task) => (
-              <article className="task-board-card" key={`${task.source}:${task.id}`}>
+              <article
+                className={`task-board-card ${task.isCompleted ? 'is-completed' : ''}`}
+                key={`${task.source}:${task.id}`}
+              >
                 <div className="task-board-card-top">
                   <button
-                    className="task-board-check"
+                    className={`task-board-check ${task.isCompleted ? 'is-restore' : ''}`}
                     type="button"
                     onClick={() => void onToggleComplete?.(task)}
-                    aria-label={`完成 ${task.title}`}
+                    aria-label={`${task.isCompleted ? '恢复' : '完成'} ${task.title}`}
                   >
-                    <Check />
+                    {task.isCompleted ? <RotateCcw /> : <Check />}
                   </button>
                   <strong>{task.title}</strong>
                 </div>
@@ -615,15 +661,17 @@ function TaskBoard({
                     <span key={tag}>#{tag}</span>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  className="task-board-focus"
-                  onClick={() => onStart(task)}
-                  disabled={!canStart}
-                >
-                  <Play aria-hidden="true" />
-                  开始专注
-                </button>
+                {!task.isCompleted && (
+                  <button
+                    type="button"
+                    className="task-board-focus"
+                    onClick={() => onStart(task)}
+                    disabled={!canStart}
+                  >
+                    <Play aria-hidden="true" />
+                    开始专注
+                  </button>
+                )}
               </article>
             ))}
           </div>
@@ -679,16 +727,16 @@ function TaskBranch({
   return (
     <div className={`task-tree-branch ${hasChildren ? 'is-parent' : 'is-leaf'}`} data-depth={depth}>
       <article
-        className={`task-row ${selected ? 'is-selected' : ''} ${hasChildren ? 'has-children' : ''}`}
+        className={`task-row ${selected ? 'is-selected' : ''} ${task.isCompleted ? 'is-completed' : ''} ${hasChildren ? 'has-children' : ''}`}
         style={{ '--task-depth': visibleDepth } as CSSProperties}
       >
         <button
-          className="task-mobile-complete"
+          className={`task-mobile-complete ${task.isCompleted ? 'is-restore' : ''}`}
           type="button"
           onClick={() => void onToggleComplete?.(task)}
-          aria-label={`完成 ${task.title}`}
+          aria-label={`${task.isCompleted ? '恢复' : '完成'} ${task.title}`}
         >
-          <Check aria-hidden="true" />
+          {task.isCompleted ? <RotateCcw aria-hidden="true" /> : <Check aria-hidden="true" />}
         </button>
         {hasChildren ? (
           <button
@@ -722,17 +770,19 @@ function TaskBranch({
           </span>
           {selected && <span className="selected-label">已选择</span>}
         </button>
-        <button
-          className="task-start-button"
-          type="button"
-          aria-label={`关联 ${task.title} 并开始专注`}
-          onClick={actions.start}
-          disabled={!canStart}
-          title={canStart ? '关联并开始专注' : '仅在待机且实时连接已确认时可开始'}
-        >
-          <Play aria-hidden="true" />
-          <span>开始</span>
-        </button>
+        {!task.isCompleted && (
+          <button
+            className="task-start-button"
+            type="button"
+            aria-label={`关联 ${task.title} 并开始专注`}
+            onClick={actions.start}
+            disabled={!canStart}
+            title={canStart ? '关联并开始专注' : '仅在待机且实时连接已确认时可开始'}
+          >
+            <Play aria-hidden="true" />
+            <span>开始</span>
+          </button>
+        )}
       </article>
       {hasChildren && open && (
         <div className="task-children" role="group" aria-label={`${task.title} 的子任务`}>

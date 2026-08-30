@@ -125,7 +125,9 @@ import {
 } from './accountBootstrap';
 import {
   createMobileAccountLifecycle,
+  createMobileAccountRequestCoalescer,
   createMobileAccountRequestLifecycle,
+  isMobileAccountRequestCommitCurrent,
   mobileAccountConnectionKey,
   runMobileAccountCommit,
   runMobileAccountLogout,
@@ -252,6 +254,10 @@ export function MobileApp() {
   const liveRequest = useRef<AbortController | null>(null);
   const liveGeneration = useRef(0);
   const taskRequests = useRef(createTaskSnapshotRequestLifecycle()).current;
+  const taskRefreshes = useRef(
+    createMobileAccountRequestCoalescer<TaskSnapshotResponse | null>(),
+  ).current;
+  const ledgerPulls = useRef(createMobileAccountRequestCoalescer<void>()).current;
   const commandRequests = useRef(createMobileAccountRequestLifecycle()).current;
   const cacheMutationQueue = useRef<Promise<void>>(Promise.resolve());
   const nativeQueueRunning = useRef(false);
@@ -260,6 +266,30 @@ export function MobileApp() {
   const mobileAppActive = useRef(true);
   const connectionKeyRef = useRef(mobileAccountConnectionKey(initialPreferences));
   const accountLifecycle = useRef(createMobileAccountLifecycle()).current;
+  const accountTransitionOperation = useRef<number | null>(null);
+
+  const beginAccountTransition = useCallback(
+    (operation: number) => {
+      accountTransitionOperation.current = operation;
+      taskRefreshes.invalidate();
+      taskRequests.invalidate();
+      ledgerPulls.invalidate();
+      ledgerGeneration.current += 1;
+      ledgerRequest.current?.abort();
+      ledgerRequest.current = null;
+      liveGeneration.current += 1;
+      liveRequest.current?.abort();
+      liveRequest.current = null;
+      commandRequests.invalidate();
+    },
+    [commandRequests, ledgerPulls, taskRefreshes, taskRequests],
+  );
+
+  const finishAccountTransition = useCallback((operation: number) => {
+    if (accountTransitionOperation.current === operation) {
+      accountTransitionOperation.current = null;
+    }
+  }, []);
 
   const refreshManagedDevices = useCallback(async (connection = preferencesRef.current) => {
     if (!connection.endpoint || !connection.token) {
@@ -279,6 +309,7 @@ export function MobileApp() {
   }, []);
 
   const resetTaskSnapshotForAccount = useCallback(async (): Promise<string[]> => {
+    taskRefreshes.invalidate();
     taskRequests.invalidate();
     taskSnapshotRef.current = null;
     setTaskSnapshot(null);
@@ -290,7 +321,7 @@ export function MobileApp() {
     } catch {
       return ['task-cache'];
     }
-  }, [taskRequests]);
+  }, [taskRefreshes, taskRequests]);
 
   const resetLiveSnapshotForAccount = useCallback(async (): Promise<string[]> => {
     commandRequests.invalidate();
@@ -311,6 +342,7 @@ export function MobileApp() {
   }, [commandRequests]);
 
   const resetAccountScopedState = useCallback(async (): Promise<string[]> => {
+    ledgerPulls.invalidate();
     ledgerGeneration.current += 1;
     ledgerRequest.current?.abort();
     ledgerRequest.current = null;
@@ -324,7 +356,7 @@ export function MobileApp() {
       resetLiveSnapshotForAccount(),
     ]);
     return [...taskIssues, ...liveIssues];
-  }, [resetLiveSnapshotForAccount, resetTaskSnapshotForAccount]);
+  }, [ledgerPulls, resetLiveSnapshotForAccount, resetTaskSnapshotForAccount]);
 
   useEffect(
     () => () => {
@@ -427,61 +459,78 @@ export function MobileApp() {
         token: session.accessToken.trim(),
         rememberToken: true,
       };
-      const transition = await runMobileAccountCommit(
-        accountLifecycle,
-        operation,
-        {
-          read: readNativeFocusConnectionState,
-          async mutate(baseline): Promise<NativeFocusConnectionState> {
-            const connection = await configureNativeFocusConnection(
-              next.endpoint,
-              next.token,
-              session.deviceId,
-              baseline.connectionLease,
-            );
-            return {
-              connection,
-              connectionLease: connection?.connectionLease ?? null,
-            };
+      beginAccountTransition(operation);
+      let committed = false;
+      try {
+        const transition = await runMobileAccountCommit(
+          accountLifecycle,
+          operation,
+          {
+            read: readNativeFocusConnectionState,
+            async mutate(baseline): Promise<NativeFocusConnectionState> {
+              const connection = await configureNativeFocusConnection(
+                next.endpoint,
+                next.token,
+                session.deviceId,
+                baseline.connectionLease,
+              );
+              return {
+                connection,
+                connectionLease: connection?.connectionLease ?? null,
+              };
+            },
+            async restore(baseline, applied) {
+              const restored = await restoreNativeFocusConnectionState(
+                baseline,
+                applied.connectionLease,
+              );
+              commitNativeConnectionLease(restored.connectionLease);
+            },
           },
-          async restore(baseline, applied) {
-            const restored = await restoreNativeFocusConnectionState(
-              baseline,
-              applied.connectionLease,
-            );
-            commitNativeConnectionLease(restored.connectionLease);
-          },
-        },
-        resetAccountScopedState,
-      );
-      if (!transition.current) return false;
-      commitNativeConnectionLease(transition.nativeState?.connectionLease ?? null);
-      const profile = {
-        accountId: session.accountId,
-        accountLabel: session.accountLabel,
-      };
-      const persistenceIssues = [
-        ...transition.issues,
-        ...persistMobileAccountSessionBestEffort(next, session.deviceId, profile),
-      ];
-      setDeviceId(session.deviceId);
-      preferencesRef.current = next;
-      connectionKeyRef.current = mobileAccountConnectionKey(next);
-      setPreferences(next);
-      setAccountProfile(profile);
-      setPairingOffer(null);
-      setPairingCode('');
-      setConfigOpen(false);
-      setConnectionEpoch((value) => value + 1);
-      setCommandNotice(
-        persistenceIssues.length > 0
-          ? '设备已配对，但本机凭据持久化失败；当前会话继续同步并将在下次启动重试'
-          : '设备已配对，正在开始同步',
-      );
-      void refreshManagedDevices(next);
-      return true;
+          resetAccountScopedState,
+        );
+        if (!transition.current) return false;
+        commitNativeConnectionLease(transition.nativeState?.connectionLease ?? null);
+        const profile = {
+          accountId: session.accountId,
+          accountLabel: session.accountLabel,
+        };
+        const persistenceIssues = [
+          ...transition.issues,
+          ...persistMobileAccountSessionBestEffort(next, session.deviceId, profile),
+        ];
+        setDeviceId(session.deviceId);
+        preferencesRef.current = next;
+        connectionKeyRef.current = mobileAccountConnectionKey(next);
+        setPreferences(next);
+        setAccountProfile(profile);
+        setPairingOffer(null);
+        setPairingCode('');
+        setConfigOpen(false);
+        setConnectionEpoch((value) => value + 1);
+        setCommandNotice(
+          persistenceIssues.length > 0
+            ? '设备已配对，但本机凭据持久化失败；当前会话继续同步并将在下次启动重试'
+            : '设备已配对，正在开始同步',
+        );
+        void refreshManagedDevices(next);
+        committed = true;
+        return true;
+      } finally {
+        finishAccountTransition(operation);
+        if (!committed && accountLifecycle.isCurrent(operation)) {
+          setConnectionEpoch((value) => value + 1);
+        }
+      }
     },
-    [accountLifecycle, commitNativeConnectionLease, refreshManagedDevices, resetAccountScopedState],
+    [
+      accountLifecycle,
+      beginAccountTransition,
+      commitNativeConnectionLease,
+      finishAccountTransition,
+      refreshManagedDevices,
+      resetAccountScopedState,
+    ],
   );
 
   const bootstrapOwnerAccount = useCallback(
@@ -734,7 +783,14 @@ export function MobileApp() {
       response: LiveFocusSnapshotResponse,
       sourceConnectionKey: string,
     ): Promise<LiveFocusSnapshotLike | null> => {
-      if (connectionKeyRef.current !== sourceConnectionKey) return null;
+      const canCommit = () =>
+        isMobileAccountRequestCommitCurrent({
+          requestCurrent: true,
+          requestConnectionKey: sourceConnectionKey,
+          currentConnectionKey: connectionKeyRef.current,
+          transitionOperation: accountTransitionOperation.current,
+        });
+      if (!canCommit()) return null;
       const mapped = mapLiveSnapshot(response, Date.now());
       const localRuntime = offlineRuntimeRef.current;
       if (localRuntime) {
@@ -744,6 +800,7 @@ export function MobileApp() {
         setAuthorityMode(mode);
         if (evidence) {
           const existing = await readLocalSessionSyncMeta(localRuntime.id);
+          if (!canCommit()) return null;
           const meta: LocalSessionSyncMeta = {
             sessionId: localRuntime.id,
             authorityMode: 'forked-local',
@@ -759,6 +816,7 @@ export function MobileApp() {
         return liveSnapshotRef.current;
       }
       const current = liveSnapshotRef.current;
+      if (!canCommit()) return null;
       if (!shouldApplyLiveSnapshot(current, mapped)) return current;
       liveSnapshotRef.current = mapped;
       setLiveSnapshot(mapped);
@@ -771,7 +829,9 @@ export function MobileApp() {
           );
         }
       } catch (error) {
-        setCommandNotice(`实时状态已更新，但本机缓存失败：${errorMessage(error)}`);
+        if (canCommit()) {
+          setCommandNotice(`实时状态已更新，但本机缓存失败：${errorMessage(error)}`);
+        }
       }
       return mapped;
     },
@@ -779,41 +839,52 @@ export function MobileApp() {
   );
 
   const refreshTasks = useCallback(
-    async (connection: MobileConnectionPreferences): Promise<TaskSnapshotResponse | null> => {
-      const request = taskRequests.issue(mobileAccountConnectionKey(connection));
-      try {
-        const response = await fetchTaskSnapshot({
-          endpoint: connection.endpoint,
-          token: connection.token,
-          signal: request.signal,
-        });
-        if (!request.isCurrent()) return null;
-        const reconciliation = reconcileTaskSnapshot(taskSnapshotRef.current, response);
-        if (reconciliation.freshness === 'stale') return taskSnapshotRef.current;
-        if (reconciliation.freshness === 'inconsistent') {
-          setCommandNotice('任务清单 revision 内容不一致，已保留本机较可信快照并继续重试');
-          return null;
-        }
-        taskSnapshotRef.current = reconciliation.snapshot;
-        setTaskSnapshot(reconciliation.snapshot);
-        const accountId = mobileAccountId(connection);
-        await enqueueMutation(cacheMutationQueue, async () => {
-          if (request.isCurrent() && accountId) {
-            await writeCachedTaskSnapshot(reconciliation.snapshot, accountId);
+    (connection: MobileConnectionPreferences): Promise<TaskSnapshotResponse | null> => {
+      const connectionKey = mobileAccountConnectionKey(connection);
+      if (accountTransitionOperation.current !== null) return Promise.resolve(null);
+      return taskRefreshes.run(connectionKey, async () => {
+        const request = taskRequests.issue(connectionKey);
+        const canCommit = () =>
+          isMobileAccountRequestCommitCurrent({
+            requestCurrent: request.isCurrent(),
+            requestConnectionKey: connectionKey,
+            currentConnectionKey: connectionKeyRef.current,
+            transitionOperation: accountTransitionOperation.current,
+          });
+        try {
+          const response = await fetchTaskSnapshot({
+            endpoint: connection.endpoint,
+            token: connection.token,
+            signal: request.signal,
+          });
+          if (!canCommit()) return null;
+          const reconciliation = reconcileTaskSnapshot(taskSnapshotRef.current, response);
+          if (reconciliation.freshness === 'stale') return taskSnapshotRef.current;
+          if (reconciliation.freshness === 'inconsistent') {
+            setCommandNotice('任务清单 revision 内容不一致，已保留本机较可信快照并继续重试');
+            return null;
           }
-        });
-        return reconciliation.snapshot;
-      } catch (error) {
-        if (!request.isCurrent() || isAbortError(error)) return null;
-        setCommandNotice(
-          (current) => current ?? `任务清单刷新失败：${errorMessage(error)}；继续使用本机缓存`,
-        );
-        return null;
-      } finally {
-        request.finish();
-      }
+          taskSnapshotRef.current = reconciliation.snapshot;
+          setTaskSnapshot(reconciliation.snapshot);
+          const accountId = mobileAccountId(connection);
+          await enqueueMutation(cacheMutationQueue, async () => {
+            if (canCommit() && accountId) {
+              await writeCachedTaskSnapshot(reconciliation.snapshot, accountId);
+            }
+          });
+          return reconciliation.snapshot;
+        } catch (error) {
+          if (!canCommit() || isAbortError(error)) return null;
+          setCommandNotice(
+            (current) => current ?? `任务清单刷新失败：${errorMessage(error)}；继续使用本机缓存`,
+          );
+          return null;
+        } finally {
+          request.finish();
+        }
+      });
     },
-    [taskRequests],
+    [taskRefreshes, taskRequests],
   );
 
   const requireLatestEditableTaskSnapshot = useCallback(async () => {
@@ -1034,115 +1105,123 @@ export function MobileApp() {
   );
 
   const pullLedger = useCallback(
-    async (connection: MobileConnectionPreferences, _startCursor: string | null) => {
+    (connection: MobileConnectionPreferences, _startCursor: string | null): Promise<void> => {
       const sourceConnectionKey = mobileAccountConnectionKey(connection);
-      const sourceNativeLease = nativeConnectionLease;
-      ledgerRequest.current?.abort();
-      const controller = new AbortController();
-      const generation = ledgerGeneration.current + 1;
-      ledgerGeneration.current = generation;
-      ledgerRequest.current = controller;
-      setPullState('pulling');
-      setLedgerNotice('正在拉取已结束会话账本…');
+      if (accountTransitionOperation.current !== null) return Promise.resolve();
+      return ledgerPulls.run(sourceConnectionKey, async () => {
+        const sourceNativeLease = nativeConnectionLease;
+        ledgerRequest.current?.abort();
+        const controller = new AbortController();
+        const generation = ledgerGeneration.current + 1;
+        ledgerGeneration.current = generation;
+        ledgerRequest.current = controller;
+        setPullState('pulling');
+        setLedgerNotice('正在拉取已结束会话账本…');
 
-      const isCurrent = () =>
-        ledgerGeneration.current === generation &&
-        ledgerRequest.current === controller &&
-        connectionKeyRef.current === sourceConnectionKey &&
-        !controller.signal.aborted;
+        const isCurrent = () =>
+          isMobileAccountRequestCommitCurrent({
+            requestCurrent:
+              ledgerGeneration.current === generation &&
+              ledgerRequest.current === controller &&
+              !controller.signal.aborted,
+            requestConnectionKey: sourceConnectionKey,
+            currentConnectionKey: connectionKeyRef.current,
+            transitionOperation: accountTransitionOperation.current,
+          });
 
-      try {
-        const attemptedAt = Date.now();
-        const synced = await runMobileSyncV2({
-          endpoint: connection.endpoint,
-          token: connection.token,
-          deviceId,
-          signal: controller.signal,
-        });
-        if (!isCurrent()) return;
-        const snapshot = await readMobileCache();
-        if (!isCurrent()) return;
-        const pending = await readPendingDeviceSyncBundles();
-        if (!isCurrent()) return;
-        const confirmedAt = Date.now();
-        const presentation = presentMobileLedgerSync({
-          uploaded: synced.uploaded,
-          downloaded: synced.downloaded,
-          bundleCount: snapshot.bundles.length,
-          outstandingCount: countOutstandingLedgerEntities(
-            pending,
-            synced.outstandingEntityIds,
+        try {
+          const attemptedAt = Date.now();
+          const synced = await runMobileSyncV2({
+            endpoint: connection.endpoint,
+            token: connection.token,
             deviceId,
-          ),
-          conflicts: synced.conflicts,
-          unresolvedConflicts: synced.unresolvedConflicts,
-          rejected: synced.rejected,
-        });
-        await updateNativeAuthorityProjectionHistory({
-          deviceId,
-          connectionLease: sourceNativeLease,
-          records: snapshot.bundles,
-          lastVerifiedAt: mobileLedgerProjectionVerifiedAt(
-            presentation.pullState,
-            synced.lastVerifiedAt,
-            synced.lastVerifiedAt ?? confirmedAt,
-          ),
-          lastAttemptAt: attemptedAt,
-          pendingCount: presentation.pendingCount,
-          lastErrorCode: presentation.lastErrorCode,
-        }).catch(() => false);
-        if (!isCurrent()) return;
-        setPendingUploadCount(presentation.pendingCount);
-        cacheRef.current = snapshot;
-        setCache(snapshot);
-        setPullState(presentation.pullState);
-        setLedgerNotice(presentation.notice);
-      } catch (error) {
-        if (!isCurrent() || isAbortError(error)) return;
-        const [pending, v2Status] = await Promise.all([
-          readPendingDeviceSyncBundles().catch(() => []),
-          readMobileV2Status(deviceId).catch(() => null),
-        ]);
-        if (!isCurrent()) return;
-        const presentation = presentMobileLedgerSync({
-          uploaded: 0,
-          downloaded: 0,
-          bundleCount: cacheRef.current.bundles.length,
-          outstandingCount: countOutstandingLedgerEntities(
-            pending,
-            v2Status?.outstandingEntityIds ?? [],
+            signal: controller.signal,
+          });
+          if (!isCurrent()) return;
+          const snapshot = await readMobileCache();
+          if (!isCurrent()) return;
+          const pending = await readPendingDeviceSyncBundles();
+          if (!isCurrent()) return;
+          const confirmedAt = Date.now();
+          const presentation = presentMobileLedgerSync({
+            uploaded: synced.uploaded,
+            downloaded: synced.downloaded,
+            bundleCount: snapshot.bundles.length,
+            outstandingCount: countOutstandingLedgerEntities(
+              pending,
+              synced.outstandingEntityIds,
+              deviceId,
+            ),
+            conflicts: synced.conflicts,
+            unresolvedConflicts: synced.unresolvedConflicts,
+            rejected: synced.rejected,
+          });
+          await updateNativeAuthorityProjectionHistory({
             deviceId,
-          ),
-          conflicts: v2Status?.conflicts ?? 0,
-          unresolvedConflicts: v2Status?.conflicts ?? 0,
-          rejected: v2Status?.rejected ?? 0,
-        });
-        await updateNativeAuthorityProjectionHistory({
-          deviceId,
-          connectionLease: sourceNativeLease,
-          records: cacheRef.current.bundles,
-          lastVerifiedAt: v2Status?.lastVerifiedAt ?? null,
-          lastAttemptAt: Date.now(),
-          pendingCount: presentation.pendingCount,
-          lastErrorCode: classifySyncV2Error(error),
-        }).catch(() => false);
-        if (!isCurrent()) return;
-        setPendingUploadCount(presentation.pendingCount);
-        setPullState('error');
-        setLedgerNotice(
-          [
-            errorMessage(error),
-            presentation.pullState === 'partial' ? presentation.notice : null,
-            cacheRef.current.bundles.length > 0 ? '已结束账本继续显示本机缓存' : null,
-          ]
-            .filter(Boolean)
-            .join('；'),
-        );
-      } finally {
-        if (ledgerRequest.current === controller) ledgerRequest.current = null;
-      }
+            connectionLease: sourceNativeLease,
+            records: snapshot.bundles,
+            lastVerifiedAt: mobileLedgerProjectionVerifiedAt(
+              presentation.pullState,
+              synced.lastVerifiedAt,
+              synced.lastVerifiedAt ?? confirmedAt,
+            ),
+            lastAttemptAt: attemptedAt,
+            pendingCount: presentation.pendingCount,
+            lastErrorCode: presentation.lastErrorCode,
+          }).catch(() => false);
+          if (!isCurrent()) return;
+          setPendingUploadCount(presentation.pendingCount);
+          cacheRef.current = snapshot;
+          setCache(snapshot);
+          setPullState(presentation.pullState);
+          setLedgerNotice(presentation.notice);
+        } catch (error) {
+          if (!isCurrent() || isAbortError(error)) return;
+          const [pending, v2Status] = await Promise.all([
+            readPendingDeviceSyncBundles().catch(() => []),
+            readMobileV2Status(deviceId).catch(() => null),
+          ]);
+          if (!isCurrent()) return;
+          const presentation = presentMobileLedgerSync({
+            uploaded: 0,
+            downloaded: 0,
+            bundleCount: cacheRef.current.bundles.length,
+            outstandingCount: countOutstandingLedgerEntities(
+              pending,
+              v2Status?.outstandingEntityIds ?? [],
+              deviceId,
+            ),
+            conflicts: v2Status?.conflicts ?? 0,
+            unresolvedConflicts: v2Status?.conflicts ?? 0,
+            rejected: v2Status?.rejected ?? 0,
+          });
+          await updateNativeAuthorityProjectionHistory({
+            deviceId,
+            connectionLease: sourceNativeLease,
+            records: cacheRef.current.bundles,
+            lastVerifiedAt: v2Status?.lastVerifiedAt ?? null,
+            lastAttemptAt: Date.now(),
+            pendingCount: presentation.pendingCount,
+            lastErrorCode: classifySyncV2Error(error),
+          }).catch(() => false);
+          if (!isCurrent()) return;
+          setPendingUploadCount(presentation.pendingCount);
+          setPullState('error');
+          setLedgerNotice(
+            [
+              errorMessage(error),
+              presentation.pullState === 'partial' ? presentation.notice : null,
+              cacheRef.current.bundles.length > 0 ? '已结束账本继续显示本机缓存' : null,
+            ]
+              .filter(Boolean)
+              .join('；'),
+          );
+        } finally {
+          if (ledgerRequest.current === controller) ledgerRequest.current = null;
+        }
+      });
     },
-    [deviceId, nativeConnectionLease],
+    [deviceId, ledgerPulls, nativeConnectionLease],
   );
 
   useEffect(() => {
@@ -1373,12 +1452,24 @@ export function MobileApp() {
     liveRequest.current?.abort();
     const configured = Boolean(preferences.endpoint && preferences.token);
     if (!configured) {
-      liveSnapshotRef.current = null;
-      setLiveSnapshot(null);
-      setLiveSnapshotSource('none');
       setConnectionState('unconfigured');
       setLiveConnectionNotice(null);
-      void enqueueMutation(cacheMutationQueue, clearCachedLiveFocusSnapshot);
+      const localRuntime = offlineRuntimeRef.current;
+      if (localRuntime) {
+        const localSnapshot = offlineRuntimeSnapshot(localRuntime, deviceId);
+        liveSnapshotRef.current = localSnapshot;
+        setLiveSnapshot(localSnapshot);
+        setLiveSnapshotSource('local');
+        const localMode =
+          authorityModeRef.current === 'forked-local' ? 'forked-local' : 'local-offline';
+        authorityModeRef.current = localMode;
+        setAuthorityMode(localMode);
+      } else {
+        liveSnapshotRef.current = null;
+        setLiveSnapshot(null);
+        setLiveSnapshotSource('none');
+        void enqueueMutation(cacheMutationQueue, clearCachedLiveFocusSnapshot);
+      }
       return;
     }
     if (!online) {
@@ -1476,6 +1567,7 @@ export function MobileApp() {
   }, [
     commitLiveSnapshot,
     connectionEpoch,
+    deviceId,
     offlineRuntime,
     online,
     preferences,
@@ -1845,11 +1937,7 @@ export function MobileApp() {
     setAccountLoginPolling(false);
     setAccountBusy(true);
     setCommandNotice('正在从 Android 安全存储移除设备同步凭据…');
-    ledgerGeneration.current += 1;
-    liveGeneration.current += 1;
-    taskRequests.invalidate();
-    ledgerRequest.current?.abort();
-    liveRequest.current?.abort();
+    beginAccountTransition(operation);
     try {
       const transition = await runMobileAccountLogout(
         accountLifecycle,
@@ -1898,6 +1986,7 @@ export function MobileApp() {
         setCommandNotice(`退出设备同步失败，原同步连接仍保留：${errorMessage(error)}`);
       }
     } finally {
+      finishAccountTransition(operation);
       if (accountLifecycle.isCurrent(operation)) setAccountBusy(false);
     }
   };
@@ -2063,8 +2152,11 @@ export function MobileApp() {
             {activeView === 'settings' && (
               <SettingsView
                 connection={liveConnection}
+                online={online}
                 accountLabel={accountProfile?.accountLabel ?? null}
                 authenticated={configured}
+                lastSyncAt={cache.lastSyncAt}
+                pullState={pullState}
                 taskCount={taskSnapshot?.snapshot?.tasks.length ?? 0}
                 taskRevision={taskSnapshot?.revision ?? 0}
                 ledgerCount={cache.bundles.length}
@@ -2081,6 +2173,9 @@ export function MobileApp() {
         {configOpen && (
           <ConnectionSheet
             authenticated={configured}
+            connection={liveConnection}
+            online={online}
+            lastSyncAt={cache.lastSyncAt}
             accountLabel={accountProfile?.accountLabel ?? null}
             busy={accountBusy || pullState === 'pulling' || liveConnection === 'connecting'}
             notice={commandNotice}

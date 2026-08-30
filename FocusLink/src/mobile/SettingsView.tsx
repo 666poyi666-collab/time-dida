@@ -1,4 +1,13 @@
-import { Cloud, Database, SlidersHorizontal, UserRound } from 'lucide-react';
+import {
+  Cloud,
+  Database,
+  History,
+  ListTodo,
+  SlidersHorizontal,
+  UserRound,
+  Wifi,
+  type LucideIcon,
+} from 'lucide-react';
 import { APP_COMMIT, APP_VERSION } from '@shared/version';
 import type { LiveConnectionState } from './runtimeModel';
 import { NativeSystemControls } from './NativeSystemControls';
@@ -13,11 +22,20 @@ import {
   MOBILE_THEME_LABELS,
   type MobileAppearance,
 } from './appearance';
+import {
+  presentMobileLedgerFreshness,
+  presentMobileSettingsConnection,
+  type MobileSettingsFactTone,
+  type MobileSettingsPullState,
+} from './settingsStatusPresentation';
 
 interface SettingsViewProps {
   connection: LiveConnectionState;
+  online: boolean;
   accountLabel: string | null;
   authenticated: boolean;
+  lastSyncAt: number | null;
+  pullState: MobileSettingsPullState;
   taskCount: number;
   taskRevision: number;
   ledgerCount: number;
@@ -28,8 +46,11 @@ interface SettingsViewProps {
 
 export function SettingsView({
   connection,
+  online,
   accountLabel,
   authenticated,
+  lastSyncAt,
+  pullState,
   taskCount,
   taskRevision,
   ledgerCount,
@@ -37,6 +58,13 @@ export function SettingsView({
   appearance,
   onAppearanceChange,
 }: SettingsViewProps) {
+  const connectionFact = presentMobileSettingsConnection({
+    authenticated,
+    online,
+    connection,
+    accountLabel,
+  });
+  const ledgerFact = presentMobileLedgerFreshness({ authenticated, lastSyncAt, pullState });
   return (
     <section className="settings-view view-surface" aria-labelledby="settings-view-title">
       <header className="view-heading">
@@ -50,25 +78,33 @@ export function SettingsView({
         </button>
       </header>
 
-      <div className="settings-status-grid">
+      <div className="settings-status-grid" aria-label="同步状态">
         <StatusLine
-          icon={Cloud}
-          label="云同步"
-          value={connectionLabel(connection)}
-          tone={connection === 'live' ? 'ok' : 'warning'}
+          icon={Wifi}
+          label="实时连接"
+          value={connectionFact.value}
+          detail={connectionFact.detail}
+          tone={connectionFact.tone}
         />
         <StatusLine
-          icon={UserRound}
-          label="设备同步"
-          value={authenticated ? (accountLabel ?? '已配对') : '未配对'}
-          tone={authenticated ? 'ok' : 'warning'}
+          icon={History}
+          label="账本新鲜度"
+          value={ledgerFact.value}
+          detail={ledgerFact.detail}
+          tone={ledgerFact.tone}
+        />
+        <StatusLine
+          icon={ListTodo}
+          label="任务快照"
+          value={`${taskCount} 项`}
+          detail={`revision ${taskRevision}`}
         />
         <StatusLine
           icon={Database}
-          label="任务快照"
-          value={`${taskCount} 项 · rev ${taskRevision}`}
+          label="本机会话"
+          value={`${ledgerCount} 场`}
+          detail="已结束且保存在本机"
         />
-        <StatusLine icon={Database} label="本机会话" value={`${ledgerCount} 场`} />
       </div>
 
       <section className="mobile-appearance-panel" aria-labelledby="mobile-appearance-title">
@@ -118,30 +154,32 @@ export function SettingsView({
           </div>
         </div>
 
-        <label className="appearance-select-row">
-          <span>界面字体</span>
-          <select
-            value={appearance.fontProfile}
-            onChange={(event) =>
-              onAppearanceChange({
-                ...appearance,
-                fontProfile: event.target.value as MobileAppearance['fontProfile'],
-              })
-            }
+        <div className="appearance-font-controls">
+          <label className="appearance-select-row">
+            <span>界面字体</span>
+            <select
+              value={appearance.fontProfile}
+              onChange={(event) =>
+                onAppearanceChange({
+                  ...appearance,
+                  fontProfile: event.target.value as MobileAppearance['fontProfile'],
+                })
+              }
+            >
+              {FONT_PROFILES.map((profile) => (
+                <option key={profile} value={profile}>
+                  {MOBILE_FONT_LABELS[profile]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div
+            className={`appearance-font-preview font-profile-${appearance.fontProfile}`}
+            aria-live="polite"
           >
-            {FONT_PROFILES.map((profile) => (
-              <option key={profile} value={profile}>
-                {MOBILE_FONT_LABELS[profile]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div
-          className={`appearance-font-preview font-profile-${appearance.fontProfile}`}
-          aria-live="polite"
-        >
-          <span>{MOBILE_FONT_LABELS[appearance.fontProfile]}</span>
-          <strong>时间正在发生 · 清醒专注 12:48</strong>
+            <span>{MOBILE_FONT_LABELS[appearance.fontProfile]}</span>
+            <strong>时间正在发生 · 清醒专注 12:48</strong>
+          </div>
         </div>
 
         <div className="appearance-choice-group appearance-timer-group">
@@ -203,26 +241,23 @@ function StatusLine({
   icon: Icon,
   label,
   value,
+  detail,
   tone,
 }: {
-  icon: typeof Cloud;
+  icon: LucideIcon;
   label: string;
   value: string;
-  tone?: 'ok' | 'warning';
+  detail?: string;
+  tone?: MobileSettingsFactTone;
 }) {
   return (
     <div className={`settings-status-line ${tone ? `tone-${tone}` : ''}`}>
       <Icon aria-hidden="true" />
-      <span>{label}</span>
+      <span className="settings-status-copy">
+        <span>{label}</span>
+        {detail ? <small>{detail}</small> : null}
+      </span>
       <strong>{value}</strong>
     </div>
   );
-}
-
-function connectionLabel(connection: LiveConnectionState): string {
-  if (connection === 'live') return '已确认';
-  if (connection === 'connecting') return '连接中';
-  if (connection === 'offline') return '设备离线';
-  if (connection === 'error') return '需要重试';
-  return '未配对';
 }

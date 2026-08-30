@@ -3,14 +3,22 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown, Trash2 } from 'lucide-react';
 import { normalizeFocusLinkPairingCode } from '@shared/sync/pairingProtocol';
 import type { DeviceSyncManagedDevice } from '@shared/ipc/api';
+import { groupManagedDevices, managedDeviceKindLabel } from '@shared/deviceRosterPolicy';
 import {
-  groupManagedDevices,
-  managedDeviceKindLabel,
-  managedDeviceStateLabel,
-} from '@shared/deviceRosterPolicy';
+  presentManagedDeviceActivity,
+  presentObservedTime,
+} from '../features/settings/deviceSyncStatusPresentation';
+import type { LiveConnectionState } from './runtimeModel';
+import {
+  presentMobileSettingsConnection,
+  type MobileSettingsFact,
+} from './settingsStatusPresentation';
 
 export interface ConnectionSheetProps {
   authenticated: boolean;
+  connection?: LiveConnectionState;
+  online?: boolean;
+  lastSyncAt?: number | null;
   accountLabel: string | null;
   busy: boolean;
   notice: string | null;
@@ -29,6 +37,9 @@ export interface ConnectionSheetProps {
 
 export function ConnectionSheet({
   authenticated,
+  connection,
+  online,
+  lastSyncAt,
   accountLabel,
   busy,
   notice,
@@ -51,6 +62,12 @@ export function ConnectionSheet({
   const reduceMotion = useReducedMotion();
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [copied, setCopied] = useState(false);
+  const currentConnection = presentMobileSettingsConnection({
+    authenticated,
+    online: online ?? true,
+    connection: connection ?? (authenticated ? 'offline' : 'unconfigured'),
+    accountLabel,
+  });
 
   useEffect(() => {
     if (!pairingOffer) {
@@ -254,6 +271,8 @@ export function ConnectionSheet({
               <MobileDeviceRoster
                 devices={devices}
                 currentDeviceId={currentDeviceId}
+                currentConnection={currentConnection}
+                lastSyncAt={lastSyncAt ?? null}
                 busy={busy}
                 onRevokeDevice={onRevokeDevice}
               />
@@ -284,43 +303,60 @@ export function ConnectionSheet({
 function MobileDeviceRoster({
   devices,
   currentDeviceId,
+  currentConnection,
+  lastSyncAt,
   busy,
   onRevokeDevice,
 }: {
   devices: DeviceSyncManagedDevice[];
   currentDeviceId?: string;
+  currentConnection: MobileSettingsFact;
+  lastSyncAt: number | null;
   busy: boolean;
   onRevokeDevice: (deviceId: string) => void;
 }) {
   const groups = groupManagedDevices(devices, currentDeviceId);
-  const renderRow = (device: DeviceSyncManagedDevice, isCurrent = false) => (
-    <div className={`account-device-row ${isCurrent ? 'is-current' : ''}`} key={device.deviceId}>
-      <div>
-        <strong>{device.displayName}</strong>
-        <span>
-          {isCurrent
-            ? '当前设备 · 正在同步'
-            : `${managedDeviceKindLabel(device.deviceKind)} · ${managedDeviceStateLabel(device)}`}
-        </span>
+  const currentLedger = presentObservedTime(lastSyncAt);
+  const renderRow = (device: DeviceSyncManagedDevice, isCurrent = false) => {
+    const activity = presentManagedDeviceActivity(device);
+    return (
+      <div
+        className={`account-device-row ${isCurrent ? 'is-current' : ''} tone-${isCurrent ? currentConnection.tone : activity.tone}`}
+        key={device.deviceId}
+      >
+        <div>
+          <strong>{device.displayName}</strong>
+          <span>
+            {managedDeviceKindLabel(device.deviceKind)} ·{' '}
+            {isCurrent ? currentConnection.value : activity.value}
+          </span>
+          <small>
+            {isCurrent
+              ? lastSyncAt
+                ? `账本最后成功 ${currentLedger.relative} · ${currentLedger.exact}`
+                : '账本尚无成功同步时间'
+              : activity.detail}
+          </small>
+        </div>
+        {isCurrent ? (
+          <span className="account-device-current">当前设备</span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm(`删除“${device.displayName}”？`)) onRevokeDevice(device.deviceId);
+            }}
+            disabled={busy}
+            aria-label={`删除 ${device.displayName}`}
+            title="删除设备"
+          >
+            <Trash2 aria-hidden="true" />
+            <span className="sr-only">删除设备</span>
+          </button>
+        )}
       </div>
-      {isCurrent ? (
-        <span className="account-device-current">当前</span>
-      ) : (
-        <button
-          type="button"
-          onClick={() => {
-            if (window.confirm(`删除“${device.displayName}”？`)) onRevokeDevice(device.deviceId);
-          }}
-          disabled={busy}
-          aria-label={`删除 ${device.displayName}`}
-          title="删除设备"
-        >
-          <Trash2 aria-hidden="true" />
-          <span className="sr-only">删除设备</span>
-        </button>
-      )}
-    </div>
-  );
+    );
+  };
   return (
     <section className="account-device-roster" aria-label="已配对设备">
       <header className="account-device-roster-heading">

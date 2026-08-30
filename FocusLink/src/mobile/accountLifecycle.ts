@@ -17,6 +17,18 @@ export interface MobileAccountRequestLifecycle {
   generation(): number;
 }
 
+export interface MobileAccountRequestCoalescer<T> {
+  run(connectionKey: string, operation: () => Promise<T>): Promise<T>;
+  invalidate(): void;
+}
+
+export interface MobileAccountRequestCommitState {
+  requestCurrent: boolean;
+  requestConnectionKey: string;
+  currentConnectionKey: string;
+  transitionOperation: number | null;
+}
+
 export interface MobileAccountCommitResult<T> {
   current: boolean;
   issues: string[];
@@ -74,6 +86,41 @@ export function createMobileAccountRequestLifecycle(): MobileAccountRequestLifec
       return currentGeneration;
     },
   };
+}
+
+/**
+ * Shares one read/sync operation between background refreshes and foreground mutations.
+ * A different account key starts a new operation; the request lifecycle remains responsible
+ * for aborting the superseded transport.
+ */
+export function createMobileAccountRequestCoalescer<T>(): MobileAccountRequestCoalescer<T> {
+  let current: { connectionKey: string; promise: Promise<T> } | null = null;
+
+  return {
+    run(connectionKey, operation) {
+      if (current?.connectionKey === connectionKey) return current.promise;
+      const promise = Promise.resolve().then(operation);
+      current = { connectionKey, promise };
+      const clear = () => {
+        if (current?.promise === promise) current = null;
+      };
+      void promise.then(clear, clear);
+      return promise;
+    },
+    invalidate() {
+      current = null;
+    },
+  };
+}
+
+export function isMobileAccountRequestCommitCurrent(
+  state: MobileAccountRequestCommitState,
+): boolean {
+  return (
+    state.requestCurrent &&
+    state.transitionOperation === null &&
+    state.requestConnectionKey === state.currentConnectionKey
+  );
 }
 
 /**

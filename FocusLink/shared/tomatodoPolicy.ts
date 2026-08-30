@@ -14,6 +14,8 @@ export const TOMATODO_SUBJECTS: readonly TomatodoSubject[] = [
 export const TOMATODO_FALLBACK_SUBJECT: TomatodoSubject = '学习';
 /** 标记由 v0.5.3+ 云同步链路管理的记录，避免新配置重复执行旧数据修复。 */
 export const TOMATODO_CLOUD_V053_MARKER = '[FocusLink:tomatodo:cloud-v053]';
+/** 番茄 To-do 的专注云接口只接受最近 7 天的记录。 */
+export const TOMATODO_CLOUD_UPLOAD_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;
 export const ALL_SUBJECTS: readonly TomatodoSubject[] = [...TOMATODO_SUBJECTS, '学习'];
 export const TOMATODO_SUBJECT_OPTIONS = [
   { value: '语文', shortLabel: '语' },
@@ -30,6 +32,14 @@ export const TOMATODO_SUBJECT_OPTIONS = [
  * 顺序传入；第一个命中学科的文本优先，避免正文中的偶发词覆盖任务标题。
  */
 export type TomatodoSubjectCandidateText = string | null | undefined;
+
+export function isTomatodoCloudUploadEligible(recordCreatedAt: number, now = Date.now()): boolean {
+  return (
+    Number.isFinite(recordCreatedAt) &&
+    Number.isFinite(now) &&
+    recordCreatedAt >= now - TOMATODO_CLOUD_UPLOAD_WINDOW_MS
+  );
+}
 
 interface SubjectKeywordRule {
   subject: Exclude<TomatodoSubject, '学习'>;

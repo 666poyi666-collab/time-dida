@@ -2,12 +2,21 @@
 
 ## 2026-08-30
 
+- 华为平板与 Windows 通过真实 8 位本机码完成 exchange/claim；任务快照、实时开始/暂停/继续/结束和 `2 segments + 1 pause` 已结束账本分别验收，所有临时清单、任务与会话均按精确 ID 清理。
+- 修复移动端后台 5 秒刷新取消前台任务操作的问题：同账号任务/账本请求复用在途 Promise，账号切换继续强制失效。平板新增待办/已完成分段与恢复入口，真机在后台刷新并发下首击完成/恢复均成功。
+- 设置页状态改为当前实时、账本新鲜度、任务 revision 和本机会话四项事实；番茄 To-do 的可上传队列与 223 条过期历史分开。平板字体/九仪表预览扩容并修正标准、制图预览裁切。
+- ChatGPT Web 已发现现有 FocusLink 插件仍停留在 2026-07-28 的只读工具/scope；正式 MCP URL 正确，刷新与 `focuslink:write` OAuth 仍等待用户在动作时确认，未标记完成。
+- 最终只读审查补掉三个边界：账号切换期间旧 connection 请求禁止提交；CLI 的 200 响应体断流按同 operationId 重试；共享循环时间拒绝小数与 JS Date 上限外值。对应定向测试 41 项通过。
+- 继续沿用未闭合的 `0.12.105/1305` 候选，不为番茄/平板验收补修增加版本号。华为平板恢复在线并安装同版；隔离 9/9、解锁后 PiP 1/1 通过。
+- 修复华为实机复现的本机专注假启动：无配对配置时不再清掉已创建的 offline runtime 快照，running/paused 可从 IndexedDB 恢复并继续控制。
+- 修复番茄 To-do 队列误导：223 条失败全部超过外部 7 天窗口，当前临时记录真实上传成功。过期记录保留本机、不改日期、不伪报已同步，并从自动重试与上传按钮中移出；设置页显示过期历史数量。
 - 将候选版本统一提升到 `0.12.105/1305`。新增结构化循环、开始时间、云端当前时间 MCP、清单详情与任务过滤；第一方 CLI 通过同一 Account DO CAS/幂等合同管理时间、清单和任务，并严格区分 device credential 与 OAuth token。
 - 设置页和同步页降噪：实时连接、最近账本成功、历史尝试、设备 freshness、番茄本机/上传/桥接/手机显示分别表达；Dashboard 增加五时段、三轨累计和当前线；字体扩展为八套。修复桌面截图脚本误把通用 `.app-stage` 当页面就绪的假证据，改用页面专属根节点重拍。
 - 阶段性门禁：format/typecheck/lint、根 `125 files / 943 tests`、MCP `114 tests`、生产 build、设置与 Dashboard 桌面/移动截图通过；部署、dist、packaged smoke 和三设备安装矩阵仍待回填。
 - MCP adapter 小修：`task-scheduling-v1` 现在也转发到 `/sync/v2/tasks/mutate`，并明确不注入 live command；对应 exchange 合同测试已补齐。
 - 桌面旧快照合并保护：0.12.104 task shape 缺少调度键时保留 SQLite 已有循环，只有新客户端显式 `null` 才清除。
 - 移动任务完成的 operationId 改为基于设备/任务/动作/revision 的稳定指纹，响应丢失重试继续命中同一次 CAS 操作。
+- 收紧 MCP/CLI 任务写入：CLI 瞬时失败以同一 operationId 有界重试，最终失败返回 operationId/revision 供安全续跑；CLI 与 MCP 在调用层拒绝越界优先级、日期、非法幂等键和伪造循环进度，循环结束时间不得早于当前任务日期。
 - 修复 portable 沉浸退出阻塞：360ms 界面离场先完成并卸载，Windows native 全屏退出随后在下一事件循环执行，不让系统切换阻塞 renderer timer。
 - 最终门禁：根 126/957、MCP 11/115、cross-device 6/63、Cloudflare 两阶段协议、Android unit/lint/assemble、unpacked/portable UI、mini、live fallback 通过；production audit 0。Worker 最终部署为 private `4fbf1576…`、public `77354996…`，远端 probe 19/19。
 - 实装：Windows `0.12.105/0.12.105.0` 已覆盖并重启；小米并行包 `app.focuslink.mobile.v012105` 已回读 `0.12.105/1305`。华为平板 offline，三端门禁未闭合；生产 MCP 写入仍缺 OAuth access token。

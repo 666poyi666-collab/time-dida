@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createMobileAccountLifecycle,
+  createMobileAccountRequestCoalescer,
   createMobileAccountRequestLifecycle,
+  isMobileAccountRequestCommitCurrent,
   mobileAccountConnectionKey,
   runMobileAccountCommit,
   runMobileAccountLogout,
@@ -78,6 +80,62 @@ describe('mobile account operation lifecycle', () => {
     expect(current.isCurrent()).toBe(true);
     current.finish();
     expect(current.isCurrent()).toBe(false);
+  });
+
+  it('shares one same-account refresh between background cadence and a foreground mutation', async () => {
+    const coalescer = createMobileAccountRequestCoalescer<number>();
+    let resolve!: (value: number) => void;
+    const operation = vi.fn(
+      () =>
+        new Promise<number>((done) => {
+          resolve = done;
+        }),
+    );
+
+    const background = coalescer.run('account-a', operation);
+    const foreground = coalescer.run('account-a', operation);
+    expect(foreground).toBe(background);
+    await Promise.resolve();
+    expect(operation).toHaveBeenCalledTimes(1);
+    resolve(71);
+    await expect(Promise.all([background, foreground])).resolves.toEqual([71, 71]);
+  });
+
+  it('starts a new refresh for a different account without stale cleanup clearing it', async () => {
+    const coalescer = createMobileAccountRequestCoalescer<string>();
+    let resolveOld!: (value: string) => void;
+    let resolveNew!: (value: string) => void;
+    const old = coalescer.run(
+      'account-a',
+      () => new Promise<string>((resolve) => (resolveOld = resolve)),
+    );
+    const current = coalescer.run(
+      'account-b',
+      () => new Promise<string>((resolve) => (resolveNew = resolve)),
+    );
+    await Promise.resolve();
+    resolveOld('old');
+    await expect(old).resolves.toBe('old');
+    expect(coalescer.run('account-b', () => Promise.resolve('unexpected'))).toBe(current);
+    resolveNew('current');
+    await expect(current).resolves.toBe('current');
+  });
+
+  it('blocks stale request commits throughout an account transition and after a key switch', () => {
+    const baseline = {
+      requestCurrent: true,
+      requestConnectionKey: 'account-a',
+      currentConnectionKey: 'account-a',
+      transitionOperation: null,
+    };
+    expect(isMobileAccountRequestCommitCurrent(baseline)).toBe(true);
+    expect(isMobileAccountRequestCommitCurrent({ ...baseline, transitionOperation: 7 })).toBe(
+      false,
+    );
+    expect(
+      isMobileAccountRequestCommitCurrent({ ...baseline, currentConnectionKey: 'account-b' }),
+    ).toBe(false);
+    expect(isMobileAccountRequestCommitCurrent({ ...baseline, requestCurrent: false })).toBe(false);
   });
 
   it('keeps a confirmed native login current when account-cache cleanup fails', async () => {

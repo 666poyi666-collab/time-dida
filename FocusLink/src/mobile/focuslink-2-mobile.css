@@ -419,6 +419,44 @@ body {
   background: transparent;
 }
 
+.task-status-switch {
+  display: grid;
+  min-width: 0;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.task-status-switch button {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.task-status-switch button strong {
+  min-width: 20px;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-status-switch button.is-active {
+  background: var(--text);
+  color: var(--surface);
+}
+
 .task-mobile-create {
   grid-column: 1 / -1;
   min-height: 54px;
@@ -576,6 +614,20 @@ body {
   height: 44px;
   min-height: 44px;
   margin: 0;
+}
+
+.task-mobile-complete.is-restore,
+.task-board-check.is-restore {
+  border-color: var(--focus);
+  background: var(--focus-soft);
+  color: var(--focus);
+}
+
+.task-row.is-completed .task-row-copy strong,
+.task-board-card.is-completed > .task-board-card-top > strong {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }
 
 .task-row-main {
@@ -2198,5 +2250,169 @@ body {
 
   .account-pairing-steps span {
     font-size: 10px;
+  }
+}
+
+/* v0.12.105 · precise settings status and tablet appearance readability --- */
+.settings-status-line {
+  min-height: 68px;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+}
+
+.settings-status-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.settings-status-copy > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.settings-status-copy > small {
+  overflow-wrap: anywhere;
+  color: var(--subtle);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.settings-status-line > strong {
+  max-width: 132px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.settings-status-line.tone-danger > strong {
+  color: var(--danger);
+}
+
+.settings-status-line.tone-neutral > strong {
+  color: var(--muted);
+}
+
+.appearance-font-controls {
+  display: block;
+}
+
+.account-device-row {
+  min-height: 64px;
+  padding-block: 7px;
+}
+
+.account-device-row small {
+  overflow-wrap: anywhere;
+  color: var(--subtle);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.account-device-row.tone-danger small {
+  color: var(--danger);
+}
+
+.account-device-row.tone-warning small {
+  color: var(--warning);
+}
+
+@media (max-width: 619px) {
+  .settings-view > .settings-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-view > .settings-status-grid .settings-status-line {
+    min-height: 104px;
+    grid-template-columns: 20px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: center;
+    gap: 5px 8px;
+    padding: 12px;
+  }
+
+  .settings-view > .settings-status-grid .settings-status-line:nth-child(odd) {
+    border-right: 1px solid var(--border);
+  }
+
+  .settings-view > .settings-status-grid .settings-status-line:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+
+  .settings-view > .settings-status-grid .settings-status-line > svg {
+    align-self: start;
+    margin-top: 2px;
+  }
+
+  .settings-view > .settings-status-grid .settings-status-line > strong {
+    max-width: none;
+    grid-column: 2;
+    text-align: left;
+  }
+}
+
+@media (min-width: 620px) {
+  html[data-device-tier='tablet'] body .settings-view > .settings-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  html[data-device-tier='tablet'] body .settings-status-line:nth-child(odd) {
+    border-right: 1px solid var(--border);
+  }
+
+  html[data-device-tier='tablet'] body .settings-status-line:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+
+  html[data-device-tier='tablet'] body .appearance-font-controls {
+    display: grid;
+    grid-template-columns: minmax(180px, 0.42fr) minmax(0, 0.58fr);
+    align-items: stretch;
+    gap: 12px;
+    margin-top: 14px;
+  }
+
+  html[data-device-tier='tablet'] body .appearance-font-controls .appearance-select-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 8px;
+    margin-top: 0;
+  }
+
+  html[data-device-tier='tablet'] body .appearance-select-row select {
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  html[data-device-tier='tablet'] body .appearance-font-preview {
+    min-height: 88px;
+    align-content: center;
+    margin-top: 0;
+    padding: 14px 16px;
+  }
+
+  html[data-device-tier='tablet'] body .appearance-font-preview span {
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+
+  html[data-device-tier='tablet'] body .appearance-font-preview strong {
+    font-size: 22px;
+    line-height: 1.35;
+  }
+
+  html[data-device-tier='tablet'] body .appearance-timer-choices {
+    gap: 10px;
+  }
+
+  html[data-device-tier='tablet'] body .appearance-timer-choice {
+    min-height: 112px;
+    gap: 8px;
+    padding: 11px 10px 9px;
+  }
+
+  html[data-device-tier='tablet'] body .appearance-timer-choice > span {
+    font-size: 12px;
+    line-height: 1.35;
   }
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ALL_SUBJECTS,
+  TOMATODO_CLOUD_UPLOAD_WINDOW_MS,
   TOMATODO_FALLBACK_SUBJECT,
   TOMATODO_SUBJECTS,
   buildTomatodoRecord,
@@ -9,6 +10,7 @@ import {
   getTomatodoMarker,
   hasTomatodoMarker,
   inferTomatodoSubject,
+  isTomatodoCloudUploadEligible,
   normalizeSubject,
   parseSegmentIdFromMarker,
   resolveSegmentSubject,
@@ -31,6 +33,16 @@ const endedSegment = (overrides: Partial<FocusSegment> = {}): FocusSegment => ({
   createdAt: 1782000000000,
   updatedAt: 1782010800000,
   ...overrides,
+});
+
+describe('tomatodo cloud upload window', () => {
+  it('keeps the seven-day boundary eligible and classifies older history as expired', () => {
+    const now = Date.parse('2026-08-30T09:00:00Z');
+    expect(isTomatodoCloudUploadEligible(now - TOMATODO_CLOUD_UPLOAD_WINDOW_MS, now)).toBe(true);
+    expect(isTomatodoCloudUploadEligible(now - TOMATODO_CLOUD_UPLOAD_WINDOW_MS - 1, now)).toBe(
+      false,
+    );
+  });
 });
 
 describe('tomatodo subjects', () => {

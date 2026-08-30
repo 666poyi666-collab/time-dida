@@ -8,6 +8,10 @@ const source = fs.readFileSync(
 );
 const preloadSource = fs.readFileSync(path.join(process.cwd(), 'electron', 'preload.ts'), 'utf8');
 const ipcSource = fs.readFileSync(path.join(process.cwd(), 'electron', 'ipc.ts'), 'utf8');
+const presentationSource = fs.readFileSync(
+  path.join(process.cwd(), 'src', 'features', 'settings', 'deviceSyncStatusPresentation.ts'),
+  'utf8',
+);
 
 describe('desktop FocusLink account settings', () => {
   it('keeps service internals out of the normal settings surface', () => {
@@ -68,6 +72,7 @@ describe('desktop FocusLink account settings', () => {
     expect(source).not.toContain('deviceSyncConflictOnly');
     expect(source).not.toContain('无法连接跨设备同步服务|跨设备同步请求超时');
     expect(source).toContain('presentDeviceSyncOverview(deviceSyncStatus)');
+    expect(source).toContain('deviceSyncOverview.freshness');
     expect(source).toContain('deviceSyncOverview.latestSuccess');
     expect(source).toContain('settings-diagnostic-kind');
     expect(source).not.toContain('当前设备 · 正在同步');
@@ -75,9 +80,12 @@ describe('desktop FocusLink account settings', () => {
 
   it('separates TomaToDo local, bridge, upload and phone-delivery facts', () => {
     expect(source).toContain("label: '本机写入'");
-    expect(source).toContain("label: '上传队列'");
+    expect(presentationSource).toContain("label: '上传队列'");
+    expect(presentationSource).toContain('`${safeExpired} 条过期历史已停止重试`');
     expect(source).toContain("label: '手机端显示'");
     expect(source).toContain('presentTomatodoBridgeStatus(tomatodoBridge)');
+    expect(source).toContain('presentTomatodoQueue(');
+    expect(source).toContain('settings-tomatodo-expired');
     expect(source).toContain('上传确认不能代替手机投递确认');
     expect(source).toContain('检查状态');
     expect(source).not.toContain("return tomatodoBridge.error || '连接失败，可重新尝试'");

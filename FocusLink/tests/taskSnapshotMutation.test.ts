@@ -12,7 +12,10 @@ import {
   withoutTaskSchedulingMutationFields,
   type TaskSnapshotPayload,
 } from '@shared/sync/taskSnapshotProtocol';
-import { fingerprintDeviceSyncValue } from '@shared/sync/deviceProtocol';
+import {
+  DEVICE_SYNC_MAX_TIMESTAMP_MS,
+  fingerprintDeviceSyncValue,
+} from '@shared/sync/deviceProtocol';
 import type { TaskRecurrence } from '@shared/types';
 
 const daily: TaskRecurrence = {
@@ -340,6 +343,18 @@ describe('task snapshot CAS mutations', () => {
         1_720_000_001_000,
       ),
     ).toThrow('开始时间不能晚于截止时间');
+    expect(() =>
+      applyTaskSnapshotMutation(
+        base,
+        {
+          kind: 'create_task',
+          title: '结束早于任务',
+          dueDate: 100,
+          recurrence: { ...dailyDefinition, endAt: 99 },
+        },
+        1,
+      ),
+    ).toThrow('循环结束时间不能早于当前任务日期');
 
     const recurringBase = applyTaskSnapshotMutation(
       base,
@@ -359,6 +374,17 @@ describe('task snapshot CAS mutations', () => {
         2,
       ),
     ).toThrow('必须设置开始时间或截止时间');
+    expect(() =>
+      applyTaskSnapshotMutation(
+        recurringBase.snapshot,
+        {
+          kind: 'update_task',
+          taskId: 'anchored',
+          recurrence: { ...dailyDefinition, endAt: 9 },
+        },
+        2,
+      ),
+    ).toThrow('循环结束时间不能早于当前任务日期');
   });
 
   it('validates exact request/response envelopes and rejects extra/private fields', () => {
@@ -394,6 +420,31 @@ describe('task snapshot CAS mutations', () => {
         },
       }),
     ).toBe(true);
+    for (const endAt of [100.5, DEVICE_SYNC_MAX_TIMESTAMP_MS + 1]) {
+      expect(
+        validateTaskSnapshotMutationRequest({
+          ...request,
+          mutation: {
+            kind: 'create_task',
+            title: '非法循环时间',
+            dueDate: 100,
+            recurrence: { ...dailyDefinition, endAt },
+          },
+        }),
+      ).toBe(false);
+      expect(
+        validateTaskSnapshotPayload({
+          ...base,
+          tasks: [
+            {
+              ...task('invalid-recurrence-time', 'study'),
+              dueDate: 100,
+              recurrence: { ...daily, endAt },
+            },
+          ],
+        }),
+      ).toBe(false);
+    }
     expect(
       parseTaskSnapshotMutationResponse({
         protocolVersion: 1,

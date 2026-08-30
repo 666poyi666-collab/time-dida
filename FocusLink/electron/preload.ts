@@ -154,6 +154,7 @@ const api = {
       ipcRenderer.invoke('tomatodo:set-subjects', segmentIds, subject),
     uploadPending: () => ipcRenderer.invoke('tomatodo:upload-pending'),
     pendingCount: () => ipcRenderer.invoke('tomatodo:pending-count'),
+    pendingSummary: () => ipcRenderer.invoke('tomatodo:pending-summary'),
     bridgeStatus: () => ipcRenderer.invoke('tomatodo:bridge-status'),
     ensureBridge: () => ipcRenderer.invoke('tomatodo:bridge-ensure'),
   },

@@ -1,4 +1,5 @@
 import type { TaskRecurrence, TaskRecurrenceDefinition, TaskRecurrenceFrequency } from './types';
+import { DEVICE_SYNC_MAX_TIMESTAMP_MS } from './sync/deviceProtocol';
 
 const MAX_TIME_ZONE_LENGTH = 100;
 const MAX_INTERVAL = 999;
@@ -374,7 +375,12 @@ function isIntegerInRange(value: unknown, min: number, max: number): value is nu
 }
 
 function isTimestamp(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  return (
+    typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= 0 &&
+    value <= DEVICE_SYNC_MAX_TIMESTAMP_MS
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

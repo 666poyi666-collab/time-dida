@@ -152,6 +152,190 @@ describe('FocusLink first-party CLI', () => {
     });
   });
 
+  it('retries one transient mutation with the same operation id and request body', async () => {
+    const posted: string[] = [];
+    let postAttempt = 0;
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      if (request.method === 'GET') return Response.json(initial);
+      posted.push(await request.text());
+      postAttempt += 1;
+      if (postAttempt === 1) throw new TypeError('synthetic response loss');
+      const body = JSON.parse(posted[0]!) as TaskSnapshotMutationRequest;
+      const applied = applyTaskSnapshotMutation(
+        initial.snapshot!,
+        body.mutation,
+        initial.serverTime + 1,
+        () => 'retry-task',
+      );
+      return Response.json({
+        ...initial,
+        revision: 5,
+        sourceDeviceId: body.deviceId,
+        snapshot: applied.snapshot,
+        operationId: body.operationId,
+        status: 'duplicate',
+        result: applied.result,
+      });
+    };
+    const captured = output();
+    expect(
+      await runFocusLinkCli(
+        ['tasks', 'create', '--title', '响应丢失重试', '--operation-id', 'cli-retry-create-1'],
+        {
+          FOCUSLINK_ENDPOINT: 'https://focuslink.example.test',
+          FOCUSLINK_DEVICE_TOKEN: DEVICE_TOKEN,
+        },
+        captured.io,
+        fetchImpl as typeof fetch,
+      ),
+    ).toBe(0);
+    expect(posted).toHaveLength(2);
+    expect(posted[1]).toBe(posted[0]);
+    expect(JSON.parse(captured.stdout[0]!)).toMatchObject({
+      operationId: 'cli-retry-create-1',
+      status: 'duplicate',
+      revision: 5,
+    });
+  });
+
+  it('retries a 200 mutation whose response body stream is lost', async () => {
+    const posted: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      if (request.method === 'GET') return Response.json(initial);
+      posted.push(await request.text());
+      if (posted.length === 1) {
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new TypeError('synthetic body stream loss'));
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      const body = JSON.parse(posted[0]!) as TaskSnapshotMutationRequest;
+      const applied = applyTaskSnapshotMutation(
+        initial.snapshot!,
+        body.mutation,
+        initial.serverTime + 1,
+        () => 'stream-retry-task',
+      );
+      return Response.json({
+        ...initial,
+        revision: 5,
+        sourceDeviceId: body.deviceId,
+        snapshot: applied.snapshot,
+        operationId: body.operationId,
+        status: 'duplicate',
+        result: applied.result,
+      });
+    };
+    const captured = output();
+    expect(
+      await runFocusLinkCli(
+        ['tasks', 'create', '--title', '响应体断流', '--operation-id', 'cli-stream-retry-1'],
+        {
+          FOCUSLINK_ENDPOINT: 'https://focuslink.example.test',
+          FOCUSLINK_DEVICE_TOKEN: DEVICE_TOKEN,
+        },
+        captured.io,
+        fetchImpl as typeof fetch,
+      ),
+    ).toBe(0);
+    expect(posted).toHaveLength(2);
+    expect(posted[1]).toBe(posted[0]);
+    expect(JSON.parse(captured.stdout[0]!)).toMatchObject({
+      operationId: 'cli-stream-retry-1',
+      status: 'duplicate',
+      revision: 5,
+    });
+  });
+
+  it('returns retry coordinates after bounded mutation failure and preserves nested error codes', async () => {
+    let postAttempts = 0;
+    const unavailable = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      if (request.method === 'GET') return Response.json(initial);
+      postAttempts += 1;
+      throw new TypeError('synthetic outage');
+    };
+    const failed = output();
+    expect(
+      await runFocusLinkCli(
+        ['tasks', 'complete', '--task-id', 'task-1', '--operation-id', 'cli-failed-complete-1'],
+        {
+          FOCUSLINK_ENDPOINT: 'https://focuslink.example.test',
+          FOCUSLINK_DEVICE_TOKEN: DEVICE_TOKEN,
+        },
+        failed.io,
+        unavailable as typeof fetch,
+      ),
+    ).toBe(1);
+    expect(postAttempts).toBe(2);
+    expect(JSON.parse(failed.stderr[0]!)).toEqual({
+      ok: false,
+      error: 'task_authority_unavailable',
+      operationId: 'cli-failed-complete-1',
+      expectedRevision: 4,
+    });
+
+    let rejectedPosts = 0;
+    const rejected = output();
+    expect(
+      await runFocusLinkCli(
+        ['tasks', 'create', '--title', '非法循环', '--operation-id', 'cli-invalid-task-1'],
+        {
+          FOCUSLINK_ENDPOINT: 'https://focuslink.example.test',
+          FOCUSLINK_DEVICE_TOKEN: DEVICE_TOKEN,
+        },
+        rejected.io,
+        (async (input: RequestInfo | URL, init?: RequestInit) => {
+          const request = new Request(input, init);
+          if (request.method === 'GET') return Response.json(initial);
+          rejectedPosts += 1;
+          return Response.json({ error: { code: 'task_mutation_invalid' } }, { status: 422 });
+        }) as typeof fetch,
+      ),
+    ).toBe(1);
+    expect(rejectedPosts).toBe(1);
+    expect(JSON.parse(rejected.stderr[0]!)).toMatchObject({
+      error: 'task_mutation_invalid',
+      operationId: 'cli-invalid-task-1',
+      expectedRevision: 4,
+    });
+  });
+
+  it('rejects invalid priority, timestamp and operation id before task mutation', async () => {
+    for (const [args, error] of [
+      [['tasks', 'create', '--title', '优先级', '--priority', '6'], 'invalid_priority'],
+      [['tasks', 'create', '--title', '时间', '--due', '8640000000000001'], 'invalid_due'],
+      [['tasks', 'create', '--title', '幂等', '--operation-id', 'short'], 'invalid_operation_id'],
+    ] as const) {
+      let postCount = 0;
+      const captured = output();
+      expect(
+        await runFocusLinkCli(
+          args,
+          {
+            FOCUSLINK_ENDPOINT: 'https://focuslink.example.test',
+            FOCUSLINK_DEVICE_TOKEN: DEVICE_TOKEN,
+          },
+          captured.io,
+          (async (input: RequestInfo | URL, init?: RequestInit) => {
+            const request = new Request(input, init);
+            if (request.method === 'GET') return Response.json(initial);
+            postCount += 1;
+            return Response.json({});
+          }) as typeof fetch,
+        ),
+      ).toBe(1);
+      expect(postCount).toBe(0);
+      expect(JSON.parse(captured.stderr[0]!)).toMatchObject({ error });
+    }
+  });
+
   it('never accepts an OAuth access token as a CLI device credential', async () => {
     const captured = output();
     const exitCode = await runFocusLinkCli(

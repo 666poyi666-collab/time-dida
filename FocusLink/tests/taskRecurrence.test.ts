@@ -4,6 +4,7 @@ import {
   completeTaskRecurrence,
   nextTaskRecurrenceAt,
   normalizeTaskRecurrence,
+  normalizeTaskRecurrenceDefinition,
   restoreFinalTaskRecurrence,
 } from '@shared/taskRecurrence';
 import { buildFocusLinkTimeContext } from '@shared/timeContext';
@@ -22,6 +23,19 @@ const daily: TaskRecurrence = {
 };
 
 describe('structured task recurrence', () => {
+  it('rejects fractional and out-of-range recurrence timestamps at the shared boundary', () => {
+    for (const endAt of [100.5, 8_640_000_000_000_001]) {
+      expect(
+        normalizeTaskRecurrenceDefinition({
+          ...daily,
+          endAt,
+          count: null,
+          rollover: 'from_schedule',
+        }),
+      ).toBeNull();
+    }
+  });
+
   it('advances scheduled wall-clock dates and durable occurrence progress', () => {
     const startDate = Date.parse('2026-08-30T08:00:00+08:00');
     const dueDate = Date.parse('2026-08-30T09:00:00+08:00');

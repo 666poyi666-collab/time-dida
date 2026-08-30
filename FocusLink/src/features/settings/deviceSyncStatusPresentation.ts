@@ -31,7 +31,13 @@ export interface SettingsStatusFact {
 
 export interface DeviceSyncOverviewPresentation {
   connection: SettingsStatusFact;
+  freshness: SettingsStatusFact;
   latestSuccess: SettingsStatusFact;
+}
+
+export interface TomatodoQueuePresentation {
+  queue: SettingsStatusFact;
+  expiredHistory: SettingsStatusFact | null;
 }
 
 export interface ObservedTimePresentation {
@@ -41,6 +47,7 @@ export interface ObservedTimePresentation {
 
 const TRANSPORT_ERROR_CODES = new Set(['network_error', 'timeout']);
 const CONFLICT_ERROR_CODES = new Set(['conflict_present']);
+export const SETTINGS_LEDGER_FRESH_AFTER_MS = 15 * 60_000;
 
 /**
  * Convert the durable Sync v2 error code into the single Settings presentation.
@@ -193,15 +200,37 @@ export function presentDeviceSyncOverview(
   now = Date.now(),
 ): DeviceSyncOverviewPresentation {
   const observed = presentObservedTime(status?.lastSyncAt, now);
+  const syncAge = status?.lastSyncAt ? Math.max(0, now - status.lastSyncAt) : null;
+  const freshness: SettingsStatusFact =
+    syncAge === null
+      ? {
+          label: '账本新鲜度',
+          value: '未知',
+          detail: status?.signedIn ? '等待第一次云端账本确认' : '配对后才会检查账本新鲜度',
+          tone: 'neutral',
+        }
+      : syncAge <= SETTINGS_LEDGER_FRESH_AFTER_MS
+        ? {
+            label: '账本新鲜度',
+            value: '新鲜',
+            detail: `最近成功确认在 ${observed.relative}`,
+            tone: 'success',
+          }
+        : {
+            label: '账本新鲜度',
+            value: '待刷新',
+            detail: `最近成功确认在 ${observed.relative}；本机缓存仍可读取`,
+            tone: 'warning',
+          };
   const latestSuccess: SettingsStatusFact = status?.lastSyncAt
     ? {
-        label: '最近账本确认',
+        label: '最后成功同步',
         value: observed.relative,
         detail: observed.exact ?? '尚无成功同步时间',
-        tone: 'success',
+        tone: freshness.tone,
       }
     : {
-        label: '最近账本确认',
+        label: '最后成功同步',
         value: '尚无成功记录',
         detail: status?.signedIn ? '配对完成后等待第一次账本同步' : '配对后才会产生云端确认时间',
         tone: 'neutral',
@@ -215,6 +244,7 @@ export function presentDeviceSyncOverview(
         detail: '正在读取设备同步状态',
         tone: 'neutral',
       },
+      freshness,
       latestSuccess,
     };
   }
@@ -227,6 +257,7 @@ export function presentDeviceSyncOverview(
         detail: '输入另一台设备的 8 位本机码即可加入同步',
         tone: 'neutral',
       },
+      freshness,
       latestSuccess,
     };
   }
@@ -239,6 +270,7 @@ export function presentDeviceSyncOverview(
         detail: '本机任务和专注记录仍会保留',
         tone: 'neutral',
       },
+      freshness,
       latestSuccess,
     };
   }
@@ -251,6 +283,7 @@ export function presentDeviceSyncOverview(
         detail: status.running ? '账本同步正在执行' : '账本同步仍可单独执行',
         tone: status.running ? 'warning' : 'neutral',
       },
+      freshness,
       latestSuccess,
     };
   }
@@ -259,10 +292,11 @@ export function presentDeviceSyncOverview(
     return {
       connection: {
         label: '当前实时连接',
-        value: status.running ? '正在重新检查' : '尚未确认',
-        detail: '本机计时可继续使用；刷新后确认当前网络状态',
+        value: status.running ? '正在重新检查' : '当前未在线',
+        detail: '实时链路尚未确认；本机计时可继续使用',
         tone: 'warning',
       },
+      freshness,
       latestSuccess,
     };
   }
@@ -282,7 +316,58 @@ export function presentDeviceSyncOverview(
       detail: `${liveStateLabel} · revision ${status.liveRevision ?? 0}`,
       tone: 'success',
     },
+    freshness,
     latestSuccess,
+  };
+}
+
+export function presentTomatodoQueue(
+  uploadable: number,
+  expired: number,
+  error: string | null | undefined,
+): TomatodoQueuePresentation {
+  const safeUploadable = Number.isSafeInteger(uploadable) && uploadable > 0 ? uploadable : 0;
+  const safeExpired = Number.isSafeInteger(expired) && expired > 0 ? expired : 0;
+  const expiredHistory: SettingsStatusFact | null =
+    safeExpired > 0
+      ? {
+          label: '过期历史',
+          value: `${safeExpired} 条过期历史已停止重试`,
+          detail: '全部超过 7 天上传窗口；日期未改、记录仍保留在本机',
+          tone: 'neutral',
+        }
+      : null;
+
+  if (error) {
+    return {
+      queue: {
+        label: '上传队列',
+        value: '状态未知',
+        detail: '无法读取本机待上传记录，请检查数据库路径或文件权限',
+        tone: 'danger',
+      },
+      expiredHistory,
+    };
+  }
+  if (safeUploadable > 0) {
+    return {
+      queue: {
+        label: '上传队列',
+        value: `${safeUploadable} 条可上传`,
+        detail: '记录已留在本机；只有收到上传确认后才会移出队列',
+        tone: 'warning',
+      },
+      expiredHistory,
+    };
+  }
+  return {
+    queue: {
+      label: '上传队列',
+      value: '当前无可上传记录',
+      detail: '这里只表示可投递队列为空，不代表手机端已经显示',
+      tone: safeExpired > 0 ? 'neutral' : 'success',
+    },
+    expiredHistory,
   };
 }
 

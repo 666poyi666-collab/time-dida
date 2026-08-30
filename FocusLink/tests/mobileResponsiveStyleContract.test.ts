@@ -105,4 +105,44 @@ describe('phone, tablet and watch responsive style contract', () => {
       /@media \(min-width:\s*760px\), \(orientation:\s*landscape\)[\s\S]*?\.task-selection-detail\s*\{[^}]*min-height:\s*0/,
     );
   });
+
+  it('keeps tablet settings status, font preview and timer instruments readable', () => {
+    const mobile = compactCss('focuslink-2-mobile.css');
+    const instruments = compactCss('mobile-instruments.css');
+
+    expect(mobile).toMatch(
+      /@media \(min-width:\s*620px\)[\s\S]*?\.settings-view > \.settings-status-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    );
+    expect(mobile).toMatch(
+      /\.appearance-font-controls\s*\{[^}]*grid-template-columns:\s*minmax\(180px,\s*0\.42fr\) minmax\(0,\s*0\.58fr\)/,
+    );
+    expect(mobile).toMatch(
+      /\.appearance-font-preview\s*\{[^}]*min-height:\s*88px[^}]*margin-top:\s*0/,
+    );
+    expect(mobile).toMatch(
+      /\.appearance-timer-choice\s*\{[^}]*min-height:\s*112px[^}]*padding:\s*11px 10px 9px/,
+    );
+    expect(instruments).toMatch(
+      /@media \(min-width:\s*620px\)[\s\S]*?\.appearance-timer-preview\s*\{[^}]*min-height:\s*68px/,
+    );
+    expect(instruments).toMatch(
+      /\.appearance-timer-preview \.timer-dial\s*\{[^}]*transform:\s*scale\(0\.64\)/,
+    );
+    expect(instruments).toMatch(
+      /\.appearance-timer-preview \.dial-standard,[\s\S]*?\.appearance-timer-preview \.dial-draft\s*\{[^}]*transform:\s*scale\(0\.58\)/,
+    );
+    expect(instruments).toMatch(
+      /\.appearance-timer-preview \.dial-standard\s*\{[^}]*transform-origin:\s*left center/,
+    );
+  });
+
+  it('keeps phone sync facts in a compact two-by-two matrix', () => {
+    const mobile = compactCss('focuslink-2-mobile.css');
+    expect(mobile).toMatch(
+      /@media \(max-width:\s*619px\)[\s\S]*?\.settings-view > \.settings-status-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    );
+    expect(mobile).toMatch(
+      /\.settings-status-line\s*\{[^}]*min-height:\s*104px[^}]*grid-template-columns:\s*20px minmax\(0,\s*1fr\)/,
+    );
+  });
 });

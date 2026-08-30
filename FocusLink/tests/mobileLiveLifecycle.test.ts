@@ -90,4 +90,21 @@ describe('mobile live connection lifecycle', () => {
     expect(liveEffectGuard).toContain("document.visibilityState === 'visible'");
     expect(liveEffectGuard).toContain("!== 'reconnect'");
   });
+
+  it('keeps a local focus runtime visible when no cloud connection is configured', () => {
+    const unconfiguredStart = mobileAppSource.indexOf('if (!configured) {');
+    const onlineGuard = mobileAppSource.indexOf('if (!online) {', unconfiguredStart);
+    const unconfiguredBranch = mobileAppSource.slice(unconfiguredStart, onlineGuard);
+
+    expect(unconfiguredStart).toBeGreaterThan(-1);
+    expect(onlineGuard).toBeGreaterThan(unconfiguredStart);
+    expect(unconfiguredBranch).toContain('const localRuntime = offlineRuntimeRef.current;');
+    expect(unconfiguredBranch).toContain(
+      'const localSnapshot = offlineRuntimeSnapshot(localRuntime, deviceId);',
+    );
+    expect(unconfiguredBranch).toContain('setLiveSnapshot(localSnapshot);');
+    expect(unconfiguredBranch).toContain("setLiveSnapshotSource('local');");
+    expect(unconfiguredBranch).toContain('} else {');
+    expect(unconfiguredBranch).toContain('clearCachedLiveFocusSnapshot');
+  });
 });

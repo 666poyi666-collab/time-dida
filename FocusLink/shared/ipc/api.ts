@@ -345,7 +345,14 @@ export interface PendingTomatodoUploadResult {
   total: number;
   uploaded: number;
   failed: number;
+  expired: number;
   error?: string;
+}
+
+export interface TomatodoUploadQueueSummary {
+  total: number;
+  uploadable: number;
+  expired: number;
 }
 
 export type TomatodoBridgeState =
@@ -549,6 +556,7 @@ export interface FocusLinkAPI {
     ): Promise<TomatodoSubjectSetResult>;
     uploadPending(): Promise<PendingTomatodoUploadResult>;
     pendingCount(): Promise<number>;
+    pendingSummary(): Promise<TomatodoUploadQueueSummary>;
     bridgeStatus(): Promise<TomatodoBridgeStatus>;
     ensureBridge(): Promise<TomatodoBridgeStatus>;
   };

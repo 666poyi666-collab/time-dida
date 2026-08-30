@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Canonical FocusLink Cloudflare sync adapter and read-only MCP projection",
+  "description": "Canonical FocusLink sync adapter and OAuth MCP task/focus gateway",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test:typecheck": "tsc -p tsconfig.tests.json --noEmit",

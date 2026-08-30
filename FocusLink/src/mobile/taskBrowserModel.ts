@@ -5,6 +5,7 @@ export const ALL_PROJECTS = 'all' as const;
 export const NO_PROJECT = 'none' as const;
 
 export type TaskProjectFilter = typeof ALL_PROJECTS | typeof NO_PROJECT | string;
+export type TaskStatusFilter = 'open' | 'completed';
 
 export interface SyncedTaskGroup {
   key: string;
@@ -64,10 +65,11 @@ export function filterSyncedTasks(
   tasks: readonly SyncedTask[],
   query: string,
   projectFilter: TaskProjectFilter,
+  statusFilter: TaskStatusFilter = 'open',
 ): SyncedTask[] {
   const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
   return tasks.filter((task) => {
-    if (task.isCompleted) return false;
+    if (task.isCompleted !== (statusFilter === 'completed')) return false;
     if (
       projectFilter === NO_PROJECT &&
       task.projectId !== null &&
@@ -148,16 +150,16 @@ export function filterSyncedTaskForest(
   tasks: readonly SyncedTask[],
   query: string,
   projectFilter: TaskProjectFilter,
+  statusFilter: TaskStatusFilter = 'open',
 ): SyncedTaskTreeNode[] {
   const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
   const filter = (nodes: readonly SyncedTaskTreeNode[]): SyncedTaskTreeNode[] => {
     const result: SyncedTaskTreeNode[] = [];
     for (const node of nodes) {
       const children = filter(node.children);
-      // A completed or otherwise hidden parent must not make an open descendant disappear.
-      // Promote the surviving children while carrying the hidden path explicitly; parentId alone
-      // cannot recover a title after the completed node leaves the rendered forest.
-      if (node.isCompleted) {
+      // A parent outside the selected status must not hide a matching descendant. Promote the
+      // surviving children while preserving the hidden path title for both open and completed views.
+      if (node.isCompleted !== (statusFilter === 'completed')) {
         result.push(
           ...children.map((child) => ({
             ...child,

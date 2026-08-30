@@ -24,6 +24,7 @@ import {
   presentDeviceSyncError,
   presentDeviceSyncOverview,
   presentManagedDeviceActivity,
+  presentTomatodoQueue,
   presentTomatodoBridgeStatus,
   type SettingsStatusFact,
 } from './deviceSyncStatusPresentation';
@@ -196,6 +197,7 @@ export function SettingsPanel() {
   const [search, setSearch] = useState('');
   const [hotkeyStatus, setHotkeyStatus] = useState<HotkeyRegistrationStatus | null>(null);
   const [tomatodoPending, setTomatodoPending] = useState<number>(0);
+  const [tomatodoExpired, setTomatodoExpired] = useState<number>(0);
   const [tomatodoPendingError, setTomatodoPendingError] = useState<string | null>(null);
   const [tomatodoBridge, setTomatodoBridge] = useState<TomatodoBridgeStatus | null>(null);
   const [tomatodoUploading, setTomatodoUploading] = useState(false);
@@ -288,8 +290,9 @@ export function SettingsPanel() {
 
   const refreshTomatodoPending = async () => {
     try {
-      const count = await window.focuslink.tomatodo.pendingCount();
-      setTomatodoPending(count);
+      const summary = await window.focuslink.tomatodo.pendingSummary();
+      setTomatodoPending(summary.uploadable);
+      setTomatodoExpired(summary.expired);
       setTomatodoPendingError(null);
     } catch (error) {
       setTomatodoPendingError(error instanceof Error ? error.message : String(error));
@@ -586,7 +589,12 @@ export function SettingsPanel() {
 
       const result = await window.focuslink.tomatodo.uploadPending();
       if (result.uploaded > 0) {
-        addToast(`番茄 To-do 上传已确认：${result.uploaded} 条记录`, 'success');
+        addToast(
+          `番茄 To-do 上传已确认：${result.uploaded} 条记录${result.expired > 0 ? `；${result.expired} 条历史已停止重试` : ''}`,
+          'success',
+        );
+      } else if (result.expired > 0 && result.failed === 0) {
+        addToast(`${result.expired} 条历史记录超过 7 天，已保留本机并停止重试`, 'info');
       } else if (result.error) {
         addToast(result.error, 'info');
       } else {
@@ -913,26 +921,11 @@ export function SettingsPanel() {
     detail: '专注结束后先写入本机记录，桥接不可用时不会丢失',
     tone: 'success',
   };
-  const tomatodoQueueFact: SettingsStatusFact = tomatodoPendingError
-    ? {
-        label: '上传队列',
-        value: '状态未知',
-        detail: '无法读取本机待上传记录，请检查数据库路径或文件权限',
-        tone: 'danger',
-      }
-    : tomatodoPending > 0
-      ? {
-          label: '上传队列',
-          value: `${tomatodoPending} 条待上传`,
-          detail: '记录保留在本机，收到番茄 To-do 上传确认后才会移出队列',
-          tone: 'warning',
-        }
-      : {
-          label: '上传队列',
-          value: '当前无待上传',
-          detail: '这里只表示本机队列已处理，不代表手机端已经显示',
-          tone: 'success',
-        };
+  const tomatodoQueue = presentTomatodoQueue(
+    tomatodoPending,
+    tomatodoExpired,
+    tomatodoPendingError,
+  );
   const tomatodoPhoneFact: SettingsStatusFact = {
     label: '手机端显示',
     value: '需在番茄 To-do 核对',
@@ -1604,8 +1597,12 @@ export function SettingsPanel() {
             </button>
           </div>
           <div className="settings-sync-overview" aria-live="polite">
-            <div className="settings-fact-grid">
+            <div className="settings-fact-grid settings-device-fact-grid">
               <SettingsFact icon={<Icon.Wifi size="sm" />} fact={deviceSyncOverview.connection} />
+              <SettingsFact
+                icon={<Icon.Activity size="sm" />}
+                fact={deviceSyncOverview.freshness}
+              />
               <SettingsFact
                 icon={<Icon.History size="sm" />}
                 fact={deviceSyncOverview.latestSuccess}
@@ -1781,10 +1778,20 @@ export function SettingsPanel() {
               <div className="settings-sync-overview settings-tomatodo-overview" aria-live="polite">
                 <div className="settings-fact-grid settings-fact-grid-four">
                   <SettingsFact icon={<Icon.HardDrive size="sm" />} fact={tomatodoLocalFact} />
-                  <SettingsFact icon={<Icon.Upload size="sm" />} fact={tomatodoQueueFact} />
+                  <SettingsFact icon={<Icon.Upload size="sm" />} fact={tomatodoQueue.queue} />
                   <SettingsFact icon={<Icon.Link size="sm" />} fact={tomatodoBridgeFact} />
                   <SettingsFact icon={<Icon.Cloud size="sm" />} fact={tomatodoPhoneFact} />
                 </div>
+                {tomatodoQueue.expiredHistory ? (
+                  <div className="settings-tomatodo-expired" role="status">
+                    <Icon.History size="sm" />
+                    <div>
+                      <strong>{tomatodoQueue.expiredHistory.value}</strong>
+                      <span>{tomatodoQueue.expiredHistory.detail}</span>
+                    </div>
+                    <span className="settings-status-badge tone-neutral">保留本机</span>
+                  </div>
+                ) : null}
                 <div className="settings-sync-actions">
                   <span>“上传已确认”只代表电脑端上传调用成功；手机显示需要在番茄 To-do 中核对</span>
                   <div>

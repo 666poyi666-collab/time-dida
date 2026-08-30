@@ -11,7 +11,9 @@ import {
   presentDeviceSyncOverview,
   presentManagedDeviceActivity,
   presentObservedTime,
+  presentTomatodoQueue,
   presentTomatodoBridgeStatus,
+  SETTINGS_LEDGER_FRESH_AFTER_MS,
 } from '../src/features/settings/deviceSyncStatusPresentation';
 
 function statusFixture(overrides: Partial<DeviceSyncStatus> = {}): DeviceSyncStatus {
@@ -102,18 +104,38 @@ describe('desktop device-sync Settings presentation', () => {
       detail: '专注中 · revision 12',
       tone: 'success',
     });
+    expect(overview.freshness).toMatchObject({ value: '新鲜', tone: 'success' });
     expect(presentDeviceSyncError('network_error')).toMatchObject({
       title: '最近一次同步尝试未完成',
     });
     expect(presentDeviceSyncError('network_error')?.detail).toContain('不等同于当前设备离线');
   });
 
-  it('renders unconfirmed as unknown current connectivity rather than claiming offline', () => {
+  it('renders current realtime offline separately from the last successful ledger sync', () => {
     const overview = presentDeviceSyncOverview(
-      statusFixture({ liveConnected: false, lastError: 'network_error' }),
+      statusFixture({
+        liveConnected: false,
+        lastError: 'network_error',
+        lastSyncAt: 1_700_000_000_000,
+      }),
+      1_700_000_060_000,
     );
-    expect(overview.connection).toMatchObject({ value: '尚未确认', tone: 'warning' });
-    expect(JSON.stringify(overview.connection)).not.toContain('离线');
+    expect(overview.connection).toMatchObject({ value: '当前未在线', tone: 'warning' });
+    expect(overview.freshness).toMatchObject({ value: '新鲜', tone: 'success' });
+    expect(overview.latestSuccess.value).toBe('1 分钟前');
+  });
+
+  it('marks a valid but old ledger checkpoint as stale without calling the live link offline', () => {
+    const overview = presentDeviceSyncOverview(
+      statusFixture({
+        liveConnected: true,
+        lastSyncAt: 1_700_000_000_000,
+      }),
+      1_700_000_000_000 + SETTINGS_LEDGER_FRESH_AFTER_MS + 1,
+    );
+    expect(overview.connection).toMatchObject({ value: '已确认', tone: 'success' });
+    expect(overview.freshness).toMatchObject({ value: '待刷新', tone: 'warning' });
+    expect(overview.latestSuccess.tone).toBe('warning');
   });
 
   it('formats freshness without converting missing observations into activity', () => {
@@ -166,6 +188,25 @@ describe('desktop device-sync Settings presentation', () => {
     });
     expect(failed).toMatchObject({ value: '最近连接失败', tone: 'danger' });
     expect(JSON.stringify(failed)).not.toContain('secret upstream fixture');
+  });
+
+  it('separates uploadable TomaToDo records from expired local history', () => {
+    expect(presentTomatodoQueue(0, 223, null)).toEqual({
+      queue: {
+        label: '上传队列',
+        value: '当前无可上传记录',
+        detail: '这里只表示可投递队列为空，不代表手机端已经显示',
+        tone: 'neutral',
+      },
+      expiredHistory: {
+        label: '过期历史',
+        value: '223 条过期历史已停止重试',
+        detail: '全部超过 7 天上传窗口；日期未改、记录仍保留在本机',
+        tone: 'neutral',
+      },
+    });
+    expect(presentTomatodoQueue(2, 223, null).queue.value).toBe('2 条可上传');
+    expect(presentTomatodoQueue(0, 0, null).expiredHistory).toBeNull();
   });
 
   it('does not classify an empty status as an error', () => {

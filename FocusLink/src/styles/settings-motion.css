@@ -324,6 +324,18 @@
   border-right: 1px solid rgb(var(--app-border));
 }
 
+.settings-device-fact-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settings-device-fact-grid .settings-fact {
+  border-right: 1px solid rgb(var(--app-border));
+}
+
+.settings-device-fact-grid .settings-fact:last-child {
+  border-right: 0;
+}
+
 .settings-fact-icon {
   display: grid;
   width: 24px;
@@ -475,6 +487,38 @@
   border-top: 1px solid rgb(var(--app-border));
 }
 
+.settings-tomatodo-expired {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 14px;
+  border-bottom: 1px solid rgb(var(--app-border));
+  color: rgb(var(--app-muted));
+}
+
+.settings-tomatodo-expired > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.settings-tomatodo-expired strong {
+  color: rgb(var(--app-text));
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.settings-tomatodo-expired div > span {
+  color: rgb(var(--app-muted));
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.settings-tomatodo-expired > .settings-status-badge {
+  margin-left: 0;
+}
+
 .settings-tomatodo-advanced {
   margin: 10px 14px 12px;
 }
@@ -511,6 +555,10 @@
   }
 
   .settings-fact:nth-child(odd) {
+    border-right: 0;
+  }
+
+  .settings-device-fact-grid .settings-fact {
     border-right: 0;
   }
 

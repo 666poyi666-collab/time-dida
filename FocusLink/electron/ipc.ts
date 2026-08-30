@@ -39,6 +39,7 @@ import {
   deleteTomatodoRecordForSegment,
   getTomatodoSyncStatus,
   getPendingTomatodoCount,
+  getPendingTomatodoSummary,
   setTomatodoSubjectForSegment,
   setTomatodoSubjectsForSegments,
   uploadPendingTomatodoRecords,
@@ -771,6 +772,8 @@ export function registerIpc(
   );
   /** 查询待上云的番茄 Todo 记录数 */
   ipcMain.handle('tomatodo:pending-count', () => getPendingTomatodoCount());
+  /** 区分可上传记录和永久超出 7 天窗口的历史记录。 */
+  ipcMain.handle('tomatodo:pending-summary', () => getPendingTomatodoSummary());
   /** 只读查询桥状态；不会启动或关闭番茄 Todo。 */
   ipcMain.handle('tomatodo:bridge-status', () => getTomatodoBridgeStatus());
   /** 用户显式请求时确保桥可用；已普通运行时绝不强制重启。 */

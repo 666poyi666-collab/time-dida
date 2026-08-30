@@ -579,3 +579,22 @@
     display: none;
   }
 }
+
+@media (min-width: 620px) {
+  html[data-device-tier='tablet'] body .appearance-timer-preview {
+    min-height: 68px;
+  }
+
+  html[data-device-tier='tablet'] body .appearance-timer-preview .timer-dial {
+    transform: scale(0.64);
+  }
+
+  html[data-device-tier='tablet'] body .appearance-timer-preview .dial-standard,
+  html[data-device-tier='tablet'] body .appearance-timer-preview .dial-draft {
+    transform: scale(0.58);
+  }
+
+  html[data-device-tier='tablet'] body .appearance-timer-preview .dial-standard {
+    transform-origin: left center;
+  }
+}

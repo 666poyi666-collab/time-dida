@@ -84,6 +84,8 @@ vi.mock('../electron/logger', () => ({
 }));
 
 import {
+  getPendingTomatodoCount,
+  getPendingTomatodoSummary,
   getTomatodoSyncStatus,
   setTomatodoSubjectForSegment,
   setTomatodoSubjectsForSegments,
@@ -91,22 +93,25 @@ import {
   syncSegmentToTomatodo,
   uploadPendingTomatodoRecords,
 } from '../electron/sync/tomatodoSyncService';
+import { TOMATODO_CLOUD_UPLOAD_WINDOW_MS } from '../shared/tomatodoPolicy';
 
 function makeSegment(): FocusSegment {
+  const endedAt = Date.now() - 1_000;
+  const startedAt = endedAt - 60_000;
   return {
     id: 'segment-1',
     sessionId: 'session-1',
     taskId: null,
     taskSource: null,
     title: '普通任务',
-    startedAt: 1_000,
-    endedAt: 61_000,
+    startedAt,
+    endedAt,
     activeElapsedMs: 60_000,
     note: null,
     cloudFocusId: null,
     tomatodoSubject: null,
-    createdAt: 1_000,
-    updatedAt: 61_000,
+    createdAt: startedAt,
+    updatedAt: endedAt,
   };
 }
 
@@ -346,7 +351,14 @@ describe('tomatodo sync service bridge safety and state', () => {
 
     const result = await uploadPendingTomatodoRecords();
 
-    expect(result).toEqual({ ok: true, total: 1, uploaded: 1, failed: 0, error: undefined });
+    expect(result).toEqual({
+      ok: true,
+      total: 1,
+      uploaded: 1,
+      failed: 0,
+      expired: 0,
+      error: undefined,
+    });
     expect(harness.writeBatchBridge).toHaveBeenCalledTimes(1);
     expect(JSON.parse(harness.settings.get('tomatodo.pendingSegmentIdsV060') ?? '[]')).toEqual([]);
     expect(harness.ensureBridge).not.toHaveBeenCalled();
@@ -382,6 +394,35 @@ describe('tomatodo sync service bridge safety and state', () => {
     ]);
   });
 
+  it('keeps expired history locally while removing it from upload and retry counts', async () => {
+    harness.pendingRecords = [
+      {
+        recordId: 299,
+        segmentId: 'expired-segment',
+        name: '学习',
+        time: 1,
+        startDate: Date.now() - TOMATODO_CLOUD_UPLOAD_WINDOW_MS - 120_000,
+        isSynced: 0,
+      },
+    ];
+
+    expect(getPendingTomatodoSummary()).toEqual({ total: 1, uploadable: 0, expired: 1 });
+    expect(getPendingTomatodoCount()).toBe(0);
+    const result = await uploadPendingTomatodoRecords({ ensureBridge: true });
+
+    expect(result).toMatchObject({
+      ok: true,
+      total: 1,
+      uploaded: 0,
+      failed: 0,
+      expired: 1,
+    });
+    expect(result.error).toContain('已停止自动重试');
+    expect(harness.ensureBridge).not.toHaveBeenCalled();
+    expect(harness.writeBatchBridge).not.toHaveBeenCalled();
+    expect(harness.pendingRecords).toHaveLength(1);
+  });
+
   it('ensures and launches the bridge only for an explicit manual pending upload', async () => {
     harness.running = false;
     harness.settings.set('tomatodo.pendingSegmentIdsV060', JSON.stringify(['segment-1']));
@@ -413,7 +454,14 @@ describe('tomatodo sync service bridge safety and state', () => {
 
     const result = await uploadPendingTomatodoRecords({ ensureBridge: true });
 
-    expect(result).toEqual({ ok: true, total: 1, uploaded: 1, failed: 0, error: undefined });
+    expect(result).toEqual({
+      ok: true,
+      total: 1,
+      uploaded: 1,
+      failed: 0,
+      expired: 0,
+      error: undefined,
+    });
     expect(harness.ensureBridge).toHaveBeenCalledTimes(1);
     expect(harness.writeBatchBridge).toHaveBeenCalledTimes(1);
     expect(harness.addRecord).not.toHaveBeenCalled();
@@ -445,7 +493,7 @@ describe('tomatodo sync service bridge safety and state', () => {
         segmentId: 'segment-1',
         name: '学习',
         time: 1,
-        startDate: 1_000,
+        startDate: Date.now() - 60_000,
         isSynced: 0,
       },
     ];
@@ -473,7 +521,14 @@ describe('tomatodo sync service bridge safety and state', () => {
 
     const result = await uploadPendingTomatodoRecords();
 
-    expect(result).toEqual({ ok: true, total: 1, uploaded: 1, failed: 0, error: undefined });
+    expect(result).toEqual({
+      ok: true,
+      total: 1,
+      uploaded: 1,
+      failed: 0,
+      expired: 0,
+      error: undefined,
+    });
   });
 
   it('serializes concurrent segment uploads through one service-level operation slot', async () => {

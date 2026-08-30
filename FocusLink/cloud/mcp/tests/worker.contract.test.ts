@@ -451,6 +451,52 @@ describe('Worker canonical HTTP contract', () => {
     expect(JSON.stringify(created)).not.toContain('MCP 子任务');
   });
 
+  it('rejects invalid task dates and caller-owned recurrence progress at the MCP schema', async () => {
+    const writable = await createOAuthFixture({ scope: 'focuslink:read focuslink:write' });
+    writable.install();
+    const sessionId = await initializeMcp(writable.token);
+    for (const argumentsValue of [
+      {
+        operationId: 'mcp-invalid-date-1',
+        expectedRevision: 7,
+        title: '超界日期',
+        dueDate: 8_640_000_000_000_001,
+      },
+      {
+        operationId: 'mcp-invalid-progress-1',
+        expectedRevision: 7,
+        title: '伪造循环进度',
+        dueDate: 1_720_000_100_000,
+        recurrence: {
+          timezone: 'Asia/Shanghai',
+          frequency: 'daily',
+          interval: 1,
+          byWeekday: [],
+          byMonthDay: [],
+          endAt: null,
+          count: 3,
+          completedCount: 2,
+          rollover: 'from_schedule',
+        },
+      },
+    ]) {
+      const response = await mcpPost(
+        {
+          jsonrpc: '2.0',
+          id: 31,
+          method: 'tools/call',
+          params: { name: 'focuslink_create_task', arguments: argumentsValue },
+        },
+        writable.token,
+        sessionId,
+      );
+      expect(response.status).toBe(200);
+      expect(await jsonRpcMessage(response)).toMatchObject({
+        result: { isError: true },
+      });
+    }
+  });
+
   it('rejects the non-canonical focuslink:pair OAuth scope', async () => {
     const oauth = await createOAuthFixture({ scope: 'focuslink:pair' });
     oauth.install();

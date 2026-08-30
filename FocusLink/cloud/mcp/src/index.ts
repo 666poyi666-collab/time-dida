@@ -49,6 +49,7 @@ import {
   type TaskAuthorityError,
 } from './tasks';
 import { normalizeTaskRecurrenceDefinition } from '../../../shared/taskRecurrence';
+import { DEVICE_SYNC_MAX_TIMESTAMP_MS } from '../../../shared/sync/deviceProtocol';
 
 export interface Env extends FeedEnv, McpOAuthEnv, BootstrapEnv {
   FOCUSLINK_FEED_SYNC: DurableObjectNamespace;
@@ -246,8 +247,9 @@ function createFoxlinkMcpServer(env: Env): McpServer {
   const nullableProjectId = projectId.nullable();
   const taskTitle = z.string().min(1).max(1_000);
   const taskPriority = z.number().int().min(0).max(5).nullable().optional();
-  const taskStartDate = z.number().int().nonnegative().nullable().optional();
-  const taskDueDate = z.number().int().nonnegative().nullable().optional();
+  const taskTimestamp = z.number().int().min(0).max(DEVICE_SYNC_MAX_TIMESTAMP_MS);
+  const taskStartDate = taskTimestamp.nullable().optional();
+  const taskDueDate = taskTimestamp.nullable().optional();
   const taskTags = z.array(z.string().min(1).max(100)).max(50).optional();
   const recurrenceSchema = z
     .object({
@@ -256,7 +258,7 @@ function createFoxlinkMcpServer(env: Env): McpServer {
       interval: z.number().int().min(1).max(999).default(1),
       byWeekday: z.array(z.number().int().min(1).max(7)).max(7).default([]),
       byMonthDay: z.array(z.number().int().min(1).max(31)).max(31).default([]),
-      endAt: z.number().int().nonnegative().nullable().default(null),
+      endAt: taskTimestamp.nullable().default(null),
       count: z.number().int().min(1).max(1_000_000).nullable().default(null),
       rollover: z.enum(['from_schedule', 'from_completion']).default('from_schedule'),
     })
@@ -404,10 +406,10 @@ function createFoxlinkMcpServer(env: Env): McpServer {
         includeCompleted: z.boolean().default(false),
         query: z.string().max(200).optional(),
         priority: z.number().int().min(0).max(5).nullable().optional(),
-        startFrom: z.number().int().nonnegative().optional(),
-        startTo: z.number().int().nonnegative().optional(),
-        dueFrom: z.number().int().nonnegative().optional(),
-        dueTo: z.number().int().nonnegative().optional(),
+        startFrom: taskTimestamp.optional(),
+        startTo: taskTimestamp.optional(),
+        dueFrom: taskTimestamp.optional(),
+        dueTo: taskTimestamp.optional(),
         tags: taskTags,
         parentId: taskId.nullable().optional(),
         limit: z.number().int().min(1).max(500).default(100),

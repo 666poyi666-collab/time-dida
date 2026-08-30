@@ -34,6 +34,7 @@ import { getSettings } from '../settingsStore.js';
 import {
   buildTomatodoRecord,
   inferTomatodoSubject,
+  isTomatodoCloudUploadEligible,
   isTomatodoSubject,
   resolveSegmentSubject,
   shouldSyncSegmentToTomatodo,
@@ -765,7 +766,14 @@ export interface PendingUploadResult {
   total: number;
   uploaded: number;
   failed: number;
+  expired: number;
   error?: string;
+}
+
+export interface TomatodoUploadQueueSummary {
+  total: number;
+  uploadable: number;
+  expired: number;
 }
 
 export interface PendingTomatodoUploadOptions {
@@ -813,7 +821,7 @@ async function uploadPendingTomatodoRecordsUnlocked(
 ): Promise<PendingUploadResult> {
   const config = getTomatodoConfig();
   if (!config) {
-    return { ok: true, total: 0, uploaded: 0, failed: 0 };
+    return { ok: true, total: 0, uploaded: 0, failed: 0, expired: 0 };
   }
   const dbPath = resolveTomatodoDbPath(config.dbPath);
   const pendingBySegmentId = new Map(
@@ -858,7 +866,29 @@ async function uploadPendingTomatodoRecordsUnlocked(
   completeDurableTomatodoSegments(invalidDurableIds);
 
   if (inputs.length === 0) {
-    return { ok: true, total: 0, uploaded: 0, failed: 0 };
+    return { ok: true, total: 0, uploaded: 0, failed: 0, expired: 0 };
+  }
+
+  const uploadableInputs = inputs.filter((input) =>
+    isTomatodoCloudUploadEligible(input.record.createDate),
+  );
+  const expiredInputs = inputs.filter(
+    (input) => !isTomatodoCloudUploadEligible(input.record.createDate),
+  );
+  const expiredSegmentIds = new Set(expiredInputs.map((input) => input.segmentId));
+  const expired = expiredInputs.length;
+  // These records remain in TomaToDo's local history, but retrying can never succeed because the
+  // external API rejects them permanently. Remove only FocusLink's durable retry intent.
+  completeDurableTomatodoSegments(expiredInputs.map((input) => input.segmentId));
+  if (uploadableInputs.length === 0) {
+    return {
+      ok: true,
+      total: inputs.length,
+      uploaded: 0,
+      failed: 0,
+      expired,
+      error: `${expired} 条历史记录已超过番茄 To-do 的 7 天上传窗口；记录仍保留在本机，已停止自动重试`,
+    };
   }
 
   let bridgeConnected = false;
@@ -869,7 +899,8 @@ async function uploadPendingTomatodoRecordsUnlocked(
         ok: false,
         total: inputs.length,
         uploaded: 0,
-        failed: inputs.length,
+        failed: uploadableInputs.length,
+        expired,
         error: bridgeStatus.error ?? '番茄 Todo 同步桥不可用。',
       };
     }
@@ -880,7 +911,12 @@ async function uploadPendingTomatodoRecordsUnlocked(
     // Durable 队列中可能有“客户端运行但桥不可用”时尚未写入 JSON 的 segment。
     // 客户端现已关闭，可以安全落到本地库；保留 durable id，待下次运行后上云确认。
     for (const segmentId of durableIds) {
-      if (pendingBySegmentId.has(segmentId) || invalidDurableIds.includes(segmentId)) continue;
+      if (
+        pendingBySegmentId.has(segmentId) ||
+        invalidDurableIds.includes(segmentId) ||
+        expiredSegmentIds.has(segmentId)
+      )
+        continue;
       await syncSegmentToTomatodoUnlocked(segmentId);
     }
     return {
@@ -888,12 +924,13 @@ async function uploadPendingTomatodoRecordsUnlocked(
       total: inputs.length,
       uploaded: 0,
       failed: 0,
+      expired,
       error: '番茄 Todo 未运行；记录已安全写入本地待传队列，将在下次启动后上传。',
     };
   }
 
   const bridge = await writeTomatodoRecordsThroughBridge(
-    inputs.map((input) => input.record),
+    uploadableInputs.map((input) => input.record),
     {
       syncToPhone: true,
     },
@@ -903,7 +940,8 @@ async function uploadPendingTomatodoRecordsUnlocked(
       ok: false,
       total: inputs.length,
       uploaded: 0,
-      failed: inputs.length,
+      failed: uploadableInputs.length,
+      expired,
       error: '番茄 Todo 同步桥不可用。请确保番茄 Todo 已启动。',
     };
   }
@@ -911,9 +949,9 @@ async function uploadPendingTomatodoRecordsUnlocked(
   // Keep the bounded grace read for every input: TomaToDo can persist isSynced=1
   // immediately after a transient bridge response, even when the first response
   // itself did not carry the upload confirmation.
-  const bridgeCloudConfirmedSegmentIds = inputs.map((input) => input.segmentId);
+  const bridgeCloudConfirmedSegmentIds = uploadableInputs.map((input) => input.segmentId);
   const bridgePhoneConfirmedSegmentIds = new Set(
-    inputs
+    uploadableInputs
       .filter((_, index) => bridge.results[index]?.phoneSyncConfirmed ?? true)
       .map((input) => input.segmentId),
   );
@@ -927,12 +965,13 @@ async function uploadPendingTomatodoRecordsUnlocked(
   );
   completeDurableTomatodoSegments(uploadedSegmentIds);
   const uploaded = uploadedSegmentIds.length;
-  const failed = Math.max(0, inputs.length - uploaded);
+  const failed = Math.max(0, uploadableInputs.length - uploaded);
 
   logger.info('tomatodoSync', 'pending upload completed', {
     total: inputs.length,
     uploaded,
     failed,
+    expired,
   });
 
   return {
@@ -940,6 +979,7 @@ async function uploadPendingTomatodoRecordsUnlocked(
     total: inputs.length,
     uploaded,
     failed,
+    expired,
     error: failed > 0 ? `${failed} 条仍待云端确认，已保留并将在后台自动重试` : undefined,
   };
 }
@@ -952,10 +992,31 @@ export function uploadPendingTomatodoRecords(
 
 /** 返回当前待上云的 FocusLink 记录数（供 UI 展示）。 */
 export function getPendingTomatodoCount(): number {
+  return getPendingTomatodoSummary().uploadable;
+}
+
+export function getPendingTomatodoSummary(now = Date.now()): TomatodoUploadQueueSummary {
   const config = getTomatodoConfig();
-  if (!config) return 0;
+  if (!config) return { total: 0, uploadable: 0, expired: 0 };
   const dbPath = resolveTomatodoDbPath(config.dbPath);
-  const pending = new Set(listPendingTomatodoRecords(dbPath).map((record) => record.segmentId));
-  for (const segmentId of readDurablePendingSegmentIds()) pending.add(segmentId);
-  return pending.size;
+  const pending = new Map(
+    listPendingTomatodoRecords(dbPath).map((record) => [
+      record.segmentId,
+      record.startDate + Math.round(record.time * 60_000),
+    ]),
+  );
+  for (const segmentId of readDurablePendingSegmentIds()) {
+    if (pending.has(segmentId)) continue;
+    const segment = getSegment(segmentId);
+    if (segment && shouldSyncSegmentToTomatodo(segment)) {
+      pending.set(segmentId, segment.endedAt as number);
+    }
+  }
+  let uploadable = 0;
+  let expired = 0;
+  for (const createDate of pending.values()) {
+    if (isTomatodoCloudUploadEligible(createDate, now)) uploadable += 1;
+    else expired += 1;
+  }
+  return { total: pending.size, uploadable, expired };
 }

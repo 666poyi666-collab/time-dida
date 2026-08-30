@@ -970,6 +970,10 @@ function validateTaskDates(
   if (recurrence && startDate === null && dueDate === null) {
     throw new Error('循环任务必须设置开始时间或截止时间');
   }
+  const anchor = dueDate ?? startDate;
+  if (recurrence?.endAt !== null && recurrence?.endAt !== undefined && anchor !== null) {
+    if (recurrence.endAt < anchor) throw new Error('循环结束时间不能早于当前任务日期');
+  }
 }
 
 function validateTaskSnapshotMutationResult(value: unknown): value is TaskSnapshotMutationResult {

@@ -88,6 +88,9 @@ describe('mobile owner account entry', () => {
     const markup = renderToStaticMarkup(
       createElement(ConnectionSheet, {
         authenticated: true,
+        connection: 'live',
+        online: true,
+        lastSyncAt: Date.now() - 60_000,
         accountLabel: 'Poyi',
         busy: false,
         notice: null,
@@ -114,6 +117,9 @@ describe('mobile owner account entry', () => {
     const markup = renderToStaticMarkup(
       createElement(ConnectionSheet, {
         authenticated: true,
+        connection: 'live',
+        online: true,
+        lastSyncAt: Date.now() - 60_000,
         accountLabel: 'Poyi',
         busy: false,
         notice: null,
@@ -171,7 +177,9 @@ describe('mobile owner account entry', () => {
       }),
     );
     expect(markup).toContain('已配对设备');
-    expect(markup).toContain('当前设备 · 正在同步');
+    expect(markup).toContain('手机 · 当前在线');
+    expect(markup).toContain('账本最后成功');
+    expect(markup).not.toContain('当前设备 · 正在同步');
     expect(markup).toContain('其他设备');
     expect(markup).toContain('无效与测试设备');
     expect(markup).toContain('FocusLink 平板');
