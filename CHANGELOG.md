@@ -17,7 +17,7 @@
 - 修复 360px 手机设置页中标准、翻页、像素、计数器、游标和制图仪表预览因缩放原点偏移而被裁切；所有九种仪表改为容器居中并增加父子几何门禁。
 - 番茄 To-do 状态拆分为本机写入、上传队列、桌面桥接和手机显示，明确“上传已确认”不等于手机端已回读。
 - 字体扩展为八套，新增思源宋体和站酷快乐体；正文基线、计时仪表、明暗颜色和 reduced-motion 继续统一。
-- private/public Worker 已更新并通过远端 19/19；Windows、华为平板和小米同版实装，真实配对后的任务、live 与账本三路闭环通过。ChatGPT Web 已刷新出当前时间和清单/任务读写工具，重新连接 `focuslink:write` OAuth 与生产可逆写入仍等待动作时确认；0.12.105 保持本地候选、未创建 GitHub Release。
+- private/public Worker 已更新并通过远端 19/19；Windows、华为平板和小米同版实装，真实配对后的任务、live 与账本三路闭环通过。ChatGPT Web 已完成 `focuslink:read + focuslink:write` OAuth，生产创建清单/循环任务、字段读回和删除清理从 revision `98→102` 全部 `applied` 且零残留；0.12.105 保持本地候选、未创建 GitHub Release。
 
 ## v0.12.104 - 2026-08-28（每台设备本机码与三端体验收口）
 

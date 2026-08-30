@@ -4,7 +4,7 @@ FocusLink 的唯一公开 canonical cloud origin。数据权威仍是内部 Focu
 
 ## 当前状态
 
-v0.12.105 的上游 auth、service binding、统一 OAuth read/write scope 与时间/循环任务扩展已部署；当前 public MCP 版本为 `3592ccde-efdf-4ce0-8f1a-34a1b9fb697b`，远端匿名探针 `19/19` 通过。ChatGPT Web 已刷新并读到当前时间、清单/任务读写和 `focuslink:write` 工具定义，但现有连接仍需重新完成 OAuth 扩权；生产任务读写 E2E 尚未执行，因此当前保持 **partial**，不把本地合同测试或工具列表刷新冒充认证态已验收。
+v0.12.105 的上游 auth、service binding、统一 OAuth read/write scope 与时间/循环任务扩展已部署；private authority 为 `1e8d3397-f989-4e20-8912-d4fd4d7b5841`，public MCP 为 `4919bcce-8b7c-4eb1-a2ad-902b3273854f`，Poyi OAuth 为 `fab9ed8a-6400-42c3-b78b-7361aef706c0`，远端匿名探针 `19/19` 通过。ChatGPT Web 已完成 read/write OAuth，并以真实生产工具完成清单与循环任务创建、字段读回、删除和零残留确认；认证态 E2E 已闭合。
 
 生产拓扑：
 

@@ -6,7 +6,7 @@
 >
 > 发布类型：本地候选，未创建 tag 或 GitHub Release
 >
-> 验证状态：源码、Worker、Windows、华为平板、小米安装与 packaged smoke 已完成；ChatGPT Web 工具定义已刷新，OAuth 写权限重新连接等待用户确认
+> 验证状态：源码、Worker、Windows、华为平板、小米安装、packaged smoke 与 ChatGPT Web OAuth 读写闭环已完成
 
 ## 主要变化
 
@@ -24,7 +24,7 @@
 ## 验证
 
 - Node 22.22.2 / npm 10.9.7：format/typecheck/lint 通过；根 Vitest `127 files / 987 tests`，cloud/mcp `11 files / 117 tests`，cross-device `6 files / 63 tests`。
-- Cloudflare 两阶段协议通过；private/public dry-run 通过。private `focuslink-sync` 已部署 `5c413507-a033-46ed-9ed2-b541f5190947`，public `foxlink-mcp` 已部署 `3592ccde-efdf-4ce0-8f1a-34a1b9fb697b`，远端 probe `19/19`。
+- Cloudflare 两阶段协议通过；private/public dry-run 通过。private `focuslink-sync` 已部署 `1e8d3397-f989-4e20-8912-d4fd4d7b5841`，public `foxlink-mcp` 已部署 `4919bcce-8b7c-4eb1-a2ad-902b3273854f`，Poyi OAuth 已部署 `fab9ed8a-6400-42c3-b78b-7361aef706c0`，远端 probe `19/19`。
 - unpacked UI、固定两态 mini、live fallback、portable startup 与完整 portable UI 通过。portable 冷启动首次超过旧 15 秒等待，UI 首轮实际已暂停但过渡节点仍保留旧按钮；门禁改为 60 秒并读取最新主按钮后，同一包复跑通过。包内身份 `0.12.105 / edf0915`。
 - Windows installer `/S` exit 0；卸载项、FileVersion、ProductVersion 回读 `0.12.105 / 0.12.105 / 0.12.105.0`，安装版日志回读构建 `edf0915`。SQLite `quick_check=ok`，安装前后保持 111 sessions / 250 segments / 193 pauses，设备凭据文件保留。
 - 番茄 To-do bridge ensure 启动标准客户端并回读 `connected=true`；设置页真实显示“当前无可上传记录 / 223 条过期历史已停止重试 / 连接已确认”，没有无效上传按钮。
@@ -32,11 +32,11 @@
 - 平板与 Windows 真实配对后，任务创建/移动/完成/恢复双向收敛；实时链完成“平板开始 → PC 暂停 → 平板继续/结束”；PC 回读账本 `2 segments + 1 pause`。所有临时任务、清单和会话最终精确匹配为 0。
 - 小米 `192.168.1.4:5555` 旧正式包因历史签名不能覆盖，未卸载、未清数据；同源码并行包 `app.focuslink.mobile.v012105` 已覆盖、启动并回读 `0.12.105/1305`。
 - 正式 Android APK `app.focuslink.mobile` SHA256：`8334405326DFEA483596B4B035ACD683AFBA9AA026314FEBC5A61C93C425442A`。
+- ChatGPT Web 已完成 FocusLink read/write OAuth；真实创建清单和 daily 循环任务，读回颜色、优先级、截止时间、标签与 recurrence，再删除任务和清单。mutation revision `98→102` 全部 `applied`，最终项目/任务残留均为 0。
 - `.git/lfs/tmp` 打包前后均为 0 文件 / 0 B。
 
 ## 已知限制
 
-- ChatGPT Web 已刷新 FocusLink 插件定义，当前时间、清单/任务读写与 `focuslink:write` 都已出现。现有连接仍需在“重新连接”中扩展 OAuth 权限；页面停在该动作前，等待用户动作时确认，生产可逆写入尚未执行。
 - 小米正式包保留旧签名的 `0.12.87` 用户数据；本轮使用并行包验证安装，不通过卸载旧包换取覆盖成功。
 - 番茄 To-do 当前没有手机端专注记录独立回读；“上传已确认”仍不能代替手机显示确认。223 条超窗历史不会自动重排日期。
 - 全量 Android instrumentation 的 25 项中，4 项因真实云参数/设备型号不满足而条件跳过，3 个仅用于人工截图保持的通知/悬浮窗用例因系统权限未开启失败；上述 `4/4 + 13/13` 隔离发布合同单独通过。

@@ -5,13 +5,14 @@
 - 华为平板与 Windows 通过真实 8 位本机码完成 exchange/claim；任务快照、实时开始/暂停/继续/结束和 `2 segments + 1 pause` 已结束账本分别验收，所有临时清单、任务与会话均按精确 ID 清理。
 - 修复移动端后台 5 秒刷新取消前台任务操作的问题：同账号任务/账本请求复用在途 Promise，账号切换继续强制失效。平板新增待办/已完成分段与恢复入口，真机在后台刷新并发下首击完成/恢复均成功。
 - 设置页状态改为当前实时、账本新鲜度、任务 revision 和本机会话四项事实；番茄 To-do 的可上传队列与 223 条过期历史分开。平板字体/九仪表预览扩容并修正标准、制图预览裁切。
-- ChatGPT Web 的 FocusLink 插件定义已刷新，页面现已列出当前时间、清单/任务读写和 `focuslink:write`；现有连接仍需在“重新连接”中完成 OAuth 扩权，生产临时任务尚未创建，未标记完整 E2E。
+- ChatGPT Web 的 FocusLink 插件定义已刷新并完成 `focuslink:read + focuslink:write` OAuth；生产清单/循环任务真实创建、字段读回与删除清理均成功，不再保持 partial。
 - Sol 独立审计补齐 MCP 9 个写 handler 到 authority mutation 的逐入口验证，并扩展 CLI 的清单/任务 list/get/update/filter、redirect、超大/非法响应和完整帮助门禁；公网部署状态文档改为实际版本 `3592ccde…`，认证态仍保持 partial。
 - 同步设置截图新增实时/离线历史设备、陈旧/撤销设备、2 条可上传 + 223 条过期番茄记录和桥接失败夹具。新增父子几何断言后真实发现 360px 手机六种仪表预览裁切；改为容器居中与中心缩放后，标准仪表由右侧超出 65.5px 收敛为左右各 0.9px，360/412/640/760/915×412 明暗门禁全部通过。合并复验为根 `127 files / 987 tests`、MCP `11 files / 117 tests`，format/typecheck/lint 与 MCP source/test typecheck 全绿。
 - 新 portable 首次 startup 因自解压冷启动超过旧 15 秒窗口而超时，UI smoke 首轮因 Framer Motion 过渡期间 `querySelector` 读到旧“暂停”按钮而在真实 `paused` 状态误失败。startup 等待扩到 60 秒并精确清理隔离 PID 树，UI smoke 改读最新主按钮并输出并存节点诊断；同一包重跑 startup 与完整 UI 均通过，原失败事实保留。
 - 系统 Node 已变成 24.19.0，不符合项目 22.x 门禁；从 Node 官方发布站下载并校验 SHA256 的 22.22.2 仅用于项目临时构建，最终干净包身份为 `0.12.105 / edf0915`。Windows `/S` 与安装日志、华为正式包 CDP、华为 4+13 隔离合同、小米并行包均完成回读；正式 APK hash `83344053…442A`，installer/portable 为 `55EB71F7…43F4` / `B5714CF4…628D`。
 - ChatGPT FocusLink OAuth 已修复旧 DCR scope 快照并成功连接，读工具回读生产 revision 78；写入在 ChatGPT 与独立短期 PKCE 客户端都被 authority 4xx 拒绝且零残留，重部署当前私有 Worker 后仍复现。为继续诊断，public MCP 将常见 400/403/404/405 拆成稳定脱敏错误码，其余 4xx 仅携带 HTTP 状态，仍不读取或透传上游正文、任务内容。
 - 精确码确认写入失败为 HTTP 415：private Worker 将 MCP POST 转发到 Account DO 时漏掉 `Content-Type`，而 Account DO 明确要求 JSON。转发层现补回 `application/json; charset=utf-8`，并以 `ArrayBuffer` 转发可信内部正文，避免 ReadableStream duplex 差异；路由合同已覆盖。这也是此前 MCP 读取全绿但所有任务写入同时失败的根因。
+- 修复后独立短期 PKCE 客户端从 revision `87→98` 完成 11 次清单/任务 CRUD、父子、颜色、优先级、日期、标签、循环、完成/恢复与移动，全部 `applied`，读回正确且零残留，临时令牌已撤销。ChatGPT Web 随后从 `98→102` 完成创建清单、创建循环任务、读回、删除任务和删除清单，四次写入全部 `applied`，zeroResidual=true。
 - 最终只读审查补掉三个边界：账号切换期间旧 connection 请求禁止提交；CLI 的 200 响应体断流按同 operationId 重试；共享循环时间拒绝小数与 JS Date 上限外值。对应定向测试 41 项通过。
 - 最终 source-only 源码 `e6dde4b` 已完成 installer/portable/APK 构建与三端安装；private/public Worker 更新、远端 19/19、packaged smoke、Windows 数据保留和番茄真实状态回读均通过。portable smoke 额外等待 native viewport 恢复并保留失败 DOM。ChatGPT 插件刷新仍保留为需用户确认的唯一外部动作。
 - 继续沿用未闭合的 `0.12.105/1305` 候选，不为番茄/平板验收补修增加版本号。华为平板恢复在线并安装同版；隔离 9/9、解锁后 PiP 1/1 通过。
