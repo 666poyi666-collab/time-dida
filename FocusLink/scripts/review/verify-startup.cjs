@@ -5,7 +5,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const WebSocket = require('ws');
 
 const executable = path.resolve(process.argv[2] || '');
@@ -22,12 +22,11 @@ const generated = fs.readFileSync(path.join(root, 'shared', 'version.generated.t
 const expectedCommit = /APP_COMMIT\s*=\s*'([^']+)'/.exec(generated)?.[1] || '';
 
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'focuslink-startup-'));
-let port = 0;
-const app = spawn(
-  executable,
-  [`--remote-debugging-port=${port}`, `--user-data-dir=${userDataDir}`, '--hidden'],
-  { stdio: 'ignore', windowsHide: true },
-);
+// Electron 43 on Windows does not reliably publish DevToolsActivePort for port 0,
+// and ports above the Chromium test range have also failed to bind in packaged runs.
+// Mirror the proven packaged UI smoke range.
+let port = 9200 + Math.floor(Math.random() * 600);
+let app;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -35,7 +34,10 @@ function delay(ms) {
 
 async function waitForPage() {
   let lastError;
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 240; attempt += 1) {
+    if (app?.exitCode !== null) {
+      throw new Error(`Electron exited before exposing a page (code ${app.exitCode})`);
+    }
     try {
       if (!port) {
         const activePortFile = path.join(userDataDir, 'DevToolsActivePort');
@@ -65,6 +67,11 @@ async function waitForPage() {
 }
 
 async function main() {
+  app = spawn(
+    executable,
+    [`--remote-debugging-port=${port}`, `--user-data-dir=${userDataDir}`, '--hidden'],
+    { stdio: 'ignore', windowsHide: true },
+  );
   const page = await waitForPage();
   const socket = new WebSocket(page.webSocketDebuggerUrl);
   let commandId = 0;
@@ -140,7 +147,14 @@ main()
   })
   .finally(async () => {
     await delay(400);
-    if (!app.killed) app.kill();
+    if (app?.pid && process.platform === 'win32') {
+      spawnSync('taskkill.exe', ['/PID', String(app.pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+    } else if (app && !app.killed) {
+      app.kill();
+    }
     try {
       fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 150 });
     } catch (cleanupError) {

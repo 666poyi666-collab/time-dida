@@ -131,7 +131,10 @@ async function inspectState(expectedState) {
     const result = await evaluate(`(() => {
       const consoleElement = document.querySelector('.focus-console');
       const workspace = document.querySelector('.session-workspace');
-      const primary = document.querySelector('.timer-controls .btn-main-action');
+      const primaryButtons = [...document.querySelectorAll('.timer-controls .btn-main-action')];
+      // AnimatePresence may retain the exiting button while a hidden portable window is
+      // being brought to the foreground. The current button is appended after that node.
+      const primary = primaryButtons.at(-1) || null;
       const status = document.querySelector('.focus-state-word');
       const stateMoment = document.querySelector('.timer-readout-meta > span:nth-child(2)');
       const ribbon = document.querySelector('.temporal-ribbon');
@@ -145,6 +148,8 @@ async function inspectState(expectedState) {
         workspaceClass: workspace?.className || null,
         primaryBackground: primary ? getComputedStyle(primary).backgroundImage + ' ' + getComputedStyle(primary).backgroundColor : null,
         primaryText: primary?.textContent?.trim() || null,
+        primaryButtonCount: primaryButtons.length,
+        primaryButtonTexts: primaryButtons.map((button) => button.textContent?.trim() || ''),
         primaryTime: document.querySelector('.timer-dial')?.textContent?.trim() || null,
         statusText: status?.textContent?.trim() || null,
         stateMomentText: stateMoment?.textContent?.trim() || null,
