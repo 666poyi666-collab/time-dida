@@ -49,7 +49,7 @@ npm run build
 npm run regression:electron
 ```
 
-使用 `scripts/regression/` 的自测、跨设备三表原子导入与崩溃恢复流程时，所有 user data 和结果写入项目忽略的 `test-data/` 或系统临时目录。生成的 `dist-selftest/`、`*-result.json` 与测试数据完成后删除，不进入 release。
+使用 `scripts/regression/` 的自测、跨设备三表原子导入与崩溃恢复流程时，所有 user data 和结果写入项目忽略的 `test-data/` 或系统临时目录。生成的 `dist-selftest/`、`*-result.json` 与测试数据完成后删除，不进入 release；Windows 清理统一运行 `npm run clean:temp-data -- --apply`，不要依赖会被执行策略拦截的递归 PowerShell 删除。
 
 ### Web、测试云与 Android
 
@@ -121,7 +121,9 @@ Authority observation 本地合同必须覆盖：默认公网入口拒绝、name
 
 公网移动端验收必须在 Windows FocusLink 进程停止时，分别由小米手机和华为平板完成开始、暂停、继续、结束，并在 Cloudflare 中各形成一份含 2 个 segment、1 个 pause 的独立账本。随后 Windows 启动并执行同步，两份会话在 SQLite 中各出现一次；再次同步不得增加副本。旧 Node cursor 切到 Cloudflare 时，客户端必须根据结构化 `invalid_cursor` 清空当前连接的缓存并从空 cursor 重建，不得依赖人工清数据。
 
-云端 MCP 第一方任务门禁还必须在同一 Account DO 任务快照上验证：读工具能列出清单/任务并保留 `parentId`、截止时间、优先级和标签；写工具（清单创建/更新/删除，任务创建/更新/完成/恢复/删除/移动）必须带 `operationId` 与 `expectedRevision`。同 operation 正文重放只能返回 `duplicate`，复用 operationId、旧 revision 或跨清单父子关系必须拒绝且不推进快照；清单删除只迁入 `local-inbox`，任务删除才永久删除子树。OAuth 只读 token 的写调用必须 403，确认响应不得包含任务正文或凭据。该门禁使用 `TASK_SNAPSHOT_MUTATION_PATH` 的 Cloudflare adapter/Account DO，不把本地 JSON 或 D1 projection 当作任务权威。
+云端 MCP 第一方任务门禁还必须在同一 Account DO 任务快照上验证：`focuslink_get_current_time` 返回 serverTime、IANA timezone、UTC/local 字段、offset 与真实日边界；读工具能列出/读取清单与任务并保留 `parentId`、开始/截止时间、优先级、标签和结构化循环；写工具（清单创建/更新/删除，任务创建/更新/完成/恢复/删除/移动）必须带 `operationId` 与 `expectedRevision`。同 operation 正文重放只能返回 `duplicate`，复用 operationId、旧 revision 或跨清单父子关系必须拒绝且不推进快照；清单删除只迁入 `local-inbox`，任务删除才永久删除子树。循环 mutation 不允许调用方设置 `completedCount`；authority 完成事务按 timezone/频率/间隔/星期或月日原子推进，count/endAt 耗尽后才完成。无 `task-scheduling-v1` capability 的 0.12.104 GET/POST 必须保持严格旧 wire shape 并保留云端 scheduling 字段。OAuth 只读 token 的写调用必须 403，确认响应不得包含任务正文或凭据。该门禁使用 `TASK_SNAPSHOT_MUTATION_PATH` 的 Cloudflare adapter/Account DO，不把本地 JSON 或 D1 projection 当作任务权威。
+
+第一方 CLI 额外运行 `npm run focuslink -- --help` 与 `tests/focuslinkCli.test.ts`；必须证明其时间/清单/任务命令复用同一 CAS mutation、JSON 确认不泄露正文，并从 `fl2` 凭据派生精确 deviceId。CLI 拒绝 OAuth token、错误 endpoint、redirect、超大/非法响应与 device identity override；ChatGPT Web 只走 OAuth MCP，不能用 CLI device token 替代。
 
 Android 门禁限定 `:app:`，只测试最终可交付 APK；不要让 Gradle 根任务选择器额外构建 Capacitor
 生成库中没有产品测试源码的 instrumentation APK。

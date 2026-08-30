@@ -28,6 +28,26 @@ describe('desktop FocusLink account settings', () => {
     expect(source).not.toContain('首次授权（只需一次）');
     expect(source).toContain('本机功能不依赖账号');
     expect(source).toContain('退出此设备同步');
+    expect(source).toContain("deviceSyncBusyAction === 'pair-code'");
+    expect(source).toContain("deviceSyncBusyAction === 'redeem'");
+    expect(source).toContain('<Icon.Refresh size="xs" />');
+  });
+
+  it('offers eight distinct desktop interface-font previews', () => {
+    for (const profile of [
+      'noto',
+      'noto-serif',
+      'wenkai',
+      'zhisong',
+      'marker',
+      'xihei',
+      'smiley',
+      'kuaile',
+    ]) {
+      expect(source).toContain(`id: '${profile}'`);
+    }
+    expect(source).toContain("label: '思源宋体'");
+    expect(source).toContain("label: '站酷快乐体'");
   });
 
   it('keeps external task adapters behind an explicit collapsed import entry', () => {
@@ -40,15 +60,27 @@ describe('desktop FocusLink account settings', () => {
   });
 
   it('renders device-sync health from the machine-code presentation with its durable conflict count', () => {
-    expect(source).toContain(
-      "import { presentDeviceSyncError } from './deviceSyncStatusPresentation';",
-    );
+    expect(source).toContain("} from './deviceSyncStatusPresentation';");
     expect(source).toMatch(
       /presentDeviceSyncError\(\s*deviceSyncStatus\?\.lastError,\s*deviceSyncStatus\?\.unresolvedConflicts,\s*\)/,
     );
     expect(source).not.toContain('deviceSyncTransportUnavailable');
     expect(source).not.toContain('deviceSyncConflictOnly');
     expect(source).not.toContain('无法连接跨设备同步服务|跨设备同步请求超时');
+    expect(source).toContain('presentDeviceSyncOverview(deviceSyncStatus)');
+    expect(source).toContain('deviceSyncOverview.latestSuccess');
+    expect(source).toContain('settings-diagnostic-kind');
+    expect(source).not.toContain('当前设备 · 正在同步');
+  });
+
+  it('separates TomaToDo local, bridge, upload and phone-delivery facts', () => {
+    expect(source).toContain("label: '本机写入'");
+    expect(source).toContain("label: '上传队列'");
+    expect(source).toContain("label: '手机端显示'");
+    expect(source).toContain('presentTomatodoBridgeStatus(tomatodoBridge)');
+    expect(source).toContain('上传确认不能代替手机投递确认');
+    expect(source).toContain('检查状态');
+    expect(source).not.toContain("return tomatodoBridge.error || '连接失败，可重新尝试'");
   });
 
   it('does not expose retired endpoint, token or pairing writes through renderer IPC', () => {

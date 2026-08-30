@@ -1,6 +1,12 @@
-import type { Project, Task, TaskSource } from '../types';
+import type { Project, Task, TaskRecurrence, TaskRecurrenceDefinition, TaskSource } from '../types';
 import { fingerprintDeviceSyncValue } from './deviceProtocol';
 import { normalizeTaskProjectColor } from '../taskProjectPolicy';
+import {
+  completeTaskRecurrence,
+  normalizeTaskRecurrence,
+  normalizeTaskRecurrenceDefinition,
+  restoreFinalTaskRecurrence,
+} from '../taskRecurrence';
 
 export const TASK_SNAPSHOT_PROTOCOL_VERSION = 1 as const;
 export const TASK_SNAPSHOT_PATH = '/sync/v2/tasks' as const;
@@ -10,6 +16,8 @@ export const TASK_SNAPSHOT_PATH = '/sync/v2/tasks' as const;
  * contract can perform an atomic CAS mutation without inventing another task store.
  */
 export const TASK_SNAPSHOT_MUTATION_PATH = '/sync/v2/tasks/mutate' as const;
+export const TASK_SNAPSHOT_CAPABILITY_HEADER = 'x-focuslink-task-capabilities' as const;
+export const TASK_SNAPSHOT_SCHEDULING_CAPABILITY = 'task-scheduling-v1' as const;
 export const TASK_SNAPSHOT_MAX_BODY_BYTES = 512 * 1024;
 export const TASK_SNAPSHOT_MAX_TASKS = 5_000;
 export const TASK_SNAPSHOT_MAX_PROJECTS = 500;
@@ -33,7 +41,11 @@ export interface SyncedTask {
   title: string;
   status: string | null;
   priority: number | null;
+  /** Missing only while parsing a legacy v1 snapshot; normalization emits explicit null. */
+  startDate?: number | null;
   dueDate: number | null;
+  /** Missing only while parsing a legacy v1 snapshot; normalization emits explicit null. */
+  recurrence?: TaskRecurrence | null;
   tags: string[];
   parentId: string | null;
   isCompleted: boolean;
@@ -96,7 +108,9 @@ export interface CreateTaskMutation {
   parentId?: string | null;
   title: string;
   priority?: number | null;
+  startDate?: number | null;
   dueDate?: number | null;
+  recurrence?: TaskRecurrenceDefinition | null;
   tags?: string[];
 }
 
@@ -107,7 +121,9 @@ export interface UpdateTaskMutation {
   projectId?: string | null;
   parentId?: string | null;
   priority?: number | null;
+  startDate?: number | null;
   dueDate?: number | null;
+  recurrence?: TaskRecurrenceDefinition | null;
   tags?: string[];
 }
 
@@ -154,6 +170,10 @@ export interface TaskSnapshotMutationResult {
   movedTaskCount?: number;
   deletedTaskCount?: number;
   projectId?: string | null;
+  recurrenceRolled?: boolean;
+  recurrenceExhausted?: boolean;
+  nextDueDate?: number | null;
+  completedCount?: number;
   /** Project removal always moves tasks to the inbox; task deletion is permanent. */
   safety: 'moved_to_inbox' | 'permanent_subtree_delete' | 'updated';
 }
@@ -185,7 +205,9 @@ export function toTaskSnapshotPayload(
       title: task.title,
       status: task.status,
       priority: task.priority,
+      startDate: task.startDate ?? null,
       dueDate: task.dueDate,
+      recurrence: task.recurrence ? normalizeTaskRecurrence(task.recurrence) : null,
       tags: [...task.tags],
       parentId: task.parentId ?? inheritedParentId,
       isCompleted: Boolean(task.isCompleted),
@@ -230,6 +252,8 @@ export function validateTaskSnapshotPayload(value: unknown): value is TaskSnapsh
   }
   const taskIds = new Set<string>();
   for (const task of value.tasks) {
+    const recurrence =
+      isRecord(task) && task.recurrence ? normalizeTaskRecurrence(task.recurrence) : null;
     if (
       !isRecord(task) ||
       !hasOnlyKeys(task, [
@@ -239,7 +263,9 @@ export function validateTaskSnapshotPayload(value: unknown): value is TaskSnapsh
         'title',
         'status',
         'priority',
+        'startDate',
         'dueDate',
+        'recurrence',
         'tags',
         'parentId',
         'isCompleted',
@@ -250,8 +276,12 @@ export function validateTaskSnapshotPayload(value: unknown): value is TaskSnapsh
       !isNullableId(task.projectId) ||
       !isText(task.title) ||
       !(task.status === null || isText(task.status)) ||
-      !(task.priority === null || isFiniteNumber(task.priority)) ||
+      !(task.priority === null || isPriority(task.priority)) ||
+      !(task.startDate === undefined || task.startDate === null || isTimestamp(task.startDate)) ||
       !(task.dueDate === null || isTimestamp(task.dueDate)) ||
+      !(task.recurrence === undefined || task.recurrence === null || recurrence !== null) ||
+      (recurrence !== null && task.startDate == null && task.dueDate === null) ||
+      (task.startDate != null && task.dueDate !== null && task.startDate > task.dueDate) ||
       !Array.isArray(task.tags) ||
       task.tags.length > 200 ||
       !task.tags.every(isText) ||
@@ -265,6 +295,124 @@ export function validateTaskSnapshotPayload(value: unknown): value is TaskSnapsh
     taskIds.add(task.id);
   }
   return true;
+}
+
+/**
+ * Clone and validate scheduling values without adding keys to a legacy v1 wire shape. Hashing
+ * uses `canonicalTaskSnapshotFingerprintPayload` so omission and explicit null remain equivalent
+ * without exposing unknown keys to strict 0.12.104 readers.
+ */
+export function normalizeTaskSnapshotPayload(value: TaskSnapshotPayload): TaskSnapshotPayload {
+  return {
+    publishedAt: value.publishedAt,
+    projects: value.projects.map((project) => ({ ...project })),
+    tasks: value.tasks.map((task) => {
+      const normalized: SyncedTask = { ...task, tags: [...task.tags] };
+      if ('startDate' in task) normalized.startDate = task.startDate ?? null;
+      if ('recurrence' in task) {
+        normalized.recurrence = task.recurrence ? normalizeTaskRecurrence(task.recurrence) : null;
+      }
+      return normalized;
+    }),
+  };
+}
+
+/** Stable hash projection; unlike wire normalization it deliberately fills legacy omissions. */
+export function canonicalTaskSnapshotFingerprintPayload(
+  value: TaskSnapshotPayload,
+): TaskSnapshotPayload {
+  const normalized = normalizeTaskSnapshotPayload(value);
+  return {
+    ...normalized,
+    tasks: normalized.tasks.map((task) => ({
+      ...task,
+      startDate: task.startDate ?? null,
+      recurrence: task.recurrence ?? null,
+    })),
+  };
+}
+
+export function taskSnapshotSupportsScheduling(value: string | null | undefined): boolean {
+  return (value ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .includes(TASK_SNAPSHOT_SCHEDULING_CAPABILITY);
+}
+
+/** Legacy 0.12.104 clients reject unknown task keys, even when their value is null. */
+export function withoutTaskSchedulingFields(value: TaskSnapshotPayload): TaskSnapshotPayload {
+  return {
+    ...value,
+    projects: value.projects.map((project) => ({ ...project })),
+    tasks: value.tasks.map(({ startDate: _startDate, recurrence: _recurrence, ...task }) => ({
+      ...task,
+      tags: [...task.tags],
+    })),
+  };
+}
+
+/** Strip scheduling-only result keys for strict 0.12.104 mutation response readers. */
+export function withoutTaskSchedulingMutationFields(
+  value: TaskSnapshotMutationResponse,
+): TaskSnapshotMutationResponse {
+  const result = { ...value.result };
+  delete result.recurrenceRolled;
+  delete result.recurrenceExhausted;
+  delete result.nextDueDate;
+  delete result.completedCount;
+  return {
+    ...value,
+    snapshot: value.snapshot === null ? null : withoutTaskSchedulingFields(value.snapshot),
+    result,
+  };
+}
+
+/** Preserve scheduling extensions when a legacy whole-snapshot writer cannot represent them. */
+export function mergeLegacyTaskSchedulingFields(
+  current: TaskSnapshotPayload | null,
+  incoming: TaskSnapshotPayload,
+): TaskSnapshotPayload {
+  if (!current) return normalizeTaskSnapshotPayload(incoming);
+  const currentTasks = new Map(current.tasks.map((task) => [task.id, task] as const));
+  return {
+    ...normalizeTaskSnapshotPayload(incoming),
+    tasks: incoming.tasks.map((task) => {
+      const previous = currentTasks.get(task.id);
+      const merged: SyncedTask = {
+        ...task,
+        ...(!('startDate' in task) && previous && 'startDate' in previous
+          ? { startDate: previous.startDate ?? null }
+          : {}),
+        ...(!('recurrence' in task) && previous && 'recurrence' in previous
+          ? { recurrence: previous.recurrence ?? null }
+          : {}),
+        tags: [...task.tags],
+      };
+      if (!previous?.recurrence || 'recurrence' in task) return merged;
+      if (merged.startDate == null && merged.dueDate === null) {
+        merged.startDate = previous.startDate ?? null;
+        merged.dueDate = previous.dueDate;
+      }
+      if (merged.isCompleted && !previous.isCompleted) {
+        const completion = completeTaskRecurrence(
+          {
+            startDate: merged.startDate ?? null,
+            dueDate: merged.dueDate,
+            recurrence: previous.recurrence,
+          },
+          incoming.publishedAt,
+        );
+        merged.startDate = completion.startDate;
+        merged.dueDate = completion.dueDate;
+        merged.recurrence = completion.recurrence;
+        merged.isCompleted = completion.exhausted;
+        merged.status = completion.exhausted ? 'completed' : 'incomplete';
+      } else if (!merged.isCompleted && previous.isCompleted) {
+        merged.recurrence = restoreFinalTaskRecurrence(previous.recurrence);
+      }
+      return merged;
+    }),
+  };
 }
 
 export function validateTaskSnapshotPublishRequest(
@@ -313,7 +461,16 @@ export function parseTaskSnapshotResponse(value: unknown): TaskSnapshotResponse 
   ) {
     return null;
   }
-  return value as unknown as TaskSnapshotResponse;
+  return {
+    protocolVersion: TASK_SNAPSHOT_PROTOCOL_VERSION,
+    revision: value.revision as number,
+    sourceDeviceId: value.sourceDeviceId as string | null,
+    snapshot:
+      value.snapshot === null
+        ? null
+        : normalizeTaskSnapshotPayload(value.snapshot as TaskSnapshotPayload),
+    serverTime: value.serverTime as number,
+  };
 }
 
 export function validateTaskSnapshotMutationRequest(
@@ -365,7 +522,19 @@ export function parseTaskSnapshotMutationResponse(
   ) {
     return null;
   }
-  return value as unknown as TaskSnapshotMutationResponse;
+  return {
+    protocolVersion: TASK_SNAPSHOT_PROTOCOL_VERSION,
+    revision: value.revision as number,
+    sourceDeviceId: value.sourceDeviceId as string | null,
+    snapshot:
+      value.snapshot === null
+        ? null
+        : normalizeTaskSnapshotPayload(value.snapshot as TaskSnapshotPayload),
+    serverTime: value.serverTime as number,
+    operationId: value.operationId as string,
+    status: value.status as 'applied' | 'duplicate',
+    result: value.result as unknown as TaskSnapshotMutationResult,
+  };
 }
 
 /**
@@ -380,11 +549,7 @@ export function applyTaskSnapshotMutation(
   idFactory: () => string = () => globalThis.crypto.randomUUID(),
 ): { snapshot: TaskSnapshotPayload; result: TaskSnapshotMutationResult } {
   if (!isTimestamp(publishedAt)) throw new Error('任务快照时间无效');
-  const snapshot: TaskSnapshotPayload = {
-    publishedAt,
-    projects: source.projects.map((project) => ({ ...project })),
-    tasks: source.tasks.map((task) => ({ ...task, tags: [...task.tags] })),
-  };
+  const snapshot = normalizeTaskSnapshotPayload({ ...source, publishedAt });
   const findTask = (taskId: string) => snapshot.tasks.find((task) => task.id === taskId);
   const findProject = (projectId: string) =>
     snapshot.projects.find((project) => project.id === projectId);
@@ -500,6 +665,15 @@ export function applyTaskSnapshotMutation(
       if (!title) throw new Error('任务标题不能为空');
       const projectId = ensureLocalProject(mutation.projectId);
       const parentId = mutation.parentId ?? null;
+      const startDate = mutation.startDate ?? null;
+      const dueDate = mutation.dueDate ?? null;
+      const recurrenceDefinition = mutation.recurrence
+        ? normalizeTaskRecurrenceDefinition(mutation.recurrence)
+        : null;
+      const recurrence = recurrenceDefinition
+        ? { ...recurrenceDefinition, completedCount: 0 }
+        : null;
+      validateTaskDates(startDate, dueDate, recurrence);
       const id = mutation.taskId ?? idFactory();
       if (!isId(id) || findTask(id)) throw new Error('任务标识已存在');
       validateParent(id, parentId, projectId);
@@ -510,7 +684,9 @@ export function applyTaskSnapshotMutation(
         title,
         status: 'incomplete',
         priority: mutation.priority ?? null,
-        dueDate: mutation.dueDate ?? null,
+        startDate,
+        dueDate,
+        recurrence,
         tags: [...(mutation.tags ?? [])],
         parentId,
         isCompleted: false,
@@ -537,7 +713,24 @@ export function applyTaskSnapshotMutation(
         task.title = title;
       }
       if (mutation.priority !== undefined) task.priority = mutation.priority;
+      if (mutation.startDate !== undefined) task.startDate = mutation.startDate;
       if (mutation.dueDate !== undefined) task.dueDate = mutation.dueDate;
+      if (mutation.recurrence !== undefined) {
+        const definition = mutation.recurrence
+          ? normalizeTaskRecurrenceDefinition(mutation.recurrence)
+          : null;
+        task.recurrence = definition
+          ? { ...definition, completedCount: task.recurrence?.completedCount ?? 0 }
+          : null;
+        if (
+          task.recurrence &&
+          task.recurrence.count !== null &&
+          task.recurrence.completedCount > task.recurrence.count
+        ) {
+          throw new Error('循环总次数不能小于已完成次数');
+        }
+      }
+      validateTaskDates(task.startDate ?? null, task.dueDate, task.recurrence ?? null);
       if (mutation.tags !== undefined) task.tags = [...mutation.tags];
       task.projectId = projectId;
       task.parentId = parentId;
@@ -565,6 +758,55 @@ export function applyTaskSnapshotMutation(
     }
     case 'set_task_completed': {
       const task = ensureLocalTask(mutation.taskId);
+      if (task.isCompleted === mutation.completed) {
+        return {
+          snapshot,
+          result: {
+            kind: mutation.kind,
+            entityId: task.id,
+            ...(task.recurrence
+              ? {
+                  recurrenceRolled: false,
+                  recurrenceExhausted: task.isCompleted,
+                  nextDueDate: null,
+                  completedCount: task.recurrence.completedCount,
+                }
+              : {}),
+            safety: 'updated',
+          },
+        };
+      }
+      if (task.recurrence && mutation.completed) {
+        const completion = completeTaskRecurrence(
+          {
+            startDate: task.startDate ?? null,
+            dueDate: task.dueDate,
+            recurrence: task.recurrence,
+          },
+          publishedAt,
+        );
+        task.startDate = completion.startDate;
+        task.dueDate = completion.dueDate;
+        task.recurrence = completion.recurrence;
+        task.isCompleted = completion.exhausted;
+        task.status = completion.exhausted ? 'completed' : 'incomplete';
+        Object.assign(task, markUpdated(task));
+        return {
+          snapshot,
+          result: {
+            kind: mutation.kind,
+            entityId: task.id,
+            recurrenceRolled: completion.rolled,
+            recurrenceExhausted: completion.exhausted,
+            nextDueDate: completion.rolled ? completion.dueDate : null,
+            completedCount: completion.recurrence.completedCount,
+            safety: 'updated',
+          },
+        };
+      }
+      if (task.recurrence && !mutation.completed && task.isCompleted) {
+        task.recurrence = restoreFinalTaskRecurrence(task.recurrence);
+      }
       task.isCompleted = mutation.completed;
       task.status = mutation.completed ? 'completed' : 'incomplete';
       Object.assign(task, markUpdated(task));
@@ -641,7 +883,9 @@ function validateTaskSnapshotMutation(value: unknown): value is TaskSnapshotMuta
           'parentId',
           'title',
           'priority',
+          'startDate',
           'dueDate',
+          'recurrence',
           'tags',
         ]) &&
         (value.taskId === undefined || isId(value.taskId)) &&
@@ -649,7 +893,13 @@ function validateTaskSnapshotMutation(value: unknown): value is TaskSnapshotMuta
         isOptionalNullableId(value.parentId) &&
         isName(value.title) &&
         (value.priority === undefined || value.priority === null || isPriority(value.priority)) &&
+        (value.startDate === undefined ||
+          value.startDate === null ||
+          isTimestamp(value.startDate)) &&
         (value.dueDate === undefined || value.dueDate === null || isTimestamp(value.dueDate)) &&
+        (value.recurrence === undefined ||
+          value.recurrence === null ||
+          normalizeTaskRecurrenceDefinition(value.recurrence) !== null) &&
         (value.tags === undefined || isTags(value.tags))
       );
     case 'update_task':
@@ -661,7 +911,9 @@ function validateTaskSnapshotMutation(value: unknown): value is TaskSnapshotMuta
           'projectId',
           'parentId',
           'priority',
+          'startDate',
           'dueDate',
+          'recurrence',
           'tags',
         ]) &&
         isId(value.taskId) &&
@@ -669,11 +921,24 @@ function validateTaskSnapshotMutation(value: unknown): value is TaskSnapshotMuta
         isOptionalNullableId(value.projectId) &&
         isOptionalNullableId(value.parentId) &&
         (value.priority === undefined || value.priority === null || isPriority(value.priority)) &&
+        (value.startDate === undefined ||
+          value.startDate === null ||
+          isTimestamp(value.startDate)) &&
         (value.dueDate === undefined || value.dueDate === null || isTimestamp(value.dueDate)) &&
+        (value.recurrence === undefined ||
+          value.recurrence === null ||
+          normalizeTaskRecurrenceDefinition(value.recurrence) !== null) &&
         (value.tags === undefined || isTags(value.tags)) &&
-        ['title', 'projectId', 'parentId', 'priority', 'dueDate', 'tags'].some(
-          (key) => key in value,
-        )
+        [
+          'title',
+          'projectId',
+          'parentId',
+          'priority',
+          'startDate',
+          'dueDate',
+          'recurrence',
+          'tags',
+        ].some((key) => key in value)
       );
     case 'set_task_completed':
       return (
@@ -694,6 +959,19 @@ function validateTaskSnapshotMutation(value: unknown): value is TaskSnapshotMuta
   }
 }
 
+function validateTaskDates(
+  startDate: number | null,
+  dueDate: number | null,
+  recurrence: TaskRecurrence | null,
+): void {
+  if (startDate !== null && dueDate !== null && startDate > dueDate) {
+    throw new Error('任务开始时间不能晚于截止时间');
+  }
+  if (recurrence && startDate === null && dueDate === null) {
+    throw new Error('循环任务必须设置开始时间或截止时间');
+  }
+}
+
 function validateTaskSnapshotMutationResult(value: unknown): value is TaskSnapshotMutationResult {
   return (
     isRecord(value) &&
@@ -704,6 +982,10 @@ function validateTaskSnapshotMutationResult(value: unknown): value is TaskSnapsh
       'movedTaskCount',
       'deletedTaskCount',
       'projectId',
+      'recurrenceRolled',
+      'recurrenceExhausted',
+      'nextDueDate',
+      'completedCount',
       'safety',
     ]) &&
     typeof value.kind === 'string' &&
@@ -712,6 +994,12 @@ function validateTaskSnapshotMutationResult(value: unknown): value is TaskSnapsh
     (value.movedTaskCount === undefined || isRevision(value.movedTaskCount)) &&
     (value.deletedTaskCount === undefined || isRevision(value.deletedTaskCount)) &&
     (value.projectId === undefined || value.projectId === null || isId(value.projectId)) &&
+    (value.recurrenceRolled === undefined || typeof value.recurrenceRolled === 'boolean') &&
+    (value.recurrenceExhausted === undefined || typeof value.recurrenceExhausted === 'boolean') &&
+    (value.nextDueDate === undefined ||
+      value.nextDueDate === null ||
+      isTimestamp(value.nextDueDate)) &&
+    (value.completedCount === undefined || isRevision(value.completedCount)) &&
     (value.safety === 'moved_to_inbox' ||
       value.safety === 'permanent_subtree_delete' ||
       value.safety === 'updated')
@@ -735,11 +1023,15 @@ export function reconcileTaskSnapshot(
   }
   const currentFingerprint = fingerprintDeviceSyncValue({
     sourceDeviceId: current.sourceDeviceId,
-    snapshot: current.snapshot,
+    snapshot:
+      current.snapshot === null ? null : canonicalTaskSnapshotFingerprintPayload(current.snapshot),
   });
   const incomingFingerprint = fingerprintDeviceSyncValue({
     sourceDeviceId: incoming.sourceDeviceId,
-    snapshot: incoming.snapshot,
+    snapshot:
+      incoming.snapshot === null
+        ? null
+        : canonicalTaskSnapshotFingerprintPayload(incoming.snapshot),
   });
   if (currentFingerprint !== incomingFingerprint) {
     return { freshness: 'inconsistent', snapshot: current };
@@ -813,7 +1105,12 @@ function isText(value: unknown): value is string {
 }
 
 function isTimestamp(value: unknown): value is number {
-  return isFiniteNumber(value) && value >= 0;
+  return (
+    isFiniteNumber(value) &&
+    Number.isSafeInteger(value) &&
+    value >= 0 &&
+    value <= 8_640_000_000_000_000
+  );
 }
 
 function isFiniteNumber(value: unknown): value is number {

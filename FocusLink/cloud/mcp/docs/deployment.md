@@ -19,13 +19,13 @@ Non-secret OAuth config is pinned in `wrangler.jsonc`: issuer, audience, JWKS, i
 ## Mandatory order
 
 1. **Completed containment only:** old direct Worker public routes/custom domain were disabled; keep the recorded status/size evidence and do not restore them for testing.
-2. Deploy/fix the private upstream Worker/DO canonical `/sync/v2/*` routes and `/internal/mcp/v1/focus/{summary,records}` plus `/internal/mcp/v1/tasks`; task reads/writes must use the same Account DO `task_state`, with `operationId`/`expectedRevision` CAS and no D1 task source. Bind the authenticated token device to every request/mutation deviceId, and prove fake=401, read-only task write=403, spoof=403, stale revision=409, operation replay=duplicate, revoked/expired/cross-account rejected. Its `workers_dev` must be false and it must have no public/custom route.
+2. Deploy/fix the private upstream Worker/DO canonical `/sync/v2/*` routes and `/internal/mcp/v1/focus/{summary,records}` plus `/internal/mcp/v1/tasks`; task reads/writes must use the same Account DO `task_state`, with `operationId`/`expectedRevision` CAS, structured recurrence progression and no D1 task source. Bind the authenticated token device to every request/mutation deviceId, and prove fake=401, read-only task write=403, spoof=403, stale revision=409, operation replay=duplicate, invalid recurrence=4xx, revoked/expired/cross-account rejected. Verify `task-scheduling-v1` capability responses and legacy 0.12.104 shape preservation. Its `workers_dev` must be false and it must have no public/custom route.
 3. Deploy unified OAuth AS; prove metadata/JWKS/introspection and valid/expired/wrong-aud/wrong-scope/revoked matrix.
 4. Provision projection and the two hop-specific pairing service credentials through the controlled owner channel. Never pass them as command-line arguments or print them.
 5. Apply `migrations/0002_authoritative_feed.sql` remotely.
 6. Run dry-run and full local gates.
 7. Deploy canonical Worker, then execute `docs/e2e.md`.
-8. Perform the fake-off test: stop local services and force-stop or disconnect PC/phone/tablet/watch participation, then invoke the public OAuth MCP from an independent network client. It must still return exact cloud-stored task/count/duration data and verifiable freshness.
+8. Perform the fake-off test: stop local services and disconnect PC/phone/tablet participation, then invoke the public OAuth MCP from an independent network client. It must still return exact cloud-stored time/task/count/duration data and verifiable freshness. The retired OPPO/watch is not part of the matrix.
 9. Only after all remote and real-device evidence passes may `.poyi/project-platform.json` move from `partial`, and upstream visibility move to internal/private.
 
 Read-only probe (outputs status and header size only):

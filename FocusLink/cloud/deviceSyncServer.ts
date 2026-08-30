@@ -20,7 +20,12 @@ import {
 } from '../shared/sync/liveFocusProtocol';
 import {
   TASK_SNAPSHOT_MAX_BODY_BYTES,
+  TASK_SNAPSHOT_MUTATION_PATH,
   TASK_SNAPSHOT_PATH,
+  TASK_SNAPSHOT_CAPABILITY_HEADER,
+  taskSnapshotSupportsScheduling,
+  withoutTaskSchedulingMutationFields,
+  validateTaskSnapshotMutationRequest,
   validateTaskSnapshotPublishRequest,
 } from '../shared/sync/taskSnapshotProtocol';
 import {
@@ -35,6 +40,7 @@ import type {
   SyncV2BootstrapInventoryRequest,
   SyncV2Request,
 } from '../shared/sync/v2Protocol';
+import { parseDeviceToken } from '../shared/sync/v2Protocol';
 
 export const DEVICE_SYNC_TEST_BODY_LIMIT_BYTES = DEVICE_SYNC_MAX_BODY_BYTES;
 export const DEFAULT_DEVICE_SYNC_TEST_HOST = '127.0.0.1';
@@ -430,7 +436,16 @@ async function handleRequest(
       sendError(response, 400, 'invalid_query', 'task snapshot route does not accept query fields');
       return;
     }
-    sendJson(response, 200, store.getTaskSnapshot(accountId));
+    sendJson(
+      response,
+      200,
+      store.getTaskSnapshot(
+        accountId,
+        taskSnapshotSupportsScheduling(
+          readSingleHeader(request.headers[TASK_SNAPSHOT_CAPABILITY_HEADER]),
+        ),
+      ),
+    );
     return;
   }
 
@@ -470,7 +485,9 @@ async function handleRequest(
       ? LIVE_FOCUS_MAX_COMMAND_BODY_BYTES
       : requestUrl.pathname === TASK_SNAPSHOT_PATH
         ? TASK_SNAPSHOT_MAX_BODY_BYTES
-        : DEVICE_SYNC_TEST_BODY_LIMIT_BYTES;
+        : requestUrl.pathname === TASK_SNAPSHOT_MUTATION_PATH
+          ? TASK_SNAPSHOT_MAX_BODY_BYTES
+          : DEVICE_SYNC_TEST_BODY_LIMIT_BYTES;
   let parsed: unknown;
   try {
     const raw = await readRequestBody(request, bodyLimit);
@@ -485,7 +502,9 @@ async function handleRequest(
           ? 'live command body exceeds 16 KiB'
           : requestUrl.pathname === TASK_SNAPSHOT_PATH
             ? 'task snapshot body exceeds 512 KiB'
-            : 'request body exceeds 1 MiB',
+            : requestUrl.pathname === TASK_SNAPSHOT_MUTATION_PATH
+              ? 'task mutation body exceeds 512 KiB'
+              : 'request body exceeds 1 MiB',
       );
       return;
     }
@@ -572,8 +591,49 @@ async function handleRequest(
       sendError(response, 400, 'invalid_request', 'invalid task snapshot');
       return;
     }
+    if (!taskRequestMatchesCredential(request.headers.authorization, parsed.deviceId)) {
+      sendError(response, 403, 'device_identity_mismatch', 'task deviceId does not match token');
+      return;
+    }
     try {
-      sendJson(response, 200, store.publishTaskSnapshot(accountId, parsed));
+      sendJson(
+        response,
+        200,
+        store.publishTaskSnapshot(
+          accountId,
+          parsed,
+          taskSnapshotSupportsScheduling(
+            readSingleHeader(request.headers[TASK_SNAPSHOT_CAPABILITY_HEADER]),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (sendStoreError(response, error)) return;
+      throw error;
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === TASK_SNAPSHOT_MUTATION_PATH) {
+    if (!validateTaskSnapshotMutationRequest(parsed)) {
+      sendError(response, 400, 'invalid_request', 'invalid task mutation');
+      return;
+    }
+    if (!taskRequestMatchesCredential(request.headers.authorization, parsed.deviceId)) {
+      sendError(response, 403, 'device_identity_mismatch', 'task deviceId does not match token');
+      return;
+    }
+    try {
+      const mutationResponse = store.mutateTaskSnapshot(accountId, parsed);
+      sendJson(
+        response,
+        200,
+        taskSnapshotSupportsScheduling(
+          readSingleHeader(request.headers[TASK_SNAPSHOT_CAPABILITY_HEADER]),
+        )
+          ? mutationResponse
+          : withoutTaskSchedulingMutationFields(mutationResponse),
+      );
     } catch (error) {
       if (sendStoreError(response, error)) return;
       throw error;
@@ -615,8 +675,19 @@ function routeMethod(pathname: string): 'GET' | 'POST' | null {
   if (pathname === '/v1/pair' || pathname === '/v1/sync' || pathname === LIVE_FOCUS_COMMAND_PATH)
     return 'POST';
   if (pathname === TASK_SNAPSHOT_PATH) return 'POST';
+  if (pathname === TASK_SNAPSHOT_MUTATION_PATH) return 'POST';
   if (pathname === LIVE_FOCUS_SNAPSHOT_PATH || pathname === LIVE_FOCUS_WAIT_PATH) return 'GET';
   return null;
+}
+
+function taskRequestMatchesCredential(
+  authorization: string | undefined,
+  requestDeviceId: string,
+): boolean {
+  const token = /^Bearer\s+([^\s]+)$/i.exec(authorization ?? '')?.[1];
+  if (!token) return false;
+  const credential = parseDeviceToken(token);
+  return credential === null || requestDeviceId === `device-${credential.devicePublicId}`;
 }
 
 function canonicalLocalCompatibilityPath(pathname: string): string {
@@ -624,6 +695,7 @@ function canonicalLocalCompatibilityPath(pathname: string): string {
   if (pathname === '/v1/live/wait') return LIVE_FOCUS_WAIT_PATH;
   if (pathname === '/v1/live/command') return LIVE_FOCUS_COMMAND_PATH;
   if (pathname === '/v1/tasks') return TASK_SNAPSHOT_PATH;
+  if (pathname === '/v1/tasks/mutate') return TASK_SNAPSHOT_MUTATION_PATH;
   return pathname;
 }
 
@@ -702,12 +774,16 @@ function sendStoreError(response: http.ServerResponse, error: unknown): boolean 
   }
   const status =
     error.code === 'invalid_live_revision' ||
+    error.code === 'task_revision_conflict' ||
+    error.code === 'task_operation_id_reused' ||
     error.code === 'stale_task_snapshot' ||
     error.code === 'task_snapshot_conflict'
       ? 409
-      : error.code === 'task_snapshot_timestamp_too_far_ahead'
+      : error.code === 'task_mutation_invalid'
         ? 422
-        : 400;
+        : error.code === 'task_snapshot_timestamp_too_far_ahead'
+          ? 422
+          : 400;
   sendError(response, status, error.code, error.message);
   return true;
 }
@@ -806,7 +882,11 @@ function handlePreflight(
     .split(',')
     .map((header) => header.trim().toLowerCase())
     .filter(Boolean);
-  const allowedHeaders = new Set(['authorization', 'content-type']);
+  const allowedHeaders = new Set([
+    'authorization',
+    'content-type',
+    TASK_SNAPSHOT_CAPABILITY_HEADER,
+  ]);
   if (requestedHeaders.some((header) => !allowedHeaders.has(header))) {
     sendError(response, 403, 'cors_headers_denied', 'preflight headers are not allowed');
     return;
@@ -816,7 +896,10 @@ function handlePreflight(
     'Access-Control-Allow-Methods',
     pathname === TASK_SNAPSHOT_PATH ? 'GET, POST, OPTIONS' : `${expectedMethod}, OPTIONS`,
   );
-  response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  response.setHeader(
+    'Access-Control-Allow-Headers',
+    'Authorization, Content-Type, X-FocusLink-Task-Capabilities',
+  );
   response.setHeader('Access-Control-Max-Age', '600');
   response.setHeader('Cache-Control', 'no-store');
   response.end();

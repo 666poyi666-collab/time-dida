@@ -23,6 +23,12 @@ describe('mobile appearance', () => {
     expect(
       normalizeMobileAppearance({ theme: 'invalid' as never, focusColor: 'teal' as never }),
     ).toEqual({ ...DEFAULT_MOBILE_APPEARANCE, focusColor: 'cobalt' });
+    expect(normalizeMobileAppearance({ fontProfile: 'noto-serif' })).toMatchObject({
+      fontProfile: 'noto-serif',
+    });
+    expect(normalizeMobileAppearance({ fontProfile: 'kuaile' })).toMatchObject({
+      fontProfile: 'kuaile',
+    });
   });
 
   it('registers and tears down the live system theme listener only for the system theme', async () => {

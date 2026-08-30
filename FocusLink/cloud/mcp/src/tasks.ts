@@ -9,6 +9,7 @@ import {
   type TaskSnapshotMutationResponse,
   type TaskSnapshotResponse,
 } from '../../../shared/sync/taskSnapshotProtocol';
+import { buildFocusLinkTimeContext } from '../../../shared/timeContext';
 
 const MAX_RESPONSE_BYTES = 1_100_000;
 const SERVICE_TOKEN = /^[A-Za-z0-9._~-]{32,4096}$/;
@@ -39,7 +40,23 @@ export interface ListTaskInput {
   projectId?: string | null;
   includeCompleted: boolean;
   query?: string;
+  priority?: number | null;
+  startFrom?: number;
+  startTo?: number;
+  dueFrom?: number;
+  dueTo?: number;
+  tags?: string[];
+  parentId?: string | null;
   limit: number;
+}
+
+export async function getFocusLinkCurrentTime(env: TaskMcpEnv, timezone: string) {
+  const snapshot = await fetchFocusLinkTaskSnapshot(env);
+  return {
+    authority: 'focuslink-account-do' as const,
+    revision: snapshot.revision,
+    ...buildFocusLinkTimeContext(snapshot.serverTime, timezone),
+  };
 }
 
 export async function fetchFocusLinkTaskSnapshot(env: TaskMcpEnv): Promise<TaskSnapshotResponse> {
@@ -79,6 +96,24 @@ export async function listFocusLinkProjects(env: TaskMcpEnv): Promise<{
   };
 }
 
+export async function getFocusLinkProject(env: TaskMcpEnv, projectId: string) {
+  const snapshot = await fetchFocusLinkTaskSnapshot(env);
+  const projects = snapshot.snapshot?.projects ?? [];
+  const project =
+    projects.find((candidate) => candidate.source === 'local' && candidate.id === projectId) ??
+    (projectId === FOCUSLINK_INBOX_PROJECT.id ? { ...FOCUSLINK_INBOX_PROJECT } : null);
+  const tasks = (snapshot.snapshot?.tasks ?? []).filter(
+    (task) => task.source === 'local' && task.projectId === projectId,
+  );
+  return {
+    authority: 'focuslink-account-do' as const,
+    revision: snapshot.revision,
+    project,
+    taskCount: tasks.length,
+    openTaskCount: tasks.filter((task) => !task.isCompleted).length,
+  };
+}
+
 export async function listFocusLinkTasks(
   env: TaskMcpEnv,
   input: ListTaskInput,
@@ -100,6 +135,20 @@ export async function listFocusLinkTasks(
           : task.projectId === input.projectId),
     )
     .filter((task) => input.includeCompleted || !task.isCompleted)
+    .filter((task) => input.priority === undefined || task.priority === input.priority)
+    .filter((task) => input.startFrom === undefined || (task.startDate ?? -1) >= input.startFrom)
+    .filter((task) => input.startTo === undefined || (task.startDate ?? Infinity) < input.startTo)
+    .filter((task) => input.dueFrom === undefined || (task.dueDate ?? -1) >= input.dueFrom)
+    .filter((task) => input.dueTo === undefined || (task.dueDate ?? Infinity) < input.dueTo)
+    .filter(
+      (task) =>
+        input.parentId === undefined ||
+        (input.parentId === null ? task.parentId === null : task.parentId === input.parentId),
+    )
+    .filter(
+      (task) =>
+        !input.tags?.length || input.tags.every((tag) => task.tags.some((value) => value === tag)),
+    )
     .filter(
       (task) =>
         !query ||
@@ -113,12 +162,27 @@ export async function listFocusLinkTasks(
 export async function getFocusLinkTask(
   env: TaskMcpEnv,
   taskId: string,
-): Promise<{ revision: number; task: SyncedTask | null; authority: 'focuslink-account-do' }> {
+): Promise<{
+  revision: number;
+  task: SyncedTask | null;
+  subtasks: SyncedTask[];
+  authority: 'focuslink-account-do';
+}> {
   const snapshot = await fetchFocusLinkTaskSnapshot(env);
   const task = (snapshot.snapshot?.tasks ?? []).find(
     (candidate) => candidate.source === 'local' && candidate.id === taskId,
   );
-  return { authority: 'focuslink-account-do', revision: snapshot.revision, task: task ?? null };
+  const subtasks = task
+    ? (snapshot.snapshot?.tasks ?? []).filter(
+        (candidate) => candidate.source === 'local' && candidate.parentId === task.id,
+      )
+    : [];
+  return {
+    authority: 'focuslink-account-do',
+    revision: snapshot.revision,
+    task: task ?? null,
+    subtasks,
+  };
 }
 
 export function redactMutationConfirmation(

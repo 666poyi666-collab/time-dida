@@ -46,6 +46,8 @@ OAuth verifier requires `RS256`, `typ=at+jwt`, unique `kid`, RSA ≥2048, exact 
 
 Read tools declare `focuslink:read`; task write tools declare `focuslink:read focuslink:write` through per-tool OAuth `securitySchemes` metadata and carry idempotent/CAS annotations. Task reads and writes call the same Account DO `task_state` register; no D1 task copy is created. The MCP 2026-07-28 handler is stateless: each request is independently authenticated, and a missing or expired token returns the protected-resource HTTP `WWW-Authenticate` challenge. Legacy stateless clients remain supported, but no MCP session ID is created or trusted.
 
+Task scheduling stays inside task snapshot v1 and is negotiated with `x-focuslink-task-capabilities: task-scheduling-v1`. New clients receive `startDate` and a structured recurrence definition plus server-owned `completedCount`; 0.12.104 clients receive the strict old task shape. Whole-snapshot writes from a legacy client merge the current scheduling fields before CAS and reject incoherent dates instead of silently deleting recurrence. MCP `focuslink_get_current_time` uses the Account DO response clock, not Worker wall-clock inference, so date filters and recurrence inputs can share an explicit IANA timezone and day boundary.
+
 ## Pairing
 
 Public OAuth scopes remain the global four-scope policy; no `focuslink:pair` or `devices:manage` OAuth scope exists.

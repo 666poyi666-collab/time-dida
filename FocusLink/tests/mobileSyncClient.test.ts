@@ -8,6 +8,7 @@ import {
   exchangeDeviceSyncPairingCode,
   fetchLiveFocusSnapshot,
   fetchTaskSnapshot,
+  mutateTaskSnapshot,
   pullDeviceSyncPage,
   pushPendingDeviceSyncBundle,
   waitForLiveFocusSnapshot,
@@ -21,6 +22,10 @@ import {
   FOCUSLINK_CANONICAL_SYNC_ORIGIN,
   FOCUSLINK_SYNC_FAILOVER_ORIGIN,
 } from '../shared/sync/identityProtocol';
+import {
+  TASK_SNAPSHOT_CAPABILITY_HEADER,
+  TASK_SNAPSHOT_SCHEDULING_CAPABILITY,
+} from '../shared/sync/taskSnapshotProtocol';
 
 const DEVICE_TOKEN = `fl2_account1_mobile1_${'x'.repeat(32)}`;
 
@@ -513,7 +518,65 @@ describe('mobile sync client request recovery', () => {
     ).resolves.toMatchObject({ revision: 37 });
     expect(fetchMock).toHaveBeenCalledWith(
       `${FOCUSLINK_SYNC_FAILOVER_ORIGIN}/sync/v2/tasks`,
-      expect.objectContaining({ cache: 'no-store', credentials: 'omit' }),
+      expect.objectContaining({
+        cache: 'no-store',
+        credentials: 'omit',
+        headers: expect.objectContaining({
+          [TASK_SNAPSHOT_CAPABILITY_HEADER]: TASK_SNAPSHOT_SCHEDULING_CAPABILITY,
+        }),
+      }),
+    );
+  });
+
+  it('posts task completion through the revisioned mutation contract', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        protocolVersion: 1,
+        revision: 38,
+        sourceDeviceId: 'device-mobile1',
+        snapshot: { publishedAt: 38_000, projects: [], tasks: [] },
+        serverTime: 38_001,
+        operationId: 'mobile-complete-1',
+        status: 'applied',
+        result: {
+          kind: 'set_task_completed',
+          entityId: 'task-1',
+          recurrenceRolled: true,
+          recurrenceExhausted: false,
+          nextDueDate: 86_400_000,
+          completedCount: 1,
+          safety: 'updated',
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      mutateTaskSnapshot({
+        endpoint: FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        token: DEVICE_TOKEN,
+        deviceId: 'device-mobile1',
+        operationId: 'mobile-complete-1',
+        expectedRevision: 37,
+        mutation: { kind: 'set_task_completed', taskId: 'task-1', completed: true },
+      }),
+    ).resolves.toMatchObject({ revision: 38, status: 'applied' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${FOCUSLINK_SYNC_FAILOVER_ORIGIN}/sync/v2/tasks/mutate`,
+      expect.objectContaining({
+        method: 'POST',
+        cache: 'no-store',
+        headers: expect.objectContaining({
+          [TASK_SNAPSHOT_CAPABILITY_HEADER]: TASK_SNAPSHOT_SCHEDULING_CAPABILITY,
+        }),
+        body: JSON.stringify({
+          protocolVersion: 1,
+          deviceId: 'device-mobile1',
+          operationId: 'mobile-complete-1',
+          expectedRevision: 37,
+          mutation: { kind: 'set_task_completed', taskId: 'task-1', completed: true },
+        }),
+      }),
     );
   });
 

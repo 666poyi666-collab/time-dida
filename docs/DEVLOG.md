@@ -1,5 +1,21 @@
 # Development Log
 
+## 2026-08-30
+
+- 将候选版本统一提升到 `0.12.105/1305`。新增结构化循环、开始时间、云端当前时间 MCP、清单详情与任务过滤；第一方 CLI 通过同一 Account DO CAS/幂等合同管理时间、清单和任务，并严格区分 device credential 与 OAuth token。
+- 设置页和同步页降噪：实时连接、最近账本成功、历史尝试、设备 freshness、番茄本机/上传/桥接/手机显示分别表达；Dashboard 增加五时段、三轨累计和当前线；字体扩展为八套。修复桌面截图脚本误把通用 `.app-stage` 当页面就绪的假证据，改用页面专属根节点重拍。
+- 阶段性门禁：format/typecheck/lint、根 `125 files / 943 tests`、MCP `114 tests`、生产 build、设置与 Dashboard 桌面/移动截图通过；部署、dist、packaged smoke 和三设备安装矩阵仍待回填。
+- MCP adapter 小修：`task-scheduling-v1` 现在也转发到 `/sync/v2/tasks/mutate`，并明确不注入 live command；对应 exchange 合同测试已补齐。
+- 桌面旧快照合并保护：0.12.104 task shape 缺少调度键时保留 SQLite 已有循环，只有新客户端显式 `null` 才清除。
+- 移动任务完成的 operationId 改为基于设备/任务/动作/revision 的稳定指纹，响应丢失重试继续命中同一次 CAS 操作。
+- 修复 portable 沉浸退出阻塞：360ms 界面离场先完成并卸载，Windows native 全屏退出随后在下一事件循环执行，不让系统切换阻塞 renderer timer。
+- 最终门禁：根 126/957、MCP 11/115、cross-device 6/63、Cloudflare 两阶段协议、Android unit/lint/assemble、unpacked/portable UI、mini、live fallback 通过；production audit 0。Worker 最终部署为 private `4fbf1576…`、public `77354996…`，远端 probe 19/19。
+- 实装：Windows `0.12.105/0.12.105.0` 已覆盖并重启；小米并行包 `app.focuslink.mobile.v012105` 已回读 `0.12.105/1305`。华为平板 offline，三端门禁未闭合；生产 MCP 写入仍缺 OAuth access token。
+- 追踪最终二进制生成元数据：`shared/version.generated.ts` 回读 `0.12.105 / cdce0cf`，与 installer/portable packaged smoke 身份一致。
+- 修复临时数据清理入口：新增 `scripts/maintenance/clean-temp-data.mjs` 和 `npm run clean:temp-data`。默认 dry-run，`--apply` 才删除；仅处理回归/打包 fixture，保护当前 APK 备份、设备截图、应用资料、SQLite、凭据和待补传队列。路径检查拒绝根目录/符号链接，Windows 锁冲突和只读属性做有界重试并回读删除后置条件。
+- 两轮实清理共删除 129 个目标、12,178 个文件、3,691 个目录、`127,294,493,385 B` 逻辑大小，均 `failed=[]`，最终零候选；`.git/lfs/tmp=0`。首轮回读 FocusLink 仍有 5 个进程，最终审计为 0，期间未发出进程终止或应用退出命令；SQLite `quick_check=ok` 且 sessions/segments/pauses/两类队列计数清理前后一致。
+- format、根 typecheck（含 Cloudflare）、Lint 和全量 Vitest `123 files / 919 tests` 通过；清理器定向回归为 `4/4`。
+
 ## 2026-08-29
 
 - 接管前代理留下的 FocusLink 任务快照/清单改动，修复普通清单删除：PC 与移动端先确认，收件箱不可删除，任务及子树迁入收件箱；桌面 SQLite 迁移与删除清单同事务，发布前不合并旧云快照，未确认时回滚。

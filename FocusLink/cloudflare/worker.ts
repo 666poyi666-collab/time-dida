@@ -454,7 +454,7 @@ function preflight(request: Request, env: WorkerEnv): Response {
     status: 204,
     headers: {
       'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-      'access-control-allow-headers': 'authorization, content-type',
+      'access-control-allow-headers': 'authorization, content-type, x-focuslink-task-capabilities',
       'access-control-max-age': '600',
     },
   });

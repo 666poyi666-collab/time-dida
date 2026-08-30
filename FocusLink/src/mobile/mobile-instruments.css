@@ -72,6 +72,27 @@
   color: currentColor;
 }
 
+.mobile-timer-stage .dial-standard {
+  width: min(100%, 720px);
+  min-width: 0;
+  grid-template-columns: minmax(48px, 0.32fr) minmax(0, 1fr) minmax(48px, 0.32fr);
+  gap: 10px;
+  padding: 18px 14px 15px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.mobile-timer-stage .instrument-chrome-digits {
+  justify-self: center;
+}
+
+.mobile-timer-stage .instrument-chrome-label,
+.mobile-timer-stage .instrument-chrome-state {
+  padding-bottom: 7px;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
 .dial-thin {
   font-family: var(--font-timer-thin);
   font-weight: 400;

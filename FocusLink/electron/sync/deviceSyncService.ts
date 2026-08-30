@@ -26,6 +26,8 @@ import type { Project, Task } from '@shared/types';
 import {
   TASK_SNAPSHOT_PATH,
   TASK_SNAPSHOT_PROTOCOL_VERSION,
+  TASK_SNAPSHOT_CAPABILITY_HEADER,
+  TASK_SNAPSHOT_SCHEDULING_CAPABILITY,
   isTaskSnapshotPublishedAtWithinFutureSkew,
   parseTaskSnapshotResponse,
   toTaskSnapshotPayload,
@@ -550,6 +552,7 @@ async function postTaskSnapshot(
         Accept: 'application/json',
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
+        [TASK_SNAPSHOT_CAPABILITY_HEADER]: TASK_SNAPSHOT_SCHEDULING_CAPABILITY,
       },
       body: JSON.stringify(request),
       signal: controller.signal,
@@ -656,7 +659,11 @@ async function readTrustedTaskSnapshot(
   try {
     const response = await fetch(url, {
       method: 'GET',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${connection.accessToken}` },
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${connection.accessToken}`,
+        [TASK_SNAPSHOT_CAPABILITY_HEADER]: TASK_SNAPSHOT_SCHEDULING_CAPABILITY,
+      },
       signal: controller.signal,
     });
     if (!response.ok) {

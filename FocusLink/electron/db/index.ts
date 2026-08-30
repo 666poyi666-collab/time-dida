@@ -69,6 +69,14 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE tasks_cache ADD COLUMN parent_id TEXT');
     logger.info('database', 'migration: added tasks_cache.parent_id');
   }
+  if (!hasCol('tasks_cache', 'start_date')) {
+    database.exec('ALTER TABLE tasks_cache ADD COLUMN start_date INTEGER');
+    logger.info('database', 'migration: added tasks_cache.start_date');
+  }
+  if (!hasCol('tasks_cache', 'recurrence')) {
+    database.exec('ALTER TABLE tasks_cache ADD COLUMN recurrence TEXT');
+    logger.info('database', 'migration: added tasks_cache.recurrence');
+  }
   database.exec('CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks_cache(parent_id)');
   const migratedSubjects = database
     .prepare("UPDATE focus_segments SET tomatodo_subject = '学习' WHERE tomatodo_subject = '杂'")
@@ -608,20 +616,26 @@ export function listPausesInSessionRange(start: number, end: number): PauseEvent
 // ============ Tasks cache ============
 
 const UPSERT_TASK_CACHE_SQL = `INSERT INTO tasks_cache
-      (id, source, external_id, project_id, parent_id, title, status, priority, due_date,
-       tags, content, raw_json, last_synced_at, created_at, updated_at)
-     VALUES (@id, @source, @externalId, @projectId, @parentId, @title, @status, @priority, @dueDate,
-       @tags, @content, @rawJson, @lastSyncedAt, @createdAt, @updatedAt)
+      (id, source, external_id, project_id, parent_id, title, status, priority, start_date, due_date,
+       recurrence, tags, content, raw_json, last_synced_at, created_at, updated_at)
+     VALUES (@id, @source, @externalId, @projectId, @parentId, @title, @status, @priority, @startDate, @dueDate,
+       @recurrence, @tags, @content, @rawJson, @lastSyncedAt, @createdAt, @updatedAt)
      ON CONFLICT(id) DO UPDATE SET
        source = excluded.source, external_id = excluded.external_id,
        project_id = excluded.project_id, parent_id = excluded.parent_id, title = excluded.title, status = excluded.status,
-       priority = excluded.priority, due_date = excluded.due_date, tags = excluded.tags,
+       priority = excluded.priority, start_date = excluded.start_date, due_date = excluded.due_date,
+       recurrence = excluded.recurrence, tags = excluded.tags,
        content = excluded.content, raw_json = excluded.raw_json,
        last_synced_at = excluded.last_synced_at, updated_at = excluded.updated_at`;
 
 export function upsertTaskCache(task: TaskCache): void {
   const db = getDb();
-  db.prepare(UPSERT_TASK_CACHE_SQL).run({ ...task, parentId: task.parentId ?? null });
+  db.prepare(UPSERT_TASK_CACHE_SQL).run({
+    ...task,
+    parentId: task.parentId ?? null,
+    startDate: task.startDate ?? null,
+    recurrence: task.recurrence ?? null,
+  });
 }
 
 /**
@@ -634,7 +648,14 @@ export function upsertTaskCaches(tasks: readonly TaskCache[]): void {
   const db = getDb();
   const statement = db.prepare(UPSERT_TASK_CACHE_SQL);
   const writeAll = db.transaction((rows: readonly TaskCache[]) => {
-    for (const task of rows) statement.run({ ...task, parentId: task.parentId ?? null });
+    for (const task of rows) {
+      statement.run({
+        ...task,
+        parentId: task.parentId ?? null,
+        startDate: task.startDate ?? null,
+        recurrence: task.recurrence ?? null,
+      });
+    }
   });
   writeAll(tasks);
 }
@@ -873,7 +894,9 @@ interface TaskCacheRow {
   title: string;
   status: string | null;
   priority: number | null;
+  start_date: number | null;
   due_date: number | null;
+  recurrence: string | null;
   tags: string | null;
   content: string | null;
   raw_json: string | null;
@@ -891,7 +914,9 @@ function rowToTaskCache(r: TaskCacheRow): TaskCache {
     title: r.title,
     status: r.status,
     priority: r.priority,
+    startDate: r.start_date,
     dueDate: r.due_date,
+    recurrence: r.recurrence,
     tags: r.tags,
     content: r.content,
     rawJson: r.raw_json,

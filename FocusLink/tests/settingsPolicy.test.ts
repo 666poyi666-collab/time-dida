@@ -10,6 +10,7 @@ import {
 } from '../shared/settingsPolicy';
 import {
   FOCUS_COLORS,
+  FONT_PROFILES,
   TIMER_STYLES,
   resolveFocusColor,
   resolveThemeAppearance,
@@ -64,6 +65,22 @@ describe('settings partial update policy', () => {
     const next = mergeSettings(DEFAULT_SETTINGS, { fontProfile: 'marker' });
 
     expect(detectSettingsChangedDomains(DEFAULT_SETTINGS, next)).toEqual(['theme']);
+  });
+
+  it('round-trips all eight embedded interface font profiles', () => {
+    expect(FONT_PROFILES).toEqual([
+      'noto',
+      'noto-serif',
+      'wenkai',
+      'zhisong',
+      'marker',
+      'xihei',
+      'smiley',
+      'kuaile',
+    ]);
+    for (const fontProfile of FONT_PROFILES) {
+      expect(mergeSettings(DEFAULT_SETTINGS, { fontProfile }).fontProfile).toBe(fontProfile);
+    }
   });
 
   it('routes focus color and timer style through the theme domain', () => {

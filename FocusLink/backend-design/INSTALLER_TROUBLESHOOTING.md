@@ -102,6 +102,20 @@ FocusLink 使用分步安装器。首屏标题是「FocusLink 安装」，需要
 
 `mini-ui-smoke.cjs` 必须用 `net.Server.listen(0, '127.0.0.1')` 让 OS 分配端口，再关闭预留 socket并启动候选；不得回退为固定范围随机数。packaged smoke 的隔离环境还必须把 `FOXLINK_BUSINESS_API_TOKEN` 设为空，并把 token file 指向 profile 内不存在的文件，避免读取全局凭据或与已安装实例争用业务端口。修复后要复跑完整 smoke，而不是只验证 `/json/list`。
 
+## FL-INSTALL-008：回归/打包临时目录删除被执行策略拦截
+
+典型现象是 smoke 已结束、`.git/lfs/tmp` 也已停止增长，但工作区 `.tmp`、`FocusLink/.tmp` 或 `%TEMP%\focuslink-*` 仍保留大量旧目录；直接运行 `Remove-Item -Recurse -Force` 在命令启动前被系统策略拒绝，导致只清空文件内容而目录长期残留。
+
+统一使用项目内的 Node 清理器。默认只输出经过路径白名单和 24 小时年龄门槛筛选的计划；确认结果后再加 `--apply`：
+
+```powershell
+Set-Location <workspace>\FocusLink
+npm run clean:temp-data
+npm run clean:temp-data -- --apply
+```
+
+清理器只接受批准根目录的直接子项，拒绝根目录和符号链接，保护 `FocusLink\.tmp\android-apk-backups`、设备截图、应用 `%APPDATA%\focuslink`、SQLite、凭据和待补传队列。Windows `EPERM/EACCES/EBUSY/ENOTEMPTY` 只做有限退避重试；最终 JSON 的 `failed` 非空时退出码为 1。不要用全局强杀进程来“解锁”目录，也不要把 `.git\lfs\objects` 当临时目录清理。
+
 ## 维护规则
 
 - 新增安装错误时，先分配稳定错误编号，再补充触发条件、可逆处理和验证命令。

@@ -6,11 +6,13 @@ export const THEME_FAMILIES = ['quiet'] as const satisfies readonly AppSettings[
 
 export const FONT_PROFILES = [
   'noto',
+  'noto-serif',
   'wenkai',
   'zhisong',
   'marker',
   'xihei',
   'smiley',
+  'kuaile',
 ] as const satisfies readonly AppSettings['fontProfile'][];
 
 export const TIMER_STYLES = [

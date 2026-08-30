@@ -63,6 +63,8 @@ const REQUIRED_FAMILIES = [
   'LXGW Marker Gothic',
   'LXGW Neo XiHei',
   'Smiley Sans',
+  'Noto Serif SC Variable',
+  'ZCOOL KuaiLe',
   'JetBrains Mono',
 ];
 
@@ -73,6 +75,8 @@ const FONT_PROFILE_EXPECTATIONS = {
   marker: 'LXGW Marker Gothic',
   xihei: 'LXGW Neo XiHei',
   smiley: 'Smiley Sans',
+  'noto-serif': 'Noto Serif SC Variable',
+  kuaile: 'ZCOOL KuaiLe',
 } as const;
 
 const gotLock = app.requestSingleInstanceLock();
@@ -224,13 +228,21 @@ async function validateViewport(
         const dayMap = await readDayMapMetrics(win);
         assert(dayMap.tickCount === 25, `${viewport.id} day map does not expose 25 hour marks`);
         assert(dayMap.laneCount === 3, `${viewport.id} day map does not expose three lanes`);
-        assert(dayMap.mapWidth >= 720, `${viewport.id} day map is visually compressed`);
+        assert(dayMap.periodCount === 5, `${viewport.id} day map does not expose five day periods`);
+        assert(dayMap.laneTotalCount === 3, `${viewport.id} day map does not expose lane totals`);
         assert(
           dayMap.left >= -1 && dayMap.right <= dayMap.innerWidth + 1,
           `${viewport.id} day map scroll viewport is offscreen`,
         );
-        if (viewport.width < 760) {
+        if (viewport.width < 620) {
+          assert(dayMap.mapWidth >= 660, `${viewport.id} phone day map is visually compressed`);
           assert(dayMap.scrollWidth > dayMap.clientWidth, `${viewport.id} day map should scroll`);
+        } else {
+          assert(
+            dayMap.scrollWidth <= dayMap.clientWidth + 1 &&
+              dayMap.mapWidth <= dayMap.clientWidth + 1,
+            `${viewport.id} tablet day map should show all 24 hours without panning`,
+          );
         }
       }
       if (view === '专注' && viewport.width >= 620) {
@@ -721,6 +733,8 @@ async function readDayMapMetrics(win: BrowserWindow): Promise<{
   mapWidth: number;
   tickCount: number;
   laneCount: number;
+  periodCount: number;
+  laneTotalCount: number;
 }> {
   return win.webContents.executeJavaScript(`(() => {
     const scroll = document.querySelector('.mobile-day-map-scroll');
@@ -735,6 +749,8 @@ async function readDayMapMetrics(win: BrowserWindow): Promise<{
       mapWidth: map?.getBoundingClientRect().width ?? 0,
       tickCount: document.querySelectorAll('.mobile-day-map-axis > span').length,
       laneCount: document.querySelectorAll('.mobile-day-lane').length,
+      periodCount: document.querySelectorAll('.mobile-day-periods > span').length,
+      laneTotalCount: document.querySelectorAll('.mobile-day-lane-label > small').length,
     };
   })()`);
 }

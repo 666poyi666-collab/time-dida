@@ -111,6 +111,14 @@
   opacity: 1;
 }
 
+.font-profile-choice.preview-noto-serif .fp-sample {
+  font-family: 'Noto Serif SC Variable', serif;
+}
+
+.font-profile-choice.preview-kuaile .fp-sample {
+  font-family: 'ZCOOL KuaiLe', sans-serif;
+}
+
 /* 主题色色板：hover 时低透明 accent 光晕（不遮盖色板本色） */
 .focus-color-swatch {
   transition: box-shadow 160ms var(--ease-standard);
@@ -175,6 +183,354 @@
 
 .focus-color-swatch.active::after {
   animation: settings-ring-pop var(--dur-base) var(--ease-spring) both;
+}
+
+/* ─── 6) 设置页密度与同步事实面板 ────────────────────────────────
+ * 设置是重复操作面，不使用大号序号或卡片套卡片。状态面板按事实域分栏：
+ * 当前连接、最近成功、最近尝试分别占位，避免 lastError 覆盖当前状态。 */
+.settings-console {
+  min-height: 58px;
+  padding-inline: 18px;
+}
+
+.settings-console .console-identity {
+  min-width: 148px;
+  gap: 3px;
+}
+
+.settings-console .console-readout {
+  padding-inline: 14px;
+}
+
+.settings-console .console-actions {
+  min-width: 80px;
+  justify-content: flex-end;
+}
+
+.settings-body {
+  grid-template-columns: 184px minmax(0, 1fr);
+}
+
+.settings-nav {
+  padding: 12px 10px;
+}
+
+.settings-nav-list {
+  gap: 2px;
+  margin-top: 0;
+}
+
+.settings-nav button,
+.settings-tab {
+  min-height: 38px;
+  padding-inline: 11px;
+}
+
+.settings-container {
+  width: min(1040px, calc(100% - 40px));
+  padding-block: 20px 56px;
+}
+
+.settings-section {
+  margin-bottom: 18px;
+  padding-top: 14px;
+}
+
+.settings-section-heading h3 {
+  font-size: 13px;
+}
+
+.settings-section-heading p {
+  max-width: 31ch;
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
+.settings-section-content {
+  overflow: hidden;
+}
+
+.settings-row {
+  min-height: 52px;
+  padding-inline: 14px;
+}
+
+.settings-row-control {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.settings-pairing-simple {
+  margin: 0;
+  padding: 10px 14px;
+}
+
+.settings-pairing-entry {
+  display: grid;
+  grid-template-columns: 150px minmax(160px, 1fr) auto;
+  gap: 7px 10px;
+  margin: 0;
+  padding: 11px 14px 13px;
+  border-bottom: 1px solid rgb(var(--app-border));
+}
+
+.settings-pairing-entry label {
+  grid-column: 1 / -1;
+}
+
+.settings-pairing-entry input {
+  width: 100%;
+  min-height: 36px;
+}
+
+.settings-pairing-hint {
+  align-self: center;
+  min-width: 0;
+}
+
+.settings-pairing-offer {
+  min-height: 76px;
+  margin: 0;
+  padding: 11px 14px;
+  border-width: 1px 0;
+  border-radius: 0;
+}
+
+.settings-pairing-offer strong {
+  font-size: 25px;
+  letter-spacing: 0;
+}
+
+.settings-sync-overview {
+  display: grid;
+  border-bottom: 1px solid rgb(var(--app-border));
+}
+
+.settings-fact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-fact {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 9px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgb(var(--app-border));
+}
+
+.settings-fact:nth-child(odd) {
+  border-right: 1px solid rgb(var(--app-border));
+}
+
+.settings-fact-icon {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: rgb(var(--app-surface-2));
+  color: rgb(var(--app-muted));
+}
+
+.settings-fact.tone-success .settings-fact-icon {
+  background: rgb(var(--app-success) / 0.12);
+  color: rgb(var(--app-success));
+}
+
+.settings-fact.tone-warning .settings-fact-icon {
+  background: rgb(var(--app-warning) / 0.13);
+  color: rgb(var(--app-warning));
+}
+
+.settings-fact.tone-danger .settings-fact-icon {
+  background: rgb(var(--app-danger) / 0.12);
+  color: rgb(var(--app-danger));
+}
+
+.settings-fact-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.settings-fact-copy > span {
+  color: rgb(var(--app-muted));
+  font-size: 10px;
+}
+
+.settings-fact-copy > strong {
+  overflow-wrap: anywhere;
+  color: rgb(var(--app-text));
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.settings-fact-copy > small {
+  overflow-wrap: anywhere;
+  color: rgb(var(--app-muted));
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.settings-sync-diagnostic {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 9px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgb(var(--app-border));
+  color: rgb(var(--app-warning));
+}
+
+.settings-sync-diagnostic.tone-danger {
+  color: rgb(var(--app-danger));
+}
+
+.settings-sync-diagnostic > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.settings-sync-diagnostic strong {
+  color: rgb(var(--app-text));
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.settings-sync-diagnostic div > span {
+  color: rgb(var(--app-muted));
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.settings-diagnostic-kind {
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.settings-sync-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.settings-sync-actions > span {
+  min-width: 0;
+  color: rgb(var(--app-muted));
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.settings-sync-actions > div {
+  display: flex;
+  flex-shrink: 0;
+  gap: 7px;
+}
+
+.settings-device-roster {
+  margin: 0;
+  padding-inline: 14px;
+  border-top: 0;
+}
+
+.settings-device-roster-heading,
+.settings-device-row,
+.settings-device-more > summary {
+  min-height: 46px;
+}
+
+.settings-device-row {
+  padding-inline: 4px;
+}
+
+.settings-device-row > div {
+  gap: 2px;
+}
+
+.settings-device-row small {
+  color: rgb(var(--app-subtle));
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.settings-device-row.is-current {
+  margin-inline: -4px;
+  padding-inline: 8px 4px;
+}
+
+.settings-device-more > div {
+  padding-left: 8px;
+}
+
+.settings-tomatodo-overview {
+  border-top: 1px solid rgb(var(--app-border));
+}
+
+.settings-tomatodo-advanced {
+  margin: 10px 14px 12px;
+}
+
+@media (min-width: 1100px) {
+  .settings-section {
+    grid-template-columns: 184px minmax(0, 1fr);
+    gap: 0 24px;
+  }
+}
+
+@media (max-width: 1099px) {
+  .settings-section-heading {
+    padding-bottom: 9px;
+  }
+
+  .settings-section-heading p {
+    max-width: 70ch;
+  }
+}
+
+@media (max-width: 860px) {
+  .settings-body {
+    grid-template-columns: 156px minmax(0, 1fr);
+  }
+
+  .settings-container {
+    width: calc(100% - 24px);
+  }
+
+  .settings-fact-grid,
+  .settings-fact-grid-four {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-fact:nth-child(odd) {
+    border-right: 0;
+  }
+
+  .settings-sync-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-sync-actions > div {
+    justify-content: flex-end;
+  }
+
+  .settings-pairing-entry {
+    grid-template-columns: minmax(150px, 1fr) auto;
+  }
+
+  .settings-pairing-hint {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
 }
 
 /* ─── reduced-motion 降级：静态呈现或仅透明度过渡 ──────────────── */

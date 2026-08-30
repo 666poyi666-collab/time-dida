@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   fetchFocusLinkTaskSnapshot,
+  getFocusLinkCurrentTime,
+  getFocusLinkProject,
   getFocusLinkTask,
   listFocusLinkProjects,
   listFocusLinkTasks,
@@ -36,7 +38,19 @@ const snapshot: TaskSnapshotResponse = {
         title: '复习化学',
         status: 'incomplete',
         priority: 3,
+        startDate: 1_720_000_050_000,
         dueDate: 1_720_000_100_000,
+        recurrence: {
+          timezone: 'Asia/Shanghai',
+          frequency: 'weekly',
+          interval: 1,
+          byWeekday: [1, 5],
+          byMonthDay: [],
+          endAt: null,
+          count: 4,
+          completedCount: 0,
+          rollover: 'from_schedule',
+        },
         tags: ['考试'],
         parentId: null,
         isCompleted: false,
@@ -116,7 +130,9 @@ describe('FocusLink MCP task authority adapter', () => {
       parentId: null,
       dueDate: 1_720_000_100_000,
       priority: 3,
+      startDate: 1_720_000_050_000,
       tags: ['考试'],
+      recurrence: { frequency: 'weekly', count: 4 },
     });
     await expect(
       listFocusLinkTasks(env(), {
@@ -128,6 +144,35 @@ describe('FocusLink MCP task authority adapter', () => {
     });
     await expect(getFocusLinkTask(env(), 'done')).resolves.toMatchObject({
       task: expect.objectContaining({ id: 'done', isCompleted: true }),
+      subtasks: [],
+    });
+    await expect(getFocusLinkTask(env(), 'parent')).resolves.toMatchObject({
+      subtasks: [expect.objectContaining({ id: 'child' })],
+    });
+    await expect(
+      listFocusLinkTasks(env(), {
+        includeCompleted: true,
+        priority: 3,
+        startFrom: 1_720_000_000_000,
+        dueTo: 1_720_000_200_000,
+        tags: ['考试'],
+        parentId: null,
+        limit: 10,
+      }),
+    ).resolves.toMatchObject({ tasks: [expect.objectContaining({ id: 'parent' })] });
+  });
+
+  it('returns precise authority time and project counts', async () => {
+    await expect(getFocusLinkCurrentTime(env(), 'Asia/Shanghai')).resolves.toMatchObject({
+      authority: 'focuslink-account-do',
+      serverTime: snapshot.serverTime,
+      timezone: 'Asia/Shanghai',
+      offsetMinutes: 480,
+    });
+    await expect(getFocusLinkProject(env(), 'study')).resolves.toMatchObject({
+      project: { id: 'study' },
+      taskCount: 2,
+      openTaskCount: 2,
     });
   });
 
@@ -155,8 +200,19 @@ describe('FocusLink MCP task authority adapter', () => {
       projectId: 'study',
       parentId: 'parent',
       priority: 5,
+      startDate: 1_720_000_150_000,
       dueDate: 1_720_000_200_000,
       tags: ['本周'],
+      recurrence: {
+        timezone: 'Asia/Shanghai',
+        frequency: 'daily',
+        interval: 1,
+        byWeekday: [],
+        byMonthDay: [],
+        endAt: null,
+        count: 3,
+        rollover: 'from_schedule',
+      },
     });
     await expect(mutateFocusLinkTasks(fixture, request)).resolves.toEqual(response);
     expect(fixture.calls).toHaveLength(1);

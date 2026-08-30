@@ -48,11 +48,19 @@ import {
 import {
   TASK_SNAPSHOT_PROTOCOL_VERSION,
   TASK_SNAPSHOT_MAX_FUTURE_SKEW_MS,
+  TASK_SNAPSHOT_CAPABILITY_HEADER,
   applyTaskSnapshotMutation,
+  canonicalTaskSnapshotFingerprintPayload,
   isTaskSnapshotPublishedAtWithinFutureSkew,
+  mergeLegacyTaskSchedulingFields,
+  normalizeTaskSnapshotPayload,
   parseTaskSnapshotMutationResponse,
+  validateTaskSnapshotPayload,
   validateTaskSnapshotMutationRequest,
   validateTaskSnapshotPublishRequest,
+  taskSnapshotSupportsScheduling,
+  withoutTaskSchedulingFields,
+  withoutTaskSchedulingMutationFields,
   type TaskSnapshotPayload,
   type TaskSnapshotMutationRequest,
   type TaskSnapshotMutationResponse,
@@ -444,7 +452,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
           );
         }
         rejectUnexpectedQuery(url);
-        if (request.method === 'GET') return json(this.getTaskSnapshot());
+        if (request.method === 'GET') return json(this.getTaskSnapshot(true));
         const body = await readJson(request, 512 * 1024);
         if (!validateTaskSnapshotMutationRequest(body)) {
           throw new ProtocolError(400, 'invalid_task_mutation', 'invalid task mutation');
@@ -624,7 +632,11 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       if (url.pathname === '/v1/tasks' && request.method === 'GET') {
         await this.authorizeV2(request, 'sync:read');
         rejectUnexpectedQuery(url);
-        return json(this.getTaskSnapshot());
+        return json(
+          this.getTaskSnapshot(
+            taskSnapshotSupportsScheduling(request.headers.get(TASK_SNAPSHOT_CAPABILITY_HEADER)),
+          ),
+        );
       }
       if (url.pathname === '/v1/tasks' && request.method === 'POST') {
         rejectUnexpectedQuery(url);
@@ -634,7 +646,12 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         }
         const identity = await this.authorizeV2(request, 'sync:write');
         assertV2DeviceBinding(identity, body.deviceId);
-        return json(this.publishTaskSnapshot(body));
+        return json(
+          this.publishTaskSnapshot(
+            body,
+            taskSnapshotSupportsScheduling(request.headers.get(TASK_SNAPSHOT_CAPABILITY_HEADER)),
+          ),
+        );
       }
       if (url.pathname === '/v1/tasks/mutate' && request.method === 'POST') {
         rejectUnexpectedQuery(url);
@@ -644,7 +661,13 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         }
         const identity = await this.authorizeV2(request, 'sync:write');
         assertV2DeviceBinding(identity, body.deviceId);
-        return json(this.applyTaskSnapshotMutation(body));
+        const response = this.applyTaskSnapshotMutation(body);
+        return json(
+          taskSnapshotSupportsScheduling(request.headers.get(TASK_SNAPSHOT_CAPABILITY_HEADER)) ||
+            response.snapshot === null
+            ? response
+            : withoutTaskSchedulingMutationFields(response),
+        );
       }
       if (url.pathname === '/v1/live' && request.method === 'GET') {
         await this.authorizeV2(request, 'live:read');
@@ -3127,48 +3150,71 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
     return { ...decoded, graveyard: decoded.graveyard ?? [] };
   }
 
-  private getTaskSnapshot(): TaskSnapshotResponse {
+  private getTaskSnapshot(includeScheduling: boolean): TaskSnapshotResponse {
     const row = this.sql
       .exec<TaskRow>(
         'SELECT revision, source_device_id, fingerprint, snapshot_json FROM task_state WHERE singleton = 1',
       )
       .one();
+    const snapshot = row.snapshot_json
+      ? normalizeTaskSnapshotPayload(JSON.parse(row.snapshot_json) as TaskSnapshotPayload)
+      : null;
     return {
       protocolVersion: TASK_SNAPSHOT_PROTOCOL_VERSION,
       revision: row.revision,
       sourceDeviceId: row.source_device_id,
-      snapshot: row.snapshot_json ? (JSON.parse(row.snapshot_json) as TaskSnapshotPayload) : null,
+      snapshot:
+        snapshot === null || includeScheduling ? snapshot : withoutTaskSchedulingFields(snapshot),
       serverTime: Date.now(),
     };
   }
 
-  private publishTaskSnapshot(request: TaskSnapshotPublishRequest): TaskSnapshotResponse {
+  private publishTaskSnapshot(
+    request: TaskSnapshotPublishRequest,
+    includeScheduling: boolean,
+  ): TaskSnapshotResponse {
     const serverTime = Date.now();
-    if (!isTaskSnapshotPublishedAtWithinFutureSkew(request.snapshot.publishedAt, serverTime)) {
+    const incomingSnapshot = normalizeTaskSnapshotPayload(request.snapshot);
+    if (!isTaskSnapshotPublishedAtWithinFutureSkew(incomingSnapshot.publishedAt, serverTime)) {
       throw new ProtocolError(
         422,
         'task_snapshot_timestamp_too_far_ahead',
         'task snapshot publishedAt is too far in the future',
       );
     }
-    const fingerprint = fingerprintDeviceSyncValue(request.snapshot);
     this.ctx.storage.transactionSync(() => {
       const row = this.sql
         .exec<TaskRow>(
           'SELECT revision, source_device_id, fingerprint, snapshot_json FROM task_state WHERE singleton = 1',
         )
         .one();
-      if (row.fingerprint === fingerprint && row.source_device_id === request.deviceId) return;
       const currentSnapshot = row.snapshot_json
-        ? (JSON.parse(row.snapshot_json) as TaskSnapshotPayload)
+        ? normalizeTaskSnapshotPayload(JSON.parse(row.snapshot_json) as TaskSnapshotPayload)
         : null;
+      const normalizedSnapshot = includeScheduling
+        ? incomingSnapshot
+        : mergeLegacyTaskSchedulingFields(currentSnapshot, incomingSnapshot);
+      if (!validateTaskSnapshotPayload(normalizedSnapshot)) {
+        throw new ProtocolError(
+          409,
+          'task_snapshot_conflict',
+          'legacy task update conflicts with structured scheduling fields',
+        );
+      }
+      const fingerprint = fingerprintDeviceSyncValue(
+        canonicalTaskSnapshotFingerprintPayload(normalizedSnapshot),
+      );
+      const currentFingerprint = currentSnapshot
+        ? fingerprintDeviceSyncValue(canonicalTaskSnapshotFingerprintPayload(currentSnapshot))
+        : row.fingerprint;
+      if (currentFingerprint === fingerprint && row.source_device_id === request.deviceId) return;
       const currentSnapshotIsLegacyFuture =
         currentSnapshot !== null &&
         !isTaskSnapshotPublishedAtWithinFutureSkew(currentSnapshot.publishedAt, serverTime);
       if (
         currentSnapshot &&
         !currentSnapshotIsLegacyFuture &&
-        request.snapshot.publishedAt < currentSnapshot.publishedAt
+        normalizedSnapshot.publishedAt < currentSnapshot.publishedAt
       ) {
         throw new ProtocolError(
           409,
@@ -3179,7 +3225,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
       if (
         currentSnapshot &&
         !currentSnapshotIsLegacyFuture &&
-        request.snapshot.publishedAt === currentSnapshot.publishedAt
+        normalizedSnapshot.publishedAt === currentSnapshot.publishedAt
       ) {
         throw new ProtocolError(
           409,
@@ -3192,10 +3238,10 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         row.revision + 1,
         request.deviceId,
         fingerprint,
-        JSON.stringify(request.snapshot),
+        JSON.stringify(normalizedSnapshot),
       );
     });
-    return this.getTaskSnapshot();
+    return this.getTaskSnapshot(includeScheduling);
   }
 
   /**
@@ -3274,11 +3320,16 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
               serverTime + TASK_SNAPSHOT_MAX_FUTURE_SKEW_MS,
               Math.max(serverTime, currentSnapshot.publishedAt + 1),
             );
-      const applied = applyTaskSnapshotMutation(
-        currentSnapshot,
-        request.mutation,
-        currentPublishedAt,
-      );
+      let applied: ReturnType<typeof applyTaskSnapshotMutation>;
+      try {
+        applied = applyTaskSnapshotMutation(currentSnapshot, request.mutation, currentPublishedAt);
+      } catch (error) {
+        throw new ProtocolError(
+          422,
+          'task_mutation_invalid',
+          error instanceof Error ? error.message : 'task mutation is invalid',
+        );
+      }
       const response: TaskSnapshotMutationResponse = {
         protocolVersion: TASK_SNAPSHOT_PROTOCOL_VERSION,
         operationId: request.operationId,
@@ -3293,7 +3344,7 @@ export class FocusLinkAccount extends DurableObject<WorkerEnv> {
         'UPDATE task_state SET revision = ?, source_device_id = ?, fingerprint = ?, snapshot_json = ? WHERE singleton = 1',
         response.revision,
         request.deviceId,
-        fingerprintDeviceSyncValue(applied.snapshot),
+        fingerprintDeviceSyncValue(canonicalTaskSnapshotFingerprintPayload(applied.snapshot)),
         JSON.stringify(applied.snapshot),
       );
       this.sql.exec(

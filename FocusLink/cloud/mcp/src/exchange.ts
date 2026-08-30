@@ -1,6 +1,11 @@
 import { BoundedBodyError, exactArrayBuffer, readBoundedBody } from './bounded-body';
 import { FEED_ENTITY_TYPES, SYNC_PROTOCOL_VERSION } from './feed-types';
 import { focuslinkUpstreamUrl } from './upstream';
+import {
+  TASK_SNAPSHOT_CAPABILITY_HEADER,
+  TASK_SNAPSHOT_SCHEDULING_CAPABILITY,
+  taskSnapshotSupportsScheduling,
+} from '../../../shared/sync/taskSnapshotProtocol';
 
 const MAX_EXCHANGE_BODY_BYTES = 1024 * 1024;
 const MAX_TASK_BODY_BYTES = 512 * 1024;
@@ -93,6 +98,11 @@ export async function handleCanonicalSync(request: Request, env: ExchangeEnv): P
   const upstreamUrl = focuslinkUpstreamUrl(url.pathname);
   upstreamUrl.search = url.search;
   let init: RequestInit = { method: request.method };
+  const schedulingCapability: Record<string, string> =
+    (url.pathname === '/sync/v2/tasks' || url.pathname === '/sync/v2/tasks/mutate') &&
+    taskSnapshotSupportsScheduling(request.headers.get(TASK_SNAPSHOT_CAPABILITY_HEADER))
+      ? { [TASK_SNAPSHOT_CAPABILITY_HEADER]: TASK_SNAPSHOT_SCHEDULING_CAPABILITY }
+      : {};
   if (request.method === 'POST') {
     if (route.maxBodyBytes === 0) {
       try {
@@ -103,17 +113,21 @@ export async function handleCanonicalSync(request: Request, env: ExchangeEnv): P
         }
         return withCors(request, env, syncError(400, 'request_body_unreadable'));
       }
-      init = { method: 'POST' };
+      init = { method: 'POST', headers: schedulingCapability };
     } else {
       const parsed = await readJsonBody(request, route.maxBodyBytes, route.tooLargeCode);
       if ('response' in parsed) return withCors(request, env, parsed.response);
       init = {
         method: 'POST',
-        headers: { 'content-type': 'application/json; charset=utf-8' },
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+          ...schedulingCapability,
+        },
         body: JSON.stringify(parsed.value),
       };
     }
   }
+  if (request.method === 'GET') init = { ...init, headers: schedulingCapability };
   return withCors(
     request,
     env,
@@ -423,7 +437,7 @@ function preflight(
     status: 204,
     headers: {
       'access-control-allow-methods': [...methods, 'OPTIONS'].join(', '),
-      'access-control-allow-headers': 'authorization, content-type',
+      'access-control-allow-headers': 'authorization, content-type, x-focuslink-task-capabilities',
       'access-control-max-age': '600',
       'cache-control': 'no-store',
       vary: 'Origin',

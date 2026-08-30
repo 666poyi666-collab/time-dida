@@ -119,6 +119,8 @@ export const MOBILE_FONT_LABELS: Record<MobileAppearance['fontProfile'], string>
   marker: '霞鹜漫黑',
   xihei: '霞鹜新晰黑',
   smiley: '得意黑',
+  'noto-serif': '思源宋体',
+  kuaile: '站酷快乐体',
 };
 
 export const MOBILE_TIMER_LABELS: Record<MobileAppearance['timerStyle'], string> = {

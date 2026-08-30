@@ -38,6 +38,8 @@ import { fetchFocusMcpRecords, type FocusMcpRecords } from './focus-records';
 import { fetchFocusMcpProjection } from './focus-summary';
 import { readProjection, type ProjectionResult } from './projection';
 import {
+  getFocusLinkCurrentTime,
+  getFocusLinkProject,
   getFocusLinkTask,
   listFocusLinkProjects,
   listFocusLinkTasks,
@@ -46,6 +48,7 @@ import {
   redactMutationConfirmation,
   type TaskAuthorityError,
 } from './tasks';
+import { normalizeTaskRecurrenceDefinition } from '../../../shared/taskRecurrence';
 
 export interface Env extends FeedEnv, McpOAuthEnv, BootstrapEnv {
   FOCUSLINK_FEED_SYNC: DurableObjectNamespace;
@@ -149,7 +152,7 @@ function createFoxlinkMcpServer(env: Env): McpServer {
     { name: PROJECT.name, version: PROJECT.version },
     {
       instructions:
-        'FocusLink 云端 MCP 读取专注与自有任务，并通过 Account DO 管理任务。所有写工具必须携带 operationId 与 expectedRevision；清单删除会把任务迁入收件箱，任务删除会永久删除目标子树。不要请求凭据、设备标识或本地诊断。',
+        'FocusLink 云端 MCP 读取精确时间、专注与自有任务，并通过 Account DO 管理清单、父子任务和结构化循环。所有写工具必须携带 operationId 与 expectedRevision；清单删除会把任务迁入收件箱，任务删除会永久删除目标子树。不要请求凭据、设备标识或本地诊断。',
     },
   );
   const getStatus = async () => focusStatusResponse(env);
@@ -158,18 +161,54 @@ function createFoxlinkMcpServer(env: Env): McpServer {
   const getTaskSummary = async ({ from, to, limit }: { from: number; to: number; limit: number }) =>
     text(await fetchFocusMcpProjection(env, { from, to, limit }));
   const getSyncOverview = async () => focusSyncOverviewResponse(env);
+  const getCurrentTime = async ({ timezone }: { timezone?: string }) => {
+    const resolved = timezone ?? validTimeZone(env.FOCUSLINK_TIME_ZONE) ?? 'Asia/Shanghai';
+    if (!validTimeZone(resolved)) throw new Error('invalid_time_zone');
+    return text(await getFocusLinkCurrentTime(env, resolved));
+  };
   const listProjects = async () => text(await listFocusLinkProjects(env));
+  const getProject = async ({ projectId }: { projectId: string }) =>
+    text(await getFocusLinkProject(env, projectId));
   const listTasks = async ({
     projectId,
     includeCompleted,
     query,
+    priority,
+    startFrom,
+    startTo,
+    dueFrom,
+    dueTo,
+    tags,
+    parentId,
     limit,
   }: {
     projectId?: string | null;
     includeCompleted: boolean;
     query?: string;
+    priority?: number | null;
+    startFrom?: number;
+    startTo?: number;
+    dueFrom?: number;
+    dueTo?: number;
+    tags?: string[];
+    parentId?: string | null;
     limit: number;
-  }) => text(await listFocusLinkTasks(env, { projectId, includeCompleted, query, limit }));
+  }) =>
+    text(
+      await listFocusLinkTasks(env, {
+        projectId,
+        includeCompleted,
+        query,
+        priority,
+        startFrom,
+        startTo,
+        dueFrom,
+        dueTo,
+        tags,
+        parentId,
+        limit,
+      }),
+    );
   const getTask = async ({ taskId }: { taskId: string }) =>
     text(await getFocusLinkTask(env, taskId));
   const mutate = async (
@@ -207,9 +246,39 @@ function createFoxlinkMcpServer(env: Env): McpServer {
   const nullableProjectId = projectId.nullable();
   const taskTitle = z.string().min(1).max(1_000);
   const taskPriority = z.number().int().min(0).max(5).nullable().optional();
+  const taskStartDate = z.number().int().nonnegative().nullable().optional();
   const taskDueDate = z.number().int().nonnegative().nullable().optional();
   const taskTags = z.array(z.string().min(1).max(100)).max(50).optional();
+  const recurrenceSchema = z
+    .object({
+      timezone: z.string().min(1).max(100),
+      frequency: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
+      interval: z.number().int().min(1).max(999).default(1),
+      byWeekday: z.array(z.number().int().min(1).max(7)).max(7).default([]),
+      byMonthDay: z.array(z.number().int().min(1).max(31)).max(31).default([]),
+      endAt: z.number().int().nonnegative().nullable().default(null),
+      count: z.number().int().min(1).max(1_000_000).nullable().default(null),
+      rollover: z.enum(['from_schedule', 'from_completion']).default('from_schedule'),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (normalizeTaskRecurrenceDefinition(value) === null) {
+        context.addIssue({ code: 'custom', message: 'invalid_recurrence' });
+      }
+    });
+  const taskRecurrence = recurrenceSchema.nullable().optional();
 
+  server.registerTool(
+    'focuslink_get_current_time',
+    {
+      description:
+        '读取 Account DO 同步时钟，并按 IANA 时区返回 UTC、本地日期时间、偏移和当天边界。',
+      inputSchema: { timezone: z.string().min(1).max(100).optional() },
+      annotations: TASK_READ_TOOL_ANNOTATIONS,
+      _meta: OAUTH_READ_TOOL_META,
+    },
+    getCurrentTime,
+  );
   server.registerTool(
     'focuslink_get_status',
     {
@@ -317,6 +386,16 @@ function createFoxlinkMcpServer(env: Env): McpServer {
     listProjects,
   );
   server.registerTool(
+    'focuslink_get_project',
+    {
+      description: '按稳定清单 ID 读取 FocusLink 清单及其任务数量。',
+      inputSchema: { projectId },
+      annotations: TASK_READ_TOOL_ANNOTATIONS,
+      _meta: OAUTH_READ_TOOL_META,
+    },
+    getProject,
+  );
+  server.registerTool(
     'focuslink_list_tasks',
     {
       description: '读取 FocusLink 自有任务，支持清单、完成状态、标题或标签筛选。',
@@ -324,6 +403,13 @@ function createFoxlinkMcpServer(env: Env): McpServer {
         projectId: nullableProjectId.optional(),
         includeCompleted: z.boolean().default(false),
         query: z.string().max(200).optional(),
+        priority: z.number().int().min(0).max(5).nullable().optional(),
+        startFrom: z.number().int().nonnegative().optional(),
+        startTo: z.number().int().nonnegative().optional(),
+        dueFrom: z.number().int().nonnegative().optional(),
+        dueTo: z.number().int().nonnegative().optional(),
+        tags: taskTags,
+        parentId: taskId.nullable().optional(),
         limit: z.number().int().min(1).max(500).default(100),
       },
       annotations: TASK_READ_TOOL_ANNOTATIONS,
@@ -392,7 +478,8 @@ function createFoxlinkMcpServer(env: Env): McpServer {
   server.registerTool(
     'focuslink_create_task',
     {
-      description: '创建 FocusLink 自有任务，可指定清单、父任务、截止时间、优先级和标签。',
+      description:
+        '创建 FocusLink 自有任务，可指定清单、父任务、开始/截止时间、优先级、标签和结构化循环规则。',
       inputSchema: {
         ...mutationFields,
         taskId: taskId.optional(),
@@ -400,7 +487,9 @@ function createFoxlinkMcpServer(env: Env): McpServer {
         parentId: nullableProjectId.optional(),
         title: taskTitle,
         priority: taskPriority,
+        startDate: taskStartDate,
         dueDate: taskDueDate,
+        recurrence: taskRecurrence,
         tags: taskTags,
       },
       annotations: TASK_WRITE_TOOL_ANNOTATIONS,
@@ -414,7 +503,9 @@ function createFoxlinkMcpServer(env: Env): McpServer {
       parentId,
       title,
       priority,
+      startDate,
       dueDate,
+      recurrence,
       tags,
     }) =>
       mutate(operationId, expectedRevision, {
@@ -424,14 +515,17 @@ function createFoxlinkMcpServer(env: Env): McpServer {
         ...(parentId === undefined ? {} : { parentId }),
         title,
         ...(priority === undefined ? {} : { priority }),
+        ...(startDate === undefined ? {} : { startDate }),
         ...(dueDate === undefined ? {} : { dueDate }),
+        ...(recurrence === undefined ? {} : { recurrence }),
         ...(tags === undefined ? {} : { tags }),
       }),
   );
   server.registerTool(
     'focuslink_update_task',
     {
-      description: '更新 FocusLink 任务的标题、清单、父任务、截止时间、优先级或标签。',
+      description:
+        '更新 FocusLink 任务的标题、清单、父任务、开始/截止时间、优先级、标签或循环规则；recurrence=null 可取消循环。',
       inputSchema: {
         ...mutationFields,
         taskId,
@@ -439,7 +533,9 @@ function createFoxlinkMcpServer(env: Env): McpServer {
         projectId: nullableProjectId.optional(),
         parentId: nullableProjectId.optional(),
         priority: taskPriority,
+        startDate: taskStartDate,
         dueDate: taskDueDate,
+        recurrence: taskRecurrence,
         tags: taskTags,
       },
       annotations: TASK_WRITE_TOOL_ANNOTATIONS,
@@ -453,7 +549,9 @@ function createFoxlinkMcpServer(env: Env): McpServer {
       projectId: target,
       parentId,
       priority,
+      startDate,
       dueDate,
+      recurrence,
       tags,
     }) =>
       mutate(operationId, expectedRevision, {
@@ -463,14 +561,17 @@ function createFoxlinkMcpServer(env: Env): McpServer {
         ...(target === undefined ? {} : { projectId: target }),
         ...(parentId === undefined ? {} : { parentId }),
         ...(priority === undefined ? {} : { priority }),
+        ...(startDate === undefined ? {} : { startDate }),
         ...(dueDate === undefined ? {} : { dueDate }),
+        ...(recurrence === undefined ? {} : { recurrence }),
         ...(tags === undefined ? {} : { tags }),
       }),
   );
   server.registerTool(
     'focuslink_complete_task',
     {
-      description: '完成一个 FocusLink 自有任务。',
+      description:
+        '完成一个 FocusLink 自有任务；循环任务按 rollover 推进日期，count/endAt 耗尽后才进入已完成。',
       inputSchema: { ...mutationFields, taskId },
       annotations: TASK_WRITE_TOOL_ANNOTATIONS,
       _meta: OAUTH_TASK_WRITE_TOOL_META,

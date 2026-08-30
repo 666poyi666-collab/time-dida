@@ -47,6 +47,8 @@
 - [ ] Android 通知/Tile 只排队带 session/revision 的 native command，原生层不推进计时或在云端确认前翻转状态。
 - [ ] 账本 `opId` 重放幂等、revision 冲突、cursor 分页、Bearer 鉴权、CORS 与 1 MiB 上限有契约测试；completed bundle 不携带活动会话字段。
 - [ ] 拉回新会话使用单事务导入且不自动触发第三方副作用；远端更新/删除未有显式策略时报告冲突，不静默覆盖。
+- [ ] 任务开始/截止/循环字段经 `task-scheduling-v1` capability 协商；旧客户端整包写入保留调度字段，循环完成由 authority mutation 推进，MCP/CLI 调用方不能写 `completedCount`。
+- [ ] MCP 当前时间来自 Account DO `serverTime`；CLI 从 `fl2` 派生精确 deviceId，OAuth token 与 device token 不跨边界复用。
 
 ## 稳定性与诊断
 

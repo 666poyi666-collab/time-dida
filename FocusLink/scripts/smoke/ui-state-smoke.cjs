@@ -769,9 +769,18 @@ async function main() {
     tab.click();
   })()`);
   await waitForAnyText(['计时仪表']);
-  // 界面字体：六种设置必须落到真实不同字形，而不是同一黑体的不同字重。
+  // 界面字体：八种设置必须落到真实不同字形，而不是同一黑体的不同字重。
   results.interfaceFonts = {};
-  for (const profile of ['noto', 'wenkai', 'zhisong', 'marker', 'xihei', 'smiley']) {
+  for (const profile of [
+    'noto',
+    'noto-serif',
+    'wenkai',
+    'zhisong',
+    'marker',
+    'xihei',
+    'smiley',
+    'kuaile',
+  ]) {
     await evaluate(`window.focuslink.settings.set({ fontProfile: '${profile}' })`);
     await delay(240);
     results.interfaceFonts[profile] = await evaluate(`(() => ({
@@ -1163,12 +1172,14 @@ async function main() {
       'timer style setting applies the matching instrument class',
     ],
     [
-      Object.values(results.interfaceFonts).every((font) => font.previewCount === 6),
-      'settings renders all six interface font families',
+      Object.values(results.interfaceFonts).every((font) => font.previewCount === 8),
+      'settings renders all eight interface font families',
     ],
     [
       results.interfaceFonts.noto?.rootFontClass === 'font-profile-noto' &&
         results.interfaceFonts.noto?.bodyFontFamily.includes('Noto Sans SC') &&
+        results.interfaceFonts['noto-serif']?.rootFontClass === 'font-profile-noto-serif' &&
+        results.interfaceFonts['noto-serif']?.bodyFontFamily.includes('Noto Serif SC') &&
         results.interfaceFonts.wenkai?.rootFontClass === 'font-profile-wenkai' &&
         results.interfaceFonts.wenkai?.bodyFontFamily.includes('LXGW WenKai') &&
         results.interfaceFonts.zhisong?.rootFontClass === 'font-profile-zhisong' &&
@@ -1178,8 +1189,10 @@ async function main() {
         results.interfaceFonts.xihei?.rootFontClass === 'font-profile-xihei' &&
         results.interfaceFonts.xihei?.bodyFontFamily.includes('LXGW Neo XiHei') &&
         results.interfaceFonts.smiley?.rootFontClass === 'font-profile-smiley' &&
-        results.interfaceFonts.smiley?.bodyFontFamily.includes('Smiley Sans'),
-      'interface font setting applies six genuinely different families',
+        results.interfaceFonts.smiley?.bodyFontFamily.includes('Smiley Sans') &&
+        results.interfaceFonts.kuaile?.rootFontClass === 'font-profile-kuaile' &&
+        results.interfaceFonts.kuaile?.bodyFontFamily.includes('ZCOOL KuaiLe'),
+      'interface font setting applies eight genuinely different families',
     ],
     [
       results.taskLightInspection.bodyScroll[0] === results.taskLightInspection.viewport[0],

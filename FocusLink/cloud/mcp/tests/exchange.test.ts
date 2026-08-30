@@ -199,6 +199,7 @@ describe('canonical /sync/v2 adapter', () => {
       path: string;
       method: string;
       search: string;
+      schedulingCapability: string | null;
       body: unknown;
     }> = [];
     const upstream = binding(async (request) => {
@@ -207,15 +208,16 @@ describe('canonical /sync/v2 adapter', () => {
         path: url.pathname,
         method: request.method,
         search: url.search,
+        schedulingCapability: request.headers.get('x-focuslink-task-capabilities'),
         body: request.method === 'POST' ? await request.json() : null,
       });
       return Response.json({ ok: true });
     });
     const env = exchangeEnv(upstream);
 
-    expect((await handleCanonicalSync(request('/sync/v2/tasks', 'GET', TOKEN), env)).status).toBe(
-      200,
-    );
+    const capableTaskRead = request('/sync/v2/tasks', 'GET', TOKEN);
+    capableTaskRead.headers.set('x-focuslink-task-capabilities', 'task-scheduling-v1');
+    expect((await handleCanonicalSync(capableTaskRead, env)).status).toBe(200);
     expect(
       (
         await handleCanonicalSync(
@@ -271,10 +273,49 @@ describe('canonical /sync/v2 adapter', () => {
       '/sync/v2/live/command',
     ]);
     expect(seen[3]?.search).toBe('?afterRevision=3&waitMs=1000');
+    expect(seen[0]?.schedulingCapability).toBe('task-scheduling-v1');
+    expect(seen[1]?.schedulingCapability).toBeNull();
+    expect(seen[2]?.schedulingCapability).toBeNull();
     expect(seen[4]?.body).toMatchObject({ deviceId: 'device-reader01' });
     expect(
       (await handleCanonicalSync(request('/sync/v2/live/command', 'GET', TOKEN), env)).status,
     ).toBe(405);
+  });
+
+  it('forwards scheduling capability on mutation routes without adding it to live routes', async () => {
+    const seen: Array<{ path: string; capability: string | null }> = [];
+    const upstream = binding(async (request) => {
+      seen.push({
+        path: new URL(request.url).pathname,
+        capability: request.headers.get('x-focuslink-task-capabilities'),
+      });
+      return Response.json({ ok: true });
+    });
+    const capable = request('/sync/v2/tasks/mutate', 'POST', TOKEN, {
+      protocolVersion: 1,
+      operationId: 'mcp-op-1234',
+      expectedRevision: 0,
+      deviceId: 'device-reader01',
+      mutation: { kind: 'set_task_completed', taskId: 'task-1', completed: true },
+    });
+    capable.headers.set('x-focuslink-task-capabilities', 'task-scheduling-v1');
+    expect((await handleCanonicalSync(capable, exchangeEnv(upstream))).status).toBe(200);
+    expect(
+      (
+        await handleCanonicalSync(
+          request('/sync/v2/live/command', 'POST', TOKEN, {
+            protocolVersion: 1,
+            deviceId: 'device-reader01',
+            command: { type: 'pause' },
+          }),
+          exchangeEnv(upstream),
+        )
+      ).status,
+    ).toBe(200);
+    expect(seen).toEqual([
+      { path: '/sync/v2/tasks/mutate', capability: 'task-scheduling-v1' },
+      { path: '/sync/v2/live/command', capability: null },
+    ]);
   });
 
   it('proxies device inventory and exact targeted revocation without accepting a body', async () => {
@@ -366,6 +407,9 @@ describe('canonical /sync/v2 adapter', () => {
     const known = await handleCanonicalSync(request('/sync/v2/live', 'OPTIONS', TOKEN), env);
     expect(known.status).toBe(204);
     expect(known.headers.get('access-control-allow-methods')).toBe('GET, OPTIONS');
+    expect(known.headers.get('access-control-allow-headers')).toContain(
+      'x-focuslink-task-capabilities',
+    );
     expect(upstream.fetch).not.toHaveBeenCalled();
   });
 

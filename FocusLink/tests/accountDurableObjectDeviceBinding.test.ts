@@ -277,6 +277,9 @@ describe('Account DO request boundaries', () => {
     expect(authoritySource).toContain('task snapshot revision conflict');
     expect(authoritySource).toContain('task_operation_id_reused');
     expect(authoritySource).toContain('transactionSync');
+    expect(authoritySource).toContain('TASK_SNAPSHOT_CAPABILITY_HEADER');
+    expect(authoritySource).toContain('mergeLegacyTaskSchedulingFields');
+    expect(authoritySource).toContain('withoutTaskSchedulingFields');
   });
 
   it('rejects an oversized body from content-length before JSON parsing', async () => {

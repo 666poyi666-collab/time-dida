@@ -36,4 +36,46 @@ describe('desktop instrument visual regression contract', () => {
     );
     expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.stats-day-column/);
   });
+
+  it('renders the 24-hour map as an explicit day instrument instead of three faint tracks', () => {
+    const source = readFileSync(resolve('src/features/history/HistoryInsights.tsx'), 'utf8');
+    const styles = readFileSync(resolve('src/styles/focuslink-2.css'), 'utf8');
+
+    expect(source).toContain('className="stats-day-periods"');
+    expect(source).toContain('className="stats-day-lane-label"');
+    expect(source).toContain('<span>{formatClock(ledger.observationEndedAt)}</span>');
+    expect(styles).toMatch(/\.stats-day-map\s*\{[^}]*--day-label-width:\s*78px/);
+    expect(styles).toMatch(/\.stats-day-lane\s*\{[^}]*min-height:\s*52px/);
+    expect(styles).toMatch(/\.stats-day-map-grid i:nth-child\(7\)/);
+    expect(styles).toMatch(/\.stats-day-now span\s*\{/);
+    expect(styles).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.stats-day-lane \.stats-ledger-block/,
+    );
+  });
+
+  it('keeps the main timer frame singular and its industrial labels readable', () => {
+    const styles = readFileSync(resolve('src/styles/focuslink-2.css'), 'utf8');
+
+    expect(styles).toMatch(
+      /\.timer-zone\s*\{[^}]*border-radius:\s*0[^}]*background:\s*rgb\(var\(--app-bg\)/,
+    );
+    expect(styles).toMatch(/\.timer-zone \.dial-standard\s*\{[^}]*width:\s*min\(100%,\s*820px\)/);
+    expect(styles).toMatch(/\.timer-zone \.instrument-chrome-label,[\s\S]*?font-size:\s*10px/);
+  });
+
+  it('uses distinct semantic colors for focus, pause, gap, night and now', () => {
+    const tokens = readFileSync(resolve('src/styles/temporal-foundation.css'), 'utf8');
+    const desktop = readFileSync(resolve('src/styles/focuslink-2.css'), 'utf8');
+    const mobile = readFileSync(resolve('src/mobile/focuslink-2-mobile.css'), 'utf8');
+
+    expect(tokens).toContain('--app-ledger-gap: 74 101 119');
+    expect(tokens).toContain('--app-ledger-night: 231 234 235');
+    expect(tokens).toContain('--app-ledger-day: 250 250 247');
+    expect(tokens).toContain('--app-ledger-now: var(--app-warning)');
+    for (const styles of [desktop, mobile]) {
+      expect(styles).toContain('rgb(var(--app-ledger-gap) / 0.18)');
+      expect(styles).toContain('rgb(var(--app-ledger-night))');
+      expect(styles).toContain('rgb(var(--app-ledger-now))');
+    }
+  });
 });

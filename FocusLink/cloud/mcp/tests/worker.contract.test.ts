@@ -246,6 +246,7 @@ describe('Worker canonical HTTP contract', () => {
     expect(names).toEqual(
       expect.arrayContaining([
         'focuslink_get_status',
+        'focuslink_get_current_time',
         'focuslink_get_today_summary',
         'focuslink_list_focus_records',
         'focuslink_get_task_summary',
@@ -254,6 +255,7 @@ describe('Worker canonical HTTP contract', () => {
         'foxlink_list_sessions',
         'foxlink_get_sync_overview',
         'focuslink_list_projects',
+        'focuslink_get_project',
         'focuslink_list_tasks',
         'focuslink_get_task',
         'focuslink_create_project',
@@ -396,6 +398,18 @@ describe('Worker canonical HTTP contract', () => {
         expect.objectContaining({ id: 'study' }),
       ],
     });
+    const currentTime = await callTool(writable.token, sessionId, 'focuslink_get_current_time', {
+      timezone: 'Asia/Shanghai',
+    });
+    expect(currentTime).toMatchObject({
+      authority: 'focuslink-account-do',
+      timezone: 'Asia/Shanghai',
+      offsetMinutes: 480,
+    });
+    const project = await callTool(writable.token, sessionId, 'focuslink_get_project', {
+      projectId: 'study',
+    });
+    expect(project).toMatchObject({ project: { id: 'study' } });
     const tasks = await callTool(writable.token, sessionId, 'focuslink_list_tasks', {
       includeCompleted: false,
       query: 'MCP',
@@ -413,8 +427,19 @@ describe('Worker canonical HTTP contract', () => {
       parentId: 'mcp-parent',
       title: 'MCP 子任务',
       priority: 5,
+      startDate: 1_720_000_050_000,
       dueDate: 1_720_000_100_000,
       tags: ['本周'],
+      recurrence: {
+        timezone: 'Asia/Shanghai',
+        frequency: 'daily',
+        interval: 1,
+        byWeekday: [],
+        byMonthDay: [],
+        endAt: null,
+        count: 3,
+        rollover: 'from_schedule',
+      },
     });
     expect(created).toMatchObject({
       authority: 'focuslink-account-do',

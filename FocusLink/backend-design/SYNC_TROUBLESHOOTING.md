@@ -211,6 +211,24 @@ FocusLink 自有任务是 Account DO `task_state` 的完整快照寄存器。PC�
 
 纯函数/Account DO/Worker/MCP 回归应覆盖清单安全迁移、收件箱保护、父子子树、截止时间/优先级/标签、完成/恢复、永久任务删除、同 operation 重放、operationId 复用拒绝、旧 revision 冲突和跨账号隔离。使用 `npm test -- tests/taskSnapshotMutation.test.ts`、`npm run test:cross-device` 与 `cloud/mcp` 的 typecheck/test；生产临时数据只有在明确授权部署验收时创建并在同一轮完整清理。
 
+## FL-SYNC-012：循环任务日期没有推进或旧设备覆盖循环规则
+
+### 含义
+
+v0.12.105 的开始时间与结构化循环仍使用 task snapshot v1 envelope，但通过 `x-focuslink-task-capabilities: task-scheduling-v1` 显式协商。新客户端读写 `startDate/recurrence`；0.12.104 严格客户端继续只收到旧字段。`completedCount` 是 authority 进度，MCP/CLI 创建或更新规则时不能指定它。
+
+### 处理步骤
+
+1. 先读取任务 revision、`startDate/dueDate/recurrence` 和 mutation confirmation；不要把“完成按钮已点击”当成循环已推进。
+2. `task_revision_conflict`：重新 GET 并使用新 revision、新 operationId 重试。原 operationId 只能重放完全相同正文。
+3. `invalid_task_mutation` / `invalid_recurrence`：确认 IANA timezone、interval、ISO weekday 1–7、month day 1–31、endAt/count 和 `from_schedule/from_completion`；循环任务必须至少有开始或截止时间，开始不能晚于截止。
+4. 旧设备整包写回不会删除新循环字段；若旧写入改变了循环任务的日期而无法与规则合并，authority 返回 conflict 并保留当前快照。升级旧设备后再按最新 revision 修改。
+5. `complete_task` 返回 `recurrenceRolled=true` 时任务仍为未完成并给出下一截止时间；只有 `recurrenceExhausted=true` 才进入已完成。恢复只回退最终耗尽的那一次完成。
+
+### 验证
+
+运行 `npm test -- tests/taskRecurrence.test.ts tests/taskSnapshotMutation.test.ts tests/taskSnapshotCloud.test.ts tests/focuslinkCli.test.ts`，并运行 `cloud/mcp` 全量测试。兼容门禁必须同时覆盖无 capability 的旧 GET 不含新字段、旧整包 POST 保留循环、带 capability 的 PC/移动/MCP/CLI round-trip、重复 operation 不二次推进次数。
+
 ## 日志位置与收集方式
 
 Windows 日志在 `%APPDATA%\focuslink\logs\focuslink-YYYY-MM-DD.log`。只提供包含错误编号/时间、endpoint（可打码）和 HTTP 状态的片段；不要提供 `focuslink-device-sync-credential.json`、访问令牌或整个 SQLite 文件。

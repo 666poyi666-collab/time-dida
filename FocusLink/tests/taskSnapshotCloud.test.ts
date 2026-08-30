@@ -6,11 +6,16 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   TASK_SNAPSHOT_PATH,
+  TASK_SNAPSHOT_MUTATION_PATH,
+  TASK_SNAPSHOT_CAPABILITY_HEADER,
+  TASK_SNAPSHOT_SCHEDULING_CAPABILITY,
   TASK_SNAPSHOT_MAX_FUTURE_SKEW_MS,
   TASK_SNAPSHOT_PROTOCOL_VERSION,
   toTaskSnapshotPayload,
   validateTaskSnapshotPayload,
+  withoutTaskSchedulingFields,
   type TaskSnapshotPublishRequest,
+  type TaskSnapshotMutationRequest,
   type TaskSnapshotResponse,
 } from '@shared/sync/taskSnapshotProtocol';
 import {
@@ -46,7 +51,19 @@ function request(): TaskSnapshotPublishRequest {
           title: '复习化学',
           status: 'pending',
           priority: 3,
-          dueDate: null,
+          startDate: 1_720_000_050_000,
+          dueDate: 1_720_000_100_000,
+          recurrence: {
+            timezone: 'Asia/Shanghai',
+            frequency: 'weekly',
+            interval: 1,
+            byWeekday: [1, 5],
+            byMonthDay: [],
+            endAt: null,
+            count: 4,
+            completedCount: 0,
+            rollover: 'from_schedule',
+          },
           tags: ['学习'],
           content: null,
           isCompleted: false,
@@ -100,7 +117,16 @@ describe('desktop-authoritative task snapshot', () => {
       expect(reloaded.getTaskSnapshot(ACCOUNT)).toMatchObject({
         revision: 1,
         sourceDeviceId: 'desktop-a',
-        snapshot: { tasks: [{ id: 'task-a' }, { id: 'item-a' }] },
+        snapshot: {
+          tasks: [
+            {
+              id: 'task-a',
+              startDate: 1_720_000_050_000,
+              recurrence: { frequency: 'weekly', count: 4 },
+            },
+            { id: 'item-a' },
+          ],
+        },
       });
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
@@ -135,6 +161,101 @@ describe('desktop-authoritative task snapshot', () => {
       revision: 1,
       snapshot: { tasks: [{ title: '复习化学' }, { title: '整理错题' }] },
     });
+  });
+
+  it('rejects a legacy edit that would make preserved scheduling invalid', () => {
+    const store = createDeviceSyncCloudStore({ now: () => 1_720_000_200_000 });
+    const current = request();
+    expect(store.publishTaskSnapshot(ACCOUNT, current, true).revision).toBe(1);
+    const legacy = {
+      ...current,
+      snapshot: {
+        ...withoutTaskSchedulingFields(current.snapshot),
+        publishedAt: current.snapshot.publishedAt + 1,
+        tasks: withoutTaskSchedulingFields(current.snapshot).tasks.map((task) =>
+          task.id === 'task-a' ? { ...task, dueDate: 1_720_000_000_000 } : task,
+        ),
+      },
+    };
+    expect(() => store.publishTaskSnapshot(ACCOUNT, legacy, false)).toThrow(
+      /conflicts with structured scheduling/,
+    );
+    expect(store.getTaskSnapshot(ACCOUNT, true).snapshot?.tasks[0]).toMatchObject({
+      startDate: 1_720_000_050_000,
+      dueDate: 1_720_000_100_000,
+      recurrence: { frequency: 'weekly' },
+    });
+  });
+
+  it('persists task mutation CAS and operation-id replay across a store restart', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'focuslink-task-mutation-'));
+    const persistencePath = path.join(directory, 'store.json');
+    const mutation: TaskSnapshotMutationRequest = {
+      protocolVersion: 1,
+      operationId: 'loopback-create-op',
+      expectedRevision: 0,
+      deviceId: 'device-loopback',
+      mutation: {
+        kind: 'create_task',
+        taskId: 'loopback-task',
+        title: '回环任务',
+        dueDate: 1_720_000_100_000,
+        recurrence: {
+          timezone: 'Asia/Shanghai',
+          frequency: 'daily',
+          interval: 1,
+          byWeekday: [],
+          byMonthDay: [],
+          endAt: null,
+          count: 2,
+          rollover: 'from_schedule',
+        },
+      },
+    };
+    try {
+      const store = createDeviceSyncCloudStore({
+        persistencePath,
+        now: () => 1_720_000_000_000,
+      });
+      expect(store.mutateTaskSnapshot(ACCOUNT, mutation)).toMatchObject({
+        status: 'applied',
+        revision: 1,
+        result: { entityId: 'loopback-task' },
+      });
+      expect(store.mutateTaskSnapshot(ACCOUNT, mutation)).toMatchObject({
+        status: 'duplicate',
+        revision: 1,
+      });
+      expect(() =>
+        store.mutateTaskSnapshot(ACCOUNT, {
+          ...mutation,
+          mutation: {
+            kind: 'create_task',
+            taskId: 'loopback-task',
+            title: '复用 operationId',
+          },
+        }),
+      ).toThrow(/already bound/);
+
+      const reloaded = createDeviceSyncCloudStore({
+        persistencePath,
+        now: () => 1_720_000_001_000,
+      });
+      expect(reloaded.mutateTaskSnapshot(ACCOUNT, mutation)).toMatchObject({
+        status: 'duplicate',
+        revision: 1,
+        serverTime: 1_720_000_001_000,
+      });
+      expect(() =>
+        reloaded.mutateTaskSnapshot(ACCOUNT, {
+          ...mutation,
+          operationId: 'loopback-stale-op',
+          expectedRevision: 0,
+        }),
+      ).toThrow(/current revision is 1/);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('rejects future publishes and lets a normal snapshot replace legacy far-future state', () => {
@@ -178,14 +299,18 @@ describe('desktop-authoritative task snapshot', () => {
       headers: {
         Origin: ORIGIN,
         'Access-Control-Request-Method': 'GET',
-        'Access-Control-Request-Headers': 'authorization',
+        'Access-Control-Request-Headers': 'authorization, x-focuslink-task-capabilities',
       },
     });
     expect(preflight.status).toBe(204);
 
     const published = await fetch(`${url}${TASK_SNAPSHOT_PATH}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${TOKEN}`,
+        'Content-Type': 'application/json',
+        [TASK_SNAPSHOT_CAPABILITY_HEADER]: TASK_SNAPSHOT_SCHEDULING_CAPABILITY,
+      },
       body: JSON.stringify(request()),
     });
     expect(published.status).toBe(200);
@@ -215,6 +340,49 @@ describe('desktop-authoritative task snapshot', () => {
     expect(snapshot).toMatchObject({
       revision: 1,
       snapshot: { tasks: [{ id: 'task-a' }, { id: 'item-a' }] },
+    });
+    expect(snapshot.snapshot?.tasks[0]).not.toHaveProperty('startDate');
+    expect(snapshot.snapshot?.tasks[0]).not.toHaveProperty('recurrence');
+
+    const capableResponse = await fetch(`${url}${TASK_SNAPSHOT_PATH}`, {
+      headers: {
+        Authorization: `Bearer ${TOKEN}`,
+        Origin: ORIGIN,
+        [TASK_SNAPSHOT_CAPABILITY_HEADER]: TASK_SNAPSHOT_SCHEDULING_CAPABILITY,
+      },
+    });
+    const capableSnapshot = (await capableResponse.json()) as TaskSnapshotResponse;
+    expect(capableSnapshot.snapshot?.tasks[0]).toMatchObject({
+      startDate: 1_720_000_050_000,
+      recurrence: { frequency: 'weekly', count: 4 },
+    });
+  });
+
+  it('returns a stable 422 for schema-valid but cross-field-invalid task mutations', async () => {
+    const server = createDeviceSyncCloudServer({
+      tokenAccounts: new Map([[TOKEN, ACCOUNT]]),
+    });
+    servers.push(server);
+    const { url } = await server.listen();
+    const response = await fetch(`${url}${TASK_SNAPSHOT_MUTATION_PATH}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        protocolVersion: 1,
+        operationId: 'invalid-cross-field-1',
+        expectedRevision: 0,
+        deviceId: 'mcp-service',
+        mutation: {
+          kind: 'create_task',
+          title: '反向时间',
+          startDate: 200,
+          dueDate: 100,
+        },
+      } satisfies TaskSnapshotMutationRequest),
+    });
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'task_mutation_invalid' },
     });
   });
 });

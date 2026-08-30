@@ -105,6 +105,7 @@ import {
   createDeviceSyncPairingRequest,
   exchangeDeviceSyncPairingCode,
   listDeviceSyncDevices,
+  mutateTaskSnapshot,
   revokeDeviceSyncDevice,
   fetchLiveFocusSnapshot,
   fetchTaskSnapshot,
@@ -156,6 +157,7 @@ import { isTabletFocusViewport } from './viewportPolicy';
 import {
   createEmptyTaskSnapshot,
   deleteTaskSnapshotProject,
+  mobileTaskCompletionOperationId,
   moveTaskSnapshotSubtree,
   updateTaskSnapshotProject,
 } from './taskSnapshotMutations';
@@ -987,27 +989,29 @@ export function MobileApp() {
 
   const toggleCloudTaskComplete = useCallback(
     async (task: SyncedTask) => {
-      const snapshot = await requireLatestEditableTaskSnapshot();
-      const freshTask = snapshot.tasks.find((candidate) => candidate.id === task.id);
+      if (!preferences.endpoint || !preferences.token) {
+        throw new Error('请先完成设备配对');
+      }
+      const confirmed = await refreshTasks(preferences);
+      if (!confirmed) throw new Error('未能确认最新任务清单，请检查网络后重试');
+      const freshTask = confirmed.snapshot?.tasks.find((candidate) => candidate.id === task.id);
       if (!freshTask) throw new Error('FocusLink 任务不存在，请刷新后重试');
-      const now = Date.now();
-      const response = await publishTaskSnapshot({
+      const completing = !freshTask.isCompleted;
+      const response = await mutateTaskSnapshot({
         endpoint: preferences.endpoint,
         token: preferences.token,
         deviceId,
-        snapshot: {
-          ...snapshot,
-          publishedAt: now,
-          tasks: snapshot.tasks.map((item) =>
-            item.id === task.id
-              ? {
-                  ...item,
-                  isCompleted: !freshTask.isCompleted,
-                  status: freshTask.isCompleted ? 'incomplete' : 'completed',
-                  updatedAt: now,
-                }
-              : item,
-          ),
+        operationId: mobileTaskCompletionOperationId({
+          deviceId,
+          taskId: freshTask.id,
+          completed: completing,
+          expectedRevision: confirmed.revision,
+        }),
+        expectedRevision: confirmed.revision,
+        mutation: {
+          kind: 'set_task_completed',
+          taskId: freshTask.id,
+          completed: completing,
         },
       });
       taskSnapshotRef.current = response;
@@ -1018,9 +1022,15 @@ export function MobileApp() {
           writeCachedTaskSnapshot(response, accountId),
         );
       }
-      setCommandNotice(freshTask.isCompleted ? '任务已恢复' : '任务已完成');
+      setCommandNotice(
+        completing && response.result.recurrenceRolled
+          ? '本次已完成，下次循环已推进'
+          : completing
+            ? '任务已完成'
+            : '任务已恢复',
+      );
     },
-    [deviceId, preferences, requireLatestEditableTaskSnapshot],
+    [deviceId, preferences, refreshTasks],
   );
 
   const pullLedger = useCallback(

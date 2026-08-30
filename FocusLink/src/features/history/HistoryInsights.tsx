@@ -31,6 +31,13 @@ interface HistoryInsightsProps {
 
 const DAY_MS = 24 * 60 * 60_000;
 const MINUTE = 60_000;
+const DAY_PERIODS = [
+  { label: '深夜', startHour: 0, endHour: 7 },
+  { label: '上午', startHour: 7, endHour: 12 },
+  { label: '下午', startHour: 12, endHour: 18 },
+  { label: '晚间', startHour: 18, endHour: 22 },
+  { label: '深夜', startHour: 22, endHour: 24 },
+] as const;
 
 function duration(ms: number): string {
   return formatMinutes(Math.max(0, ms));
@@ -445,6 +452,19 @@ function DayActivityTimeline({
         >
           <div className="stats-day-map-scroll" aria-label="完整 24 小时时间地图">
             <div className="stats-day-map">
+              <div className="stats-day-periods" aria-hidden="true">
+                {DAY_PERIODS.map((period, index) => (
+                  <span
+                    key={`${period.label}-${index}`}
+                    style={{
+                      left: `${(period.startHour / 24) * 100}%`,
+                      width: `${((period.endHour - period.startHour) / 24) * 100}%`,
+                    }}
+                  >
+                    {period.label}
+                  </span>
+                ))}
+              </div>
               <div className="stats-day-map-axis" aria-hidden="true">
                 {hourTicks.map((hour) => (
                   <span
@@ -491,7 +511,9 @@ function DayActivityTimeline({
                     className="stats-day-now"
                     style={{ left: `${nowPosition}%` }}
                     title={`当前 ${formatClock(ledger.observationEndedAt)}`}
-                  />
+                  >
+                    <span>{formatClock(ledger.observationEndedAt)}</span>
+                  </i>
                 </div>
               )}
             </div>
@@ -530,9 +552,13 @@ function TimelineLane({
   span: number;
   onOpenSession?: (sessionId: string) => void;
 }) {
+  const totalMs = intervals.reduce((total, interval) => total + interval.durationMs, 0);
   return (
     <div className={`stats-day-lane ${tone}`}>
-      <strong>{label}</strong>
+      <span className="stats-day-lane-label">
+        <strong>{label}</strong>
+        <small>{axisDuration(totalMs)}</small>
+      </span>
       <div className="stats-day-lane-track">
         {intervals.map((interval, index) => (
           <LedgerBlock

@@ -16,15 +16,17 @@ import type {
 import { APP_VERSION } from '@shared/version';
 import { normalizeFocusLinkPairingCode } from '@shared/sync/pairingProtocol';
 import { resolveFontProfile, resolveTimerStyle } from '@shared/theme';
-import {
-  groupManagedDevices,
-  managedDeviceKindLabel,
-  managedDeviceStateLabel,
-} from '@shared/deviceRosterPolicy';
+import { groupManagedDevices, managedDeviceKindLabel } from '@shared/deviceRosterPolicy';
 import { motion } from 'framer-motion';
 import { Icon } from '../../ui/Icon';
 import { TimerDial } from '../focus/TimerDial';
-import { presentDeviceSyncError } from './deviceSyncStatusPresentation';
+import {
+  presentDeviceSyncError,
+  presentDeviceSyncOverview,
+  presentManagedDeviceActivity,
+  presentTomatodoBridgeStatus,
+  type SettingsStatusFact,
+} from './deviceSyncStatusPresentation';
 import '../../styles/settings-motion.css';
 
 const HOTKEY_LABELS: Record<keyof AppSettings['hotkeys'], string> = {
@@ -82,6 +84,12 @@ const FONT_PROFILE_OPTIONS = [
     note: '中性清晰，适合高密度信息',
   },
   {
+    id: 'noto-serif',
+    label: '思源宋体',
+    sample: '纸上时间 · 专注复盘',
+    note: '现代书卷',
+  },
+  {
     id: 'wenkai',
     label: '霞鹜文楷',
     sample: '待完成 · 时间仪器',
@@ -110,6 +118,12 @@ const FONT_PROFILE_OPTIONS = [
     label: '得意黑',
     sample: '时间正在发生 12:48',
     note: '倾斜窄体展示字，轮廓大胆，与常规黑体明显不同',
+  },
+  {
+    id: 'kuaile',
+    label: '站酷快乐体',
+    sample: '今天专注 · 轻快前进',
+    note: '活泼几何',
   },
 ] as const satisfies ReadonlyArray<{
   id: AppSettings['fontProfile'];
@@ -144,6 +158,7 @@ type HotkeyBadgeState = {
   tone: 'ok' | 'warn' | 'error' | 'unknown';
   title?: string;
 };
+type DeviceSyncBusyAction = 'revoke' | 'logout' | 'pair-code' | 'redeem' | null;
 
 export function SettingsPanel() {
   const { settings, setSettings, syncQueue, setSyncQueue, addToast } = useStore();
@@ -184,9 +199,11 @@ export function SettingsPanel() {
   const [tomatodoPendingError, setTomatodoPendingError] = useState<string | null>(null);
   const [tomatodoBridge, setTomatodoBridge] = useState<TomatodoBridgeStatus | null>(null);
   const [tomatodoUploading, setTomatodoUploading] = useState(false);
+  const [tomatodoRefreshing, setTomatodoRefreshing] = useState(false);
   const [didaSyncRunning, setDidaSyncRunning] = useState(false);
   const [deviceSyncStatus, setDeviceSyncStatus] = useState<DeviceSyncStatus | null>(null);
-  const [deviceSyncSaving, setDeviceSyncSaving] = useState(false);
+  const [deviceSyncBusyAction, setDeviceSyncBusyAction] = useState<DeviceSyncBusyAction>(null);
+  const deviceSyncSaving = deviceSyncBusyAction !== null;
   const [deviceSyncRunning, setDeviceSyncRunning] = useState(false);
   const [managedDevices, setManagedDevices] = useState<DeviceSyncManagedDevice[]>([]);
   const [devicePairingCode, setDevicePairingCode] = useState('');
@@ -294,6 +311,15 @@ export function SettingsPanel() {
     }
   };
 
+  const handleRefreshTomatodoStatus = async () => {
+    setTomatodoRefreshing(true);
+    try {
+      await Promise.all([refreshTomatodoPending(), refreshTomatodoBridge()]);
+    } finally {
+      setTomatodoRefreshing(false);
+    }
+  };
+
   const refreshDeviceSyncStatus = async () => {
     try {
       const status = await window.focuslink.deviceSync.status();
@@ -326,7 +352,7 @@ export function SettingsPanel() {
       return;
     }
     if (!window.confirm(`删除“${device.displayName}”？它将停止访问 FocusLink 同步。`)) return;
-    setDeviceSyncSaving(true);
+    setDeviceSyncBusyAction('revoke');
     try {
       await window.focuslink.deviceSync.revokeDevice(device.deviceId);
       setManagedDevices((current) => current.filter((item) => item.deviceId !== device.deviceId));
@@ -334,7 +360,7 @@ export function SettingsPanel() {
     } catch (error) {
       addToast(`删除设备失败：${ipcErrorMessage(error)}`, 'error');
     } finally {
-      setDeviceSyncSaving(false);
+      setDeviceSyncBusyAction(null);
     }
   };
 
@@ -351,7 +377,7 @@ export function SettingsPanel() {
   };
 
   const handleDeviceSyncLogout = async () => {
-    setDeviceSyncSaving(true);
+    setDeviceSyncBusyAction('logout');
     try {
       setDeviceSyncStatus(await window.focuslink.deviceSync.logout());
       setDevicePairingOffer(null);
@@ -362,12 +388,12 @@ export function SettingsPanel() {
     } catch (error) {
       addToast(`退出失败：${ipcErrorMessage(error)}`, 'error');
     } finally {
-      setDeviceSyncSaving(false);
+      setDeviceSyncBusyAction(null);
     }
   };
 
   const handleCreateDevicePairingCode = async () => {
-    setDeviceSyncSaving(true);
+    setDeviceSyncBusyAction('pair-code');
     try {
       const offer = await window.focuslink.deviceSync.createPairingCode();
       setDevicePairingOffer(offer);
@@ -380,7 +406,7 @@ export function SettingsPanel() {
     } catch (error) {
       addToast(`生成配对码失败：${ipcErrorMessage(error)}`, 'error');
     } finally {
-      setDeviceSyncSaving(false);
+      setDeviceSyncBusyAction(null);
     }
   };
 
@@ -456,7 +482,7 @@ export function SettingsPanel() {
       addToast('请输入 8 位数字配对码', 'info');
       return;
     }
-    setDeviceSyncSaving(true);
+    setDeviceSyncBusyAction('redeem');
     try {
       const result = await window.focuslink.deviceSync.redeemPairingCode(code);
       setDeviceSyncStatus(result.status);
@@ -472,7 +498,7 @@ export function SettingsPanel() {
       addToast(`配对失败：${ipcErrorMessage(error)}`, 'error');
       await refreshDeviceSyncStatus();
     } finally {
-      setDeviceSyncSaving(false);
+      setDeviceSyncBusyAction(null);
     }
   };
 
@@ -789,9 +815,6 @@ export function SettingsPanel() {
     }
   };
 
-  const appearanceLabel =
-    settings.theme === 'light' ? '明亮' : settings.theme === 'dark' ? '深色' : '跟随系统';
-
   // 三态：还没探测完 / 探测到了 / 确认没有。中性色专门留给「还不知道」。
   const cliDetectTone =
     cliDetected === null ? 'tone-neutral' : cliDetected.found ? 'tone-success' : 'tone-warning';
@@ -882,25 +905,40 @@ export function SettingsPanel() {
     deviceSyncStatus?.lastError,
     deviceSyncStatus?.unresolvedConflicts,
   );
-
-  const tomatodoBridgeLabel = (() => {
-    switch (tomatodoBridge?.state) {
-      case 'connected':
-        return '番茄 To-do 已连接';
-      case 'stopped':
-        return '需要上传时可按需启动番茄 To-do';
-      case 'restart-required':
-        return '请完全退出番茄 To-do，再点击“连接并上传”';
-      case 'not-installed':
-        return '未找到番茄 To-do 安装程序';
-      case 'launch-timeout':
-        return '连接等待超时，可重新尝试';
-      case 'launch-failed':
-        return tomatodoBridge.error || '连接失败，可重新尝试';
-      default:
-        return '正在检查番茄 To-do 连接';
-    }
-  })();
+  const deviceSyncOverview = presentDeviceSyncOverview(deviceSyncStatus);
+  const tomatodoBridgeFact = presentTomatodoBridgeStatus(tomatodoBridge);
+  const tomatodoLocalFact: SettingsStatusFact = {
+    label: '本机写入',
+    value: '已开启',
+    detail: '专注结束后先写入本机记录，桥接不可用时不会丢失',
+    tone: 'success',
+  };
+  const tomatodoQueueFact: SettingsStatusFact = tomatodoPendingError
+    ? {
+        label: '上传队列',
+        value: '状态未知',
+        detail: '无法读取本机待上传记录，请检查数据库路径或文件权限',
+        tone: 'danger',
+      }
+    : tomatodoPending > 0
+      ? {
+          label: '上传队列',
+          value: `${tomatodoPending} 条待上传`,
+          detail: '记录保留在本机，收到番茄 To-do 上传确认后才会移出队列',
+          tone: 'warning',
+        }
+      : {
+          label: '上传队列',
+          value: '当前无待上传',
+          detail: '这里只表示本机队列已处理，不代表手机端已经显示',
+          tone: 'success',
+        };
+  const tomatodoPhoneFact: SettingsStatusFact = {
+    label: '手机端显示',
+    value: '需在番茄 To-do 核对',
+    detail: '当前桥接没有手机端独立回读，上传确认不能代替手机投递确认',
+    tone: 'neutral',
+  };
   const tomatodoCanConnect =
     tomatodoBridge?.state === 'stopped' ||
     tomatodoBridge?.state === 'restart-required' ||
@@ -909,31 +947,10 @@ export function SettingsPanel() {
   const tomatodoActionLabel = tomatodoBridge?.connected ? '立即上传' : '连接并上传';
   const tomatodoActionDisabled =
     tomatodoUploading ||
+    tomatodoRefreshing ||
     !tomatodoBridge ||
     tomatodoBridge.state === 'not-installed' ||
     (!tomatodoBridge.connected && !tomatodoCanConnect);
-  const tomatodoBadge = (() => {
-    if (
-      tomatodoPendingError ||
-      tomatodoBridge?.state === 'launch-failed' ||
-      tomatodoBridge?.state === 'launch-timeout'
-    ) {
-      return { tone: 'tone-danger', label: '连接失败' };
-    }
-    if (tomatodoBridge?.state === 'not-installed') {
-      return { tone: 'tone-neutral', label: '未安装' };
-    }
-    if (tomatodoBridge?.state === 'restart-required') {
-      return { tone: 'tone-warning', label: '需重启' };
-    }
-    if (tomatodoBridge?.connected) {
-      return { tone: 'tone-success', label: '已连接' };
-    }
-    if (tomatodoBridge?.state === 'stopped') {
-      return { tone: 'tone-neutral', label: '未连接' };
-    }
-    return { tone: 'tone-neutral', label: '检测中' };
-  })();
 
   // ---- 分区注册表 ----------------------------------------------------------
   // 每个分区在这里定义且只定义一次：所属分组、搜索词条、内容渲染函数。
@@ -977,7 +994,7 @@ export function SettingsPanel() {
       title: '界面与读数',
       desc: '字体、强调色与计时读数各自独立选择；暂停始终使用红色语义。',
       keywords:
-        '字体 界面字体 文楷 致宋 漫黑 晰黑 得意黑 无衬线 强调色 主题色 配色 翡翠 钴蓝 鸢尾 琥珀 石墨 ' +
+        '字体 界面字体 文楷 致宋 漫黑 晰黑 得意黑 思源宋体 站酷快乐体 无衬线 书卷 几何 强调色 主题色 配色 翡翠 钴蓝 鸢尾 琥珀 石墨 ' +
         '计时仪表 读数 样式 翻页 像素 七段 数码 衬线 font accent color timer style',
       render: () => (
         <div className="settings-visual-groups">
@@ -1449,8 +1466,8 @@ export function SettingsPanel() {
     {
       id: 'device-sync',
       tab: 'devices',
-      title: '手机 / 平板同步',
-      desc: '每台设备显示 8 位码；把任一设备的码输入另一台即可同步，电脑关闭也不会中断。',
+      title: '设备配对与同步',
+      desc: '每台设备都有 8 位码；当前连接、最近成功与历史诊断分开显示。',
       keywords: '手机 平板 安卓 android 移动端 跨设备 配对码 二维码 实时 云端 device sync pairing',
       render: () => (
         <>
@@ -1474,8 +1491,13 @@ export function SettingsPanel() {
                   className="btn-accent text-[11px]"
                   onClick={() => void handleCreateDevicePairingCode()}
                   disabled={deviceSyncSaving}
+                  aria-busy={deviceSyncBusyAction === 'pair-code'}
                 >
-                  {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Plus size="xs" />}
+                  {deviceSyncBusyAction === 'pair-code' ? (
+                    <Icon.Loader size="xs" spin />
+                  ) : (
+                    <Icon.Plus size="xs" />
+                  )}
                   显示本机配对码
                 </button>
                 <button
@@ -1495,8 +1517,13 @@ export function SettingsPanel() {
                   className="btn-accent text-[11px]"
                   onClick={() => void handleCreateDevicePairingCode()}
                   disabled={deviceSyncSaving}
+                  aria-busy={deviceSyncBusyAction === 'pair-code'}
                 >
-                  {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Plus size="xs" />}
+                  {deviceSyncBusyAction === 'pair-code' ? (
+                    <Icon.Loader size="xs" spin />
+                  ) : (
+                    <Icon.Plus size="xs" />
+                  )}
                   刷新本机配对码
                 </button>
               </div>
@@ -1566,98 +1593,85 @@ export function SettingsPanel() {
               className="btn-accent text-[11px]"
               onClick={() => void handleRedeemDevicePairingCode()}
               disabled={deviceSyncSaving || devicePairingCode.length !== 8}
+              aria-busy={deviceSyncBusyAction === 'redeem'}
             >
-              {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Link size="xs" />}
+              {deviceSyncBusyAction === 'redeem' ? (
+                <Icon.Loader size="xs" spin />
+              ) : (
+                <Icon.Link size="xs" />
+              )}
               加入同步
             </button>
+          </div>
+          <div className="settings-sync-overview" aria-live="polite">
+            <div className="settings-fact-grid">
+              <SettingsFact icon={<Icon.Wifi size="sm" />} fact={deviceSyncOverview.connection} />
+              <SettingsFact
+                icon={<Icon.History size="sm" />}
+                fact={deviceSyncOverview.latestSuccess}
+              />
+            </div>
+            {deviceSyncError ? (
+              <div
+                className={`settings-sync-diagnostic tone-${deviceSyncError.tone}`}
+                data-kind={deviceSyncError.kind}
+              >
+                <Icon.AlertCircle size="sm" />
+                <div>
+                  <strong>{deviceSyncError.title}</strong>
+                  <span>
+                    {deviceSyncError.kind === 'conflict-present'
+                      ? `${deviceSyncStatus?.unresolvedConflicts ?? 0} 条记录存在设备间差异，已安全保留，不会自动覆盖`
+                      : (deviceSyncError.detail ?? '同步状态等待确认')}
+                  </span>
+                </div>
+                <span className="settings-diagnostic-kind">
+                  {deviceSyncError.kind === 'conflict-present' ||
+                  deviceSyncError.kind === 'operation-rejected'
+                    ? '待处理'
+                    : '最近尝试'}
+                </span>
+              </div>
+            ) : null}
+            <div className="settings-sync-actions">
+              <span>
+                {deviceSyncStatus?.signedIn
+                  ? '任务、清单、专注与历史分别以云端确认结果为准'
+                  : '配对后自动同步任务、清单颜色、专注和历史记录'}
+              </span>
+              <div>
+                <button
+                  type="button"
+                  className="btn-outline text-[11px]"
+                  onClick={() => void refreshDeviceSyncStatus()}
+                  disabled={deviceSyncSaving}
+                >
+                  <Icon.Refresh size="xs" />
+                  刷新状态
+                </button>
+                <button
+                  type="button"
+                  className="btn-accent text-[11px]"
+                  onClick={handleRunDeviceSync}
+                  disabled={
+                    deviceSyncRunning || !settings.deviceSync.enabled || !deviceSyncStatus?.signedIn
+                  }
+                >
+                  {deviceSyncRunning ? <Icon.Loader size="xs" spin /> : <Icon.Refresh size="xs" />}
+                  立即同步
+                </button>
+              </div>
+            </div>
           </div>
           {deviceSyncStatus?.signedIn && managedDevices.length > 0 && (
             <DesktopDeviceRoster
               devices={managedDevices}
               currentDeviceId={deviceSyncStatus.deviceId}
+              currentStatus={deviceSyncStatus}
               busy={deviceSyncSaving}
               onRevoke={handleRevokeDevice}
             />
           )}
-          <div
-            className={`settings-status-strip ${
-              deviceSyncError
-                ? deviceSyncError.tone === 'warning'
-                  ? 'tone-warning'
-                  : 'tone-danger'
-                : deviceSyncStatus?.lastSyncAt
-                  ? 'tone-success'
-                  : deviceSyncStatus?.configured
-                    ? 'tone-warning'
-                    : ''
-            }`}
-            aria-live="polite"
-          >
-            <span className="settings-status-strip-icon">
-              {deviceSyncError?.tone === 'danger' ? (
-                <Icon.AlertCircle size="sm" />
-              ) : (
-                <Icon.Cloud size="sm" />
-              )}
-            </span>
-            <div className="settings-status-strip-copy">
-              <p className="settings-status-strip-title">
-                {deviceSyncError
-                  ? deviceSyncError.title
-                  : deviceSyncStatus?.lastSyncAt
-                    ? '账本已完成跨设备同步'
-                    : deviceSyncStatus?.configured
-                      ? '连接已配置，等待首次同步'
-                      : deviceSyncStatus?.signedIn
-                        ? '设备已配对，等待首次同步'
-                        : '配对后开启云同步'}
-                <span
-                  className={`settings-status-badge ${
-                    deviceSyncStatus?.enabled ? 'tone-success' : 'tone-neutral'
-                  }`}
-                >
-                  {deviceSyncStatus?.enabled ? '已启用' : '未启用'}
-                </span>
-              </p>
-              <p className="settings-status-strip-desc">
-                {deviceSyncError?.kind === 'conflict-present'
-                  ? `${deviceSyncStatus?.unresolvedConflicts ?? 0} 条记录存在设备间差异，已安全保留，不会自动覆盖`
-                  : deviceSyncError
-                    ? (deviceSyncError.detail ?? '同步状态等待确认')
-                    : deviceSyncStatus?.liveControlEnabled
-                      ? deviceSyncStatus.liveConnected
-                        ? `实时连接已确认 · rev ${deviceSyncStatus.liveRevision ?? 0} · ${deviceSyncStatus.liveState}${deviceSyncStatus.lastSyncAt ? ` · 上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}` : ''}`
-                        : `实时连接未确认；${deviceSyncStatus.lastSyncAt ? `上次账本同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')} · ` : ''}本机计时仍可使用，第三方凭据与本地路径不会上传`
-                      : deviceSyncStatus?.lastSyncAt
-                        ? `上次同步：${new Date(deviceSyncStatus.lastSyncAt).toLocaleString('zh-CN')}`
-                        : deviceSyncStatus?.signedIn
-                          ? '设备已配对，等待首次同步；本机计时不受网络影响'
-                          : '配对后自动同步专注状态、任务、清单颜色和历史记录'}
-              </p>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <button
-                type="button"
-                className="btn-outline text-[11px]"
-                onClick={() => void refreshDeviceSyncStatus()}
-                disabled={deviceSyncSaving}
-              >
-                {deviceSyncSaving ? <Icon.Loader size="xs" spin /> : <Icon.Refresh size="xs" />}
-                刷新状态
-              </button>
-              <button
-                type="button"
-                className="btn-accent text-[11px]"
-                onClick={handleRunDeviceSync}
-                disabled={
-                  deviceSyncRunning || !settings.deviceSync.enabled || !deviceSyncStatus?.signedIn
-                }
-              >
-                {deviceSyncRunning ? <Icon.Loader size="xs" spin /> : <Icon.Refresh size="xs" />}
-                立即同步
-              </button>
-            </div>
-          </div>
         </>
       ),
     },
@@ -1749,7 +1763,7 @@ export function SettingsPanel() {
       id: 'tomatodo',
       tab: 'integrations',
       title: '番茄 To-do 同步',
-      desc: '专注结束后先安全写入本地；待上传记录由你按需连接并上传。',
+      desc: '本机写入、上传队列、桌面桥接和手机显示分别呈现，不混用确认状态。',
       keywords:
         '番茄 tomatodo to-do 待上传 上传 桥接 连接 学科 语文 数学 英语 物理 化学 生物 学习 ' +
         '数据库 路径 dbPath',
@@ -1764,13 +1778,60 @@ export function SettingsPanel() {
           </Row>
           {settings.tomatodo.enabled && (
             <>
+              <div className="settings-sync-overview settings-tomatodo-overview" aria-live="polite">
+                <div className="settings-fact-grid settings-fact-grid-four">
+                  <SettingsFact icon={<Icon.HardDrive size="sm" />} fact={tomatodoLocalFact} />
+                  <SettingsFact icon={<Icon.Upload size="sm" />} fact={tomatodoQueueFact} />
+                  <SettingsFact icon={<Icon.Link size="sm" />} fact={tomatodoBridgeFact} />
+                  <SettingsFact icon={<Icon.Cloud size="sm" />} fact={tomatodoPhoneFact} />
+                </div>
+                <div className="settings-sync-actions">
+                  <span>“上传已确认”只代表电脑端上传调用成功；手机显示需要在番茄 To-do 中核对</span>
+                  <div>
+                    <button
+                      type="button"
+                      className="btn-outline text-[11px]"
+                      onClick={() => void handleRefreshTomatodoStatus()}
+                      disabled={tomatodoRefreshing || tomatodoUploading}
+                    >
+                      {tomatodoRefreshing ? (
+                        <Icon.Loader size="xs" spin />
+                      ) : (
+                        <Icon.Refresh size="xs" />
+                      )}
+                      检查状态
+                    </button>
+                    {!tomatodoPendingError && tomatodoPending > 0 && (
+                      <button
+                        type="button"
+                        className="btn-accent text-[11px]"
+                        onClick={handleUploadPending}
+                        disabled={tomatodoActionDisabled}
+                      >
+                        {tomatodoUploading ? (
+                          <Icon.Loader size="xs" spin />
+                        ) : tomatodoBridge?.connected ? (
+                          <Icon.Upload size="xs" />
+                        ) : (
+                          <Icon.Link size="xs" />
+                        )}
+                        {tomatodoUploading
+                          ? tomatodoBridge?.connected
+                            ? '正在上传'
+                            : '正在连接'
+                          : tomatodoActionLabel}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
               <Row
                 label="未识别时归类"
                 desc="语文、数学、英语、物理、化学、生物可在片段明细中直接调整"
               >
                 <span className="settings-fixed-value">学习</span>
               </Row>
-              <details className="settings-disclosure mt-2.5">
+              <details className="settings-disclosure settings-tomatodo-advanced">
                 <summary className="motion-press">高级：自定义数据库路径</summary>
                 <div>
                   <input
@@ -1786,68 +1847,6 @@ export function SettingsPanel() {
                   />
                 </div>
               </details>
-              <div
-                className={`settings-status-strip ${
-                  tomatodoPendingError ||
-                  tomatodoBridge?.state === 'launch-failed' ||
-                  tomatodoBridge?.state === 'launch-timeout'
-                    ? 'tone-danger'
-                    : tomatodoBridge?.state === 'restart-required' || tomatodoPending > 0
-                      ? 'tone-warning'
-                      : tomatodoBridge?.connected
-                        ? 'tone-success'
-                        : ''
-                }`}
-                aria-live="polite"
-              >
-                <span className="settings-status-strip-icon">
-                  {tomatodoPendingError ||
-                  tomatodoBridge?.state === 'launch-failed' ||
-                  tomatodoBridge?.state === 'launch-timeout' ? (
-                    <Icon.AlertCircle size="sm" />
-                  ) : (
-                    <Icon.Upload size="sm" />
-                  )}
-                </span>
-                <div className="settings-status-strip-copy">
-                  <p className="settings-status-strip-title">
-                    {tomatodoPendingError
-                      ? '无法读取待上传记录'
-                      : tomatodoPending > 0
-                        ? `${tomatodoPending} 条待上传`
-                        : '当前无待上传记录'}
-                    <span className={`settings-status-badge ${tomatodoBadge.tone}`}>
-                      {tomatodoBadge.label}
-                    </span>
-                  </p>
-                  <p className="settings-status-strip-desc">
-                    {tomatodoPendingError
-                      ? '检查数据库路径或番茄 To-do 文件权限后重试'
-                      : tomatodoBridgeLabel}
-                  </p>
-                </div>
-                {!tomatodoPendingError && tomatodoPending > 0 && (
-                  <button
-                    type="button"
-                    className="btn-outline shrink-0 text-[11px]"
-                    onClick={handleUploadPending}
-                    disabled={tomatodoActionDisabled}
-                  >
-                    {tomatodoUploading ? (
-                      <Icon.Loader size="xs" spin />
-                    ) : tomatodoBridge?.connected ? (
-                      <Icon.Upload size="xs" />
-                    ) : (
-                      <Icon.Link size="xs" />
-                    )}
-                    {tomatodoUploading
-                      ? tomatodoBridge?.connected
-                        ? '正在上传'
-                        : '正在连接'
-                      : tomatodoActionLabel}
-                  </button>
-                )}
-              </div>
             </>
           )}
         </>
@@ -1928,14 +1927,13 @@ export function SettingsPanel() {
 
   return (
     <div className="settings-page">
-      {/* 工位横幅：当前分组身份 → 全局搜索（视图的主仪器） → 版本与外观诊断 */}
+      {/* 紧凑标题栏：当前分组 + 全局搜索；版本信息只保留在“关于”中。 */}
       <header className="settings-console view-console">
         <div className="console-identity">
-          <span className="console-kicker">设置 · 控制面板</span>
+          <span className="console-kicker">设置</span>
           <span className="settings-console-word">
             {searching ? `搜索「${search.trim()}」` : TAB_LABELS[activeTab]}
           </span>
-          <span className="settings-console-count">{visibleSections.length} 个分区</span>
         </div>
         <div className="console-readout">
           <div className={`settings-search ${searching ? 'active' : ''}`}>
@@ -1948,7 +1946,7 @@ export function SettingsPanel() {
               onKeyDown={(event) => {
                 if (event.key === 'Escape') setSearch('');
               }}
-              placeholder="搜索设置…（例如「自启动」「二维码」「字体」）"
+              placeholder="搜索设置"
               aria-label="搜索设置"
             />
             {searching ? (
@@ -1967,9 +1965,7 @@ export function SettingsPanel() {
           </div>
         </div>
         <div className="console-actions">
-          <span className="settings-console-diag text-diag">
-            v{APP_VERSION} · {appearanceLabel}
-          </span>
+          <span className="settings-console-count">{visibleSections.length} 个分区</span>
         </div>
       </header>
 
@@ -2008,13 +2004,12 @@ export function SettingsPanel() {
           </nav>
         </aside>
 
-        {/* 分区规格表：编号分区，标题栏在左、内容在右 */}
+        {/* 分区规格表：标题栏在左、内容在右。 */}
         <div className="settings-scroll">
           <div className="settings-container settings-stack">
-            {visibleSections.map((section, index) => (
+            {visibleSections.map((section) => (
               <Section
                 key={section.id}
-                index={index}
                 title={section.title}
                 desc={section.desc}
                 group={searching ? TAB_LABELS[section.tab] : undefined}
@@ -2040,47 +2035,64 @@ export function SettingsPanel() {
 function DesktopDeviceRoster({
   devices,
   currentDeviceId,
+  currentStatus,
   busy,
   onRevoke,
 }: {
   devices: DeviceSyncManagedDevice[];
   currentDeviceId: string;
+  currentStatus: DeviceSyncStatus;
   busy: boolean;
   onRevoke: (device: DeviceSyncManagedDevice) => Promise<void>;
 }) {
   const groups = groupManagedDevices(devices, currentDeviceId);
-  const renderRow = (device: DeviceSyncManagedDevice, isCurrent = false) => (
-    <div className={`settings-device-row ${isCurrent ? 'is-current' : ''}`} key={device.deviceId}>
-      <div>
-        <strong>{device.displayName}</strong>
-        <span>
-          {isCurrent
-            ? '当前设备 · 正在同步'
-            : `${managedDeviceKindLabel(device.deviceKind)} · ${managedDeviceStateLabel(device)}`}
-        </span>
+  const renderRow = (device: DeviceSyncManagedDevice, isCurrent = false) => {
+    const activity = presentManagedDeviceActivity(device);
+    const currentLabel = currentStatus.liveConnected
+      ? '实时连接已确认'
+      : currentStatus.running
+        ? '正在检查同步'
+        : '当前连接待确认';
+    return (
+      <div className={`settings-device-row ${isCurrent ? 'is-current' : ''}`} key={device.deviceId}>
+        <div>
+          <strong>{device.displayName}</strong>
+          <span>
+            {managedDeviceKindLabel(device.deviceKind)} ·{' '}
+            {isCurrent ? currentLabel : activity.value}
+          </span>
+          <small>{activity.detail}</small>
+        </div>
+        {isCurrent ? (
+          <span
+            className={`settings-status-badge tone-${currentStatus.liveConnected ? 'success' : 'neutral'}`}
+          >
+            当前设备
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="settings-device-remove"
+            onClick={() => void onRevoke(device)}
+            disabled={busy}
+            aria-label={`删除 ${device.displayName}`}
+            title="删除设备"
+          >
+            <Icon.Trash size="sm" />
+            <span>删除</span>
+          </button>
+        )}
       </div>
-      {isCurrent ? (
-        <span className="settings-status-badge tone-success">当前</span>
-      ) : (
-        <button
-          type="button"
-          className="settings-device-remove"
-          onClick={() => void onRevoke(device)}
-          disabled={busy}
-          aria-label={`删除 ${device.displayName}`}
-          title="删除设备"
-        >
-          <Icon.Trash size="sm" />
-          <span>删除</span>
-        </button>
-      )}
-    </div>
-  );
+    );
+  };
   return (
     <section className="settings-device-roster" aria-label="已配对设备">
       <header className="settings-device-roster-heading">
         <strong>已配对设备</strong>
-        <span>{devices.length} 台</span>
+        <span>
+          当前 {groups.current ? 1 : 0} · 其他 {groups.regular.length} · 已归档{' '}
+          {groups.inactiveOrTest.length}
+        </span>
       </header>
       {groups.current ? renderRow(groups.current, true) : null}
       {groups.regular.length > 0 && (
@@ -2104,6 +2116,21 @@ function DesktopDeviceRoster({
         </details>
       )}
     </section>
+  );
+}
+
+function SettingsFact({ icon, fact }: { icon: React.ReactNode; fact: SettingsStatusFact }) {
+  return (
+    <div className={`settings-fact tone-${fact.tone}`}>
+      <span className="settings-fact-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="settings-fact-copy">
+        <span>{fact.label}</span>
+        <strong>{fact.value}</strong>
+        <small>{fact.detail}</small>
+      </span>
+    </div>
   );
 }
 
@@ -2168,14 +2195,11 @@ function HotkeyStatusBadge({ state }: { state: HotkeyBadgeState }) {
 }
 
 function Section({
-  index,
   title,
   desc,
   group,
   children,
 }: {
-  /** 分区在当前视图中的序号：规格表编号（01/02/…），随分组或搜索结果重排。 */
-  index: number;
   title: string;
   desc?: string;
   /** 搜索结果里标出该分区平时住在哪个分组，方便下次直接去那里找。 */
@@ -2185,9 +2209,6 @@ function Section({
   return (
     <section className="settings-section">
       <div className="settings-section-heading">
-        <span className="settings-section-index timer-digit" aria-hidden="true">
-          {String(index + 1).padStart(2, '0')}
-        </span>
         <h3>
           {title}
           {group ? <span className="settings-section-group">{group}</span> : null}

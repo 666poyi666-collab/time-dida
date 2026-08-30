@@ -9,6 +9,32 @@ export type TimerEvent = 'START' | 'PAUSE' | 'RESUME' | 'STOP' | 'RESET' | 'LINK
 export type TaskSource = 'local' | 'ticktick';
 export type TomatodoSubject = '语文' | '数学' | '英语' | '物理' | '化学' | '生物' | '学习';
 
+export type TaskRecurrenceFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
+export type TaskRecurrenceRollover = 'from_schedule' | 'from_completion';
+
+/**
+ * Canonical FocusLink recurrence rule. `count` follows RRULE semantics: it is the maximum
+ * number of completed occurrences, while `completedCount` is durable runtime progress.
+ */
+export interface TaskRecurrenceDefinition {
+  timezone: string;
+  frequency: TaskRecurrenceFrequency;
+  interval: number;
+  /** ISO weekdays, Monday=1 through Sunday=7. Used by weekly rules. */
+  byWeekday: number[];
+  /** Calendar days 1..31. Used by monthly rules; invalid days are skipped. */
+  byMonthDay: number[];
+  endAt: number | null;
+  count: number | null;
+  /** Advance from the scheduled date or from the actual completion instant. */
+  rollover: TaskRecurrenceRollover;
+}
+
+export interface TaskRecurrence extends TaskRecurrenceDefinition {
+  /** Server-owned occurrence progress. Mutation callers cannot set this field. */
+  completedCount: number;
+}
+
 /** 专注会话：一次完整的专注，可包含多个 Segment */
 export interface FocusSession {
   id: string;
@@ -75,7 +101,10 @@ export interface TaskCache {
   title: string;
   status: string | null;
   priority: number | null;
+  startDate?: number | null;
   dueDate: number | null;
+  /** Canonical TaskRecurrence JSON for SQLite storage. */
+  recurrence?: string | null;
   tags: string | null;
   content: string | null;
   rawJson: string | null;
@@ -162,7 +191,9 @@ export interface Task {
   title: string;
   status: string | null;
   priority: number | null;
+  startDate?: number | null;
   dueDate: number | null;
+  recurrence?: TaskRecurrence | null;
   tags: string[];
   content: string | null;
   /** 父任务 ID（dida CLI 用 items[] 嵌套，归一化时填充） */
@@ -265,7 +296,8 @@ export interface AppSettings {
   timerStyle:
     'standard' | 'flip' | 'pixel' | 'thin' | 'segment' | 'counter' | 'analog' | 'vernier' | 'draft';
   /** 主界面排版气质：正文、楷体、宋体、马克笔、正线细黑与窄体展示字。 */
-  fontProfile: 'noto' | 'wenkai' | 'zhisong' | 'marker' | 'xihei' | 'smiley';
+  fontProfile:
+    'noto' | 'wenkai' | 'zhisong' | 'marker' | 'xihei' | 'smiley' | 'noto-serif' | 'kuaile';
   segmentBehavior: 'new-segment' | 'continue-segment';
   syncMode: 'focus-record' | 'comment' | 'local-only';
   experimentalFocusEnabled: boolean;

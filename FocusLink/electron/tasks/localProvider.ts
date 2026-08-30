@@ -20,6 +20,11 @@ import {
   isFocusLinkInboxProject,
   normalizeTaskProjectColor,
 } from '@shared/taskProjectPolicy';
+import {
+  completeTaskRecurrence,
+  parseStoredTaskRecurrence,
+  restoreFinalTaskRecurrence,
+} from '@shared/taskRecurrence';
 
 const LOCAL_PROJECT_ID = FOCUSLINK_INBOX_PROJECT_ID;
 
@@ -57,7 +62,9 @@ function cacheToTask(c: TaskCache): Task {
     title: c.title,
     status: c.status,
     priority: c.priority,
+    startDate: c.startDate ?? null,
     dueDate: c.dueDate,
+    recurrence: parseStoredTaskRecurrence(c.recurrence),
     tags: c.tags ? JSON.parse(c.tags) : [],
     content: c.content,
     isCompleted: c.status === 'completed',
@@ -168,7 +175,9 @@ export const LocalTaskProvider = {
       title: normalizedTitle,
       status: 'incomplete',
       priority: null,
+      startDate: null,
       dueDate: null,
+      recurrence: null,
       tags: null,
       content: null,
       rawJson: null,
@@ -233,7 +242,9 @@ export const LocalTaskProvider = {
           title: task.title,
           status: task.isCompleted ? 'completed' : 'incomplete',
           priority: task.priority,
+          startDate: task.startDate ?? null,
           dueDate: task.dueDate,
+          recurrence: task.recurrence ? JSON.stringify(task.recurrence) : null,
           tags: JSON.stringify(task.tags),
           content: `${task.content ?? ''}${task.content ? '\n' : ''}external:${externalKey}`,
           rawJson: JSON.stringify({ importedFrom: externalKey }),
@@ -291,6 +302,14 @@ export const LocalTaskProvider = {
       if (task.source !== 'local') continue;
       const existing = current.get(task.id);
       if (existing && (existing.updatedAt ?? 0) >= (task.updatedAt ?? 0)) continue;
+      const startDate =
+        task.startDate === undefined ? (existing?.startDate ?? null) : task.startDate;
+      const recurrence =
+        task.recurrence === undefined
+          ? (existing?.recurrence ?? null)
+          : task.recurrence
+            ? JSON.stringify(task.recurrence)
+            : null;
       upsertTaskCache({
         id: task.id,
         source: 'local',
@@ -300,7 +319,9 @@ export const LocalTaskProvider = {
         title: task.title,
         status: task.isCompleted ? 'completed' : (task.status ?? 'incomplete'),
         priority: task.priority,
+        startDate,
         dueDate: task.dueDate,
+        recurrence,
         tags: JSON.stringify(task.tags),
         content: existing?.content ?? null,
         rawJson: existing?.rawJson ?? null,
@@ -369,10 +390,34 @@ export const LocalTaskProvider = {
     const all = listTaskCache('local');
     const c = all.find((t) => t.id === id || t.externalId === id);
     if (!c) throw new Error(`本地任务不存在: ${id}`);
-    c.status = completed ? 'completed' : 'incomplete';
-    c.updatedAt = Date.now();
+    if ((c.status === 'completed') === completed) return cacheToTask(c);
+    const changedAt = Date.now();
+    const recurrence = parseStoredTaskRecurrence(c.recurrence);
+    if (recurrence && completed) {
+      const completion = completeTaskRecurrence(
+        {
+          startDate: c.startDate ?? null,
+          dueDate: c.dueDate,
+          recurrence,
+        },
+        changedAt,
+      );
+      c.startDate = completion.startDate;
+      c.dueDate = completion.dueDate;
+      c.recurrence = JSON.stringify(completion.recurrence);
+      c.status = completion.exhausted ? 'completed' : 'incomplete';
+    } else {
+      if (recurrence && !completed && c.status === 'completed') {
+        c.recurrence = JSON.stringify(restoreFinalTaskRecurrence(recurrence));
+      }
+      c.status = completed ? 'completed' : 'incomplete';
+    }
+    c.updatedAt = changedAt;
     upsertTaskCache(c);
-    logger.info('tasks:local', `${completed ? 'completed' : 'reopened'} local task: ${c.title}`);
+    logger.info(
+      'tasks:local',
+      `${completed && c.status !== 'completed' ? 'advanced recurring' : completed ? 'completed' : 'reopened'} local task: ${c.title}`,
+    );
     return cacheToTask(c);
   },
 };

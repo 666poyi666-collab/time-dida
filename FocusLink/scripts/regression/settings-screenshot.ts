@@ -94,6 +94,25 @@ app
       console.log(`[settings] ${label}: ${titles.join(' / ')}`);
     }
 
+    // 番茄同步默认关闭。隔离夹具临时开启后确认四个事实域同时可见，
+    // 只读取桥接状态，不触发连接、启动外部应用或上传业务记录。
+    await mainWindow.webContents.executeJavaScript(`(async () => {
+      const current = await window.focuslink.settings.get();
+      await window.focuslink.settings.set({
+        tomatodo: { ...current.tomatodo, enabled: true },
+      });
+    })()`);
+    await clickTab(mainWindow, 3);
+    await sleep(420);
+    const tomatodoFacts: string[] = await mainWindow.webContents.executeJavaScript(
+      `[...document.querySelectorAll('.settings-tomatodo-overview .settings-fact-copy > span:first-child')].map((el) => el.textContent.trim())`,
+    );
+    const expectedTomatodoFacts = ['本机写入', '上传队列', '桌面桥接', '手机端显示'];
+    if (tomatodoFacts.join('|') !== expectedTomatodoFacts.join('|')) {
+      throw new Error(`Unexpected TomaToDo status facts: ${JSON.stringify(tomatodoFacts)}`);
+    }
+    await captureMain('settings-integrations-tomatodo', mainWindow);
+
     // 选择 FocusLink 本地任务时，滴答清单区块按产品边界隐藏；若用户显式选择外部来源，
     // 连接方式与同步去向必须同组，这正是重构要解决的拆分。
     const connectionGroup = seenTitles.get('滴答清单 · 连接方式');
@@ -125,7 +144,7 @@ app
     await typeSearch(mainWindow, '二维码');
     await sleep(320);
     const qr = await sectionTitles(mainWindow);
-    if (!qr.includes('手机 / 平板同步')) {
+    if (!qr.includes('设备配对与同步')) {
       throw new Error(`Cross-group search failed: ${JSON.stringify(qr)}`);
     }
 

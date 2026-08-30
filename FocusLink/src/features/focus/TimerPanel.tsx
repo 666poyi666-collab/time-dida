@@ -331,24 +331,22 @@ export function TimerPanel() {
 
   // 关闭沉浸：先挂 .is-leaving 播放 360ms 淡出+缩放，再卸载覆盖层。
   // reduced-motion 下 CSS 动画降级为静态，延迟同步缩短到 40ms。
-  const exitImmersive = useCallback(async () => {
+  const exitImmersive = useCallback(() => {
     if (!immersive || immersiveLeaving) return;
     setImmersiveLeaving(true);
-    try {
-      // A portable build can leave the native full-screen IPC promise pending while the
-      // renderer is already usable. Never let that native acknowledgement strand the body
-      // overlay forever; the bounded fallback still gives the OS a chance to exit cleanly.
-      await Promise.race([
-        window.focuslink.window.setFullScreen(false),
-        new Promise<void>((resolve) => window.setTimeout(resolve, 250)),
-      ]);
-    } catch {
-      // The operating system may already have left fullscreen.
-    }
     immersiveExitTimer.current = window.setTimeout(
       () => {
+        immersiveExitTimer.current = null;
         setImmersive(false);
         setImmersiveLeaving(false);
+        window.setTimeout(() => {
+          void Promise.race([
+            window.focuslink.window.setFullScreen(false),
+            new Promise<void>((resolve) => window.setTimeout(resolve, 250)),
+          ]).catch(() => {
+            // The operating system may already have left fullscreen.
+          });
+        }, 0);
       },
       reducedMotion ? 40 : 360,
     );

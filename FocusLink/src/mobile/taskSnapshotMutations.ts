@@ -1,10 +1,21 @@
 import type { SyncedTaskProject, TaskSnapshotPayload } from '@shared/sync/taskSnapshotProtocol';
+import { fingerprintDeviceSyncValue } from '@shared/sync/deviceProtocol';
 import {
   defaultTaskProjectColor,
   FOCUSLINK_INBOX_PROJECT_ID,
   isFocusLinkInboxProject,
   normalizeTaskProjectColor,
 } from '@shared/taskProjectPolicy';
+
+/** Stable across a response-loss retry, but changes with task intent or observed revision. */
+export function mobileTaskCompletionOperationId(input: {
+  deviceId: string;
+  taskId: string;
+  completed: boolean;
+  expectedRevision: number;
+}): string {
+  return `mobile-task:${fingerprintDeviceSyncValue(input)}`;
+}
 
 export function createEmptyTaskSnapshot(publishedAt: number): TaskSnapshotPayload {
   return {

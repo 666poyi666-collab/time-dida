@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相；当前实现 v0.12.104（实施中）
+> 状态：v0.12.x 后端单一真相；当前实现 v0.12.105（实施中）
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -353,12 +353,13 @@ Cloudflare 外部协议 gate 是受限测试操作，不是部署入口：extern
 
 - 电脑端每次成功读取或修改 FocusLink 任务工作台后自动发布清单与任务快照；发布失败只记诊断，本地任务仍可用。
 - 项目 V1 未单独携带 `updatedAt`；合并时以快照 `publishedAt` 与 SQLite `task_projects.updated_at` 比较，旧快照不得回退刚在本机修改的名称/颜色。
-- 快照只包含选择专注所需的任务 ID、来源、标题、项目、优先级、到期日、标签、父子关系和完成状态；不包含任务正文、原始 JSON、CLI/OAuth 凭据或第三方写入能力。Checklist 子项在传输时展平并保留 `parentId`。
+- 快照只包含选择专注与任务调度所需的任务 ID、来源、标题、项目、优先级、开始/截止时间、标签、父子关系、完成状态和结构化循环；不包含任务正文、原始 JSON、CLI/OAuth 凭据或第三方写入能力。Checklist 子项在传输时展平并保留 `parentId`。循环定义含 IANA timezone、日/周/月/年频率、interval、ISO weekday/month day、endAt/count 与 rollover；`completedCount` 只由 authority 推进。
 - 云端按账号保留最后一份完整快照，内容相同的同设备重放不增加 revision。Web/PWA/Android 使用 `GET /sync/v2/tasks` 读取并写入 IndexedDB；PC 关闭或任务服务暂时不可达时继续使用最后一次缓存。
 - 任务快照 GET/POST 必须 `Cache-Control: no-store`；`publishedAt` 只是客户端排序提示，Account DO 与 loopback 必须只接受 `publishedAt <= serverTime + 5 分钟`，超限统一返回 HTTP `422` / `task_snapshot_timestamp_too_far_ahead`。已保存且超出该窗口的旧快照是 legacy far-future 状态，下一份合法快照可替换它；正常 register 保持相同 source/payload 幂等、较旧 timestamp 为 `409 stale_task_snapshot`、同 timestamp 异文为 `409 task_snapshot_conflict`。移动端前台每 5 秒自动拉取，并在恢复可见、窗口聚焦、pageshow、登录或连接 epoch 变化时立即拉取。revision 只能前进：低 revision 响应不得覆盖缓存；同 revision 若 source/payload 不同视为 authority 不一致并保留当前快照。移动端首次创建前必须确认最新 GET；`revision=0/snapshot=null` 才能建立稳定 `local-inbox` 首写，禁止空快照覆盖已有 register。桌面端强制 refresh 在当前 connection scope/generation 内等待 pending snapshot 发布尝试；成功回读同一 source device/payload 或 stale 才可清除 durable pending，conflict、第二次 422、GET/解析/重试失败或连接变化均必须保留 pending，不能递归重试。
 - 移动端开始实时会话时可以携带快照中的任务上下文，也可以不关联任务自由开始。任务上下文最终进入 completed bundle，PC 拉回后仍由桌面端执行 dida/TomaToDo 副作用。
 - 移动端不直连滴答，只读写同一 FocusLink 账号任务快照；任务创建、完成、清单改色/重命名与任务移动均是完整快照 mutation，成功回读后才更新 IndexedDB 缓存。
-- 云端 MCP 的 FocusLink 自有任务工具直接读写同一 Account DO `task_state` 快照寄存器，不另建 MCP/D1 任务源。`focuslink_list_projects`、`focuslink_list_tasks`、`focuslink_get_task` 提供清单/任务读取；创建/更新/完成/恢复/删除/移动任务以及清单创建/更新/删除均要求 `operationId` 与 `expectedRevision`。Account DO 在同一持久化事务中执行 revision CAS 和 `task_operations` 幂等账本：旧 revision 返回冲突且不覆盖，重放返回 `duplicate`，清单删除始终将任务/子树移入 `local-inbox`，任务删除才永久删除目标子树。任务字段保留截止时间（Unix ms）、优先级、标签和 `parentId`，MCP 返回只含稳定 ID、revision、结果计数等脱敏确认；公网 MCP 继续遵守 2026-07-28 discovery，写调用需要 `focuslink:read focuslink:write`。
+- 云端 MCP 的 FocusLink 自有任务工具直接读写同一 Account DO `task_state` 快照寄存器，不另建 MCP/D1 任务源。`focuslink_get_current_time` 以 Account DO `serverTime` 返回指定 IANA timezone 的 UTC/local 时间、offset 和当天边界；`focuslink_list_projects/get_project/list_tasks/get_task` 提供清单/任务读取与筛选。创建/更新/完成/恢复/删除/移动任务以及清单创建/更新/删除均要求 `operationId` 与 `expectedRevision`。Account DO 在同一持久化事务中执行 revision CAS、循环推进和 `task_operations` 幂等账本：旧 revision 返回冲突且不覆盖，重放返回 `duplicate`，清单删除始终将任务/子树移入 `local-inbox`，任务删除才永久删除目标子树。MCP 返回只含稳定 ID、revision、结果计数等脱敏确认；公网 MCP 继续遵守 2026-07-28 discovery，写调用需要 `focuslink:read focuslink:write`。
+- `task-scheduling-v1` 通过 `x-focuslink-task-capabilities` 协商。新客户端读取 `startDate/recurrence`；无 capability 的 0.12.104 客户端得到严格旧 shape。旧整包写回由 authority 合并保留调度字段并拒绝无法一致合并的日期，防止旧设备静默抹掉循环。CLI 复用 canonical `/sync/v2/tasks{,/mutate}`，从 `fl2` 派生并校验 deviceId；OAuth access token 只供 MCP，不供 CLI。
 
 ## 9. 小窗与边缘状态
 

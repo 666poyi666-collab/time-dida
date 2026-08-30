@@ -88,6 +88,15 @@ describe('mobile dashboard model', () => {
     expect(markup).toContain('09:30 至 12:00，空档 02:30:00');
     expect(markup).toContain('class="mobile-day-map-scroll" tabindex="0"');
     expect(markup).toContain('横向查看 24 小时');
+    expect(markup.match(/class="mobile-day-periods"/g)).toHaveLength(1);
+    expect(markup).toContain('深夜');
+    expect(markup).toContain('上午');
+    expect(markup).toContain('下午');
+    expect(markup).toContain('晚间');
+    expect(markup.match(/class="mobile-day-lane-label"/g)).toHaveLength(3);
+    expect(markup).toContain('<small>25m</small>');
+    expect(markup).toContain('<small>5m</small>');
+    expect(markup).toContain('<small>2.5h</small>');
     expect(markup).toContain('函数复习');
   });
 });

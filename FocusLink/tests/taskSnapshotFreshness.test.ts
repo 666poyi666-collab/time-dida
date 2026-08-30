@@ -60,6 +60,26 @@ describe('task snapshot freshness contract', () => {
     });
   });
 
+  it('treats legacy scheduling omission and explicit null as the same fingerprint', () => {
+    const legacy = snapshot(36, 'task-stable', 36_000);
+    const scheduledClient = {
+      ...legacy,
+      serverTime: 37_000,
+      snapshot: {
+        ...legacy.snapshot,
+        tasks: legacy.snapshot.tasks.map((task) => ({
+          ...task,
+          startDate: null,
+          recurrence: null,
+        })),
+      },
+    };
+    expect(reconcileTaskSnapshot(legacy, scheduledClient)).toEqual({
+      freshness: 'refresh',
+      snapshot: scheduledClient,
+    });
+  });
+
   it('rejects malformed and extra response fields', () => {
     expect(parseTaskSnapshotResponse(snapshot(36))).not.toBeNull();
     expect(parseTaskSnapshotResponse({ ...snapshot(36), privateBody: 'must-not-pass' })).toBeNull();

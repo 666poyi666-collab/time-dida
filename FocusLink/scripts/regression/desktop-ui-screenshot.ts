@@ -23,8 +23,8 @@ const outputDir = path.resolve(projectRoot, 'test-data', 'desktop-ui-screenshots
 
 const PAGES = [
   { id: 'timer', label: '专注', anchor: '.timer-dial' },
-  { id: 'tasks', label: '任务', anchor: '.app-stage' },
-  { id: 'history', label: '统计', anchor: '.app-stage' },
+  { id: 'tasks', label: '任务', anchor: '.task-workspace-page' },
+  { id: 'history', label: '统计', anchor: '.history-page' },
   { id: 'settings', label: '设置', anchor: '.settings-page' },
 ] as const;
 
@@ -224,10 +224,22 @@ app
           const map = await mainWindow.webContents.executeJavaScript(`(() => ({
             ticks: document.querySelectorAll('.stats-day-map-axis > span').length,
             lanes: document.querySelectorAll('.stats-day-lane').length,
+            periods: document.querySelectorAll('.stats-day-periods > span').length,
+            laneTotals: document.querySelectorAll('.stats-day-lane-label > small').length,
+            axisFontSize: Number.parseFloat(getComputedStyle(document.querySelector('.stats-day-map-axis > span')).fontSize),
+            height: document.querySelector('.stats-day-map')?.getBoundingClientRect().height ?? 0,
             clientWidth: document.querySelector('.stats-day-map-scroll')?.clientWidth ?? 0,
             scrollWidth: document.querySelector('.stats-day-map-scroll')?.scrollWidth ?? 0,
           }))()`);
-          if (map.ticks !== 25 || map.lanes !== 3 || map.scrollWidth > map.clientWidth + 1) {
+          if (
+            map.ticks !== 25 ||
+            map.lanes !== 3 ||
+            map.periods !== 5 ||
+            map.laneTotals !== 3 ||
+            map.axisFontSize < 10 ||
+            map.height < 200 ||
+            map.scrollWidth > map.clientWidth + 1
+          ) {
             throw new Error(`Desktop 24-hour map contract failed: ${JSON.stringify(map)}`);
           }
         }

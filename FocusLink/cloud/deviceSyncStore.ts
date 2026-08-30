@@ -37,12 +37,22 @@ import {
 } from '../shared/sync/liveFocusProtocol';
 import {
   TASK_SNAPSHOT_PROTOCOL_VERSION,
+  TASK_SNAPSHOT_MAX_FUTURE_SKEW_MS,
+  applyTaskSnapshotMutation,
+  canonicalTaskSnapshotFingerprintPayload,
   isTaskSnapshotPublishedAtWithinFutureSkew,
+  mergeLegacyTaskSchedulingFields,
+  normalizeTaskSnapshotPayload,
+  parseTaskSnapshotMutationResponse,
   validateTaskSnapshotPayload,
+  validateTaskSnapshotMutationRequest,
   validateTaskSnapshotPublishRequest,
   type TaskSnapshotPayload,
+  type TaskSnapshotMutationRequest,
+  type TaskSnapshotMutationResponse,
   type TaskSnapshotPublishRequest,
   type TaskSnapshotResponse,
+  withoutTaskSchedulingFields,
 } from '../shared/sync/taskSnapshotProtocol';
 import type {
   LiveFocusCommand,
@@ -113,6 +123,20 @@ interface TaskAccountState {
   sourceDeviceId: string | null;
   fingerprint: string | null;
   snapshot: TaskSnapshotPayload | null;
+  operations: Map<string, StoredTaskOperation>;
+}
+
+interface StoredTaskOperation {
+  fingerprint: string;
+  response: TaskSnapshotMutationResponse;
+}
+
+interface PersistedTaskAccountState {
+  revision: number;
+  sourceDeviceId: string | null;
+  fingerprint: string | null;
+  snapshot: TaskSnapshotPayload | null;
+  operations?: Array<[string, StoredTaskOperation]>;
 }
 
 interface AccountState {
@@ -132,7 +156,7 @@ interface PersistedAccountState {
   /** Optional so stores written before live focus was introduced remain readable. */
   live?: PersistedLiveAccountState;
   /** Optional so stores written before desktop task snapshots remain readable. */
-  tasks?: TaskAccountState;
+  tasks?: PersistedTaskAccountState;
 }
 
 interface PersistedLiveAccountState {
@@ -174,6 +198,9 @@ export class DeviceSyncCloudStoreError extends Error {
       | 'invalid_live_revision'
       | 'stale_task_snapshot'
       | 'task_snapshot_conflict'
+      | 'task_revision_conflict'
+      | 'task_operation_id_reused'
+      | 'task_mutation_invalid'
       | 'task_snapshot_timestamp_too_far_ahead'
       | 'store_corrupt',
     message: string,
@@ -266,14 +293,21 @@ export class DeviceSyncCloudStore {
     };
   }
 
-  getTaskSnapshot(accountId: string): TaskSnapshotResponse {
+  getTaskSnapshot(accountId: string, includeScheduling = true): TaskSnapshotResponse {
     validateAccountId(accountId);
     const tasks = (this.accounts.get(accountId) ?? createEmptyAccount()).tasks;
     return {
       protocolVersion: TASK_SNAPSHOT_PROTOCOL_VERSION,
       revision: tasks.revision,
       sourceDeviceId: tasks.sourceDeviceId,
-      snapshot: tasks.snapshot === null ? null : structuredClone(tasks.snapshot),
+      snapshot:
+        tasks.snapshot === null
+          ? null
+          : structuredClone(
+              includeScheduling
+                ? normalizeTaskSnapshotPayload(tasks.snapshot)
+                : withoutTaskSchedulingFields(tasks.snapshot),
+            ),
       serverTime: this.now(),
     };
   }
@@ -281,32 +315,49 @@ export class DeviceSyncCloudStore {
   publishTaskSnapshot(
     accountId: string,
     request: TaskSnapshotPublishRequest,
+    /** Omitted capability means legacy writer semantics: preserve existing scheduling fields. */
+    includeScheduling = false,
   ): TaskSnapshotResponse {
     validateAccountId(accountId);
     if (!validateTaskSnapshotPublishRequest(request)) {
       throw new DeviceSyncCloudStoreError('invalid_request', 'task snapshot is invalid');
     }
     const serverTime = this.now();
-    if (!isTaskSnapshotPublishedAtWithinFutureSkew(request.snapshot.publishedAt, serverTime)) {
+    const incomingSnapshot = normalizeTaskSnapshotPayload(request.snapshot);
+    if (!isTaskSnapshotPublishedAtWithinFutureSkew(incomingSnapshot.publishedAt, serverTime)) {
       throw new DeviceSyncCloudStoreError(
         'task_snapshot_timestamp_too_far_ahead',
         'task snapshot publishedAt is too far in the future',
       );
     }
     const current = this.accounts.get(accountId) ?? createEmptyAccount();
-    const fingerprint = fingerprintDeviceSyncValue(request.snapshot);
-    if (
-      current.tasks.fingerprint !== fingerprint ||
-      current.tasks.sourceDeviceId !== request.deviceId
-    ) {
-      const publishedAt = current.tasks.snapshot?.publishedAt;
+    const currentSnapshot = current.tasks.snapshot
+      ? normalizeTaskSnapshotPayload(current.tasks.snapshot)
+      : null;
+    const normalizedSnapshot = includeScheduling
+      ? incomingSnapshot
+      : mergeLegacyTaskSchedulingFields(currentSnapshot, incomingSnapshot);
+    if (!validateTaskSnapshotPayload(normalizedSnapshot)) {
+      throw new DeviceSyncCloudStoreError(
+        'task_snapshot_conflict',
+        'legacy task update conflicts with structured scheduling fields',
+      );
+    }
+    const currentFingerprint = currentSnapshot
+      ? fingerprintDeviceSyncValue(canonicalTaskSnapshotFingerprintPayload(currentSnapshot))
+      : current.tasks.fingerprint;
+    const fingerprint = fingerprintDeviceSyncValue(
+      canonicalTaskSnapshotFingerprintPayload(normalizedSnapshot),
+    );
+    if (currentFingerprint !== fingerprint || current.tasks.sourceDeviceId !== request.deviceId) {
+      const publishedAt = currentSnapshot?.publishedAt;
       const currentSnapshotIsLegacyFuture =
         publishedAt !== undefined &&
         !isTaskSnapshotPublishedAtWithinFutureSkew(publishedAt, serverTime);
       if (
         publishedAt !== undefined &&
         !currentSnapshotIsLegacyFuture &&
-        request.snapshot.publishedAt < publishedAt
+        normalizedSnapshot.publishedAt < publishedAt
       ) {
         throw new DeviceSyncCloudStoreError(
           'stale_task_snapshot',
@@ -316,7 +367,7 @@ export class DeviceSyncCloudStore {
       if (
         publishedAt !== undefined &&
         !currentSnapshotIsLegacyFuture &&
-        request.snapshot.publishedAt === publishedAt
+        normalizedSnapshot.publishedAt === publishedAt
       ) {
         throw new DeviceSyncCloudStoreError(
           'task_snapshot_conflict',
@@ -331,14 +382,110 @@ export class DeviceSyncCloudStore {
         revision: working.tasks.revision + 1,
         sourceDeviceId: request.deviceId,
         fingerprint,
-        snapshot: structuredClone(request.snapshot),
+        snapshot: structuredClone(normalizedSnapshot),
+        operations: working.tasks.operations,
       };
       const nextAccounts = new Map(this.accounts);
       nextAccounts.set(accountId, working);
       if (this.persistencePath) persistStore(this.persistencePath, nextAccounts);
       this.accounts = nextAccounts;
     }
-    return this.getTaskSnapshot(accountId);
+    return this.getTaskSnapshot(accountId, includeScheduling);
+  }
+
+  mutateTaskSnapshot(
+    accountId: string,
+    request: TaskSnapshotMutationRequest,
+  ): TaskSnapshotMutationResponse {
+    validateAccountId(accountId);
+    if (!validateTaskSnapshotMutationRequest(request)) {
+      throw new DeviceSyncCloudStoreError('invalid_request', 'task mutation is invalid');
+    }
+    const serverTime = this.now();
+    const current = this.accounts.get(accountId) ?? createEmptyAccount();
+    const operationFingerprint = fingerprintDeviceSyncValue({
+      expectedRevision: request.expectedRevision,
+      deviceId: request.deviceId,
+      mutation: request.mutation,
+    });
+    const previous = current.tasks.operations.get(request.operationId);
+    if (previous) {
+      if (previous.fingerprint !== operationFingerprint) {
+        throw new DeviceSyncCloudStoreError(
+          'task_operation_id_reused',
+          'task operation id is already bound to another mutation',
+        );
+      }
+      return structuredClone({ ...previous.response, status: 'duplicate', serverTime });
+    }
+    if (current.tasks.revision !== request.expectedRevision) {
+      throw new DeviceSyncCloudStoreError(
+        'task_revision_conflict',
+        `task snapshot revision conflict; current revision is ${current.tasks.revision}`,
+      );
+    }
+    if (current.tasks.revision >= Number.MAX_SAFE_INTEGER) {
+      throw new DeviceSyncCloudStoreError('store_corrupt', 'task revision exhausted');
+    }
+    const currentSnapshot = current.tasks.snapshot
+      ? normalizeTaskSnapshotPayload(current.tasks.snapshot)
+      : {
+          publishedAt: serverTime,
+          projects: [
+            {
+              id: 'local-inbox',
+              source: 'local' as const,
+              name: '收件箱',
+              color: '#16899f',
+            },
+          ],
+          tasks: [],
+        };
+    const publishedAt =
+      currentSnapshot.publishedAt > serverTime + TASK_SNAPSHOT_MAX_FUTURE_SKEW_MS
+        ? serverTime
+        : Math.min(
+            serverTime + TASK_SNAPSHOT_MAX_FUTURE_SKEW_MS,
+            Math.max(serverTime, currentSnapshot.publishedAt + 1),
+          );
+    let applied: ReturnType<typeof applyTaskSnapshotMutation>;
+    try {
+      applied = applyTaskSnapshotMutation(currentSnapshot, request.mutation, publishedAt);
+    } catch (error) {
+      throw new DeviceSyncCloudStoreError(
+        'task_mutation_invalid',
+        error instanceof Error ? error.message : 'task mutation is invalid',
+      );
+    }
+    if (!validateTaskSnapshotPayload(applied.snapshot)) {
+      throw new DeviceSyncCloudStoreError('store_corrupt', 'task mutation produced invalid state');
+    }
+    const response: TaskSnapshotMutationResponse = {
+      protocolVersion: TASK_SNAPSHOT_PROTOCOL_VERSION,
+      revision: current.tasks.revision + 1,
+      sourceDeviceId: request.deviceId,
+      snapshot: applied.snapshot,
+      serverTime,
+      operationId: request.operationId,
+      status: 'applied',
+      result: applied.result,
+    };
+    const working = cloneAccount(current);
+    working.tasks.revision = response.revision;
+    working.tasks.sourceDeviceId = request.deviceId;
+    working.tasks.snapshot = structuredClone(applied.snapshot);
+    working.tasks.fingerprint = fingerprintDeviceSyncValue(
+      canonicalTaskSnapshotFingerprintPayload(applied.snapshot),
+    );
+    working.tasks.operations.set(request.operationId, {
+      fingerprint: operationFingerprint,
+      response: structuredClone(response),
+    });
+    const nextAccounts = new Map(this.accounts);
+    nextAccounts.set(accountId, working);
+    if (this.persistencePath) persistStore(this.persistencePath, nextAccounts);
+    this.accounts = nextAccounts;
+    return response;
   }
 
   /**
@@ -1105,7 +1252,13 @@ function createEmptyLiveAccount(): LiveAccountState {
 }
 
 function createEmptyTaskAccount(): TaskAccountState {
-  return { revision: 0, sourceDeviceId: null, fingerprint: null, snapshot: null };
+  return {
+    revision: 0,
+    sourceDeviceId: null,
+    fingerprint: null,
+    snapshot: null,
+    operations: new Map(),
+  };
 }
 
 function cloneAccount(account: AccountState): AccountState {
@@ -1134,6 +1287,15 @@ function cloneAccount(account: AccountState): AccountState {
       sourceDeviceId: account.tasks.sourceDeviceId,
       fingerprint: account.tasks.fingerprint,
       snapshot: account.tasks.snapshot === null ? null : structuredClone(account.tasks.snapshot),
+      operations: new Map(
+        [...account.tasks.operations].map(([operationId, operation]) => [
+          operationId,
+          {
+            fingerprint: operation.fingerprint,
+            response: structuredClone(operation.response),
+          },
+        ]),
+      ),
     },
   };
 }
@@ -1253,26 +1415,63 @@ function serializeAccount(account: AccountState): PersistedAccountState {
       sourceDeviceId: account.tasks.sourceDeviceId,
       fingerprint: account.tasks.fingerprint,
       snapshot: account.tasks.snapshot === null ? null : structuredClone(account.tasks.snapshot),
+      operations: [...account.tasks.operations].map(([operationId, operation]) => [
+        operationId,
+        {
+          fingerprint: operation.fingerprint,
+          response: structuredClone(operation.response),
+        },
+      ]),
     },
   };
 }
 
-function hydratePersistedTaskAccount(persisted: TaskAccountState | undefined): TaskAccountState {
+function hydratePersistedTaskAccount(
+  persisted: PersistedTaskAccountState | undefined,
+): TaskAccountState {
   if (persisted === undefined) return createEmptyTaskAccount();
   if (
     !Number.isSafeInteger(persisted.revision) ||
     persisted.revision < 0 ||
     !(persisted.sourceDeviceId === null || isId(persisted.sourceDeviceId)) ||
     !(persisted.fingerprint === null || typeof persisted.fingerprint === 'string') ||
-    !(persisted.snapshot === null || validateTaskSnapshotPayload(persisted.snapshot))
+    !(persisted.snapshot === null || validateTaskSnapshotPayload(persisted.snapshot)) ||
+    (persisted.operations !== undefined && !Array.isArray(persisted.operations))
   ) {
     throw new DeviceSyncCloudStoreError('store_corrupt', 'invalid persisted task snapshot');
+  }
+  const operations = new Map<string, StoredTaskOperation>();
+  for (const entry of persisted.operations ?? []) {
+    if (
+      !Array.isArray(entry) ||
+      entry.length !== 2 ||
+      typeof entry[0] !== 'string' ||
+      typeof entry[1]?.fingerprint !== 'string'
+    ) {
+      throw new DeviceSyncCloudStoreError('store_corrupt', 'invalid task operation entry');
+    }
+    const response = parseTaskSnapshotMutationResponse(entry[1].response);
+    if (!response || response.operationId !== entry[0]) {
+      throw new DeviceSyncCloudStoreError('store_corrupt', 'invalid task operation response');
+    }
+    operations.set(entry[0], { fingerprint: entry[1].fingerprint, response });
   }
   return {
     revision: persisted.revision,
     sourceDeviceId: persisted.sourceDeviceId,
-    fingerprint: persisted.fingerprint,
-    snapshot: persisted.snapshot === null ? null : structuredClone(persisted.snapshot),
+    snapshot:
+      persisted.snapshot === null
+        ? null
+        : structuredClone(normalizeTaskSnapshotPayload(persisted.snapshot)),
+    fingerprint:
+      persisted.snapshot === null
+        ? persisted.fingerprint
+        : fingerprintDeviceSyncValue(
+            canonicalTaskSnapshotFingerprintPayload(
+              normalizeTaskSnapshotPayload(persisted.snapshot),
+            ),
+          ),
+    operations,
   };
 }
 

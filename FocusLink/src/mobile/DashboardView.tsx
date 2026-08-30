@@ -21,6 +21,14 @@ const RANGE_OPTIONS: ReadonlyArray<{ value: MobileStatsRange; label: string }> =
   { value: '30d', label: '近 30 天' },
 ];
 
+const DAY_PERIODS = [
+  { label: '深夜', startHour: 0, endHour: 7 },
+  { label: '上午', startHour: 7, endHour: 12 },
+  { label: '下午', startHour: 12, endHour: 18 },
+  { label: '晚间', startHour: 18, endHour: 22 },
+  { label: '深夜', startHour: 22, endHour: 24 },
+] as const;
+
 interface DashboardViewProps {
   records: readonly CachedBundle[];
   ready: boolean;
@@ -385,6 +393,19 @@ function DayLedgerTimeline({ ledger }: { ledger: DayLedgerAnalytics | undefined 
         <div className="mobile-day-ledger" aria-label={timelineLabel}>
           <div className="mobile-day-map-scroll" tabIndex={0} aria-label="横向查看 24 小时">
             <div className="mobile-day-map">
+              <div className="mobile-day-periods" aria-hidden="true">
+                {DAY_PERIODS.map((period, index) => (
+                  <span
+                    key={`${period.label}-${index}`}
+                    style={{
+                      left: `${(period.startHour / 24) * 100}%`,
+                      width: `${((period.endHour - period.startHour) / 24) * 100}%`,
+                    }}
+                  >
+                    {period.label}
+                  </span>
+                ))}
+              </div>
               <div className="mobile-day-map-axis" aria-hidden="true">
                 {hourTicks.map((hour) => (
                   <span
@@ -401,13 +422,22 @@ function DayLedgerTimeline({ ledger }: { ledger: DayLedgerAnalytics | undefined 
                   <i key={hour} className={hour < 7 || hour >= 22 ? 'night' : 'day'} />
                 ))}
               </div>
-              {(['focus', 'pause', 'gap'] as const).map((kind) => (
-                <div className={`mobile-day-lane ${kind}`} key={kind}>
-                  <strong>{kind === 'focus' ? '专注' : kind === 'pause' ? '暂停' : '空档'}</strong>
-                  <div>
-                    {ledger.intervals
-                      .filter((interval) => interval.kind === kind)
-                      .map((interval, index) => {
+              {(['focus', 'pause', 'gap'] as const).map((kind) => {
+                const intervals = ledger.intervals.filter((interval) => interval.kind === kind);
+                const totalMs = intervals.reduce(
+                  (total, interval) => total + interval.durationMs,
+                  0,
+                );
+                return (
+                  <div className={`mobile-day-lane ${kind}`} key={kind}>
+                    <span className="mobile-day-lane-label">
+                      <strong>
+                        {kind === 'focus' ? '专注' : kind === 'pause' ? '暂停' : '空档'}
+                      </strong>
+                      <small>{formatLaneDuration(totalMs)}</small>
+                    </span>
+                    <div>
+                      {intervals.map((interval, index) => {
                         const width = (interval.durationMs / span) * 100;
                         return (
                           <span
@@ -423,12 +453,15 @@ function DayLedgerTimeline({ ledger }: { ledger: DayLedgerAnalytics | undefined 
                           </span>
                         );
                       })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {nowPosition !== null && (
                 <div className="mobile-day-now-layer" aria-hidden="true">
-                  <i className="mobile-day-now" style={{ left: `${nowPosition}%` }} />
+                  <i className="mobile-day-now" style={{ left: `${nowPosition}%` }}>
+                    <span>{formatClock(ledger.observationEndedAt)}</span>
+                  </i>
                 </div>
               )}
             </div>
@@ -444,10 +477,17 @@ function DayLedgerTimeline({ ledger }: { ledger: DayLedgerAnalytics | undefined 
         <p className="analytics-empty">尚无共享日账本数据。</p>
       )}
       <p className="dashboard-ledger-caption">
-        每格 1 小时；专注、暂停、空档使用同一比例。滑动可读完整 00:00–24:00，夜间底色不计入空档。
+        每格 1 小时；专注、暂停、空档共用 00:00–24:00 比例，夜间底色不计入空档。
       </p>
     </section>
   );
+}
+
+function formatLaneDuration(ms: number): string {
+  const minutes = Math.max(0, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = minutes / 60;
+  return `${hours >= 10 || Number.isInteger(hours) ? hours.toFixed(0) : hours.toFixed(1)}h`;
 }
 
 function GapLedger({ ledger }: { ledger: DayLedgerAnalytics | undefined }) {

@@ -33,10 +33,17 @@ import {
   type LiveFocusWaitResponse,
 } from '@shared/sync/liveFocusProtocol';
 import {
+  TASK_SNAPSHOT_MUTATION_PATH,
   TASK_SNAPSHOT_PROTOCOL_VERSION,
   TASK_SNAPSHOT_PATH,
+  TASK_SNAPSHOT_CAPABILITY_HEADER,
+  TASK_SNAPSHOT_SCHEDULING_CAPABILITY,
+  parseTaskSnapshotMutationResponse,
   parseTaskSnapshotResponse,
   type TaskSnapshotPayload,
+  type TaskSnapshotMutation,
+  type TaskSnapshotMutationRequest,
+  type TaskSnapshotMutationResponse,
   type TaskSnapshotPublishRequest,
   type TaskSnapshotResponse,
 } from '@shared/sync/taskSnapshotProtocol';
@@ -699,6 +706,30 @@ export async function publishTaskSnapshot(
   return value;
 }
 
+export async function mutateTaskSnapshot(
+  input: LiveFocusConnectionInput & {
+    deviceId: string;
+    operationId: string;
+    expectedRevision: number;
+    mutation: TaskSnapshotMutation;
+  },
+): Promise<TaskSnapshotMutationResponse> {
+  const request: TaskSnapshotMutationRequest = {
+    protocolVersion: TASK_SNAPSHOT_PROTOCOL_VERSION,
+    deviceId: input.deviceId,
+    operationId: input.operationId,
+    expectedRevision: input.expectedRevision,
+    mutation: input.mutation,
+  };
+  const response = await liveFocusFetch(input, TASK_SNAPSHOT_MUTATION_PATH, {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+  const value = parseTaskSnapshotMutationResponse(await readDeviceSyncJsonResponse(response));
+  if (!value) throw new Error('任务变更响应无效');
+  return value;
+}
+
 export async function waitForLiveFocusSnapshot(
   input: WaitForLiveFocusInput,
 ): Promise<LiveFocusWaitResponse> {
@@ -782,6 +813,9 @@ async function liveFocusFetch(
           headers: {
             Accept: 'application/json',
             Authorization: `Bearer ${token}`,
+            ...(path === TASK_SNAPSHOT_PATH || path === TASK_SNAPSHOT_MUTATION_PATH
+              ? { [TASK_SNAPSHOT_CAPABILITY_HEADER]: TASK_SNAPSHOT_SCHEDULING_CAPABILITY }
+              : {}),
             ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
           },
           body: init.body,

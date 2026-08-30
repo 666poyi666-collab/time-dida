@@ -1824,6 +1824,303 @@ body {
   }
 }
 
+/* Dashboard + timer refinement --------------------------------------------
+ * Sections share one matte reading plane; only controls and the actual timer
+ * instrument keep a frame. Tablet widths show the full day without panning. */
+.primary-readout {
+  min-height: 170px;
+  padding: 18px 0 20px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.primary-readout > span,
+.dashboard-primary > span {
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.primary-readout small,
+.dashboard-primary p {
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.focus-start-fields {
+  margin-top: 0;
+  padding: 18px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.dashboard-hero {
+  min-height: 0;
+  padding: 24px 20px;
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.dashboard-primary {
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.dashboard-primary > strong {
+  margin-block: 10px 6px;
+  font-size: 54px;
+  letter-spacing: 0;
+}
+
+.mobile-time-donut-wrap {
+  background: transparent;
+}
+
+.dashboard-kpis,
+.dashboard-band,
+.dashboard-pause-cost {
+  overflow: hidden;
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.dashboard-kpis {
+  margin-top: 10px;
+}
+
+.dashboard-band,
+.dashboard-pause-cost {
+  margin-top: 10px;
+}
+
+.dashboard-metric span,
+.analytics-heading span,
+.dashboard-pause-cost span {
+  font-size: 11px;
+}
+
+.dashboard-metric strong {
+  font-size: 21px;
+}
+
+.mobile-day-map {
+  --mobile-day-label: 64px;
+  min-width: 680px;
+  padding-top: 54px;
+}
+
+.mobile-day-periods {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: var(--mobile-day-label);
+  height: 22px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+}
+
+.mobile-day-periods span {
+  position: absolute;
+  inset-block: 0;
+  display: grid;
+  place-items: center;
+  border-right: 1px solid var(--border);
+  background: rgb(var(--app-ledger-day));
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.mobile-day-periods span:first-child,
+.mobile-day-periods span:last-child {
+  background: rgb(var(--app-ledger-night));
+  color: var(--subtle);
+}
+
+.mobile-day-map-axis {
+  top: 22px;
+  height: 32px;
+}
+
+.mobile-day-map-axis span {
+  bottom: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.mobile-day-map-axis span.major {
+  height: 16px;
+  border-left-color: rgb(var(--app-ledger-grid-major));
+  color: var(--text);
+  font-weight: 650;
+}
+
+.mobile-day-map-grid,
+.mobile-day-now-layer {
+  top: 54px;
+}
+
+.mobile-day-map-grid {
+  border-color: var(--border-strong);
+  background: rgb(var(--app-ledger-day));
+}
+
+.mobile-day-map-grid i {
+  border-right-color: var(--border);
+  background: rgb(var(--app-ledger-day));
+}
+
+.mobile-day-map-grid i.night {
+  background: rgb(var(--app-ledger-night));
+}
+
+.mobile-day-map-grid i:nth-child(7),
+.mobile-day-map-grid i:nth-child(22) {
+  border-right: 2px solid rgb(var(--app-ledger-grid-major));
+}
+
+.mobile-day-lane {
+  min-height: 52px;
+  grid-template-columns: var(--mobile-day-label) minmax(0, 1fr);
+}
+
+.mobile-day-lane-label {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding-right: 10px;
+  text-align: right;
+}
+
+.mobile-day-lane-label strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.mobile-day-lane-label small {
+  color: var(--subtle);
+  font-family: var(--font-number);
+  font-size: 10px;
+}
+
+.mobile-day-lane > div {
+  height: 32px;
+}
+
+.mobile-day-lane .ledger-interval {
+  min-width: 4px;
+  border-radius: var(--radius-sm);
+  line-height: 26px;
+  animation: mobile-ledger-reveal 300ms var(--ease-fluid) both;
+}
+
+.mobile-day-lane .ledger-interval.gap {
+  border-color: rgb(var(--app-ledger-gap));
+  background: rgb(var(--app-ledger-gap) / 0.18);
+  color: rgb(var(--app-ledger-gap));
+}
+
+.mobile-day-now {
+  background: rgb(var(--app-ledger-now));
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.mobile-day-now::before {
+  background: rgb(var(--app-ledger-now));
+}
+
+.mobile-day-now span {
+  position: absolute;
+  top: -23px;
+  left: 50%;
+  padding: 3px 5px;
+  border: 1px solid rgb(var(--app-ledger-now));
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-number);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 650;
+  line-height: 1;
+  transform: translateX(-50%);
+}
+
+.mobile-ledger-legend {
+  gap: 14px;
+  font-size: 11px;
+}
+
+.mobile-ledger-legend .legend-gap::before {
+  border: 1px solid rgb(var(--app-ledger-gap));
+  background: rgb(var(--app-ledger-gap) / 0.18);
+}
+
+.dashboard-ledger-caption {
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+@keyframes mobile-ledger-reveal {
+  from {
+    opacity: 0.35;
+    transform: scaleX(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@media (min-width: 620px) {
+  html[data-device-tier='tablet'] body .dashboard-hero {
+    grid-template-columns: minmax(0, 1fr) 180px;
+    min-height: 226px;
+    padding: 30px 34px;
+  }
+
+  .dashboard-primary > strong {
+    font-size: 64px;
+  }
+
+  .mobile-day-map {
+    min-width: 100%;
+  }
+
+  .mobile-day-map-scroll {
+    overflow-x: hidden;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  .primary-readout {
+    min-height: 132px;
+    padding-block: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-day-lane .ledger-interval {
+    animation: none;
+  }
+}
+
 /* v0.12.99 · pairing steps and expiring offer --------------------------- */
 .account-pairing-simple {
   display: grid;

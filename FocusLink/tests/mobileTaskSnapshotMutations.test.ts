@@ -3,6 +3,7 @@ import type { TaskSnapshotPayload } from '../shared/sync/taskSnapshotProtocol';
 import {
   createEmptyTaskSnapshot,
   deleteTaskSnapshotProject,
+  mobileTaskCompletionOperationId,
   moveTaskSnapshotSubtree,
   updateTaskSnapshotProject,
 } from '../src/mobile/taskSnapshotMutations';
@@ -22,6 +23,20 @@ const snapshot: TaskSnapshotPayload = {
 };
 
 describe('mobile task snapshot mutations', () => {
+  it('derives one stable operation id per task intent and expected revision', () => {
+    const input = {
+      deviceId: 'device-mobile',
+      taskId: 'task:中文/unsafe',
+      completed: true,
+      expectedRevision: 37,
+    };
+    const first = mobileTaskCompletionOperationId(input);
+    expect(first).toBe(mobileTaskCompletionOperationId(input));
+    expect(first).toMatch(/^mobile-task:[a-f0-9]{32}$/);
+    expect(mobileTaskCompletionOperationId({ ...input, expectedRevision: 38 })).not.toBe(first);
+    expect(mobileTaskCompletionOperationId({ ...input, completed: false })).not.toBe(first);
+  });
+
   it('creates the canonical inbox so a newly paired device can create its first task', () => {
     expect(createEmptyTaskSnapshot(15)).toEqual({
       publishedAt: 15,
