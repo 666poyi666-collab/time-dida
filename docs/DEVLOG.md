@@ -7,6 +7,7 @@
 - 设置页状态改为当前实时、账本新鲜度、任务 revision 和本机会话四项事实；番茄 To-do 的可上传队列与 223 条过期历史分开。平板字体/九仪表预览扩容并修正标准、制图预览裁切。
 - ChatGPT Web 已发现现有 FocusLink 插件仍停留在 2026-07-28 的只读工具/scope；正式 MCP URL 正确，刷新与 `focuslink:write` OAuth 仍等待用户在动作时确认，未标记完成。
 - 最终只读审查补掉三个边界：账号切换期间旧 connection 请求禁止提交；CLI 的 200 响应体断流按同 operationId 重试；共享循环时间拒绝小数与 JS Date 上限外值。对应定向测试 41 项通过。
+- 最终 source-only 源码 `e6dde4b` 已完成 installer/portable/APK 构建与三端安装；private/public Worker 更新、远端 19/19、packaged smoke、Windows 数据保留和番茄真实状态回读均通过。portable smoke 额外等待 native viewport 恢复并保留失败 DOM。ChatGPT 插件刷新仍保留为需用户确认的唯一外部动作。
 - 继续沿用未闭合的 `0.12.105/1305` 候选，不为番茄/平板验收补修增加版本号。华为平板恢复在线并安装同版；隔离 9/9、解锁后 PiP 1/1 通过。
 - 修复华为实机复现的本机专注假启动：无配对配置时不再清掉已创建的 offline runtime 快照，running/paused 可从 IndexedDB 恢复并继续控制。
 - 修复番茄 To-do 队列误导：223 条失败全部超过外部 7 天窗口，当前临时记录真实上传成功。过期记录保留本机、不改日期、不伪报已同步，并从自动重试与上传按钮中移出；设置页显示过期历史数量。

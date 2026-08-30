@@ -126,6 +126,7 @@ async function inspectState(expectedState) {
     running: '暂停',
     paused: '继续',
   }[expectedState];
+  let lastResult = null;
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const result = await evaluate(`(() => {
       const consoleElement = document.querySelector('.focus-console');
@@ -164,6 +165,7 @@ async function inspectState(expectedState) {
         bodyScroll: [document.body.scrollWidth, document.body.scrollHeight],
       };
     })()`);
+    lastResult = result;
     if (
       result.state === expectedState &&
       (!expectedPrimaryText || result.primaryText === expectedPrimaryText)
@@ -172,7 +174,7 @@ async function inspectState(expectedState) {
     }
     await delay(100);
   }
-  throw new Error(`Renderer did not reach ${expectedState}`);
+  throw new Error(`Renderer did not reach ${expectedState}: ${JSON.stringify(lastResult)}`);
 }
 
 async function capture(name, expectedState) {
@@ -531,6 +533,26 @@ async function main() {
   await delay(650);
   if (await evaluate(`Boolean(document.querySelector('[data-testid="focus-immersive"]'))`)) {
     throw new Error('Immersive mode did not exit cleanly');
+  }
+  let restoredViewport = null;
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    restoredViewport = await evaluate(`[window.innerWidth, window.innerHeight]`);
+    if (
+      Math.abs(restoredViewport[0] - results.running.viewport[0]) <= 2 &&
+      Math.abs(restoredViewport[1] - results.running.viewport[1]) <= 2
+    ) {
+      break;
+    }
+    await delay(100);
+  }
+  if (
+    !restoredViewport ||
+    Math.abs(restoredViewport[0] - results.running.viewport[0]) > 2 ||
+    Math.abs(restoredViewport[1] - results.running.viewport[1]) > 2
+  ) {
+    throw new Error(
+      `Native fullscreen viewport did not restore: ${JSON.stringify(restoredViewport)}`,
+    );
   }
   const pauseClicked = await evaluate(`(() => {
     const button = document.querySelector('.timer-controls .btn-main-action');
