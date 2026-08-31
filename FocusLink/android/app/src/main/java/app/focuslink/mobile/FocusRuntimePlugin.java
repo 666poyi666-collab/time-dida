@@ -2,6 +2,7 @@ package app.focuslink.mobile;
 
 import android.Manifest;
 import android.app.ActivityManager;
+import android.app.AppOpsManager;
 import android.app.StatusBarManager;
 import android.content.ComponentName;
 import android.content.Context;
@@ -13,6 +14,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -27,6 +31,8 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @CapacitorPlugin(
     name = FocusRuntimeContract.PLUGIN_NAME,
@@ -38,6 +44,15 @@ import java.util.Locale;
     }
 )
 public final class FocusRuntimePlugin extends Plugin {
+    private static final long ROOT_COMMAND_TIMEOUT_MS = 5_000L;
+    private static final int ROOT_OUTPUT_LIMIT = 4_096;
+    private static final String APP_OP_RUN_IN_BACKGROUND = "android:run_in_background";
+    private static final String APP_OP_RUN_ANY_IN_BACKGROUND = "android:run_any_in_background";
+    private static final ExecutorService ROOT_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "focuslink-root-permissions");
+        thread.setDaemon(true);
+        return thread;
+    });
     private static final Object INSTANCE_LOCK = new Object();
     private static WeakReference<FocusRuntimePlugin> activeInstance = new WeakReference<>(
         null
@@ -542,6 +557,23 @@ public final class FocusRuntimePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void requestAllPermissions(PluginCall call) {
+        ROOT_EXECUTOR.execute(() -> {
+            try {
+                JSObject result = requestAllPermissionsResult();
+                call.resolve(result);
+                try {
+                    FocusNotificationService.synchronize(getContext());
+                } catch (RuntimeException ignored) {
+                    // Permission readback is authoritative even if the optional surface refresh fails.
+                }
+            } catch (RuntimeException exception) {
+                call.reject("permission batch failed", "permission_batch_failed");
+            }
+        });
+    }
+
+    @PluginMethod
     public void requestNotificationPermission(PluginCall call) {
         FocusNotificationService.ensureNotificationChannel(getContext());
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
@@ -661,6 +693,7 @@ public final class FocusRuntimePlugin extends Plugin {
             .put("manufacturer", Build.MANUFACTURER)
             .put("batteryOptimizationExempt", batteryOptimizationExempt)
             .put("backgroundRestricted", backgroundRestricted)
+            .put("backgroundAppOpsAllowed", backgroundAppOpsAllowed())
             .put("overlayPermissionGranted", FocusDesktopOverlayController.canDraw(getContext()))
             .put("overlayEnabled", FocusRuntimeSystemSettings.isOverlayEnabled(getContext()))
             .put("systemSurface", SystemFocusSurfaceProvider.capabilities(getContext()))
@@ -686,6 +719,178 @@ public final class FocusRuntimePlugin extends Plugin {
             result.put("nativeConnectionLease", FocusRuntimeConnectionStore.leaseFor(connection));
         }
         return result;
+    }
+
+    private JSObject requestAllPermissionsResult() {
+        String packageName = getContext().getPackageName();
+        List<RootPermissionPolicy.PermissionPlan> plans = RootPermissionPolicy.plans(
+            packageName,
+            Build.VERSION.SDK_INT
+        );
+        RootCommandResult probe = runRootCommand("id -u");
+        boolean rootAvailable = probe.succeeded && RootPermissionPolicy.hasRootIdentity(probe.output);
+        JSArray items = new JSArray();
+        for (RootPermissionPolicy.PermissionPlan plan : plans) {
+            boolean commandAttempted =
+                rootAvailable && !plan.manualRequired && !plan.commands.isEmpty();
+            boolean commandSucceeded = commandAttempted;
+            if (commandAttempted) {
+                for (String command : plan.commands) {
+                    RootCommandResult result = runRootCommand(command);
+                    if (!result.succeeded) commandSucceeded = false;
+                }
+            }
+            boolean verified = permissionVerified(plan.id);
+            String state = RootPermissionPolicy.itemStatus(
+                verified,
+                plan.manualRequired,
+                rootAvailable,
+                commandSucceeded
+            );
+            items.put(
+                new JSObject()
+                    .put("id", plan.id)
+                    .put("state", state)
+                    .put("verified", verified)
+                    .put("commandAttempted", commandAttempted)
+                    .put("commandSucceeded", commandSucceeded)
+            );
+        }
+        return new JSObject()
+            .put("rootAvailable", rootAvailable)
+            .put("attemptedAtEpochMs", System.currentTimeMillis())
+            .put("items", items);
+    }
+
+    private boolean permissionVerified(String id) {
+        if (RootPermissionPolicy.NOTIFICATION.equals(id)) {
+            return FocusNotificationPermission.canPost(getContext());
+        }
+        if (RootPermissionPolicy.OVERLAY.equals(id)) {
+            return FocusDesktopOverlayController.canDraw(getContext());
+        }
+        if (RootPermissionPolicy.BATTERY.equals(id)) {
+            PowerManager powerManager = getContext().getSystemService(PowerManager.class);
+            return powerManager != null &&
+            powerManager.isIgnoringBatteryOptimizations(getContext().getPackageName());
+        }
+        if (RootPermissionPolicy.BACKGROUND.equals(id)) {
+            return backgroundAppOpsAllowed();
+        }
+        return false;
+    }
+
+    private boolean backgroundAppOpsAllowed() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true;
+        ActivityManager activityManager = getContext().getSystemService(ActivityManager.class);
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+            activityManager != null &&
+            activityManager.isBackgroundRestricted()
+        ) {
+            return false;
+        }
+        if (!appOpAllowed(APP_OP_RUN_IN_BACKGROUND)) return false;
+        return (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.P ||
+            appOpAllowed(APP_OP_RUN_ANY_IN_BACKGROUND)
+        );
+    }
+
+    private boolean appOpAllowed(String operation) {
+        AppOpsManager manager = getContext().getSystemService(AppOpsManager.class);
+        if (manager == null) return false;
+        try {
+            return manager.checkOpNoThrow(
+                operation,
+                getContext().getApplicationInfo().uid,
+                getContext().getPackageName()
+            ) == AppOpsManager.MODE_ALLOWED;
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    private static RootCommandResult runRootCommand(String command) {
+        Process process = null;
+        Thread outputReader = null;
+        BoundedOutput output = null;
+        try {
+            process = new ProcessBuilder("su", "-c", command).redirectErrorStream(true).start();
+            output = new BoundedOutput(process.getInputStream());
+            outputReader = new Thread(output, "focuslink-root-output");
+            outputReader.setDaemon(true);
+            outputReader.start();
+            long deadline = System.nanoTime() + ROOT_COMMAND_TIMEOUT_MS * 1_000_000L;
+            while (true) {
+                try {
+                    int exitCode = process.exitValue();
+                    outputReader.join(250L);
+                    return new RootCommandResult(exitCode == 0, output.value());
+                } catch (IllegalThreadStateException stillRunning) {
+                    if (System.nanoTime() >= deadline) {
+                        process.destroy();
+                        outputReader.join(250L);
+                        return new RootCommandResult(false, "");
+                    }
+                    Thread.sleep(25L);
+                }
+            }
+        } catch (IOException exception) {
+            return new RootCommandResult(false, "");
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return new RootCommandResult(false, "");
+        } finally {
+            if (process != null) {
+                try {
+                    process.exitValue();
+                } catch (IllegalThreadStateException stillRunning) {
+                    process.destroy();
+                }
+            }
+        }
+    }
+
+    private static final class BoundedOutput implements Runnable {
+        private final InputStream input;
+        private final ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+        BoundedOutput(InputStream input) {
+            this.input = input;
+        }
+
+        @Override
+        public void run() {
+            try (InputStream stream = input) {
+                byte[] buffer = new byte[512];
+                int read;
+                while ((read = stream.read(buffer)) >= 0) {
+                    append(buffer, read);
+                }
+            } catch (IOException ignored) {
+                // A timeout destroys the process and closes its stream; the command is failed above.
+            }
+        }
+
+        private synchronized void append(byte[] buffer, int read) {
+            int remaining = ROOT_OUTPUT_LIMIT - output.size();
+            if (remaining > 0) output.write(buffer, 0, Math.min(read, remaining));
+        }
+
+        synchronized String value() {
+            return new String(output.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+    }
+
+    private static final class RootCommandResult {
+        final boolean succeeded;
+        final String output;
+
+        RootCommandResult(boolean succeeded, String output) {
+            this.succeeded = succeeded;
+            this.output = output;
+        }
     }
 
     private JSObject notificationPermissionResult() {

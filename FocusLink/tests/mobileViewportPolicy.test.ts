@@ -40,6 +40,19 @@ describe('mobile FocusLink viewport policy', () => {
     }
   });
 
+  it('labels current live freshness separately from the last confirmed timestamp', () => {
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    try {
+      const markup = renderActiveConsole(640, 1_024);
+      expect(markup).toContain('实时新鲜度');
+      expect(markup).toContain('最近确认');
+      expect(markup).toContain('data-live-source="server"');
+    } finally {
+      if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+      else delete (globalThis as { window?: Window }).window;
+    }
+  });
+
   it('routes both observed OWW221 WebView sizes to the watch without hijacking web previews', () => {
     expect(isWatchFocusViewport(189, 248)).toBe(true);
     expect(isWatchFocusViewport(320, 420)).toBe(true);
@@ -61,7 +74,11 @@ describe('mobile FocusLink viewport policy', () => {
 function renderActiveConsole(width: number, height: number): string {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
-    value: { innerHeight: height, innerWidth: width },
+    value: {
+      innerHeight: height,
+      innerWidth: width,
+      matchMedia: () => ({ matches: false }),
+    },
   });
   const snapshot = {
     ...idleLiveFocusSnapshot(1, 1_000, 1_000),

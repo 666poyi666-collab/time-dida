@@ -249,6 +249,23 @@ v0.12.105 的开始时间与结构化循环仍使用 task snapshot v1 envelope�
 
 自动化覆盖同 key 只执行一次、两个 await 获得同结果、不同 key 新建请求且旧 finally 不清新请求。真机先触发顶部刷新，再在 50ms 内第一次完成/恢复任务，两个动作都必须直接成功；删除临时账本后连续触发两次刷新，页面应在有界请求完成后从 1 场变为 0 场且不 reload。所有临时任务、清单、会话和 tombstone 结果必须精确回读并清理。
 
+## FL-SYNC-014：覆盖安装后原生凭据仍在，但移动界面显示“尚未配对设备”
+
+### 含义与根因
+
+先把 Android Keystore 事实与 renderer 状态分开：native `getConnection()` 显示 configured 只证明安全存储仍有凭据；界面显示未配对只说明 React 尚未把该凭据恢复到内存。1.3 补修前，`MobileApp`、专注原生控制和设置权限区都只在首次 render 检查一次 `isPluginAvailable('FocusRuntime')`。OEM WebView 若在该检查后才完成插件注入，恢复 effect 永久退出，即使稍后原生调用已经可用，界面仍保持 unconfigured。这不是配对码错误、凭据失效或云端 transport 故障。
+
+### 处理步骤
+
+1. 不清 Web Storage、IndexedDB、应用数据或 Keystore，也不重新输入配对码。先分别记录脱敏布尔：`isNativePlatform`、`isPluginAvailable('FocusRuntime')`、native `getConnection().configured`，禁止输出 access token。
+2. 若 native configured=true 而 renderer unconfigured，回到前台或重新聚焦一次，观察有界 readiness 重试是否恢复设备身份；不要连续点击登录/配对，因为显式账号操作会按设计废止旧启动恢复 generation。
+3. 修复后的原生能力探测只在 Android 轮询插件，启动连续执行三段、每段最多 5 秒；仍未就绪时再由 foreground/focus/pageshow 触发新一组有界探测。startup generation 在组件创建时预留且始终复用；显式登录、配对、退出的 generation 优先，旧恢复不得取消或覆盖它。
+4. Android 的 native connection read/configure/clear 必须在插件暂不可用时有界等待后失败关闭。返回 `null` 只适用于非 native Web；Android 不得把空 native state 当作持久写入或清除成功，否则退出后旧凭据可能复活，配对后也可能在下次启动丢失。
+
+### 验证
+
+自动化覆盖插件晚注入、超时、AbortSignal、startup generation 复用、显式账号操作抢占、配对持久写入等待和退出持久清除等待。真机使用正式 applicationId APK执行原位 `adb install -r`，不清数据；启动时记录上述三个脱敏布尔，确认自动恢复实时连接、任务 revision 与账本，再执行一次前后台切换。只有界面与 native deviceId/lease 收敛且无需重新配对，才可关闭本条。
+
 ## 日志位置与收集方式
 
 Windows 日志在 `%APPDATA%\focuslink\logs\focuslink-YYYY-MM-DD.log`。只提供包含错误编号/时间、endpoint（可打码）和 HTTP 状态的片段；不要提供 `focuslink-device-sync-credential.json`、访问令牌或整个 SQLite 文件。

@@ -1,6 +1,6 @@
 # FocusLink 后端与共享契约规范
 
-> 状态：v0.12.x 后端单一真相；当前实现 v0.12.105（实施中）
+> 状态：v1.x 后端单一真相；当前实现 v1.3.0（实施中）
 >
 > 边界：Electron 主进程持有计时、持久化、外部服务和窗口事实；renderer 只能通过 preload API 请求能力。
 
@@ -347,6 +347,7 @@ Cloudflare 外部协议 gate 是受限测试操作，不是部署入口：extern
 - Android 后台只读刷新采用自调度链而非周期 Future：主线程触发单线程 HTTP 请求，请求的 `finally` 安排下一次 20 秒刷新，任何异常不得永久取消后续轮询。最近尝试次数、成功时间、revision 与错误写入本机诊断状态。本机权威期间允许记录探测成功，但不得 `putSnapshot/applyCloudSnapshot`；其余云端快照写入按 revision 单调拒绝旧值，idle 必须保留 revision。
 - Android 系统表面由 `SystemFocusSurfaceProvider` 选择，`StandardNotificationAdapter`、`XiaomiIslandAdapter` 与 `HuaweiCapsuleAdapter` 只共享脱敏 `FocusRuntimeSnapshot`，不共享厂商载荷。小米使用稳定业务 ID、通知 ID 与协议 3 start/running/pause/resume/finish 投影；能力证据依次为 `unsupported/protocol-selected/systemui-accepted/visually-verified`，最后一级只能由真机截图和人工矩阵写入。标准 ongoing notification 始终独立可用；华为既有 TIMER/capsule 字段与布局保持不变。
 - Android 的沉浸系统栏与画中画由 `MainActivity` 通过公开 API 提供，Capacitor 插件只暴露能力、当前状态和显式用户动作。结束活动会话后 renderer 必须恢复系统栏；画中画不支持时返回结构化 `supported: false`。这些显示能力不得引入第二套计时器、kiosk/设备所有者权限或厂商私有 API 依赖。
+- v1.3 的 Android root 权限批次只接受当前 `BuildConfig.APPLICATION_ID`，包名先过固定正则，再由 `RootPermissionPolicy` 生成通知、overlay、电池白名单和按 API 24/26/28 分支的后台 AppOps 命令；WebView 不传命令文本，native 也不把 root 输出回传。`su -c` 运行在单线程 executor，固定 5 秒超时、并行有界读取输出；最终结果必须分别用 `canPostNotification`、`Settings.canDrawOverlays`、`PowerManager.isIgnoringBatteryOptimizations` 和 AppOps/`isBackgroundRestricted` 回读。厂商自启动没有可靠公开查询，永远返回 `manual-required`。renderer 对矛盾的 `granted/verified` 数据按未确认处理，并允许后续系统状态刷新覆盖旧批次结果。
 - Android 桌面后备计时使用 `TYPE_APPLICATION_OVERLAY` 和显式 `SYSTEM_ALERT_WINDOW` 特殊授权，默认关闭且不得因通知可用而自动显示。点按显示关闭按钮并在 3 秒无操作后收起；关闭持久禁用 overlay，但不结束会话或通知，重新启用只能来自应用设置。拖动目标坐标通过 `postOnAnimation` 每帧最多更新一次，拖动期间缓存安全区/尺寸，背景 drawable 按状态复用；位置继续归一化持久化并在配置变化后重新夹取。
 
 云端任务清单使用独立的权威快照平面，协议真值位于 `shared/sync/taskSnapshotProtocol.ts`；其内容来源是 FocusLink 自有任务库或用户显式导入后归一化的本地副本：

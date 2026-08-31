@@ -735,20 +735,22 @@ async function assertMobileAppearancePreviews(
   const profiles = Object.keys(FONT_PROFILE_EXPECTATIONS);
   for (const profile of profiles) {
     const changed = await win.webContents.executeJavaScript(`(() => {
-      const select = document.querySelector('.appearance-font-controls select');
-      if (!(select instanceof HTMLSelectElement)) return false;
-      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
-      setter?.call(select, ${JSON.stringify(profile)});
-      select.dispatchEvent(new Event('change', { bubbles: true }));
+      const choice = document.querySelector(
+        '.appearance-font-choice[data-font-profile=${JSON.stringify(profile)}]'
+      );
+      if (!(choice instanceof HTMLButtonElement)) return false;
+      choice.click();
       return true;
     })()`);
     assert(changed === true, `${viewportId}/${theme} missing interface font selector`);
     await sleep(40);
-    const fontResult: { className: string; violations: string[] } = await win.webContents
-      .executeJavaScript(`(() => {
+    const fontResult: { className: string; width: number; violations: string[] } = await win
+      .webContents.executeJavaScript(`(() => {
         const tolerance = 1;
-        const preview = document.querySelector('.appearance-font-preview');
-        if (!preview) return { className: '', violations: ['preview:missing'] };
+        const preview = document.querySelector(
+          '.appearance-font-choice[data-font-profile=${JSON.stringify(profile)}]'
+        );
+        if (!preview) return { className: '', width: 0, violations: ['preview:missing'] };
         const outer = preview.getBoundingClientRect();
         const violations = [...preview.children]
           .filter((child) => {
@@ -757,10 +759,11 @@ async function assertMobileAppearancePreviews(
               inner.top < outer.top - tolerance || inner.bottom > outer.bottom + tolerance;
           })
           .map((child) => child.tagName.toLowerCase() + ':' + child.textContent?.trim().slice(0, 24));
-        return { className: preview.className, violations };
+        return { className: preview.className, width: outer.width, violations };
       })()`);
     assert(
       fontResult.className.includes(`font-profile-${profile}`) &&
+        fontResult.width >= 100 &&
         fontResult.violations.length === 0,
       `${viewportId}/${theme}/${profile} font preview clipped ${JSON.stringify(fontResult)}`,
     );
@@ -822,11 +825,10 @@ async function assertMobileAppearancePreviews(
     );
   }
   await win.webContents.executeJavaScript(`(() => {
-    const select = document.querySelector('.appearance-font-controls select');
-    if (!(select instanceof HTMLSelectElement)) return;
-    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
-    setter?.call(select, 'noto');
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+    const choice = document.querySelector(
+      '.appearance-font-choice[data-font-profile="noto"]'
+    );
+    if (choice instanceof HTMLButtonElement) choice.click();
   })()`);
 }
 
@@ -920,7 +922,7 @@ async function readFocusLayout(win: BrowserWindow): Promise<{
     const candidates = [
       ['task fields', document.querySelector('.focus-start-fields, .active-title-block')],
       ['primary timer', document.querySelector('.primary-readout')],
-      ['timeline', document.querySelector('.mobile-temporal-ribbon')],
+      ['timeline', document.querySelector('.focus-instrument > .temporal-ribbon')],
       ['runtime metrics', document.querySelector('.runtime-metrics')],
       // The sticky focus CTA must never cover the fixed bottom navigation on
       // phones and the 640 portrait tablet; it sticks above the nav instead.

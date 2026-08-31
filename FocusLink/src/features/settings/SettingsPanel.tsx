@@ -13,7 +13,7 @@ import type {
   DeviceSyncStatus,
   TomatodoBridgeStatus,
 } from '@shared/ipc/api';
-import { APP_VERSION } from '@shared/version';
+import { APP_DISPLAY_VERSION } from '@shared/version';
 import { normalizeFocusLinkPairingCode } from '@shared/sync/pairingProtocol';
 import { resolveFontProfile, resolveTimerStyle } from '@shared/theme';
 import { groupManagedDevices, managedDeviceKindLabel } from '@shared/deviceRosterPolicy';
@@ -1914,7 +1914,7 @@ export function SettingsPanel() {
       keywords: '关于 版本 version about 更新',
       render: () => (
         <Row label="当前版本">
-          <span className="settings-version-chip text-diag">v{APP_VERSION}</span>
+          <span className="settings-version-chip text-diag">v{APP_DISPLAY_VERSION}</span>
         </Row>
       ),
     },

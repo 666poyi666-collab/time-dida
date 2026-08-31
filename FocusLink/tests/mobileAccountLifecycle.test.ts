@@ -3,6 +3,7 @@ import {
   createMobileAccountLifecycle,
   createMobileAccountRequestCoalescer,
   createMobileAccountRequestLifecycle,
+  createMobileStartupRestoreCoordinator,
   isMobileAccountRequestCommitCurrent,
   mobileAccountConnectionKey,
   runMobileAccountCommit,
@@ -21,6 +22,40 @@ describe('mobile account operation lifecycle', () => {
     const login = lifecycle.issue();
     expect(lifecycle.isCurrent(login)).toBe(true);
     expect(lifecycle.isCurrent(restore)).toBe(false);
+  });
+
+  it('reuses one startup restore operation and never supersedes an explicit account action', () => {
+    const lifecycle = createMobileAccountLifecycle();
+    const startupRestore = createMobileStartupRestoreCoordinator(lifecycle);
+    const initial = startupRestore.current();
+    expect(initial).not.toBeNull();
+    expect(startupRestore.current()).toBe(initial);
+
+    const pairing = lifecycle.issue();
+    expect(startupRestore.current()).toBeNull();
+    expect(lifecycle.isCurrent(pairing)).toBe(true);
+  });
+
+  it('reserves startup restore before bridge readiness so a prior pairing stays authoritative', () => {
+    const lifecycle = createMobileAccountLifecycle();
+    const startupRestore = createMobileStartupRestoreCoordinator(lifecycle);
+    const pairing = lifecycle.issue();
+
+    expect(startupRestore.current()).toBeNull();
+    expect(lifecycle.isCurrent(pairing)).toBe(true);
+    expect(lifecycle.signal(pairing).aborted).toBe(false);
+  });
+
+  it('aborts the previous account readiness wait when a newer operation starts', () => {
+    const lifecycle = createMobileAccountLifecycle();
+    const restore = lifecycle.issue();
+    const restoreSignal = lifecycle.signal(restore);
+    expect(restoreSignal.aborted).toBe(false);
+
+    const pairing = lifecycle.issue();
+    expect(restoreSignal.aborted).toBe(true);
+    expect(lifecycle.signal(pairing).aborted).toBe(false);
+    expect(lifecycle.signal(restore).aborted).toBe(true);
   });
 
   it('serializes an old Keystore write, logout clear and later login write', async () => {

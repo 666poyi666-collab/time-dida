@@ -12,6 +12,7 @@ function readProjectFile(...segments: string[]): string {
 
 const mobileCss = readProjectFile('src', 'mobile', 'mobile.css');
 const mobileRoot = postcss.parse(mobileCss);
+const mobile13Root = postcss.parse(readProjectFile('src', 'mobile', 'mobile-1-3.css'));
 const appleLayerMarker = '/* Apple platform surface';
 const appleLayerOffset = mobileCss.indexOf(appleLayerMarker);
 
@@ -164,7 +165,28 @@ describe('mobile responsive and accessibility review contract', () => {
     expectRule(appleRoot, '.task-row-main', { 'min-height': '60px' });
     expectRule(appleRoot, '.task-start-button', { 'min-height': '52px' });
     expectRule(appleRoot, '.sync-button', { 'min-width': '44px', 'min-height': '44px' });
-    expectRule(mobileRoot, '.appearance-select-row select', { 'min-height': '44px' });
+    expectRule(mobile13Root, '.appearance-segmented-option', { 'min-height': '46px' });
+    expectRule(mobile13Root, '.appearance-font-choice', { 'min-height': '92px' });
+    expectRule(mobile13Root, '.native-permission-action', { 'min-height': '46px' });
+    expectRule(mobile13Root, '.focus-instrument > .temporal-ribbon .ribbon-view-switch button', {
+      'min-height': '44px',
+    });
+    expectRule(mobile13Root, '.task-add-destination select', { 'min-height': '44px' });
+  });
+
+  it('uses the full tablet width for all eight live font previews', () => {
+    expectRule(
+      mobile13Root,
+      "html[data-device-tier='tablet'] body .appearance-font-controls",
+      { display: 'block', 'margin-top': '14px' },
+      { media: '(min-width: 620px)' },
+    );
+    expectRule(
+      mobile13Root,
+      '.appearance-font-choices',
+      { 'grid-template-columns': 'repeat(4, minmax(0, 1fr))' },
+      { media: '(min-width: 620px)' },
+    );
   });
 
   it('keeps editable text at 16px and the flattened timer stage on the canvas surface', () => {

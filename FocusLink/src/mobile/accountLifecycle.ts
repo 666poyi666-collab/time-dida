@@ -2,6 +2,7 @@ export interface MobileAccountLifecycle {
   issue(): number;
   invalidate(): number;
   isCurrent(operation: number): boolean;
+  signal(operation: number): AbortSignal;
   enqueueNative<T>(operation: () => Promise<T>): Promise<T>;
 }
 
@@ -20,6 +21,10 @@ export interface MobileAccountRequestLifecycle {
 export interface MobileAccountRequestCoalescer<T> {
   run(connectionKey: string, operation: () => Promise<T>): Promise<T>;
   invalidate(): void;
+}
+
+export interface MobileStartupRestoreCoordinator {
+  current(): number | null;
 }
 
 export interface MobileAccountRequestCommitState {
@@ -130,18 +135,25 @@ export function isMobileAccountRequestCommitCurrent(
 export function createMobileAccountLifecycle(): MobileAccountLifecycle {
   let generation = 0;
   let nativeQueue: Promise<void> = Promise.resolve();
+  let controller = new AbortController();
+  const nextGeneration = () => {
+    controller.abort();
+    controller = new AbortController();
+    generation += 1;
+    return generation;
+  };
 
   return {
-    issue() {
-      generation += 1;
-      return generation;
-    },
-    invalidate() {
-      generation += 1;
-      return generation;
-    },
+    issue: nextGeneration,
+    invalidate: nextGeneration,
     isCurrent(operation) {
       return operation === generation;
+    },
+    signal(operation) {
+      if (operation === generation) return controller.signal;
+      const stale = new AbortController();
+      stale.abort();
+      return stale.signal;
     },
     enqueueNative<T>(operation: () => Promise<T>): Promise<T> {
       const result = nativeQueue.then(operation, operation);
@@ -150,6 +162,22 @@ export function createMobileAccountLifecycle(): MobileAccountLifecycle {
         () => undefined,
       );
       return result;
+    },
+  };
+}
+
+/**
+ * Reuses one startup restore generation across bounded foreground retries. Once an explicit
+ * login, pairing, or logout supersedes it, later retries stay inert instead of cancelling that
+ * newer account operation.
+ */
+export function createMobileStartupRestoreCoordinator(
+  lifecycle: MobileAccountLifecycle,
+): MobileStartupRestoreCoordinator {
+  const operation = lifecycle.issue();
+  return {
+    current() {
+      return lifecycle.isCurrent(operation) ? operation : null;
     },
   };
 }

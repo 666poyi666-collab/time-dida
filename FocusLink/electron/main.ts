@@ -253,6 +253,9 @@ function createMainWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // The timer and its settlement animations must keep advancing while the main window is
+      // hidden to the tray or minimized; the authoritative elapsed values still come from main.
+      backgroundThrottling: false,
     },
   });
   attachRendererHealthRecovery(win, 'main');
@@ -390,6 +393,8 @@ function createMiniWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // Mini remains a live timer surface even when the main renderer is hidden.
+      backgroundThrottling: false,
     },
   };
 

@@ -55,7 +55,8 @@ describe('FocusLink list ownership UI', () => {
         onUpdateProject: async () => undefined,
       }),
     );
-    expect(markup.match(/<option value="local-inbox"/g)).toHaveLength(1);
+    // Quick add and task detail each expose their own explicit inbox destination.
+    expect(markup.match(/<option value="local-inbox"/g)).toHaveLength(2);
     expect(markup).toContain('所属清单');
     expect(markup).toContain('<option value="study">学习</option>');
   });

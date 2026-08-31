@@ -14,9 +14,10 @@ import type { SyncedTask } from '@shared/sync/taskSnapshotProtocol';
 import type { LiveSnapshotSource } from './liveSnapshotPolicy';
 import type { MobileAuthorityMode } from './cache';
 import { MobileConfirmDialog } from './MobileConfirmDialog';
-import { MobileTemporalRibbon } from './MobileTemporalRibbon';
+import { liveFocusSnapshotToTimerSnapshot } from './liveTimerSnapshotAdapter';
 import { focusDeviceLabel, isTabletFocusViewport } from './viewportPolicy';
 import { TimerDial } from '../features/focus/TimerDial';
+import { TemporalRibbon } from '../features/focus/TemporalRibbon';
 import type { MobileAppearance } from './appearance';
 
 export type MobileFocusCommand = 'start' | 'pause' | 'resume' | 'finish';
@@ -84,6 +85,7 @@ export function FocusConsole({
     isTabletFocusViewport(window.innerWidth, window.innerHeight),
   );
   const current = snapshot ?? idleLiveFocusSnapshot(0, now);
+  const timerSnapshot = useMemo(() => liveFocusSnapshotToTimerSnapshot(current), [current]);
   const active = current.state !== 'idle';
   const cachedRemoteOnly = allowOfflineStart && !localOfflineMode;
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? null;
@@ -121,6 +123,12 @@ export function FocusConsole({
   const connectionCopy = liveConnectionCopy(connection, snapshot !== null, connectionNotice);
   const recentDevice = focusDeviceLabel(current.ownerDeviceId, localDeviceId, tabletViewport);
   const showingCachedSnapshot = snapshotSource === 'cache' && connection !== 'live';
+  const observation = presentLiveObservation(
+    connection,
+    snapshotSource,
+    snapshot?.observedAt ?? null,
+    now,
+  );
 
   const requestFinish = () => {
     if (!controls.finish) return;
@@ -249,15 +257,7 @@ export function FocusConsole({
             </div>
           )}
 
-          <MobileTemporalRibbon
-            state={current.state}
-            startedAt={current.startedAt}
-            segments={current.segments}
-            pauses={current.pauses}
-            now={now}
-            activeElapsedMs={durations.activeElapsedMs}
-            wallElapsedMs={durations.wallElapsedMs}
-          />
+          <TemporalRibbon snapshot={timerSnapshot} state={timerSnapshot.state} now={now} />
 
           <div className="runtime-metrics" aria-label="本轮三时间">
             <RuntimeMetric
@@ -379,11 +379,19 @@ export function FocusConsole({
         </div>
 
         <aside className="live-context" aria-label="多端状态">
-          <div className={`connection-callout connection-${connection}`}>
+          <div className="live-context-heading">
+            <strong>多端连接</strong>
+            <span>{observation.source}</span>
+          </div>
+          <div
+            className={`connection-callout connection-${connection} source-${snapshotSource}`}
+            data-live-source={snapshotSource}
+          >
             <span className="network-dot" aria-hidden="true" />
             <div>
               <strong>{connectionCopy.title}</strong>
               <small>{connectionCopy.detail}</small>
+              <time dateTime={observation.dateTime ?? undefined}>{observation.lastConfirmed}</time>
             </div>
           </div>
           {authorityMode === 'forked-local' && (
@@ -402,8 +410,16 @@ export function FocusConsole({
               <dd>{current.taskTitle || '未关联'}</dd>
             </div>
             <div>
-              <dt>状态版本</dt>
+              <dt>实时版本</dt>
               <dd>rev {current.revision}</dd>
+            </div>
+            <div>
+              <dt>实时新鲜度</dt>
+              <dd>{observation.freshness}</dd>
+            </div>
+            <div>
+              <dt>最近确认</dt>
+              <dd>{observation.shortConfirmed}</dd>
             </div>
             <div>
               <dt>最近操作设备</dt>
@@ -421,7 +437,7 @@ export function FocusConsole({
 
           <div className="desktop-delivery-note">
             <strong>FocusLink 负责多端同步</strong>
-            <p>配对后的设备共享任务、清单颜色、专注状态与结束账本。</p>
+            <p>这里显示实时专注链；任务清单与结束账本分别保留自己的最近同步时间。</p>
           </div>
 
           {commandNotice && (
@@ -470,4 +486,77 @@ function formatMoment(timestamp: number): string {
     minute: '2-digit',
     hour12: false,
   }).format(timestamp);
+}
+
+function presentLiveObservation(
+  connection: LiveConnectionState,
+  source: LiveSnapshotSource,
+  observedAt: number | null,
+  now: number,
+): {
+  source: string;
+  freshness: string;
+  lastConfirmed: string;
+  shortConfirmed: string;
+  dateTime: string | null;
+} {
+  const sourceLabel =
+    source === 'server'
+      ? '云端实时'
+      : source === 'cache'
+        ? '本机缓存'
+        : source === 'local'
+          ? '本机会话'
+          : '尚未确认';
+  if (source === 'local') {
+    return {
+      source: sourceLabel,
+      freshness: '本机实时',
+      lastConfirmed: '本机独立计时，联网后补传结束账本',
+      shortConfirmed: '本机记录',
+      dateTime: null,
+    };
+  }
+  if (!observedAt) {
+    return {
+      source: sourceLabel,
+      freshness: connection === 'connecting' ? '等待首次确认' : '尚未确认',
+      lastConfirmed: connection === 'connecting' ? '正在等待首次确认' : '尚无实时状态确认',
+      shortConfirmed: '尚未确认',
+      dateTime: null,
+    };
+  }
+  const date = new Date(observedAt);
+  const timestamp = new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date);
+  const prefix = connection === 'live' && source === 'server' ? '最近实时确认' : '离线前最后确认';
+  const relative = formatObservationAge(Math.max(0, now - observedAt));
+  const freshness =
+    connection === 'live' && source === 'server'
+      ? `已连接 · ${relative}`
+      : connection === 'offline'
+        ? `离线 · ${relative}`
+        : source === 'cache'
+          ? `缓存 · ${relative}`
+          : `待重连 · ${relative}`;
+  return {
+    source: sourceLabel,
+    freshness,
+    lastConfirmed: `${prefix} ${timestamp}`,
+    shortConfirmed: timestamp,
+    dateTime: date.toISOString(),
+  };
+}
+
+function formatObservationAge(ageMs: number): string {
+  if (ageMs < 15_000) return '刚刚确认';
+  if (ageMs < 60_000) return `${Math.floor(ageMs / 1_000)} 秒前`;
+  if (ageMs < 60 * 60_000) return `${Math.floor(ageMs / 60_000)} 分钟前`;
+  return `${Math.floor(ageMs / (60 * 60_000))} 小时前`;
 }

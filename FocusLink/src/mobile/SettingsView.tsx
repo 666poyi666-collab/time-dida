@@ -8,7 +8,7 @@ import {
   Wifi,
   type LucideIcon,
 } from 'lucide-react';
-import { APP_COMMIT, APP_VERSION } from '@shared/version';
+import { APP_COMMIT, APP_DISPLAY_VERSION } from '@shared/version';
 import type { LiveConnectionState } from './runtimeModel';
 import { NativeSystemControls } from './NativeSystemControls';
 import { TimerDial } from '../features/focus/TimerDial';
@@ -95,17 +95,20 @@ export function SettingsView({
         />
         <StatusLine
           icon={ListTodo}
-          label="任务快照"
+          label="任务同步"
           value={`${taskCount} 项`}
           detail={`revision ${taskRevision}`}
         />
         <StatusLine
           icon={Database}
-          label="本机会话"
+          label="本机专注记录"
           value={`${ledgerCount} 场`}
           detail="已结束且保存在本机"
         />
       </div>
+      <p className="settings-fact-explainer">
+        账本新鲜度 = 最近一次从云端确认专注记录的时间；它不是网速，也不代表任务同步状态。
+      </p>
 
       <section className="mobile-appearance-panel" aria-labelledby="mobile-appearance-title">
         <div className="settings-section-heading">
@@ -116,24 +119,28 @@ export function SettingsView({
           <span className="settings-section-note">与桌面端同一套主题</span>
         </div>
 
-        <label className="appearance-select-row">
+        <div className="appearance-choice-group appearance-theme-group">
           <span>主题</span>
-          <select
-            value={appearance.theme}
-            onChange={(event) =>
-              onAppearanceChange({
-                ...appearance,
-                theme: event.target.value as MobileAppearance['theme'],
-              })
-            }
-          >
+          <div className="appearance-segmented" role="group" aria-label="移动端主题">
             {Object.entries(MOBILE_THEME_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
+              <button
+                key={value}
+                type="button"
+                className={`appearance-segmented-option theme-${value} ${appearance.theme === value ? 'is-selected' : ''}`}
+                aria-pressed={appearance.theme === value}
+                onClick={() =>
+                  onAppearanceChange({
+                    ...appearance,
+                    theme: value as MobileAppearance['theme'],
+                  })
+                }
+              >
+                <span className="appearance-segmented-swatch" aria-hidden="true" />
+                <span>{label}</span>
+              </button>
             ))}
-          </select>
-        </label>
+          </div>
+        </div>
 
         <div className="appearance-choice-group">
           <span>强调色</span>
@@ -155,30 +162,25 @@ export function SettingsView({
         </div>
 
         <div className="appearance-font-controls">
-          <label className="appearance-select-row">
+          <div className="appearance-choice-group appearance-font-group">
             <span>界面字体</span>
-            <select
-              value={appearance.fontProfile}
-              onChange={(event) =>
-                onAppearanceChange({
-                  ...appearance,
-                  fontProfile: event.target.value as MobileAppearance['fontProfile'],
-                })
-              }
-            >
+            <p className="appearance-control-hint">每张卡片都用自己的字体绘制；点选后立即应用。</p>
+            <div className="appearance-font-choices" role="group" aria-label="移动端界面字体">
               {FONT_PROFILES.map((profile) => (
-                <option key={profile} value={profile}>
-                  {MOBILE_FONT_LABELS[profile]}
-                </option>
+                <button
+                  key={profile}
+                  type="button"
+                  data-font-profile={profile}
+                  className={`appearance-font-choice font-profile-${profile} ${appearance.fontProfile === profile ? 'is-selected' : ''}`}
+                  aria-pressed={appearance.fontProfile === profile}
+                  onClick={() => onAppearanceChange({ ...appearance, fontProfile: profile })}
+                >
+                  <strong>{MOBILE_FONT_LABELS[profile]}</strong>
+                  <span className="appearance-font-sample">专注进行中 · 12:48</span>
+                  <small>{appearance.fontProfile === profile ? '当前使用' : '点击应用'}</small>
+                </button>
               ))}
-            </select>
-          </label>
-          <div
-            className={`appearance-font-preview font-profile-${appearance.fontProfile}`}
-            aria-live="polite"
-          >
-            <span>{MOBILE_FONT_LABELS[appearance.fontProfile]}</span>
-            <strong>时间正在发生 · 清醒专注 12:48</strong>
+            </div>
           </div>
         </div>
 
@@ -221,7 +223,7 @@ export function SettingsView({
           </div>
         </header>
         <div className="settings-status-grid">
-          <StatusLine icon={Cloud} label="版本" value={`v${APP_VERSION}`} />
+          <StatusLine icon={Cloud} label="版本" value={`v${APP_DISPLAY_VERSION}`} />
           <StatusLine icon={Database} label="构建" value={APP_COMMIT} />
         </div>
       </section>

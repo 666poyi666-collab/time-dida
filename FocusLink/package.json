@@ -1,6 +1,6 @@
 {
   "name": "focuslink",
-  "version": "0.12.105",
+  "version": "1.3.0",
   "description": "FocusLink - 本地优先的任务、专注与多端时间账本工作台",
   "author": "FocusLink",
   "main": "dist-electron/main.js",

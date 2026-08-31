@@ -83,6 +83,22 @@ canonical foxlink-cloud-mcp → private service binding → Account DO 链路。
 ./gradlew :app:connectedDebugAndroidTest
 ```
 
+### v1.3.0/1306 真机验收范围（2026-08-31 用户指令）
+
+本小节只覆盖 `FL-REQ-20260831-MOBILE-AUDIT` 的 `1.3.0/1306` 候选，并优先于本页后续要求双 Android
+设备执行同一套功能、视觉、系统表面或跨设备 smoke 的通用条款；后续版本若无新的明确范围，仍恢复执行通用条款。
+
+- 指定小米手机是本轮唯一的完整真实功能验收设备。必须安装正式 applicationId
+  `app.focuslink.mobile` 的候选 APK，回读 `versionName=1.3.0` / `versionCode=1306`，并在保留现有用户数据和
+  配对凭据的前提下验证 native Keystore 凭据恢复、权限逐项申请与 readback、Dashboard 日期/24 小时段、
+  清单与任务完成/恢复、本机和云端专注、前后台恢复、通知/overlay 以及本轮受影响的手机布局与交互。
+- 指定华为平板只执行同一份正式 APK 的 `adb install -r`，然后从已安装包回读
+  `versionName=1.3.0` / `versionCode=1306`。本轮不要求在华为执行功能、视觉、胶囊、同步、
+  instrumentation 或 connected test；历史华为证据只保留为历史，不得冒充本轮通过。
+- 两台设备仍必须在安装前由 `adb devices -l` 唯一识别，所有安装与回读命令显式传各自序列号；华为缺失、
+  offline、安装失败或版本不一致仍是三设备同版安装门禁失败，不能因为免除功能 smoke 而跳过安装回读。
+- Windows 门禁不受本范围调整影响：仍须静默覆盖安装、回读卸载注册表和已安装 EXE 文件版本并重启应用。
+
 当前工程使用 compileSdk 36、AGP 8.9.1，targetSdk 35 保持独立升级评估；至少覆盖 minSdk 24 与 targetSdk 35 设备，minSdk 不得低于按域 Network Security Config 生效的 API 24。
 原生前台 Service 只显示云端已确认快照并转发通知/Tile 动作，不能复制业务计时状态机。必须验证通知权限允许/拒绝、
 暂停/继续/结束、陈旧 revision、WebView 冷启动 drain/ack、进程杀死后安全恢复和结束后移除前台通知；未通过这些门禁
@@ -254,7 +270,8 @@ Android `versionCode` 必须为正整数，且高于此前所有已发布或测�
 跨端 UI 或行为每轮候选必须递增补丁版本。正式构建前必须把同一版本实际安装到 Windows、指定小米手机、
 指定华为平板，分别回读版本并完成三设备验证矩阵；任一在用端缺失、版本落后或不一致时，不得标记完成、
 执行正式打包、创建 tag 或发布。华为现用胶囊布局模块、Windows 两态小窗和小米系统表面必须保留并复验；
-OPPO 手表 renderer 已冻结并退出新开发。
+OPPO 手表 renderer 已冻结并退出新开发。`1.3.0/1306` 的设备功能验收分工以本页候选专属小节为准：
+华为本轮只安装回读，不形成胶囊或其他平板功能复验证据；Windows 安装门禁和三设备同版矩阵不变。
 
 每个补丁版本都在测试、三设备同版安装、CHANGELOG/实施日志、四文件发布目录和 Android APK 备份完成后推送 `main`。补丁尾号不再决定上传节奏；annotated tag、公开资产和 GitHub Release 只在用户明确要求时创建，不得因版本尾号自动发布。
 

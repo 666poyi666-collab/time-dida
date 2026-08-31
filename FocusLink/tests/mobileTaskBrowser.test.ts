@@ -357,6 +357,79 @@ describe('mobile task browser model', () => {
     expect(markup).toContain('<span>待办</span><strong>3</strong>');
     expect(markup).toContain('<span>已完成</span><strong>1</strong>');
   });
+
+  it('makes the quick-add destination explicit instead of treating all-projects as inbox', () => {
+    const markup = renderToStaticMarkup(
+      createElement(TaskBrowser, {
+        tasks,
+        projects: [
+          ...projects,
+          { id: 'local-inbox', source: 'local', name: '收件箱', color: null },
+        ],
+        publishedAt: null,
+        revision: 1,
+        selectedTaskId: '',
+        canStart: true,
+        onSelect: () => undefined,
+        onStart: () => undefined,
+        onCreate: async () => undefined,
+      }),
+    );
+
+    expect(markup).toContain('aria-label="新任务所属清单"');
+    expect(markup).toMatch(/<option value="local-inbox"[^>]*>收件箱<\/option>/);
+    expect(markup).toContain('<option value="study">学习</option>');
+  });
+
+  it('exposes explicit complete and restore actions in the selected task detail', () => {
+    const openMarkup = renderToStaticMarkup(
+      createElement(TaskBrowser, {
+        tasks,
+        projects,
+        publishedAt: null,
+        revision: 1,
+        selectedTaskId: 'chemistry',
+        canStart: true,
+        onSelect: () => undefined,
+        onStart: () => undefined,
+        onToggleComplete: async () => undefined,
+      }),
+    );
+    const completedMarkup = renderToStaticMarkup(
+      createElement(TaskBrowser, {
+        tasks,
+        projects,
+        publishedAt: null,
+        revision: 1,
+        selectedTaskId: 'done',
+        canStart: true,
+        onSelect: () => undefined,
+        onStart: () => undefined,
+        onToggleComplete: async () => undefined,
+      }),
+    );
+
+    expect(openMarkup).toContain('标记完成');
+    expect(openMarkup).toContain('task-selection-complete');
+    expect(completedMarkup).toContain('恢复为待办');
+    expect(completedMarkup).not.toContain('关联并开始专注');
+  });
+
+  it('selects a newly created project and closes its composer when the callback returns its id', () => {
+    const browser = fs.readFileSync(
+      new URL('../src/mobile/TaskBrowser.tsx', import.meta.url),
+      'utf8',
+    );
+    const app = fs.readFileSync(new URL('../src/mobile/MobileApp.tsx', import.meta.url), 'utf8');
+    expect(browser).toContain('setProjectFilter(createdProjectId)');
+    expect(browser).toContain('setQuickAddProjectId(createdProjectId)');
+    expect(browser).toContain('setProjectComposerOpen(false)');
+    expect(app).toContain('const projectId = crypto.randomUUID()');
+    expect(app).toContain('return projectId;');
+    expect(app).toContain('if (!selectedTaskId || !taskSnapshot) return;');
+    expect(app).toContain("setSelectedTaskId('')");
+    expect(app).toContain("setTitleDraft('')");
+  });
 });
 
 function makeTask(overrides: Partial<SyncedTask> = {}): SyncedTask {

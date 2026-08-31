@@ -696,7 +696,7 @@ describe('dida workspace task refresh', () => {
       cliDbState.batchWrites = [];
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 
   it('clamps invalid completed history windows', () => {
     expect(normalizeCompletedDays(undefined)).toBe(30);

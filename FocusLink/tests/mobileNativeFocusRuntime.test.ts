@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildNativeAuthorityHistory,
+  clearNativeFocusConnection,
+  configureNativeFocusConnection,
   enqueueNativeCompletedLedgerBundle,
   isNativeFocusRuntimeAvailable,
   makeNativeDisplaySnapshot,
@@ -8,8 +10,11 @@ import {
   normalizeNativePauseReminderDelayMinutes,
   readNativeFocusStatus,
   requeueNativeTerminalLedger,
+  requestNativeAllPermissions,
   restoreOrMigrateNativeFocusConnection,
   updateNativeAuthorityProjectionHistory,
+  waitForNativeFocusRuntime,
+  waitForNativeFocusRuntimeStartup,
 } from '../src/mobile/nativeFocusRuntime';
 import { idleLiveFocusSnapshot } from '../src/mobile/runtimeModel';
 import type { CachedBundle } from '../src/mobile/cache';
@@ -20,12 +25,14 @@ const LEGACY_TOKEN = `fl2_account1_watchold_${'l'.repeat(32)}`;
 
 const capacitorHarness = vi.hoisted(() => ({ native: false, pluginAvailable: false }));
 const nativePluginHarness = vi.hoisted(() => ({
+  clearConnection: vi.fn(),
   configureConnection: vi.fn(),
   enqueueCompletedLedgerBundle: vi.fn(),
   requeueTerminalLedger: vi.fn(),
   updateAuthorityProjectionHistory: vi.fn(),
   getConnection: vi.fn(),
   getNativeStatus: vi.fn(),
+  requestAllPermissions: vi.fn(),
 }));
 
 vi.mock('@capacitor/core', () => ({
@@ -43,6 +50,8 @@ describe('mobile native focus display projection', () => {
     capacitorHarness.pluginAvailable = false;
     nativePluginHarness.configureConnection.mockReset();
     nativePluginHarness.configureConnection.mockResolvedValue({ connectionLease: '1' });
+    nativePluginHarness.clearConnection.mockReset();
+    nativePluginHarness.clearConnection.mockResolvedValue({ connectionLease: '2' });
     nativePluginHarness.enqueueCompletedLedgerBundle.mockReset();
     nativePluginHarness.enqueueCompletedLedgerBundle.mockResolvedValue({
       queued: true,
@@ -63,6 +72,12 @@ describe('mobile native focus display projection', () => {
     nativePluginHarness.getNativeStatus.mockReset();
     nativePluginHarness.getNativeStatus.mockResolvedValue({
       cloudPoll: { terminalLedgerCount: 0 },
+    });
+    nativePluginHarness.requestAllPermissions.mockReset();
+    nativePluginHarness.requestAllPermissions.mockResolvedValue({
+      rootAvailable: false,
+      attemptedAtEpochMs: 100,
+      items: [],
     });
   });
 
@@ -115,6 +130,190 @@ describe('mobile native focus display projection', () => {
 
     capacitorHarness.native = false;
     expect(isNativeFocusRuntimeAvailable()).toBe(false);
+  });
+
+  it('waits for a late-injected Android plugin without making startup unbounded', async () => {
+    capacitorHarness.native = true;
+    globalThis.setTimeout(() => {
+      capacitorHarness.pluginAvailable = true;
+    }, 10);
+
+    await expect(waitForNativeFocusRuntime({ timeoutMs: 50, pollIntervalMs: 5 })).resolves.toBe(
+      true,
+    );
+  });
+
+  it('continues into a second bounded startup window while the app stays foregrounded', async () => {
+    capacitorHarness.native = true;
+    globalThis.setTimeout(() => {
+      capacitorHarness.pluginAvailable = true;
+    }, 15);
+
+    await expect(
+      waitForNativeFocusRuntimeStartup({
+        attempts: 2,
+        timeoutMs: 10,
+        pollIntervalMs: 5,
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it('stops native readiness polling when a newer account operation supersedes restore', async () => {
+    capacitorHarness.native = true;
+    let current = true;
+    globalThis.setTimeout(() => {
+      current = false;
+    }, 10);
+
+    await expect(
+      waitForNativeFocusRuntime({
+        shouldContinue: () => current,
+        timeoutMs: 100,
+        pollIntervalMs: 5,
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('cancels native readiness polling when the renderer unmounts', async () => {
+    capacitorHarness.native = true;
+    const controller = new AbortController();
+    globalThis.setTimeout(() => controller.abort(), 10);
+
+    await expect(
+      waitForNativeFocusRuntime({
+        signal: controller.signal,
+        timeoutMs: 100,
+        pollIntervalMs: 5,
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('waits for the Android bridge before durably saving an explicit pairing result', async () => {
+    capacitorHarness.native = true;
+    globalThis.setTimeout(() => {
+      capacitorHarness.pluginAvailable = true;
+    }, 10);
+
+    await expect(
+      configureNativeFocusConnection(
+        FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        STORED_TOKEN,
+        'device-watch1',
+        '0',
+      ),
+    ).resolves.toMatchObject({ deviceId: 'device-watch1', connectionLease: '1' });
+    expect(nativePluginHarness.configureConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for the Android bridge before durably clearing a device credential', async () => {
+    capacitorHarness.native = true;
+    globalThis.setTimeout(() => {
+      capacitorHarness.pluginAvailable = true;
+    }, 10);
+
+    await expect(clearNativeFocusConnection('1')).resolves.toEqual({
+      connection: null,
+      connectionLease: '2',
+    });
+    expect(nativePluginHarness.clearConnection).toHaveBeenCalledWith({
+      expectedConnectionLease: '1',
+    });
+  });
+
+  it('fails closed when Android secure storage never becomes ready', async () => {
+    capacitorHarness.native = true;
+    vi.useFakeTimers();
+    try {
+      const pending = configureNativeFocusConnection(
+        FOCUSLINK_CANONICAL_SYNC_ORIGIN,
+        STORED_TOKEN,
+        'device-watch1',
+        '0',
+      );
+      const rejection = expect(pending).rejects.toThrow(
+        'Android 安全存储尚未就绪，请返回应用后重试',
+      );
+      await vi.runAllTimersAsync();
+      await rejection;
+      expect(nativePluginHarness.configureConnection).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps only verified permission facts returned by the native root batch', async () => {
+    capacitorHarness.native = true;
+    capacitorHarness.pluginAvailable = true;
+    nativePluginHarness.requestAllPermissions.mockResolvedValue({
+      rootAvailable: true,
+      attemptedAtEpochMs: 123,
+      items: [
+        {
+          id: 'notification',
+          state: 'granted',
+          verified: true,
+          commandAttempted: true,
+          commandSucceeded: true,
+        },
+        {
+          id: 'overlay',
+          state: 'not-granted',
+          verified: true,
+          commandAttempted: true,
+          commandSucceeded: true,
+        },
+        {
+          id: 'autostart',
+          state: 'manual-required',
+          verified: false,
+          commandAttempted: false,
+          commandSucceeded: false,
+        },
+        {
+          id: 'battery',
+          state: 'granted',
+          verified: false,
+          commandAttempted: true,
+          commandSucceeded: true,
+        },
+        { id: 'unknown', state: 'granted', verified: true },
+      ],
+    });
+
+    await expect(requestNativeAllPermissions()).resolves.toEqual({
+      rootAvailable: true,
+      attemptedAtEpochMs: 123,
+      items: [
+        {
+          id: 'notification',
+          state: 'granted',
+          verified: true,
+          commandAttempted: true,
+          commandSucceeded: true,
+        },
+        {
+          id: 'overlay',
+          state: 'not-granted',
+          verified: false,
+          commandAttempted: true,
+          commandSucceeded: true,
+        },
+        {
+          id: 'autostart',
+          state: 'manual-required',
+          verified: false,
+          commandAttempted: false,
+          commandSucceeded: false,
+        },
+        {
+          id: 'battery',
+          state: 'not-granted',
+          verified: false,
+          commandAttempted: true,
+          commandSucceeded: true,
+        },
+      ],
+    });
   });
 
   it('restores the Keystore credential without overwriting it from a legacy browser copy', async () => {

@@ -10,17 +10,23 @@ import {
   readNativeFocusStatus,
   readNativePauseReminderPreference,
   requeueNativeTerminalLedger,
+  requestNativeAllPermissions,
   requestNativeNotificationPermission,
   requestNativeQuickSettingsTile,
   setNativeOverlayEnabled,
   setNativePauseReminderPreference,
+  waitForNativeFocusRuntimeStartup,
   type NativePauseReminderPreference,
+  type NativeAllPermissionsResult,
   type NativeFocusStatus,
+  type NativePermissionState,
 } from './nativeFocusRuntime';
 
 export function NativeSystemControls() {
-  const [available] = useState(() => isNativeFocusRuntimeAvailable());
+  const [available, setAvailable] = useState(() => isNativeFocusRuntimeAvailable());
+  const [readinessEpoch, setReadinessEpoch] = useState(0);
   const [status, setStatus] = useState<NativeFocusStatus | null>(null);
+  const [permissionBatch, setPermissionBatch] = useState<NativeAllPermissionsResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pauseReminder, setPauseReminder] = useState<NativePauseReminderPreference>({
     enabled: true,
@@ -28,6 +34,7 @@ export function NativeSystemControls() {
   });
   const [busy, setBusy] = useState<
     | 'notification'
+    | 'all-permissions'
     | 'tile'
     | 'background'
     | 'autostart'
@@ -41,6 +48,30 @@ export function NativeSystemControls() {
     const next = await readNativeFocusStatus();
     setStatus(next);
   }, []);
+
+  useEffect(() => {
+    if (available) return;
+    const controller = new AbortController();
+    void waitForNativeFocusRuntimeStartup({ signal: controller.signal }).then((ready) => {
+      if (ready) setAvailable(true);
+    });
+    return () => controller.abort();
+  }, [available, readinessEpoch]);
+
+  useEffect(() => {
+    if (available) return;
+    const retryWhenVisible = () => {
+      if (document.visibilityState === 'visible') setReadinessEpoch((value) => value + 1);
+    };
+    document.addEventListener('visibilitychange', retryWhenVisible);
+    window.addEventListener('focus', retryWhenVisible);
+    window.addEventListener('pageshow', retryWhenVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', retryWhenVisible);
+      window.removeEventListener('focus', retryWhenVisible);
+      window.removeEventListener('pageshow', retryWhenVisible);
+    };
+  }, [available]);
 
   useEffect(() => {
     if (!available) return;
@@ -97,6 +128,32 @@ export function NativeSystemControls() {
       await refreshStatus();
     } catch (error) {
       setNotice(`无法启用通知控制：${errorMessage(error)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const grantAllPermissions = async () => {
+    setBusy('all-permissions');
+    setNotice(null);
+    try {
+      const result = await requestNativeAllPermissions();
+      if (!result) {
+        setNotice('当前运行环境没有 Android 原生权限桥。');
+        return;
+      }
+      setStatus(null);
+      setPermissionBatch(result);
+      const granted = result.items.filter((item) => item.state === 'granted').length;
+      const manual = result.items.filter((item) => item.state === 'manual-required').length;
+      setNotice(
+        result.rootAvailable
+          ? `已逐项执行并回读权限：${granted}/${result.items.length} 项确认，${manual} 项需手动设置。`
+          : '没有检测到可用 root；已保留每项真实状态，请按提示打开系统设置。',
+      );
+      await refreshStatus().catch(() => undefined);
+    } catch (error) {
+      setNotice(`一键获取权限失败：${errorMessage(error)}`);
     } finally {
       setBusy(null);
     }
@@ -265,6 +322,13 @@ export function NativeSystemControls() {
           <span>最近确认 {formatStatusTime(poll.lastSuccessAtEpochMs)}</span>
         ) : null}
       </div>
+      <PermissionBatchPanel
+        status={status}
+        batch={permissionBatch}
+        busy={busy !== null}
+        running={busy === 'all-permissions'}
+        onGrant={() => void grantAllPermissions()}
+      />
       <div className="native-pause-reminder">
         <label>
           <input
@@ -334,6 +398,88 @@ export function NativeSystemControls() {
       )}
     </section>
   );
+}
+
+function PermissionBatchPanel({
+  status,
+  batch,
+  busy,
+  running,
+  onGrant,
+}: {
+  status: NativeFocusStatus | null;
+  batch: NativeAllPermissionsResult | null;
+  busy: boolean;
+  running: boolean;
+  onGrant: () => void;
+}) {
+  const items = presentNativePermissionItems(status, batch);
+  const labels: Record<PermissionDisplayItem['id'], string> = {
+    notification: '通知控制',
+    overlay: '悬浮计时',
+    battery: '省电豁免',
+    background: '后台运行',
+    autostart: '系统自启动',
+  };
+  return (
+    <div className="native-permission-panel" aria-label="权限状态">
+      <div className="native-permission-heading">
+        <strong>权限状态</strong>
+        <small>
+          {batch?.rootAvailable
+            ? 'root 已确认；可自动项已执行并回读，自启动需手动'
+            : '等待 root 检查；系统自启动需手动确认'}
+        </small>
+      </div>
+      <ul className="native-permission-list">
+        {items.map((item) => (
+          <li key={item.id} className={`native-permission-item state-${item.state}`}>
+            <strong>{labels[item.id]}</strong>
+            <small>{permissionStateLabel(item.state)}</small>
+          </li>
+        ))}
+      </ul>
+      <button type="button" className="native-permission-action" onClick={onGrant} disabled={busy}>
+        {running ? '正在逐项获取并验证…' : '一键获取全部权限'}
+      </button>
+    </div>
+  );
+}
+
+type PermissionDisplayItem = {
+  id: 'notification' | 'overlay' | 'battery' | 'background' | 'autostart';
+  state: NativePermissionState;
+};
+
+export function presentNativePermissionItems(
+  status: NativeFocusStatus | null,
+  batch: NativeAllPermissionsResult | null,
+): PermissionDisplayItem[] {
+  const prior = new Map(batch?.items.map((item) => [item.id, item.state] as const) ?? []);
+  const verifiedState = (
+    id: PermissionDisplayItem['id'],
+    value: boolean | undefined,
+  ): NativePermissionState =>
+    typeof value === 'boolean'
+      ? value
+        ? 'granted'
+        : 'not-granted'
+      : (prior.get(id) ?? 'not-granted');
+  return [
+    { id: 'notification', state: verifiedState('notification', status?.canPostNotification) },
+    { id: 'overlay', state: verifiedState('overlay', status?.overlayPermissionGranted) },
+    { id: 'battery', state: verifiedState('battery', status?.batteryOptimizationExempt) },
+    { id: 'background', state: verifiedState('background', status?.backgroundAppOpsAllowed) },
+    { id: 'autostart', state: 'manual-required' },
+  ];
+}
+
+function permissionStateLabel(state: NativePermissionState): string {
+  if (state === 'granted') return '已确认';
+  if (state === 'manual-required') return '需手动';
+  if (state === 'root-unavailable') return '未检测到 root';
+  if (state === 'not-granted') return '未开启';
+  return '执行失败';
 }
 
 export function TerminalLedgerRepairControl({

@@ -1,5 +1,7 @@
 apply plugin: 'com.android.application'
 
+def focuslinkApplicationId = project.findProperty('focuslinkApplicationId') ?: 'app.focuslink.mobile'
+
 android {
     namespace "app.focuslink.mobile"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,11 +9,11 @@ android {
         buildConfig true
     }
     defaultConfig {
-        applicationId "app.focuslink.mobile"
+        applicationId focuslinkApplicationId
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1305
-        versionName "0.12.105"
+        versionCode 1306
+        versionName "1.3.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "DEFAULT_SYNC_ENDPOINT", '""'
         buildConfigField "String", "CANONICAL_SYNC_ORIGIN", '"https://foxlink-mcp.focuslink-poyi-6465e9.workers.dev"'

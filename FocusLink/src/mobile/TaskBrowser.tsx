@@ -46,7 +46,8 @@ interface TaskBrowserProps {
   onSelect: (task: SyncedTask) => void;
   onStart: (task: SyncedTask) => void;
   onCreate?: (title: string, projectId: string | null) => Promise<void>;
-  onCreateProject?: (name: string) => Promise<void>;
+  /** Resolves with the new project id so the task composer can target it immediately. */
+  onCreateProject?: (name: string) => Promise<string | void>;
   onUpdateProject?: (
     project: SyncedTaskProject,
     input: { name?: string; color?: string | null },
@@ -74,6 +75,7 @@ export function TaskBrowser({
 }: TaskBrowserProps) {
   const [query, setQuery] = useState('');
   const [projectFilter, setProjectFilter] = useState<TaskProjectFilter>(ALL_PROJECTS);
+  const [quickAddProjectId, setQuickAddProjectId] = useState<string>(FOCUSLINK_INBOX_PROJECT_ID);
   const [statusFilter, setStatusFilter] = useState<TaskStatusFilter>('open');
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
   const [draft, setDraft] = useState('');
@@ -113,6 +115,14 @@ export function TaskBrowser({
       ?.slice(0, -1)
       .map((task) => task.title)
       .filter(Boolean) ?? [];
+  // Keep the destination explicit even while the list filter is set to "全部清单".
+  useEffect(() => {
+    setQuickAddProjectId(
+      projectFilter === ALL_PROJECTS || projectFilter === NO_PROJECT
+        ? FOCUSLINK_INBOX_PROJECT_ID
+        : projectFilter,
+    );
+  }, [projectFilter]);
   const selectStatusFilter = (next: TaskStatusFilter) => {
     setStatusFilter(next);
     setDetailOpen(false);
@@ -225,12 +235,7 @@ export function TaskBrowser({
             const title = draft.trim();
             if (!title || creating || !onCreate) return;
             setCreating(true);
-            void onCreate(
-              title,
-              projectFilter === ALL_PROJECTS || projectFilter === NO_PROJECT
-                ? FOCUSLINK_INBOX_PROJECT_ID
-                : projectFilter,
-            )
+            void onCreate(title, quickAddProjectId || FOCUSLINK_INBOX_PROJECT_ID)
               .then(() => setDraft(''))
               .then(() => setStatusFilter('open'))
               .then(() => setMutationNotice(null))
@@ -245,6 +250,24 @@ export function TaskBrowser({
             placeholder="添加任务"
             aria-label="添加任务"
           />
+          <label className="task-add-destination">
+            <span className="sr-only">新任务所属清单</span>
+            <select
+              value={quickAddProjectId}
+              onChange={(event) => setQuickAddProjectId(event.target.value)}
+              aria-label="新任务所属清单"
+              disabled={creating || !onCreate}
+            >
+              <option value={FOCUSLINK_INBOX_PROJECT_ID}>收件箱</option>
+              {projects
+                .filter((project) => !isFocusLinkInboxProject(project.id))
+                .map((project) => (
+                  <option key={`${project.source}:${project.id}`} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+            </select>
+          </label>
           <button type="submit" disabled={!draft.trim() || creating || !onCreate}>
             {creating ? '保存中' : '添加'}
           </button>
@@ -315,7 +338,15 @@ export function TaskBrowser({
                 if (!name || !onCreateProject || creating) return;
                 setCreating(true);
                 void onCreateProject(name)
-                  .then(() => setProjectDraft(''))
+                  .then((createdProjectId) => {
+                    setProjectDraft('');
+                    if (createdProjectId) {
+                      setProjectFilter(createdProjectId);
+                      setQuickAddProjectId(createdProjectId);
+                      setStatusFilter('open');
+                      setProjectComposerOpen(false);
+                    }
+                  })
                   .then(() => setMutationNotice(null))
                   .catch((error) => mutationError('创建清单', error))
                   .finally(() => setCreating(false));
@@ -490,12 +521,33 @@ export function TaskBrowser({
                     ))}
                   </div>
                 )}
-                {!selectedTask.isCompleted && (
-                  <button type="button" onClick={() => onStart(selectedTask)} disabled={!canStart}>
-                    <Play aria-hidden="true" />
-                    关联并开始专注
-                  </button>
-                )}
+                <div className="task-selection-actions">
+                  {toggleCompleteWithNotice && (
+                    <button
+                      type="button"
+                      className={`task-selection-complete ${selectedTask.isCompleted ? 'is-restore' : ''}`}
+                      onClick={() => void toggleCompleteWithNotice(selectedTask)}
+                      disabled={movingTask}
+                    >
+                      {selectedTask.isCompleted ? (
+                        <RotateCcw aria-hidden="true" />
+                      ) : (
+                        <Check aria-hidden="true" />
+                      )}
+                      {selectedTask.isCompleted ? '恢复为待办' : '标记完成'}
+                    </button>
+                  )}
+                  {!selectedTask.isCompleted && (
+                    <button
+                      type="button"
+                      onClick={() => onStart(selectedTask)}
+                      disabled={!canStart}
+                    >
+                      <Play aria-hidden="true" />
+                      关联并开始专注
+                    </button>
+                  )}
+                </div>
               </>
             ) : (
               <p>选择一个任务后，这里会显示完整路径和开始操作。</p>

@@ -1,5 +1,17 @@
 # Development Log
 
+## 2026-08-31 · v1.3 移动端审计（实施中）
+
+- 用户确认 PC 与手机配对测试已成功；本轮保留现有配对凭据与任务数据，不重新配对、不清空业务数据库。
+- 目标收敛为一个 `1.3` 体验批次（技术版本 `1.3.0`、Android `1306`）：移动设置/主题/字体真实预览、root 权限逐项回读、Dashboard 日期范围与 24 小时段详情、清单任务操作、桌面同源计时支架和三端视觉一致性。
+- 用户将本轮真机范围收敛为“小米完整功能验收、华为仅同版安装回读”：小米现有配对数据位于并行包，因此用同源码 `app.focuslink.mobile.v012105` 原位覆盖；华为使用正式 `app.focuslink.mobile`，只安装并回读 `1.3.0/1306`。禁止卸载或清数据换取通过。
+- 小米覆盖后出现“native Keystore 凭据仍在、renderer 显示未配对”。根因是三个移动入口只在首次 render 采样一次 Capacitor 插件可用性；现由独立能力探测连续覆盖约 15 秒并在回前台时重试，账号恢复代次则在组件创建时预留，显式账号操作始终优先。Android 的原生凭据读取、保存和清除在桥暂不可用时可取消并失败关闭，不再用空值冒充持久化成功；对应诊断固化为 `FL-SYNC-014`，Node 22 根测试 `1016/1016`，真机最终证据待正式 APK 覆盖后回填。
+- Sol 子任务完成 Dashboard、设置/权限、任务/专注三条实现并由主任务合并审计。最终源码门禁为 129 files / 1016 tests，cross-device 71/71；五视口明暗四页通过，过程中修复任务清单目标和时间支架不足 44px、平板字体卡被旧双栏压窄三项真实回归。
+- API 35 模拟器先安装并回读 `1.3.0/1306`；全量 instrumentation 的唯一失败是未授权 overlay 的人工截图保持用例，显式授权后同项 1/1 通过。最终 Android JVM/lint/assemble 通过，真实小米/华为仍因 ADB handshake 失败未安装。
+- packaged portable smoke 首轮发现隐藏窗口 renderer 节流使翻牌/确认层过渡未收敛；最终 `2aec11e` 的 unpacked UI/mini/live fallback、portable startup/完整 UI 全部通过。
+- Windows installer `/S` 已完成，注册表/EXE 回读 `1.3.0`，SQLite quick check 正常且凭据文件保留，应用已重启。`release-v130` 为严格四文件；installer/portable SHA256 分别为 `7AE91085…0597` / `75A9D78B…3D7C`，LFS tmp 保持 0。
+- 版本节流规则：同一 1.3 批次内的修复不重复抬版本号；历史 `0.12.x` 记录保留为历史事实，不改写成新版本证据。
+
 ## 2026-08-30
 
 - 华为平板与 Windows 通过真实 8 位本机码完成 exchange/claim；任务快照、实时开始/暂停/继续/结束和 `2 segments + 1 pause` 已结束账本分别验收，所有临时清单、任务与会话均按精确 ID 清理。

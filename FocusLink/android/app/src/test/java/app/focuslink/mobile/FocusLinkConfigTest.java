@@ -8,7 +8,7 @@ public class FocusLinkConfigTest {
     @Test
     public void buildVariantKeepsItsExpectedIdentityAndEndpoint() {
         assertEquals("app.focuslink.mobile", BuildConfig.APPLICATION_ID);
-        assertEquals("0.12.105", BuildConfig.VERSION_NAME);
+        assertEquals("1.3.0", BuildConfig.VERSION_NAME);
         assertEquals("", BuildConfig.DEFAULT_SYNC_ENDPOINT);
         assertEquals(
             "https://foxlink-mcp.focuslink-poyi-6465e9.workers.dev",

@@ -8,6 +8,10 @@ const viewportScreenshotSource = fs.readFileSync(
   path.join(projectRoot, 'scripts', 'regression', 'mobile-viewport-screenshot.ts'),
   'utf8',
 );
+const mobile13Source = fs.readFileSync(
+  path.join(projectRoot, 'src', 'mobile', 'mobile-1-3.css'),
+  'utf8',
+);
 
 function compactCss(file: string): string {
   return fs
@@ -68,6 +72,15 @@ describe('phone, tablet and watch responsive style contract', () => {
     );
     expect(consoleSource).toContain('className="focus-action connection-action"');
     expect(consoleSource).not.toContain('inline-connection-action');
+    expect(viewportScreenshotSource).toContain(
+      "document.querySelector('.focus-instrument > .temporal-ribbon')",
+    );
+    expect(viewportScreenshotSource).not.toContain(
+      "document.querySelector('.mobile-temporal-ribbon')",
+    );
+    expect(mobile13Source).toContain('.focus-instrument > .temporal-ribbon');
+    expect(mobile13Source).toContain('order: 3');
+    expect(mobile13Source).toContain('grid-area: ribbon');
   });
 
   it('keeps text inputs at 16px and wraps partial ledger copy on the phone strip', () => {
@@ -159,7 +172,8 @@ describe('phone, tablet and watch responsive style contract', () => {
   it('checks every mobile font and all nine timer previews against their parent bounds', () => {
     expect(viewportScreenshotSource).toContain('assertMobileAppearancePreviews');
     expect(viewportScreenshotSource).toContain('Object.keys(FONT_PROFILE_EXPECTATIONS)');
-    expect(viewportScreenshotSource).toContain('.appearance-font-preview');
+    expect(viewportScreenshotSource).toContain('.appearance-font-choice[data-font-profile=');
+    expect(viewportScreenshotSource).toContain('fontResult.width >= 100');
     expect(viewportScreenshotSource).toContain('.appearance-timer-preview');
     expect(viewportScreenshotSource).toContain('timerResult.count === 9');
     expect(viewportScreenshotSource).toContain('inner.right > outer.right + tolerance');

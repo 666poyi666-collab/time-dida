@@ -1,5 +1,7 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties, type MouseEvent } from 'react';
+import { CalendarDays, X } from 'lucide-react';
 import type { DayLedgerAnalytics, DayLedgerInterval } from '@shared/dayLedgerAnalytics';
+import type { SyncedTask } from '@shared/sync/taskSnapshotProtocol';
 import {
   buildDashboardTaskAllocation,
   largestRemainderPercentages,
@@ -7,19 +9,28 @@ import {
 } from '@shared/dashboardPresentation';
 import type { CachedBundle } from './cache';
 import {
-  buildMobileDashboard,
   buildMobileDashboardInRange,
+  mobileCustomStatsRange,
   mobileStatsRange,
+  mobileTimelineIntervalAt,
+  resolveMobileTimelineTasks,
+  selectMobileDashboardLedger,
   type MobileStatsRange,
+  type MobileTimelineTaskDetail,
 } from './dashboardModel';
 import { formatClockDuration } from './runtimeModel';
 import { SessionLedger } from './SessionLedger';
 
 const RANGE_OPTIONS: ReadonlyArray<{ value: MobileStatsRange; label: string }> = [
   { value: 'today', label: '今天' },
+  { value: 'yesterday', label: '昨天' },
   { value: '7d', label: '近 7 天' },
+  { value: 'previous-7d', label: '上个 7 天' },
   { value: '30d', label: '近 30 天' },
+  { value: 'previous-30d', label: '上个 30 天' },
 ];
+
+type DashboardRangeChoice = MobileStatsRange | 'custom';
 
 const DAY_PERIODS = [
   { label: '深夜', startHour: 0, endHour: 7 },
@@ -35,6 +46,7 @@ interface DashboardViewProps {
   configured: boolean;
   lastSyncAt: number | null;
   cursor: string | null;
+  tasks?: readonly SyncedTask[] | null;
   referenceNow?: number;
 }
 
@@ -44,16 +56,29 @@ export function DashboardView({
   configured,
   lastSyncAt,
   cursor,
+  tasks = null,
   referenceNow = Date.now(),
 }: DashboardViewProps) {
-  const [range, setRange] = useState<MobileStatsRange>('today');
+  const defaultBounds = useMemo(() => mobileStatsRange('7d', referenceNow), [referenceNow]);
+  const [range, setRange] = useState<DashboardRangeChoice>('7d');
+  const [customStart, setCustomStart] = useState(() => dayKey(defaultBounds.start));
+  const [customEnd, setCustomEnd] = useState(() => dayKey(defaultBounds.end - 1));
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const customBounds = useMemo(
+    () => mobileCustomStatsRange(customStart, customEnd),
+    [customEnd, customStart],
+  );
+  const bounds = useMemo(
+    () =>
+      range === 'custom' ? (customBounds ?? defaultBounds) : mobileStatsRange(range, referenceNow),
+    [customBounds, defaultBounds, range, referenceNow],
+  );
   const rangeAnalytics = useMemo(
-    () => buildMobileDashboard(records, range, referenceNow),
-    [records, range, referenceNow],
+    () => buildMobileDashboardInRange(records, bounds, referenceNow),
+    [bounds, records, referenceNow],
   );
   const selectedLedger = useMemo(
-    () => selectLedger(rangeAnalytics.dayLedgers, selectedDate),
+    () => selectMobileDashboardLedger(rangeAnalytics.dayLedgers, selectedDate),
     [rangeAnalytics.dayLedgers, selectedDate],
   );
   const analytics = useMemo(
@@ -78,7 +103,6 @@ export function DashboardView({
     () => buildDashboardTaskAllocation(analytics.tasks, dashboardFocus),
     [analytics.tasks, dashboardFocus],
   );
-  const bounds = mobileStatsRange(range, referenceNow);
   const visibleBounds =
     selectedDate && selectedLedger
       ? { start: selectedLedger.dayStartedAt, end: selectedLedger.dayEndedAt }
@@ -89,8 +113,20 @@ export function DashboardView({
       ? formatFullDate(selectedLedger.date)
       : formatRangeLabel(bounds.start, bounds.end, range);
 
-  const selectRange = (nextRange: MobileStatsRange) => {
+  const selectRange = (nextRange: DashboardRangeChoice) => {
     setRange(nextRange);
+    setSelectedDate(null);
+  };
+
+  const updateCustomStart = (value: string) => {
+    setCustomStart(value);
+    if (value && customEnd && value > customEnd) setCustomEnd(value);
+    setSelectedDate(null);
+  };
+
+  const updateCustomEnd = (value: string) => {
+    setCustomEnd(value);
+    if (value && customStart && value < customStart) setCustomStart(value);
     setSelectedDate(null);
   };
 
@@ -101,18 +137,56 @@ export function DashboardView({
           <p className="eyebrow">DAY LEDGER</p>
           <h2 id="mobile-dashboard-title">时间账本</h2>
         </div>
-        <div className="dashboard-range" role="group" aria-label="统计范围">
-          {RANGE_OPTIONS.map((option) => (
+        <div className="dashboard-range-shell">
+          <div className="dashboard-range" role="group" aria-label="统计范围">
+            {RANGE_OPTIONS.map((option) => (
+              <button
+                type="button"
+                key={option.value}
+                className={range === option.value ? 'is-active' : ''}
+                aria-pressed={range === option.value}
+                onClick={() => selectRange(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
             <button
               type="button"
-              key={option.value}
-              className={range === option.value ? 'is-active' : ''}
-              aria-pressed={range === option.value}
-              onClick={() => selectRange(option.value)}
+              className={`dashboard-custom-range-trigger ${range === 'custom' ? 'is-active' : ''}`}
+              aria-pressed={range === 'custom'}
+              onClick={() => selectRange('custom')}
             >
-              {option.label}
+              <CalendarDays aria-hidden="true" />
+              <span>自定义</span>
             </button>
-          ))}
+          </div>
+          {range === 'custom' && (
+            <div className="dashboard-custom-range" role="group" aria-label="自定义统计日期">
+              <label>
+                <span>开始日期</span>
+                <input
+                  type="date"
+                  value={customStart}
+                  max={dayKey(referenceNow)}
+                  aria-invalid={customBounds === null}
+                  onChange={(event) => updateCustomStart(event.target.value)}
+                />
+              </label>
+              <i aria-hidden="true">至</i>
+              <label>
+                <span>结束日期</span>
+                <input
+                  type="date"
+                  value={customEnd}
+                  min={customStart || undefined}
+                  max={dayKey(referenceNow)}
+                  aria-invalid={customBounds === null}
+                  onChange={(event) => updateCustomEnd(event.target.value)}
+                />
+              </label>
+              {customBounds === null && <p role="alert">请选择有效的开始和结束日期。</p>}
+            </div>
+          )}
         </div>
       </header>
 
@@ -122,7 +196,7 @@ export function DashboardView({
         <>
           <section className="dashboard-hero ledger-dashboard-hero" aria-label="有效日结论">
             <div className="dashboard-primary">
-              <span>{range === 'today' ? '今日有效专注' : '范围内有效专注'}</span>
+              <span>{dashboardScopeTitle(range, selectedDate)}</span>
               <strong>{formatClockDuration(dashboardFocus)}</strong>
               <p>{dashboardConclusion(selectedLedger, dashboardFocus, analytics.totals.gapMs)}</p>
               {analytics.estimated && (
@@ -170,11 +244,19 @@ export function DashboardView({
                 selectedDate={selectedDate}
                 onSelect={(date) => setSelectedDate((current) => (current === date ? null : date))}
               />
+              {selectedDate && selectedLedger && (
+                <SelectedDaySummary ledger={selectedLedger} onClear={() => setSelectedDate(null)} />
+              )}
             </section>
           )}
 
           <div className="dashboard-analysis-grid ledger-analysis-grid">
-            <DayLedgerTimeline ledger={selectedLedger} />
+            <DayLedgerTimeline
+              key={selectedLedger?.date ?? 'no-ledger'}
+              ledger={selectedLedger}
+              records={records}
+              tasks={tasks}
+            />
             <section
               className="dashboard-band task-allocation-band"
               aria-labelledby="dashboard-task-allocation-title"
@@ -373,7 +455,27 @@ function DailyLedgerTrend({
   );
 }
 
-function DayLedgerTimeline({ ledger }: { ledger: DayLedgerAnalytics | undefined }) {
+function DayLedgerTimeline({
+  ledger,
+  records,
+  tasks,
+}: {
+  ledger: DayLedgerAnalytics | undefined;
+  records: readonly CachedBundle[];
+  tasks: readonly SyncedTask[] | null;
+}) {
+  const [selectedIntervalKey, setSelectedIntervalKey] = useState<string | null>(null);
+  const intervalEntries = (ledger?.intervals ?? []).map((interval) => {
+    const details = resolveMobileTimelineTasks(interval, records, tasks);
+    return {
+      interval,
+      details,
+      key: timelineIntervalKey(interval),
+      label: `${intervalLabel(interval)}；${details
+        .map((detail) => `${detail.title}（${timelineTaskStateLabel(detail.state)}）`)
+        .join('、')}`,
+    };
+  });
   const span = ledger ? Math.max(1, ledger.dayEndedAt - ledger.dayStartedAt) : 1;
   const observation =
     ledger?.observationStartedAt === null || ledger?.observationStartedAt === undefined
@@ -423,9 +525,9 @@ function DayLedgerTimeline({ ledger }: { ledger: DayLedgerAnalytics | undefined 
                 ))}
               </div>
               {(['focus', 'pause', 'gap'] as const).map((kind) => {
-                const intervals = ledger.intervals.filter((interval) => interval.kind === kind);
-                const totalMs = intervals.reduce(
-                  (total, interval) => total + interval.durationMs,
+                const entries = intervalEntries.filter((entry) => entry.interval.kind === kind);
+                const totalMs = entries.reduce(
+                  (total, entry) => total + entry.interval.durationMs,
                   0,
                 );
                 return (
@@ -436,14 +538,26 @@ function DayLedgerTimeline({ ledger }: { ledger: DayLedgerAnalytics | undefined 
                       </strong>
                       <small>{formatLaneDuration(totalMs)}</small>
                     </span>
-                    <div>
-                      {intervals.map((interval, index) => {
+                    <div
+                      className="mobile-day-lane-track"
+                      onClick={(event) =>
+                        selectTimelineIntervalAt(
+                          event,
+                          entries,
+                          ledger.dayStartedAt,
+                          span,
+                          setSelectedIntervalKey,
+                        )
+                      }
+                    >
+                      {entries.map(({ interval, key, label }) => {
                         const width = (interval.durationMs / span) * 100;
                         return (
                           <span
-                            key={`${interval.kind}-${interval.startedAt}-${index}`}
-                            className={`ledger-interval ${interval.kind}`}
-                            title={intervalLabel(interval)}
+                            key={key}
+                            className={`ledger-interval ${interval.kind} ${selectedIntervalKey === key ? 'is-selected' : ''}`}
+                            title={label}
+                            aria-hidden="true"
                             style={{
                               left: `${((interval.startedAt - ledger.dayStartedAt) / span) * 100}%`,
                               width: `${Math.max(0.22, width)}%`,
@@ -466,6 +580,38 @@ function DayLedgerTimeline({ ledger }: { ledger: DayLedgerAnalytics | undefined 
               )}
             </div>
           </div>
+          {intervalEntries.length > 0 && (
+            <div className="mobile-timeline-interval-list" role="group" aria-label="时间段明细入口">
+              {intervalEntries.map(({ interval, key, label, details }) => (
+                <button
+                  type="button"
+                  key={key}
+                  className={`timeline-interval-choice ${interval.kind}`}
+                  aria-label={label}
+                  aria-pressed={selectedIntervalKey === key}
+                  onClick={() => setSelectedIntervalKey(key)}
+                >
+                  <i aria-hidden="true" />
+                  <span>
+                    {formatClock(interval.startedAt)}–{formatClock(interval.endedAt)}
+                  </span>
+                  <small>{details.map(formatTimelineTaskDetail).join('；')}</small>
+                </button>
+              ))}
+            </div>
+          )}
+          {selectedIntervalKey &&
+            (() => {
+              const selected = intervalEntries.find((entry) => entry.key === selectedIntervalKey);
+              if (!selected) return null;
+              return (
+                <TimelineIntervalDetail
+                  interval={selected.interval}
+                  details={selected.details}
+                  onClose={() => setSelectedIntervalKey(null)}
+                />
+              );
+            })()}
           <div className="chart-legend mobile-ledger-legend" aria-hidden="true">
             <span className="legend-focus">专注</span>
             <span className="legend-pause">暂停</span>
@@ -480,6 +626,132 @@ function DayLedgerTimeline({ ledger }: { ledger: DayLedgerAnalytics | undefined 
         每格 1 小时；专注、暂停、空档共用 00:00–24:00 比例，夜间底色不计入空档。
       </p>
     </section>
+  );
+}
+
+function formatTimelineTaskDetail(detail: MobileTimelineTaskDetail): string {
+  return `${detail.title}，${timelineTaskStateLabel(detail.state)}`;
+}
+
+function timelineIntervalKey(interval: DayLedgerInterval): string {
+  return `${interval.kind}-${interval.startedAt}-${interval.endedAt}`;
+}
+
+function selectTimelineIntervalAt(
+  event: MouseEvent<HTMLDivElement>,
+  entries: ReadonlyArray<{ interval: DayLedgerInterval; key: string }>,
+  dayStartedAt: number,
+  span: number,
+  select: (key: string) => void,
+): void {
+  const bounds = event.currentTarget.getBoundingClientRect();
+  if (bounds.width <= 0) return;
+  const ratio = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
+  const timestamp = dayStartedAt + ratio * span;
+  const selectedInterval = mobileTimelineIntervalAt(
+    entries.map((entry) => entry.interval),
+    timestamp,
+  );
+  const selected = entries.find((entry) => entry.interval === selectedInterval);
+  if (selected) select(selected.key);
+}
+
+function timelineTaskStateLabel(state: MobileTimelineTaskDetail['state']): string {
+  switch (state) {
+    case 'completed':
+      return '任务已完成';
+    case 'pending':
+      return '任务待办';
+    case 'missing':
+      return '任务已不在当前清单';
+    case 'unknown':
+      return '任务状态待同步';
+    case 'unlinked':
+      return '未关联任务';
+    case 'not-applicable':
+      return '不适用';
+  }
+}
+
+function TimelineIntervalDetail({
+  interval,
+  details,
+  onClose,
+}: {
+  interval: DayLedgerInterval;
+  details: readonly MobileTimelineTaskDetail[];
+  onClose: () => void;
+}) {
+  const kind = interval.kind === 'focus' ? '专注' : interval.kind === 'pause' ? '暂停' : '空档';
+  return (
+    <aside className={`mobile-timeline-detail ${interval.kind}`} aria-label="时间段详情">
+      <div className="mobile-timeline-detail-heading">
+        <div>
+          <span>{kind}时间段</span>
+          <strong>
+            {formatClockWithDate(interval.startedAt)}–{formatClockWithDate(interval.endedAt)}
+          </strong>
+        </div>
+        <button type="button" className="icon-button" aria-label="关闭时间段详情" onClick={onClose}>
+          <X aria-hidden="true" />
+        </button>
+      </div>
+      <p className="mobile-timeline-detail-duration">
+        持续 {formatClockDuration(interval.durationMs)}
+      </p>
+      {details.length > 0 && (
+        <ul className="mobile-timeline-task-details">
+          {details.map((detail) => (
+            <li key={detail.key}>
+              <span>{detail.title}</span>
+              <strong className={`task-state-${detail.state}`}>
+                {timelineTaskStateLabel(detail.state)}
+              </strong>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mobile-timeline-detail-note">
+        任务状态来自最近任务同步；专注记录结束不代表任务自动完成。
+      </p>
+    </aside>
+  );
+}
+
+function SelectedDaySummary({
+  ledger,
+  onClear,
+}: {
+  ledger: DayLedgerAnalytics;
+  onClear: () => void;
+}) {
+  const focus = ledger.totals.focusMs + ledger.totals.estimatedFocusMs;
+  const pause = ledger.totals.pauseMs + ledger.totals.estimatedPauseMs;
+  return (
+    <div className="selected-day-summary" role="status" aria-live="polite">
+      <div>
+        <span>已选日期</span>
+        <strong>{formatFullDate(ledger.date)}</strong>
+      </div>
+      <dl>
+        <div>
+          <dt>专注</dt>
+          <dd>{formatClockDuration(focus)}</dd>
+        </div>
+        <div>
+          <dt>暂停</dt>
+          <dd>{formatClockDuration(pause)}</dd>
+        </div>
+        <div>
+          <dt>空档</dt>
+          <dd>{formatClockDuration(ledger.totals.gapMs)}</dd>
+        </div>
+      </dl>
+      <button type="button" className="selected-day-clear" onClick={onClear}>
+        <X aria-hidden="true" />
+        <span>返回范围</span>
+      </button>
+    </div>
   );
 }
 
@@ -608,17 +880,6 @@ function DashboardSkeleton() {
   );
 }
 
-function selectLedger(
-  ledgers: readonly DayLedgerAnalytics[],
-  selectedDate: string | null,
-): DayLedgerAnalytics | undefined {
-  if (selectedDate) return ledgers.find((ledger) => ledger.date === selectedDate);
-  for (let index = ledgers.length - 1; index >= 0; index -= 1) {
-    if (ledgers[index].status !== 'not-started') return ledgers[index];
-  }
-  return ledgers.at(-1);
-}
-
 function dashboardConclusion(
   ledger: DayLedgerAnalytics | undefined,
   focusMs: number,
@@ -654,9 +915,23 @@ function sessionOverlaps(record: CachedBundle, bounds: { start: number; end: num
   return session.startedAt < bounds.end && end > bounds.start;
 }
 
-function formatRangeLabel(start: number, end: number, range: MobileStatsRange): string {
-  if (range === 'today') return formatFullDate(dayKey(start));
-  return `${formatShortDate(dayKey(start))} - ${formatShortDate(dayKey(end))}`;
+function dashboardScopeTitle(range: DashboardRangeChoice, selectedDate: string | null): string {
+  if (selectedDate) return `${formatFullDate(selectedDate)}有效专注`;
+  switch (range) {
+    case 'today':
+      return '今日有效专注';
+    case 'yesterday':
+      return '昨日有效专注';
+    case 'custom':
+      return '自定义范围有效专注';
+    default:
+      return '范围内有效专注';
+  }
+}
+
+function formatRangeLabel(start: number, end: number, range: DashboardRangeChoice): string {
+  if (range === 'today' || range === 'yesterday') return formatFullDate(dayKey(start));
+  return `${formatShortDate(dayKey(start))} - ${formatShortDate(dayKey(end - 1))}`;
 }
 
 function dayKey(timestamp: number): string {
@@ -671,6 +946,11 @@ function dayKey(timestamp: number): string {
 function formatClock(timestamp: number): string {
   const date = new Date(timestamp);
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function formatClockWithDate(timestamp: number): string {
+  const date = new Date(timestamp);
+  return `${date.getMonth() + 1}/${date.getDate()} ${formatClock(timestamp)}`;
 }
 
 function formatFullDate(date: string): string {

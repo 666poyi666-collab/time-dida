@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  presentNativePermissionItems,
   TerminalLedgerRepairControl,
   terminalLedgerRequeueFailureCopy,
   terminalLedgerRequeueNotice,
@@ -16,6 +17,45 @@ vi.mock('@capacitor/core', () => ({
 }));
 
 describe('mobile native terminal-ledger repair control', () => {
+  it('lets fresh system readback replace a stale root permission batch', () => {
+    expect(
+      presentNativePermissionItems(
+        {
+          canPostNotification: true,
+          overlayPermissionGranted: true,
+          batteryOptimizationExempt: false,
+          backgroundAppOpsAllowed: true,
+        },
+        {
+          rootAvailable: true,
+          attemptedAtEpochMs: 10,
+          items: [
+            {
+              id: 'overlay',
+              state: 'not-granted',
+              verified: false,
+              commandAttempted: true,
+              commandSucceeded: true,
+            },
+            {
+              id: 'battery',
+              state: 'granted',
+              verified: true,
+              commandAttempted: true,
+              commandSucceeded: true,
+            },
+          ],
+        },
+      ),
+    ).toEqual([
+      { id: 'notification', state: 'granted' },
+      { id: 'overlay', state: 'granted' },
+      { id: 'battery', state: 'not-granted' },
+      { id: 'background', state: 'granted' },
+      { id: 'autostart', state: 'manual-required' },
+    ]);
+  });
+
   it('renders no repair affordance until native diagnostics report a terminal record', () => {
     const onRequeue = vi.fn();
     expect(
