@@ -93,7 +93,8 @@ body {
 
 .mobile-sync-pill,
 .mobile-topbar .icon-button {
-  min-height: 38px;
+  min-width: 44px;
+  min-height: 44px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
@@ -122,8 +123,8 @@ body {
 }
 
 .mobile-topbar .icon-button {
-  width: 38px;
-  min-width: 38px;
+  width: 44px;
+  min-width: 44px;
   padding: 0;
 }
 
@@ -1245,7 +1246,8 @@ body {
 
 @media (max-width: 380px) {
   .mobile-sync-pill {
-    width: 38px;
+    width: 44px;
+    min-width: 44px;
     justify-content: center;
     padding: 0;
   }

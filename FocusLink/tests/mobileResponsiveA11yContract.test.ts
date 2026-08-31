@@ -13,6 +13,9 @@ function readProjectFile(...segments: string[]): string {
 const mobileCss = readProjectFile('src', 'mobile', 'mobile.css');
 const mobileRoot = postcss.parse(mobileCss);
 const mobile13Root = postcss.parse(readProjectFile('src', 'mobile', 'mobile-1-3.css'));
+const focuslink2MobileRoot = postcss.parse(
+  readProjectFile('src', 'mobile', 'focuslink-2-mobile.css'),
+);
 const appleLayerMarker = '/* Apple platform surface';
 const appleLayerOffset = mobileCss.indexOf(appleLayerMarker);
 
@@ -172,6 +175,20 @@ describe('mobile responsive and accessibility review contract', () => {
       'min-height': '44px',
     });
     expectRule(mobile13Root, '.task-add-destination select', { 'min-height': '44px' });
+    expectRule(focuslink2MobileRoot, '.mobile-sync-pill', {
+      'min-width': '44px',
+      'min-height': '44px',
+    });
+    expectRule(focuslink2MobileRoot, '.mobile-topbar .icon-button', {
+      width: '44px',
+      'min-width': '44px',
+    });
+    expectRule(
+      focuslink2MobileRoot,
+      '.mobile-sync-pill',
+      { width: '44px', 'min-width': '44px' },
+      { media: '(max-width: 380px)' },
+    );
   });
 
   it('uses the full tablet width for all eight live font previews', () => {
