@@ -2,11 +2,11 @@
 
 > 发布日期：2026-08-31
 >
-> 对应提交：`2aec11e`
+> 对应产品源码提交：`178959d`
 >
 > 发布类型：本地候选
 >
-> 验证状态：源码、Windows 与 Android 构建门禁通过；小米/华为真机安装门禁未完成
+> 验证状态：源码、Windows、Android 构建与三设备同版安装门禁已通过；本轮不创建公开 Release
 
 ## 主要变化
 
@@ -15,24 +15,26 @@
 - 清单创建后自动进入目标清单，任务可完成/恢复；设置、设备连接和权限状态显示真实同步事实。
 - Android root 权限逐项执行并回读，不把打开设置页冒充授权成功。
 - 修复覆盖安装后 Keystore 凭据仍在但界面显示未配对：原生桥迟注入时自动恢复，显式登录/配对/退出始终优先。
+- 修复手机顶部同步状态按钮触控区域不足 44px，真实小米手机回读 `116.46×44px`。
 
 ## 验证
 
 - Node `22.22.2`：format、typecheck、lint、根 Vitest `129 files / 1016 tests` 全部通过；cross-device `6 files / 71 tests` 通过。
-- Android：正式 `app.focuslink.mobile` APK 为 `1.3.0/1306`，JVM、lint、assemble 通过；SHA256 `A516333CC4F27769016BCAB42BCA2ED1AEB2B8CEF5D064F9DAF8F34571DCE400`。
-- Windows：unpacked UI、mini、live fallback，portable startup 与完整 UI smoke 均回读 `1.3.0 / 2aec11e` 并通过。
-- Windows 安装：静默覆盖成功，注册表/EXE 回读 `1.3.0`，SQLite 与设备凭据保留，应用已重启。
-- 真机矩阵：小米历史 ADB 地址均为 offline；华为未能建立 ADB 握手。本轮未安装、未回读，也未执行小米功能验收。
+- Android：JVM、lint、assemble 通过；正式 `app.focuslink.mobile` APK 为 `1.3.0/1306`，SHA256 `0855A028F04534AF1493F27A7EED38DDE36632607943E50E1732D3C66BAD2A85`。
+- Windows：unpacked UI、mini、live fallback、portable startup 与完整 UI smoke 均回读 `1.3.0 / 178959d` 并通过。
+- Windows 安装：`/S` exit 0，卸载项回读 `1.3.0`，EXE 回读 `1.3.0/1.3.0.0`，SQLite 与设备凭据保留，应用已重启。
+- 小米手机：因历史正式包签名不匹配，使用同源码同签名 `app.focuslink.mobile.v012104` 原位 `adb install -r`，回读 `1.3.0/1306`；Keystore 自动恢复、权限、Dashboard、任务/清单、短专注、主题/字体、四页布局和 44px 同步按钮均验收通过。APK SHA256 `1CBB071368EF68D08515370516820E439B87E22E550D9BBA7DEC5020E757FE79`。
+- 华为平板：正式 `app.focuslink.mobile` 原位 `adb install -r` 并回读 `1.3.0/1306`；按用户要求只执行安装回读，不跑功能 smoke。
 
 ## 升级提示
 
 - Windows 使用安装器静默覆盖后必须回读卸载注册表与已安装 EXE 版本，并重新启动应用。
-- 华为使用正式 `app.focuslink.mobile` APK；小米当前保留配对数据的并行包使用同源码 `app.focuslink.mobile.v012105` APK，禁止卸载或清数据换取安装通过。
+- 小米保留配对数据的实例使用 `app.focuslink.mobile.v012104` 同签名包；禁止卸载、降级或清数据换取安装通过。华为使用正式 `app.focuslink.mobile` 包。
 - 既有合法 `fl2` 凭据原位升级；连接恢复前不要清 Web Storage、IndexedDB、应用数据或 Keystore，也不要重新配对。
 
 ## 已知限制
 
-- 小米和华为真机当前不可达，三设备同版安装门禁仍为阻断状态；本候选不得标记为正式发布完成。
+- 小米正式旧 applicationId 因历史签名不同无法覆盖，本候选保留明确的同源码并行 applicationId；该事实不影响三设备同版安装与本轮功能验收。
 - 未经用户明确要求，本轮不创建 tag 或 GitHub Release。
 
 ## 下载与校验

@@ -88,8 +88,10 @@ canonical foxlink-cloud-mcp → private service binding → Account DO 链路。
 本小节只覆盖 `FL-REQ-20260831-MOBILE-AUDIT` 的 `1.3.0/1306` 候选，并优先于本页后续要求双 Android
 设备执行同一套功能、视觉、系统表面或跨设备 smoke 的通用条款；后续版本若无新的明确范围，仍恢复执行通用条款。
 
-- 指定小米手机是本轮唯一的完整真实功能验收设备。必须安装正式 applicationId
-  `app.focuslink.mobile` 的候选 APK，回读 `versionName=1.3.0` / `versionCode=1306`，并在保留现有用户数据和
+- 指定小米手机是本轮唯一的完整真实功能验收设备。优先安装正式 applicationId
+  `app.focuslink.mobile` 的候选 APK；若既有配对数据所在正式包因历史签名不匹配无法 `adb install -r`，允许使用
+  与正式包完全同源码、同 `versionName=1.3.0` / `versionCode=1306`、同构建签名的明确并行 applicationId（本轮为
+  `app.focuslink.mobile.v012104`），不得卸载、降级或清数据换取通过，且必须单独记录包名与签名事实。保留现有用户数据和
   配对凭据的前提下验证 native Keystore 凭据恢复、权限逐项申请与 readback、Dashboard 日期/24 小时段、
   清单与任务完成/恢复、本机和云端专注、前后台恢复、通知/overlay 以及本轮受影响的手机布局与交互。
 - 指定华为平板只执行同一份正式 APK 的 `adb install -r`，然后从已安装包回读
