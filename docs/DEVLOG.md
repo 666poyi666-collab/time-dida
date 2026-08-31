@@ -10,6 +10,7 @@
 - API 35 模拟器先安装并回读 `1.3.0/1306`；全量 instrumentation 的唯一失败是未授权 overlay 的人工截图保持用例，显式授权后同项 1/1 通过。最终 Android JVM/lint/assemble 通过，真实小米/华为仍因 ADB handshake 失败未安装。
 - packaged portable smoke 首轮发现隐藏窗口 renderer 节流使翻牌/确认层过渡未收敛；最终 `2aec11e` 的 unpacked UI/mini/live fallback、portable startup/完整 UI 全部通过。
 - Windows installer `/S` 已完成，注册表/EXE 回读 `1.3.0`，SQLite quick check 正常且凭据文件保留，应用已重启。`release-v130` 为严格四文件；installer/portable SHA256 分别为 `7AE91085…0597` / `75A9D78B…3D7C`，LFS tmp 保持 0。
+- 项目清理器以 `--max-age-hours=0` 删除本轮 28 个生成目标：unpacked 隔离目录、smoke/startup 截图、selftest/test-data 与顶层 APK 副本全部清理，`failed=[]`，复查候选 0；受保护的最终 APK 备份和 device-screens 未动。
 - 版本节流规则：同一 1.3 批次内的修复不重复抬版本号；历史 `0.12.x` 记录保留为历史事实，不改写成新版本证据。
 
 ## 2026-08-30
