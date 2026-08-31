@@ -7,6 +7,7 @@
 - 早先记录的 `2aec11e`/`v012105` 与离线状态是中间候选；最终 1.3 产品源码为 `178959d`，桌面包和 APK 均已从该提交重建。
 - 小米因历史正式包签名不同，使用同源码同签名 `app.focuslink.mobile.v012104` 原位覆盖；华为使用正式 `app.focuslink.mobile`。两台 Android 都回读 `1.3.0/1306`，Windows 回读 `1.3.0/1.3.0.0`，未卸载或清数据，三设备同版安装矩阵闭合。
 - 小米完整功能验收与 44px 修复已通过；华为按用户指令只安装回读，不执行功能 smoke。最终桌面 installer/portable SHA256 为 `0EF29B9D…63DB` / `B1250D3C…DF5F`，APK 备份位于 `FocusLink/.tmp/android-apk-backups/`。
+- 最终清理后 `release-v130` 恰为四文件，项目清理器 dry-run 候选 0，LFS tmp 0；正式与小米 APK 备份仍保留。
 
 后续同日条目保留过程时间线；最终提交、安装矩阵、哈希和清理状态以上述更正为准。
 

@@ -25,6 +25,7 @@
 - Windows 安装：`/S` exit 0，卸载项回读 `1.3.0`，EXE 回读 `1.3.0/1.3.0.0`，SQLite 与设备凭据保留，应用已重启。
 - 小米手机：因历史正式包签名不匹配，使用同源码同签名 `app.focuslink.mobile.v012104` 原位 `adb install -r`，回读 `1.3.0/1306`；Keystore 自动恢复、权限、Dashboard、任务/清单、短专注、主题/字体、四页布局和 44px 同步按钮均验收通过。APK SHA256 `1CBB071368EF68D08515370516820E439B87E22E550D9BBA7DEC5020E757FE79`。
 - 华为平板：正式 `app.focuslink.mobile` 原位 `adb install -r` 并回读 `1.3.0/1306`；按用户要求只执行安装回读，不跑功能 smoke。
+- 发布目录复核：仅保留 installer、portable、`SHA256SUMS.txt`、`RELEASE_NOTES.md` 四个文件；构建中间物已清理，`.git/lfs/tmp` 为 0。
 
 ## 升级提示
 
