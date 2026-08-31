@@ -9,6 +9,7 @@
 - 小米因正式旧包签名不同，使用同源码、同版本、同构建签名的 `app.focuslink.mobile.v012104` 原位覆盖，禁止卸载/清数据；APK SHA256 `1CBB071368EF68D08515370516820E439B87E22E550D9BBA7DEC5020E757FE79`。华为使用正式 `app.focuslink.mobile`，APK SHA256 `0855A028F04534AF1493F27A7EED38DDE36632607943E50E1732D3C66BAD2A85`。两台设备均回读 `versionName=1.3.0`、`versionCode=1306`；Windows 回读注册表 `1.3.0`、EXE `1.3.0/1.3.0.0`，三设备同版安装矩阵已闭合。
 - 小米最终真实验收：native Keystore 自动恢复且无需重新配对；Dashboard 六范围/自定义日期/24 小时段详情、任务清单创建/完成/恢复/删除、短专注开始/暂停/继续/结束、KernelSU 四项权限 readback、主题/字体和四页布局均通过；顶部同步按钮最终 `116.46×44px`。华为按本轮指令只安装回读，不执行功能 smoke。
 - 最终清理：项目清理器移除最终重建产生的 `win-unpacked`、blockmap、builder 调试文件、签名审计副本和 smoke 输出，`failed=[]`；`release-v130` 已复核恰好四文件，`android-apk-backups` 保留正式/小米 APK，`.git/lfs/tmp` 为 0。
+- 最终移动视口复验：`mobile-viewport-screenshot` 的 360/412 手机、640/760 平板和横屏五种视口，明暗两套主题、四个页面、八套字体及九种仪表均通过；所有页面 `scrollWidth` 未超出 viewport，`smallestInteractiveTarget >= 44px`，清理器删除本轮 44 个截图/临时文件且 `failed=[]`。
 
 以下同一版本段中的旧条目是按时间保留的中间候选记录；遇到提交、包名、哈希或设备状态差异时，以本“最终候选更正”和 `release-v130/RELEASE_NOTES.md` 为准。
 
